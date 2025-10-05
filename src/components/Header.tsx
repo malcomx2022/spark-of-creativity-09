@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Heart, Menu, Phone } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
@@ -25,12 +27,24 @@ export default function Header() {
             <a href="#services" className="text-foreground hover:text-primary transition-colors">
               Services
             </a>
-            <a href="#how-it-works" className="text-foreground hover:text-primary transition-colors">
-              Comment ça marche
-            </a>
-            <a href="#about" className="text-foreground hover:text-primary transition-colors">
-              À propos
-            </a>
+            <button 
+              onClick={() => navigate("/dashboard/patient")}
+              className="text-foreground hover:text-primary transition-colors"
+            >
+              Patient
+            </button>
+            <button 
+              onClick={() => navigate("/dashboard/practitioner")}
+              className="text-foreground hover:text-primary transition-colors"
+            >
+              Praticien
+            </button>
+            <button 
+              onClick={() => navigate("/triage")}
+              className="text-foreground hover:text-primary transition-colors"
+            >
+              Triage
+            </button>
           </nav>
 
           {/* Emergency Button */}
@@ -57,12 +71,24 @@ export default function Header() {
               <a href="#services" className="text-foreground hover:text-primary transition-colors">
                 Services
               </a>
-              <a href="#how-it-works" className="text-foreground hover:text-primary transition-colors">
-                Comment ça marche
-              </a>
-              <a href="#about" className="text-foreground hover:text-primary transition-colors">
-                À propos
-              </a>
+              <button 
+                onClick={() => navigate("/dashboard/patient")}
+                className="text-foreground hover:text-primary transition-colors text-left"
+              >
+                Espace Patient
+              </button>
+              <button 
+                onClick={() => navigate("/dashboard/practitioner")}
+                className="text-foreground hover:text-primary transition-colors text-left"
+              >
+                Espace Praticien
+              </button>
+              <button 
+                onClick={() => navigate("/triage")}
+                className="text-foreground hover:text-primary transition-colors text-left"
+              >
+                Triage Médical
+              </button>
               <Button variant="urgent" size="sm" className="w-full sm:hidden">
                 <Phone className="h-4 w-4" />
                 Urgence 112
