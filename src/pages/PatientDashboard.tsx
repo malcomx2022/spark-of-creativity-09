@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
+import GPSTracking from '@/components/GPSTracking';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -148,14 +149,20 @@ export default function PatientDashboard() {
                 </CardContent>
               </Card>
             ) : (
-              upcomingAppointments.map(appointment => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  userRole="patient"
-                  onCancel={handleCancel}
-                />
-              ))
+              <>
+                {upcomingAppointments.map(appointment => (
+                  <div key={appointment.id} className="space-y-4">
+                    <AppointmentCard
+                      appointment={appointment}
+                      userRole="patient"
+                      onCancel={handleCancel}
+                    />
+                    {appointment.status === 'confirmed' && (
+                      <GPSTracking appointment={appointment} />
+                    )}
+                  </div>
+                ))}
+              </>
             )}
           </TabsContent>
 

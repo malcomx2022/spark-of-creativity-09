@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, Phone } from "lucide-react";
+import { Heart, Menu, Phone, MapPin } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -45,6 +45,13 @@ export default function Header() {
             >
               Triage
             </button>
+            <button 
+              onClick={() => navigate("/search-practitioners")}
+              className="text-foreground hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <MapPin className="h-4 w-4" />
+              Recherche
+            </button>
           </nav>
 
           {/* Emergency Button */}
@@ -88,6 +95,13 @@ export default function Header() {
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
                 Triage Médical
+              </button>
+              <button 
+                onClick={() => navigate("/search-practitioners")}
+                className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
+              >
+                <MapPin className="h-4 w-4" />
+                Rechercher un praticien
               </button>
               <Button variant="urgent" size="sm" className="w-full sm:hidden">
                 <Phone className="h-4 w-4" />
