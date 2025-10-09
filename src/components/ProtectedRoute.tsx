@@ -1,39 +1,46 @@
-import { supabase } from '@/lib/supabase';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
+
+import { supabase } from '@/lib/supabase';
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    let isMounted = true;
+
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
+      const { data } = await supabase.auth.getSession();
+
+      if (!isMounted) return;
+
+      setSession(data.session);
       setLoading(false);
     };
 
     getSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+
       setSession(session);
-      if (!session) {
-        navigate('/login');
-      }
+      setLoading(false);
     });
 
     return () => {
+      isMounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, []);
 
   if (loading) {
     return <div>Chargement...</div>;
   }
 
   if (!session) {
-    return null; // The navigate in useEffect will handle redirection
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   return <>{children}</>;
