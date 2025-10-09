@@ -11,6 +11,10 @@ import PatientDashboard from "./pages/PatientDashboard";
 import PractitionerDashboard from "./pages/PractitionerDashboard";
 import PractitionerSearch from "./pages/PractitionerSearch";
 import NotFound from "./pages/NotFound";
+import LoginPage from "./pages/LoginPage";
+import SignupPage from "./pages/SignupPage";
+import AdminDashboard from "./pages/AdminDashboard";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -22,12 +26,15 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
           <Route path="/signup/patient" element={<PatientSignup />} />
           <Route path="/signup/practitioner" element={<PractitionerSignup />} />
           <Route path="/triage" element={<Triage />} />
           <Route path="/search-practitioners" element={<PractitionerSearch />} />
           <Route path="/dashboard/patient" element={<PatientDashboard />} />
           <Route path="/dashboard/practitioner" element={<PractitionerDashboard />} />
+          <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
