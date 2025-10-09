@@ -38,7 +38,46 @@ serve(async (req) => {
       );
     }
 
-    const { appointmentId, amount, paymentMethod, phoneNumber }: PaymentRequest = await req.json();
+    let payload: unknown;
+    try {
+      payload = await req.json();
+    } catch (jsonError) {
+      console.error('Invalid JSON payload received:', jsonError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON payload' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { appointmentId, amount, paymentMethod, phoneNumber } = payload as Partial<PaymentRequest>;
+
+    const validationErrors: string[] = [];
+
+    if (!appointmentId || typeof appointmentId !== 'string') {
+      validationErrors.push('appointmentId must be a non-empty string');
+    }
+
+    if (typeof amount !== 'number' || Number.isNaN(amount) || !Number.isFinite(amount) || amount <= 0) {
+      validationErrors.push('amount must be a positive number');
+    }
+
+    const allowedMethods: PaymentRequest['paymentMethod'][] = ['mtn', 'orange', 'moov'];
+    if (!paymentMethod || !allowedMethods.includes(paymentMethod)) {
+      validationErrors.push(`paymentMethod must be one of: ${allowedMethods.join(', ')}`);
+    }
+
+    const phoneRegex = /^\+?[0-9]{8,15}$/;
+    if (!phoneNumber || typeof phoneNumber !== 'string' || !phoneRegex.test(phoneNumber)) {
+      validationErrors.push('phoneNumber must be a valid international phone number');
+    }
+
+    if (validationErrors.length > 0) {
+      console.warn('Validation errors:', validationErrors);
+      return new Response(
+        JSON.stringify({ error: 'Validation failed', details: validationErrors }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log('Creating payment:', { appointmentId, amount, paymentMethod, phoneNumber });
 
@@ -49,31 +88,49 @@ serve(async (req) => {
       'moov': 'moov_ci'
     };
 
+    const selectedMode = modeMap[paymentMethod];
+    if (!selectedMode) {
+      console.error('Unsupported payment method requested:', paymentMethod);
+      return new Response(
+        JSON.stringify({ error: 'Unsupported payment method' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Create FedaPay transaction
-    const fedapayResponse = await fetch('https://api.fedapay.com/v1/transactions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        description: `Paiement rendez-vous médical #${appointmentId}`,
-        amount: amount,
-        currency: {
-          iso: 'XOF'
+    let fedapayResponse: Response;
+    try {
+      fedapayResponse = await fetch('https://api.fedapay.com/v1/transactions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
         },
-        callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-        customer: {
-          firstname: 'Patient',
-          lastname: 'User',
-          phone_number: {
-            number: phoneNumber,
-            country: 'bj'
-          }
-        },
-        mode: modeMap[paymentMethod]
-      })
-    });
+        body: JSON.stringify({
+          description: `Paiement rendez-vous médical #${appointmentId}`,
+          amount: amount,
+          currency: {
+            iso: 'XOF'
+          },
+          callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          customer: {
+            firstname: 'Patient',
+            lastname: 'User',
+            phone_number: {
+              number: phoneNumber,
+              country: 'bj'
+            }
+          },
+          mode: selectedMode
+        })
+      });
+    } catch (networkError) {
+      console.error('Network error while contacting FedaPay:', networkError);
+      return new Response(
+        JSON.stringify({ error: 'Unable to reach FedaPay at the moment' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!fedapayResponse.ok) {
       const errorData = await fedapayResponse.json();
@@ -82,6 +139,15 @@ serve(async (req) => {
     }
 
     const fedapayData = await fedapayResponse.json();
+    const transactionData = (fedapayData as { v1?: { id?: number | string; url?: string; status?: string } }).v1;
+
+    if (!transactionData || !transactionData.id || !transactionData.url) {
+      console.error('Unexpected FedaPay payload:', fedapayData);
+      return new Response(
+        JSON.stringify({ error: 'Invalid response from payment provider' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     console.log('FedaPay transaction created:', fedapayData);
 
     // Store payment in database
@@ -94,8 +160,8 @@ serve(async (req) => {
         currency: 'XOF',
         payment_method: paymentMethod,
         status: 'pending',
-        fedapay_transaction_id: fedapayData.v1.id.toString(),
-        fedapay_payment_url: fedapayData.v1.url
+        fedapay_transaction_id: transactionData.id.toString(),
+        fedapay_payment_url: transactionData.url
       })
       .select()
       .single();
@@ -110,11 +176,11 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         paymentId: payment.id,
-        transactionId: fedapayData.v1.id,
-        paymentUrl: fedapayData.v1.url,
-        status: fedapayData.v1.status
+        transactionId: transactionData.id,
+        paymentUrl: transactionData.url,
+        status: transactionData.status
       }),
-      { 
+      {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
