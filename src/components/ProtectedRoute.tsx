@@ -1,32 +1,54 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import type { Session } from '@supabase/supabase-js';
 
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
+
+function ProtectedRouteSkeleton() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/10 p-6">
+      <div className="w-full max-w-sm space-y-4">
+        <Skeleton className="h-6 w-1/3" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    </div>
+  );
+}
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const location = useLocation();
 
   useEffect(() => {
     let isMounted = true;
 
-    const getSession = async () => {
-      const { data } = await supabase.auth.getSession();
+    const syncSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
 
       if (!isMounted) return;
 
-      setSession(data.session);
-      setLoading(false);
+      if (error) {
+        console.error('Unable to retrieve current session:', error);
+        setSession(null);
+        setStatus('unauthenticated');
+        return;
+      }
+
+      setSession(data.session ?? null);
+      setStatus(data.session ? 'authenticated' : 'unauthenticated');
     };
 
-    getSession();
+    void syncSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!isMounted) return;
 
-      setSession(session);
-      setLoading(false);
+      setSession(nextSession ?? null);
+      setStatus(nextSession ? 'authenticated' : 'unauthenticated');
     });
 
     return () => {
@@ -35,11 +57,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     };
   }, []);
 
-  if (loading) {
-    return <div>Chargement...</div>;
+  if (status === 'loading') {
+    return <ProtectedRouteSkeleton />;
   }
 
-  if (!session) {
+  if (status === 'unauthenticated') {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

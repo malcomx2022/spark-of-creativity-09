@@ -8,6 +8,62 @@ import { Loader2, Smartphone, CreditCard } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
+type PaymentMethod = 'mtn' | 'orange' | 'moov';
+
+interface PaymentResponse {
+  paymentUrl?: string;
+  status?: string;
+}
+
+function normalizePhoneNumber(input: string): string | null {
+  const trimmed = input.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  let normalized = trimmed.replace(/[^0-9+]/g, '');
+
+  if ((normalized.match(/\+/g) ?? []).length > 1) {
+    return null;
+  }
+
+  if (normalized.startsWith('00')) {
+    normalized = `+${normalized.slice(2)}`;
+  }
+
+  if (!normalized.startsWith('+')) {
+    normalized = `+${normalized.replace(/\+/g, '')}`;
+  }
+
+  const digits = normalized.slice(1);
+
+  if (!/^\d{8,15}$/.test(digits)) {
+    return null;
+  }
+
+  return `+${digits}`;
+}
+
+function isPaymentResponse(payload: unknown): payload is PaymentResponse {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  const { paymentUrl, status } = candidate;
+
+  if (paymentUrl !== undefined && typeof paymentUrl !== 'string') {
+    return false;
+  }
+
+  if (status !== undefined && typeof status !== 'string') {
+    return false;
+  }
+
+  return true;
+}
+
 interface PaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -17,15 +73,26 @@ interface PaymentDialogProps {
 }
 
 export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuccess }: PaymentDialogProps) {
-  const [paymentMethod, setPaymentMethod] = useState<'mtn' | 'orange' | 'moov'>('mtn');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handlePayment = async () => {
-    if (!phoneNumber || phoneNumber.length < 8) {
+    const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    if (!sanitizedPhoneNumber) {
       toast({
         title: 'Erreur',
         description: 'Veuillez entrer un numéro de téléphone valide',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({
+        title: 'Montant invalide',
+        description: 'Le montant du paiement doit être supérieur à zéro.',
         variant: 'destructive',
       });
       return;
@@ -35,7 +102,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         toast({
           title: 'Erreur',
@@ -50,13 +117,17 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           appointmentId,
           amount,
           paymentMethod,
-          phoneNumber: phoneNumber.replace(/\s/g, ''),
+          phoneNumber: sanitizedPhoneNumber,
         },
       });
 
       if (error) {
         console.error('Payment error:', error);
         throw error;
+      }
+
+      if (!isPaymentResponse(data)) {
+        throw new Error('Réponse inattendue du service de paiement');
       }
 
       console.log('Payment initiated:', data);
@@ -74,11 +145,12 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       onOpenChange(false);
       onSuccess?.();
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Payment error:', error);
+      const message = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       toast({
         title: 'Erreur de paiement',
-        description: error.message || 'Une erreur est survenue lors du paiement',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -110,7 +182,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         <div className="space-y-6 py-4">
           <div className="space-y-3">
             <Label>Choisissez votre opérateur</Label>
-            <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as any)}>
+            <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}>
               <div className="flex items-center space-x-2 rounded-lg border p-4 cursor-pointer hover:bg-accent">
                 <RadioGroupItem value="mtn" id="mtn" />
                 <Label htmlFor="mtn" className="flex-1 cursor-pointer">
