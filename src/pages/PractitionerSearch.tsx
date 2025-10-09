@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Header from '@/components/Header';
 import PractitionerMap from '@/components/PractitionerMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,65 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MapPin, Search, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
+import { usePractitioners } from '@/hooks/usePractitioners';
 
 const MAPBOX_TOKEN_STORAGE_KEY = 'mapboxToken';
-
-const mockPractitioners: Omit<PractitionerLocation, 'distance'>[] = [
-  {
-    id: '1',
-    name: 'Dr. Jean Martin',
-    specialty: 'Médecin généraliste',
-    address: '15 Rue de Rivoli, 75001 Paris',
-    latitude: 48.8606,
-    longitude: 2.3376,
-    available: true,
-    rating: 4.8,
-    phone: '01 42 60 30 30'
-  },
-  {
-    id: '2',
-    name: 'Dr. Sophie Leclerc',
-    specialty: 'Infirmier(ère)',
-    address: '28 Avenue des Champs-Élysées, 75008 Paris',
-    latitude: 48.8698,
-    longitude: 2.3078,
-    available: true,
-    rating: 4.9,
-    phone: '01 53 93 97 00'
-  },
-  {
-    id: '3',
-    name: 'Dr. Marie Dubois',
-    specialty: 'Cardiologue',
-    address: '45 Rue du Faubourg Saint-Honoré, 75008 Paris',
-    latitude: 48.8708,
-    longitude: 2.3161,
-    available: false,
-    rating: 4.7,
-    phone: '01 42 65 74 40'
-  },
-  {
-    id: '4',
-    name: 'Dr. Pierre Rousseau',
-    specialty: 'Kinésithérapeute',
-    address: '12 Boulevard Saint-Germain, 75005 Paris',
-    latitude: 48.8499,
-    longitude: 2.3467,
-    available: true,
-    rating: 4.6,
-    phone: '01 43 25 79 80'
-  }
-];
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
@@ -81,6 +35,12 @@ export default function PractitionerSearch() {
   const [searchRadius, setSearchRadius] = useState<string>('5');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [showTokenInput, setShowTokenInput] = useState(true);
+
+  const {
+    data: practitionersData = [],
+    isLoading: isLoadingPractitioners,
+    isError: isPractitionerError,
+  } = usePractitioners();
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -106,44 +66,64 @@ export default function PractitionerSearch() {
   }, [envMapboxToken]);
 
   useEffect(() => {
-    if (userLocation) {
-      const practitionersWithDistance = mockPractitioners.map(p => ({
-        ...p,
+    if (practitionersData.length === 0) {
+      setPractitioners([]);
+      setFilteredPractitioners([]);
+      return;
+    }
+
+    const enriched = practitionersData.map(practitioner => {
+      if (!userLocation) {
+        return practitioner;
+      }
+
+      return {
+        ...practitioner,
         distance: calculateDistance(
           userLocation.latitude,
           userLocation.longitude,
-          p.latitude,
-          p.longitude
-        )
-      })).sort((a, b) => a.distance - b.distance);
-      
-      setPractitioners(practitionersWithDistance);
-      setFilteredPractitioners(practitionersWithDistance);
-    }
-  }, [userLocation]);
+          practitioner.latitude,
+          practitioner.longitude
+        ),
+      };
+    });
+
+    const sorted = userLocation
+      ? [...enriched].sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))
+      : enriched;
+
+    setPractitioners(sorted);
+  }, [practitionersData, userLocation]);
 
   useEffect(() => {
     let filtered = practitioners;
-    
+
     if (selectedSpecialty !== 'all') {
       filtered = filtered.filter(p => p.specialty === selectedSpecialty);
     }
-    
+
     const radius = parseFloat(searchRadius);
-    filtered = filtered.filter(p => !p.distance || p.distance <= radius);
-    
+    if (!Number.isNaN(radius) && userLocation) {
+      filtered = filtered.filter(p => (p.distance ?? Infinity) <= radius);
+    }
+
     setFilteredPractitioners(filtered);
-  }, [practitioners, selectedSpecialty, searchRadius]);
+  }, [practitioners, selectedSpecialty, searchRadius, userLocation]);
+
+  const specialties = useMemo(
+    () => ['all', ...Array.from(new Set(practitionersData.map(p => p.specialty)))],
+    [practitionersData]
+  );
 
   const getUserLocation = () => {
     setIsLoadingLocation(true);
-    
+
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        position => {
           setUserLocation({
             latitude: position.coords.latitude,
-            longitude: position.coords.longitude
+            longitude: position.coords.longitude,
           });
           toast({
             title: 'Position obtenue',
@@ -151,7 +131,7 @@ export default function PractitionerSearch() {
           });
           setIsLoadingLocation(false);
         },
-        (error) => {
+        error => {
           console.error('Erreur de géolocalisation:', error);
           toast({
             title: 'Erreur',
@@ -175,33 +155,25 @@ export default function PractitionerSearch() {
   const handleTokenSubmit = () => {
     const trimmedToken = mapboxToken.trim();
 
-    if (trimmedToken) {
-      if (typeof window === 'undefined') {
-        setMapboxToken(trimmedToken);
-        setShowTokenInput(false);
-        toast({
-          title: 'Token configuré',
-          description: 'Vous pouvez maintenant utiliser la carte.'
-        });
-        return;
-      }
+    if (!trimmedToken) {
+      return;
+    }
 
+    if (typeof window !== 'undefined') {
       try {
         window.localStorage.setItem(MAPBOX_TOKEN_STORAGE_KEY, trimmedToken);
       } catch (error) {
         console.error('Impossible de sauvegarder le token Mapbox:', error);
       }
-
-      setMapboxToken(trimmedToken);
-      setShowTokenInput(false);
-      toast({
-        title: 'Token configuré',
-        description: 'Vous pouvez maintenant utiliser la carte.'
-      });
     }
-  };
 
-  const specialties = Array.from(new Set(mockPractitioners.map(p => p.specialty)));
+    setMapboxToken(trimmedToken);
+    setShowTokenInput(false);
+    toast({
+      title: 'Token configuré',
+      description: 'Vous pouvez maintenant utiliser la carte.'
+    });
+  };
 
   if (showTokenInput) {
     return (
@@ -222,9 +194,9 @@ export default function PractitionerSearch() {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   Obtenez votre token sur{' '}
-                  <a 
-                    href="https://mapbox.com" 
-                    target="_blank" 
+                  <a
+                    href="https://mapbox.com"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline"
                   >
@@ -239,14 +211,10 @@ export default function PractitionerSearch() {
                 type="text"
                 placeholder="pk.eyJ1IjoiZXhhbXBsZS..."
                 value={mapboxToken}
-                onChange={(e) => setMapboxToken(e.target.value)}
+                onChange={event => setMapboxToken(event.target.value)}
               />
-              <Button 
-                onClick={handleTokenSubmit} 
-                className="w-full"
-                disabled={!mapboxToken.trim()}
-              >
-                Valider
+              <Button className="w-full" onClick={handleTokenSubmit}>
+                Enregistrer le token
               </Button>
             </CardContent>
           </Card>
@@ -259,130 +227,150 @@ export default function PractitionerSearch() {
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       <Header />
       <main className="container mx-auto px-4 py-8 pt-24">
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold mb-2">Rechercher un praticien</h1>
-          <p className="text-muted-foreground">Trouvez les professionnels de santé près de chez vous</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
-                Filtres de recherche
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Ma position</label>
-                <Button 
-                  onClick={getUserLocation} 
-                  disabled={isLoadingLocation}
-                  className="w-full"
-                  variant={userLocation ? "outline" : "default"}
-                >
+        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <h1 className="text-3xl font-bold">Trouver un praticien</h1>
+              <div className="flex items-center gap-2">
+                <Button onClick={getUserLocation} disabled={isLoadingLocation}>
                   {isLoadingLocation ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Localisation...
-                    </>
-                  ) : userLocation ? (
-                    <>
-                      <MapPin className="mr-2 h-4 w-4" />
-                      Position obtenue
+                      Localisation en cours...
                     </>
                   ) : (
                     <>
                       <MapPin className="mr-2 h-4 w-4" />
-                      Me localiser
+                      Ma position
                     </>
                   )}
                 </Button>
               </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Spécialité</label>
-                <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toutes les spécialités</SelectItem>
-                    {specialties.map(specialty => (
-                      <SelectItem key={specialty} value={specialty}>
-                        {specialty}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Rayon de recherche: {searchRadius} km
-                </label>
-                <Input
-                  type="range"
-                  min="1"
-                  max="20"
-                  step="1"
-                  value={searchRadius}
-                  onChange={(e) => setSearchRadius(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="pt-4 border-t">
-                <h3 className="font-semibold mb-3">
-                  Praticiens trouvés ({filteredPractitioners.length})
-                </h3>
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {filteredPractitioners.map(practitioner => (
-                    <Card key={practitioner.id} className="p-3">
-                      <div className="space-y-1">
-                        <h4 className="font-semibold text-sm">{practitioner.name}</h4>
-                        <p className="text-xs text-muted-foreground">{practitioner.specialty}</p>
-                        {practitioner.distance && (
-                          <p className="text-xs font-medium text-primary">
-                            {practitioner.distance.toFixed(1)} km
-                          </p>
-                        )}
-                        {!practitioner.available && (
-                          <div className="flex items-center gap-1 text-xs text-destructive">
-                            <AlertCircle className="h-3 w-3" />
-                            Non disponible
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="lg:col-span-2 h-[600px] relative">
-            <div className="absolute right-4 top-4 z-10 flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowTokenInput(true)}
-              >
-                Modifier le token Mapbox
-              </Button>
             </div>
-            <PractitionerMap
-              practitioners={filteredPractitioners}
-              userLocation={userLocation}
-              mapboxToken={mapboxToken}
-              onPractitionerSelect={(practitioner) => {
-                toast({
-                  title: 'Praticien sélectionné',
-                  description: `${practitioner.name} - ${practitioner.specialty}`
-                });
-              }}
-            />
-          </Card>
+
+            <Card>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Rechercher un praticien" />
+                  </div>
+                  <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Spécialité" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {specialties.map(specialty => (
+                        <SelectItem key={specialty} value={specialty}>
+                          {specialty === 'all' ? 'Toutes les spécialités' : specialty}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Rayon de recherche :</span>
+                  <Select value={searchRadius} onValueChange={setSearchRadius}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Rayon" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {['5', '10', '20', '50'].map(radius => (
+                        <SelectItem key={radius} value={radius}>
+                          {radius} km
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              {isPractitionerError ? (
+                <Card>
+                  <CardContent className="flex items-center gap-2 text-destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    Impossible de charger les praticiens.
+                  </CardContent>
+                </Card>
+              ) : isLoadingPractitioners ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Chargement des praticiens...</span>
+                </div>
+              ) : filteredPractitioners.length === 0 ? (
+                <Card>
+                  <CardContent className="flex items-center gap-2 text-muted-foreground">
+                    <AlertCircle className="h-4 w-4" />
+                    Aucun praticien ne correspond à votre recherche.
+                  </CardContent>
+                </Card>
+              ) : (
+                filteredPractitioners.map(practitioner => (
+                  <Card key={practitioner.id}>
+                    <CardHeader>
+                      <CardTitle className="flex justify-between items-start">
+                        <span>{practitioner.name}</span>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <span>{practitioner.rating.toFixed(1)} ★</span>
+                          <span className={practitioner.available ? 'text-green-500' : 'text-red-500'}>
+                            {practitioner.available ? 'Disponible' : 'Indisponible'}
+                          </span>
+                        </div>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{practitioner.specialty}</p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2 mt-2">
+                          <MapPin className="h-4 w-4" />
+                          {practitioner.address}
+                          {typeof practitioner.distance === 'number' && (
+                            <span className="text-xs text-muted-foreground">
+                              ({practitioner.distance.toFixed(1)} km)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Button onClick={() => toast({ title: 'Contact', description: `Appel en cours vers ${practitioner.phone}` })}>
+                          Contacter
+                        </Button>
+                        <Button variant="outline" onClick={() => toast({ title: 'Demande envoyée', description: `Une demande de rendez-vous a été envoyée à ${practitioner.name}` })}>
+                          Demander un rendez-vous
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Card className="sticky top-24">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Carte des praticiens
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {mapboxToken ? (
+                  <PractitionerMap
+                    practitioners={filteredPractitioners}
+                    userLocation={userLocation}
+                    mapboxToken={mapboxToken}
+                  />
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    Token Mapbox requis pour afficher la carte.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
     </div>

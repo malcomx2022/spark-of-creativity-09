@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointments: {
+        Row: {
+          id: string
+          patient_id: string
+          patient_name: string | null
+          practitioner_id: string | null
+          practitioner_name: string | null
+          specialty: string | null
+          scheduled_at: string | null
+          duration: number | null
+          status: string
+          address: string | null
+          reason: string | null
+          notes: string | null
+          urgency_level: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent' | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          patient_name?: string | null
+          practitioner_id?: string | null
+          practitioner_name?: string | null
+          specialty?: string | null
+          scheduled_at?: string | null
+          duration?: number | null
+          status?: string
+          address?: string | null
+          reason?: string | null
+          notes?: string | null
+          urgency_level?: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent' | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          patient_name?: string | null
+          practitioner_id?: string | null
+          practitioner_name?: string | null
+          specialty?: string | null
+          scheduled_at?: string | null
+          duration?: number | null
+          status?: string
+          address?: string | null
+          reason?: string | null
+          notes?: string | null
+          urgency_level?: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent' | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -53,6 +107,51 @@ export type Database = {
           payment_method?: string
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      practitioners: {
+        Row: {
+          id: string
+          name: string
+          specialty: string | null
+          address: string | null
+          latitude: number | null
+          longitude: number | null
+          available: boolean | null
+          rating: number | null
+          phone: string | null
+          image: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          specialty?: string | null
+          address?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          available?: boolean | null
+          rating?: number | null
+          phone?: string | null
+          image?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          specialty?: string | null
+          address?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          available?: boolean | null
+          rating?: number | null
+          phone?: string | null
+          image?: string | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -194,3 +293,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
