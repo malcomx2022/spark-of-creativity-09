@@ -1,17 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { parseFedaPayResponse, validatePaymentRequest } from "./utils.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-interface PaymentRequest {
-  appointmentId: string;
-  amount: number;
-  paymentMethod: 'mtn' | 'orange' | 'moov';
-  phoneNumber: string;
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,14 +16,23 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const fedapaySecretKey = Deno.env.get('FEDAPAY_SECRET_KEY')!;
-    
+
     const supabase = createClient(supabaseUrl, supabaseKey);
-    
+
     // Get authenticated user
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
+      console.error('Missing Authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
+
     if (authError || !user) {
       console.error('Auth error:', authError);
       return new Response(
@@ -49,35 +52,22 @@ serve(async (req) => {
       );
     }
 
-    const { appointmentId, amount, paymentMethod, phoneNumber } = payload as Partial<PaymentRequest>;
+    const validation = validatePaymentRequest({
+      appointmentId: (payload as Record<string, unknown>).appointmentId,
+      amount: (payload as Record<string, unknown>).amount,
+      paymentMethod: (payload as Record<string, unknown>).paymentMethod,
+      phoneNumber: (payload as Record<string, unknown>).phoneNumber,
+    });
 
-    const validationErrors: string[] = [];
-
-    if (!appointmentId || typeof appointmentId !== 'string') {
-      validationErrors.push('appointmentId must be a non-empty string');
-    }
-
-    if (typeof amount !== 'number' || Number.isNaN(amount) || !Number.isFinite(amount) || amount <= 0) {
-      validationErrors.push('amount must be a positive number');
-    }
-
-    const allowedMethods: PaymentRequest['paymentMethod'][] = ['mtn', 'orange', 'moov'];
-    if (!paymentMethod || !allowedMethods.includes(paymentMethod)) {
-      validationErrors.push(`paymentMethod must be one of: ${allowedMethods.join(', ')}`);
-    }
-
-    const phoneRegex = /^\+?[0-9]{8,15}$/;
-    if (!phoneNumber || typeof phoneNumber !== 'string' || !phoneRegex.test(phoneNumber)) {
-      validationErrors.push('phoneNumber must be a valid international phone number');
-    }
-
-    if (validationErrors.length > 0) {
-      console.warn('Validation errors:', validationErrors);
+    if (!validation.success || !validation.data) {
+      console.warn('Validation errors:', validation.errors);
       return new Response(
-        JSON.stringify({ error: 'Validation failed', details: validationErrors }),
+        JSON.stringify({ error: 'Validation failed', details: validation.errors }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const { appointmentId, amount, paymentMethod, phoneNumber } = validation.data;
 
     console.log('Creating payment:', { appointmentId, amount, paymentMethod, phoneNumber });
 
@@ -117,7 +107,7 @@ serve(async (req) => {
             firstname: 'Patient',
             lastname: 'User',
             phone_number: {
-              number: phoneNumber,
+              number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
               country: 'bj'
             }
           },
@@ -132,16 +122,25 @@ serve(async (req) => {
       );
     }
 
-    if (!fedapayResponse.ok) {
-      const errorData = await fedapayResponse.json();
-      console.error('FedaPay error:', errorData);
-      throw new Error(`FedaPay error: ${JSON.stringify(errorData)}`);
+    let fedapayData: unknown;
+    try {
+      fedapayData = await fedapayResponse.json();
+    } catch (parseError) {
+      console.error('Unable to parse FedaPay response:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid response from payment provider' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const fedapayData = await fedapayResponse.json();
-    const transactionData = (fedapayData as { v1?: { id?: number | string; url?: string; status?: string } }).v1;
+    if (!fedapayResponse.ok) {
+      console.error('FedaPay error:', fedapayData);
+      throw new Error(`FedaPay error: ${JSON.stringify(fedapayData)}`);
+    }
 
-    if (!transactionData || !transactionData.id || !transactionData.url) {
+    const transactionData = parseFedaPayResponse(fedapayData);
+
+    if (!transactionData) {
       console.error('Unexpected FedaPay payload:', fedapayData);
       return new Response(
         JSON.stringify({ error: 'Invalid response from payment provider' }),

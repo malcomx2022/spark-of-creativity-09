@@ -10,8 +10,6 @@ import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
 import { usePractitioners } from '@/hooks/usePractitioners';
 
-const MAPBOX_TOKEN_STORAGE_KEY = 'mapboxToken';
-
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -25,45 +23,19 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function PractitionerSearch() {
-  const envMapboxToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
-
-  const [mapboxToken, setMapboxToken] = useState('');
+  const mapboxToken = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined)?.trim() ?? '';
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
   const [searchRadius, setSearchRadius] = useState<string>('5');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-  const [showTokenInput, setShowTokenInput] = useState(true);
 
   const {
     data: practitionersData = [],
     isLoading: isLoadingPractitioners,
     isError: isPractitionerError,
   } = usePractitioners();
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    try {
-      const savedToken = window.localStorage.getItem(MAPBOX_TOKEN_STORAGE_KEY);
-
-      if (savedToken) {
-        setMapboxToken(savedToken);
-        setShowTokenInput(false);
-        return;
-      }
-
-      if (envMapboxToken && envMapboxToken.trim().length > 0) {
-        setMapboxToken(envMapboxToken);
-        setShowTokenInput(false);
-      }
-    } catch (error) {
-      console.error('Impossible de charger le token Mapbox sauvegardé:', error);
-    }
-  }, [envMapboxToken]);
 
   useEffect(() => {
     if (practitionersData.length === 0) {
@@ -152,76 +124,6 @@ export default function PractitionerSearch() {
     }
   };
 
-  const handleTokenSubmit = () => {
-    const trimmedToken = mapboxToken.trim();
-
-    if (!trimmedToken) {
-      return;
-    }
-
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.setItem(MAPBOX_TOKEN_STORAGE_KEY, trimmedToken);
-      } catch (error) {
-        console.error('Impossible de sauvegarder le token Mapbox:', error);
-      }
-    }
-
-    setMapboxToken(trimmedToken);
-    setShowTokenInput(false);
-    toast({
-      title: 'Token configuré',
-      description: 'Vous pouvez maintenant utiliser la carte.'
-    });
-  };
-
-  if (showTokenInput) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
-        <Header />
-        <main className="container mx-auto px-4 py-8 pt-24">
-          <Card className="max-w-md mx-auto">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Configuration Mapbox
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-muted p-4 rounded-lg space-y-2">
-                <p className="text-sm">
-                  Pour utiliser la carte, vous devez fournir un token Mapbox public.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Obtenez votre token sur{' '}
-                  <a
-                    href="https://mapbox.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    mapbox.com
-                  </a>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Le token saisi est mémorisé localement pour vos prochaines visites.
-                </p>
-              </div>
-              <Input
-                type="text"
-                placeholder="pk.eyJ1IjoiZXhhbXBsZS..."
-                value={mapboxToken}
-                onChange={event => setMapboxToken(event.target.value)}
-              />
-              <Button className="w-full" onClick={handleTokenSubmit}>
-                Enregistrer le token
-              </Button>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
@@ -365,7 +267,7 @@ export default function PractitionerSearch() {
                   />
                 ) : (
                   <div className="text-sm text-muted-foreground">
-                    Token Mapbox requis pour afficher la carte.
+                    Configurez la variable d'environnement <code>VITE_MAPBOX_TOKEN</code> pour activer la carte.
                   </div>
                 )}
               </CardContent>
