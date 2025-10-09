@@ -1,101 +1,99 @@
-import { useState } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, Clock, CheckCircle2, AlertCircle, TrendingUp } from 'lucide-react';
+import { Calendar, Clock, CheckCircle2, AlertCircle, TrendingUp, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import type { Appointment } from '@/types/appointment';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
 
 export default function PractitionerDashboard() {
-  const [appointments, setAppointments] = useState<Appointment[]>([
-    {
-      id: '1',
-      patientName: 'Marie Dubois',
-      patientId: 'patient-1',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-10',
-      time: '14:00',
-      duration: 60,
-      status: 'confirmed',
-      address: '15 Rue de la Paix, 75001 Paris',
-      reason: 'Consultation de suivi',
-      notes: 'Patient diabétique, contrôle trimestriel',
-      urgencyLevel: 'non-urgent'
-    },
-    {
-      id: '2',
-      patientName: 'Jean Dupont',
-      patientId: 'patient-2',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-08',
-      time: '10:00',
-      duration: 45,
-      status: 'pending',
-      address: '28 Avenue des Champs, 75008 Paris',
-      reason: 'Douleurs abdominales',
-      urgencyLevel: 'urgent'
-    },
-    {
-      id: '3',
-      patientName: 'Sophie Bernard',
-      patientId: 'patient-3',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-10',
-      time: '16:00',
-      duration: 30,
-      status: 'pending',
-      address: '42 Boulevard Saint-Germain, 75005 Paris',
-      reason: 'Renouvellement ordonnance',
-      urgencyLevel: 'non-urgent'
+  const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
+  const practitionerId = user?.id;
+  const practitionerName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    user?.email ||
+    'Praticien';
+
+  const {
+    data: appointments = [],
+    isLoading: isLoadingAppointments,
+    isError,
+  } = usePractitionerAppointments(practitionerId);
+
+  const mutateAppointment = useMutateAppointment();
+
+  const handleStatusUpdate = async (id: string, status: 'confirmed' | 'completed' | 'cancelled') => {
+    if (!practitionerId) {
+      toast({
+        title: 'Action impossible',
+        description: 'Vous devez être connecté pour modifier un rendez-vous.',
+        variant: 'destructive',
+      });
+      return;
     }
-  ]);
 
-  const handleConfirm = (id: string) => {
-    setAppointments(appointments.map(apt =>
-      apt.id === id ? { ...apt, status: 'confirmed' as const } : apt
-    ));
-    toast({
-      title: 'Rendez-vous confirmé',
-      description: 'Le patient a été notifié de la confirmation.'
-    });
-  };
+    try {
+      await mutateAppointment.mutateAsync({
+        id,
+        data: {
+          status,
+          practitioner_id: practitionerId,
+          practitioner_name: practitionerName,
+        }
+      });
 
-  const handleComplete = (id: string) => {
-    setAppointments(appointments.map(apt =>
-      apt.id === id ? { ...apt, status: 'completed' as const } : apt
-    ));
-    toast({
-      title: 'Consultation terminée',
-      description: 'Le rendez-vous a été marqué comme terminé.'
-    });
-  };
+      const messages = {
+        confirmed: {
+          title: 'Rendez-vous confirmé',
+          description: 'Le patient a été notifié de la confirmation.'
+        },
+        completed: {
+          title: 'Consultation terminée',
+          description: 'Le rendez-vous a été marqué comme terminé.'
+        },
+        cancelled: {
+          title: 'Rendez-vous annulé',
+          description: 'Le patient a été notifié de l\'annulation.',
+          variant: 'destructive' as const
+        }
+      } as const;
 
-  const handleCancel = (id: string) => {
-    setAppointments(appointments.map(apt =>
-      apt.id === id ? { ...apt, status: 'cancelled' as const } : apt
-    ));
-    toast({
-      title: 'Rendez-vous annulé',
-      description: 'Le patient a été notifié de l\'annulation.',
-      variant: 'destructive'
-    });
+      toast(messages[status]);
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du rendez-vous', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de mettre à jour le rendez-vous.',
+        variant: 'destructive'
+      });
+    }
   };
 
   const pendingAppointments = appointments.filter(apt => apt.status === 'pending');
   const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmed');
   const completedAppointments = appointments.filter(apt => apt.status === 'completed');
+  const isLoading = isLoadingUser || isLoadingAppointments;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       <Header />
       <main className="container mx-auto px-4 py-8 pt-24">
+        {isLoading && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Chargement de vos consultations...</span>
+          </div>
+        )}
+
+        {!isLoading && isError && (
+          <Card className="mb-6">
+            <CardContent className="flex items-center gap-2 text-destructive">
+              Impossible de charger vos consultations pour le moment.
+            </CardContent>
+          </Card>
+        )}
+
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Espace praticien</h1>
           <p className="text-muted-foreground">Gérez vos consultations à domicile</p>
@@ -151,6 +149,7 @@ export default function PractitionerDashboard() {
 
         <div className="mb-6">
           <h2 className="text-2xl font-bold">Mes consultations</h2>
+          <CardDescription>Confirmez, terminez ou annulez vos rendez-vous en un clic.</CardDescription>
         </div>
 
         <Tabs defaultValue="pending" className="space-y-6">
@@ -161,7 +160,9 @@ export default function PractitionerDashboard() {
             <TabsTrigger value="confirmed">
               Confirmés ({confirmedAppointments.length})
             </TabsTrigger>
-            <TabsTrigger value="all">Tous</TabsTrigger>
+            <TabsTrigger value="completed">
+              Terminés ({completedAppointments.length})
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending" className="space-y-4">
@@ -178,8 +179,8 @@ export default function PractitionerDashboard() {
                   key={appointment.id}
                   appointment={appointment}
                   userRole="practitioner"
-                  onConfirm={handleConfirm}
-                  onCancel={handleCancel}
+                  onConfirm={() => handleStatusUpdate(appointment.id, 'confirmed')}
+                  onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
                 />
               ))
             )}
@@ -199,28 +200,30 @@ export default function PractitionerDashboard() {
                   key={appointment.id}
                   appointment={appointment}
                   userRole="practitioner"
-                  onComplete={handleComplete}
-                  onCancel={handleCancel}
+                  onComplete={() => handleStatusUpdate(appointment.id, 'completed')}
+                  onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
                 />
               ))
             )}
           </TabsContent>
 
-          <TabsContent value="all" className="space-y-4">
-            {appointments.map(appointment => (
-              <AppointmentCard
-                key={appointment.id}
-                appointment={appointment}
-                userRole="practitioner"
-                onConfirm={appointment.status === 'pending' ? handleConfirm : undefined}
-                onComplete={appointment.status === 'confirmed' ? handleComplete : undefined}
-                onCancel={
-                  appointment.status !== 'completed' && appointment.status !== 'cancelled'
-                    ? handleCancel
-                    : undefined
-                }
-              />
-            ))}
+          <TabsContent value="completed" className="space-y-4">
+            {completedAppointments.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">Aucune consultation terminée</p>
+                </CardContent>
+              </Card>
+            ) : (
+              completedAppointments.map(appointment => (
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  userRole="practitioner"
+                />
+              ))
+            )}
           </TabsContent>
         </Tabs>
       </main>

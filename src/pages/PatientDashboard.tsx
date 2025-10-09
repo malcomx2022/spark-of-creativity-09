@@ -1,81 +1,69 @@
-import { useState } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Activity, Calendar, Clock, FileText } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import type { Appointment, CreateAppointmentData } from '@/types/appointment';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
+import type { CreateAppointmentData } from '@/types/appointment';
+import { Loader2 } from 'lucide-react';
 
 export default function PatientDashboard() {
-  const [appointments, setAppointments] = useState<Appointment[]>([
-    {
-      id: '1',
-      patientName: 'Marie Dubois',
-      patientId: 'patient-1',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-10',
-      time: '14:00',
-      duration: 60,
-      status: 'confirmed',
-      address: '15 Rue de la Paix, 75001 Paris',
-      reason: 'Consultation de suivi',
-      urgencyLevel: 'non-urgent'
-    },
-    {
-      id: '2',
-      patientName: 'Marie Dubois',
-      patientId: 'patient-1',
-      practitionerId: 'prac-2',
-      practitionerName: 'Sophie Leclerc',
-      specialty: 'Infirmier(ère)',
-      date: '2025-10-08',
-      time: '10:00',
-      duration: 30,
-      status: 'pending',
-      address: '15 Rue de la Paix, 75001 Paris',
-      reason: 'Prise de sang',
-      urgencyLevel: 'semi-urgent'
+  const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
+  const patientId = user?.id;
+  const patientName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    user?.email ||
+    'Patient';
+
+  const {
+    data: appointments = [],
+    isLoading: isLoadingAppointments,
+    isError,
+  } = usePatientAppointments(patientId);
+
+  const createAppointment = useCreateAppointment(patientId, patientName);
+  const mutateAppointment = useMutateAppointment();
+
+  const handleNewAppointment = async (data: CreateAppointmentData) => {
+    try {
+      await createAppointment.mutateAsync(data);
+      toast({
+        title: 'Demande envoyée',
+        description: 'Votre demande de rendez-vous a été envoyée avec succès.'
+      });
+    } catch (error) {
+      console.error('Erreur lors de la création du rendez-vous', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de créer le rendez-vous pour le moment.',
+        variant: 'destructive'
+      });
     }
-  ]);
-
-  const handleNewAppointment = (data: CreateAppointmentData) => {
-    const newAppointment: Appointment = {
-      id: Date.now().toString(),
-      patientName: 'Marie Dubois',
-      patientId: 'patient-1',
-      practitionerId: 'pending',
-      practitionerName: 'En attente d\'attribution',
-      specialty: data.specialty,
-      date: data.date,
-      time: data.time,
-      duration: 60,
-      status: 'pending',
-      address: '15 Rue de la Paix, 75001 Paris',
-      reason: data.reason,
-      urgencyLevel: data.urgencyLevel as any
-    };
-
-    setAppointments([newAppointment, ...appointments]);
-    toast({
-      title: 'Demande envoyée',
-      description: 'Votre demande de rendez-vous a été envoyée avec succès.'
-    });
   };
 
-  const handleCancel = (id: string) => {
-    setAppointments(appointments.map(apt => 
-      apt.id === id ? { ...apt, status: 'cancelled' as const } : apt
-    ));
-    toast({
-      title: 'Rendez-vous annulé',
-      description: 'Le rendez-vous a été annulé avec succès.'
-    });
+  const handleCancel = async (id: string) => {
+    try {
+      await mutateAppointment.mutateAsync({
+        id,
+        data: { status: 'cancelled' }
+      });
+      toast({
+        title: 'Rendez-vous annulé',
+        description: 'Le rendez-vous a été annulé avec succès.'
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'annulation du rendez-vous', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'annuler le rendez-vous.',
+        variant: 'destructive'
+      });
+    }
   };
 
   const upcomingAppointments = appointments.filter(
@@ -85,10 +73,27 @@ export default function PatientDashboard() {
     apt => apt.status === 'completed' || apt.status === 'cancelled'
   );
 
+  const isLoading = isLoadingUser || isLoadingAppointments;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       <Header />
       <main className="container mx-auto px-4 py-8 pt-24">
+        {isLoading && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Chargement de vos rendez-vous...</span>
+          </div>
+        )}
+
+        {!isLoading && isError && (
+          <Card className="mb-6">
+            <CardContent className="flex items-center gap-2 text-destructive">
+              Une erreur est survenue lors du chargement de vos rendez-vous.
+            </CardContent>
+          </Card>
+        )}
+
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Mon espace patient</h1>
           <p className="text-muted-foreground">Gérez vos rendez-vous et consultations</p>
@@ -130,7 +135,9 @@ export default function PatientDashboard() {
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Mes rendez-vous</h2>
-          <NewAppointmentDialog onSubmit={handleNewAppointment} />
+          {patientId && (
+            <NewAppointmentDialog onSubmit={handleNewAppointment} />
+          )}
         </div>
 
         <Tabs defaultValue="upcoming" className="space-y-6">
@@ -145,7 +152,9 @@ export default function PatientDashboard() {
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
-                  <NewAppointmentDialog onSubmit={handleNewAppointment} />
+                  {patientId && (
+                    <NewAppointmentDialog onSubmit={handleNewAppointment} />
+                  )}
                 </CardContent>
               </Card>
             ) : (
