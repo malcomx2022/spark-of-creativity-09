@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -27,6 +27,16 @@ export default function SignupPage() {
       toast({
         title: "Erreur",
         description: "Les mots de passe ne correspondent pas",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!supabase) {
+      toast({
+        title: "Erreur de configuration",
+        description: "Le client Supabase n'est pas initialisé. Veuillez vérifier les variables d'environnement.",
         variant: "destructive"
       });
       setIsSubmitting(false);

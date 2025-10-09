@@ -11,11 +11,27 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 
+interface PatientFormData {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  address: string;
+  phone: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  medicalHistory: string[];
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  acceptTerms: boolean;
+}
+
 export default function PatientSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<PatientFormData>({
     firstName: "",
     lastName: "",
     dateOfBirth: "",

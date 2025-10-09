@@ -31,6 +31,15 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
+    if (!supabase) {
+      toast({
+        title: 'Erreur de configuration',
+        description: "Le client Supabase n'est pas initialisé.",
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {

@@ -69,14 +69,13 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function PractitionerSearch() {
-  const [mapboxToken, setMapboxToken] = useState('');
+  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
   const [searchRadius, setSearchRadius] = useState<string>('5');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-  const [showTokenInput, setShowTokenInput] = useState(true);
 
   useEffect(() => {
     if (userLocation) {
@@ -145,66 +144,7 @@ export default function PractitionerSearch() {
     }
   };
 
-  const handleTokenSubmit = () => {
-    if (mapboxToken.trim()) {
-      setShowTokenInput(false);
-      toast({
-        title: 'Token configuré',
-        description: 'Vous pouvez maintenant utiliser la carte.'
-      });
-    }
-  };
-
   const specialties = Array.from(new Set(mockPractitioners.map(p => p.specialty)));
-
-  if (showTokenInput) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
-        <Header />
-        <main className="container mx-auto px-4 py-8 pt-24">
-          <Card className="max-w-md mx-auto">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Configuration Mapbox
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-muted p-4 rounded-lg space-y-2">
-                <p className="text-sm">
-                  Pour utiliser la carte, vous devez fournir un token Mapbox public.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Obtenez votre token sur{' '}
-                  <a 
-                    href="https://mapbox.com" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    mapbox.com
-                  </a>
-                </p>
-              </div>
-              <Input
-                type="text"
-                placeholder="pk.eyJ1IjoiZXhhbXBsZS..."
-                value={mapboxToken}
-                onChange={(e) => setMapboxToken(e.target.value)}
-              />
-              <Button 
-                onClick={handleTokenSubmit} 
-                className="w-full"
-                disabled={!mapboxToken.trim()}
-              >
-                Valider
-              </Button>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
@@ -312,18 +252,31 @@ export default function PractitionerSearch() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2 h-[600px]">
-            <PractitionerMap
-              practitioners={filteredPractitioners}
-              userLocation={userLocation}
-              mapboxToken={mapboxToken}
-              onPractitionerSelect={(practitioner) => {
-                toast({
-                  title: 'Praticien sélectionné',
-                  description: `${practitioner.name} - ${practitioner.specialty}`
-                });
-              }}
-            />
+          <Card className="lg:col-span-2 h-[600px] flex items-center justify-center bg-muted">
+            {mapboxToken ? (
+              <PractitionerMap
+                practitioners={filteredPractitioners}
+                userLocation={userLocation}
+                mapboxToken={mapboxToken}
+                onPractitionerSelect={(practitioner) => {
+                  toast({
+                    title: 'Praticien sélectionné',
+                    description: `${practitioner.name} - ${practitioner.specialty}`
+                  });
+                }}
+              />
+            ) : (
+              <div className="text-center p-4">
+                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+                <h3 className="mt-4 text-lg font-semibold">Carte non disponible</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Le token Mapbox n'est pas configuré. Veuillez contacter l'administrateur.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  (Variable d'environnement VITE_MAPBOX_TOKEN manquante)
+                </p>
+              </div>
+            )}
           </Card>
         </div>
       </main>

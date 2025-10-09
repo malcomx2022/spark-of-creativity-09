@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -21,6 +21,16 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    if (!supabase) {
+      toast({
+        title: "Erreur de configuration",
+        description: "Le client Supabase n'est pas initialisé. Veuillez vérifier les variables d'environnement.",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email: formData.email,
