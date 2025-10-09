@@ -9,6 +9,8 @@ import { MapPin, Search, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
 
+const MAPBOX_TOKEN_STORAGE_KEY = 'mapboxToken';
+
 const mockPractitioners: Omit<PractitionerLocation, 'distance'>[] = [
   {
     id: '1',
@@ -69,6 +71,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function PractitionerSearch() {
+  const envMapboxToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
   const [mapboxToken, setMapboxToken] = useState('');
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
@@ -77,6 +81,29 @@ export default function PractitionerSearch() {
   const [searchRadius, setSearchRadius] = useState<string>('5');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [showTokenInput, setShowTokenInput] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const savedToken = window.localStorage.getItem(MAPBOX_TOKEN_STORAGE_KEY);
+
+      if (savedToken) {
+        setMapboxToken(savedToken);
+        setShowTokenInput(false);
+        return;
+      }
+
+      if (envMapboxToken && envMapboxToken.trim().length > 0) {
+        setMapboxToken(envMapboxToken);
+        setShowTokenInput(false);
+      }
+    } catch (error) {
+      console.error('Impossible de charger le token Mapbox sauvegardé:', error);
+    }
+  }, [envMapboxToken]);
 
   useEffect(() => {
     if (userLocation) {
@@ -146,7 +173,26 @@ export default function PractitionerSearch() {
   };
 
   const handleTokenSubmit = () => {
-    if (mapboxToken.trim()) {
+    const trimmedToken = mapboxToken.trim();
+
+    if (trimmedToken) {
+      if (typeof window === 'undefined') {
+        setMapboxToken(trimmedToken);
+        setShowTokenInput(false);
+        toast({
+          title: 'Token configuré',
+          description: 'Vous pouvez maintenant utiliser la carte.'
+        });
+        return;
+      }
+
+      try {
+        window.localStorage.setItem(MAPBOX_TOKEN_STORAGE_KEY, trimmedToken);
+      } catch (error) {
+        console.error('Impossible de sauvegarder le token Mapbox:', error);
+      }
+
+      setMapboxToken(trimmedToken);
       setShowTokenInput(false);
       toast({
         title: 'Token configuré',
@@ -184,6 +230,9 @@ export default function PractitionerSearch() {
                   >
                     mapbox.com
                   </a>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Le token saisi est mémorisé localement pour vos prochaines visites.
                 </p>
               </div>
               <Input
@@ -312,7 +361,16 @@ export default function PractitionerSearch() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2 h-[600px]">
+          <Card className="lg:col-span-2 h-[600px] relative">
+            <div className="absolute right-4 top-4 z-10 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowTokenInput(true)}
+              >
+                Modifier le token Mapbox
+              </Button>
+            </div>
             <PractitionerMap
               practitioners={filteredPractitioners}
               userLocation={userLocation}
