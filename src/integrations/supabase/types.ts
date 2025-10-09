@@ -14,7 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      payments: {
+        Row: {
+          amount: number
+          appointment_id: string
+          created_at: string
+          currency: string
+          fedapay_payment_url: string | null
+          fedapay_transaction_id: string | null
+          id: string
+          patient_id: string
+          payment_method: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          appointment_id: string
+          created_at?: string
+          currency?: string
+          fedapay_payment_url?: string | null
+          fedapay_transaction_id?: string | null
+          id?: string
+          patient_id: string
+          payment_method: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          appointment_id?: string
+          created_at?: string
+          currency?: string
+          fedapay_payment_url?: string | null
+          fedapay_transaction_id?: string | null
+          id?: string
+          patient_id?: string
+          payment_method?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

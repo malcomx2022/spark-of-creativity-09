@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
+import { PaymentDialog } from '@/components/PaymentDialog';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
@@ -32,6 +33,8 @@ interface NewAppointmentDialogProps {
 
 export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const [open, setOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [appointmentData, setAppointmentData] = useState<CreateAppointmentData | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -44,15 +47,24 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   });
 
   const handleSubmit = (data: FormValues) => {
-    onSubmit({
+    const appointmentPayload = {
       specialty: data.specialty,
       date: data.date.toISOString(),
       time: data.time,
       reason: data.reason,
       urgencyLevel: data.urgencyLevel
-    });
-    form.reset();
+    };
+    setAppointmentData(appointmentPayload);
     setOpen(false);
+    setPaymentDialogOpen(true);
+  };
+
+  const handlePaymentSuccess = () => {
+    if (appointmentData) {
+      onSubmit(appointmentData);
+      form.reset();
+      setAppointmentData(null);
+    }
   };
 
   const specialties = [
@@ -71,6 +83,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   ];
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="w-full sm:w-auto">
@@ -235,5 +248,16 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
         </Form>
       </DialogContent>
     </Dialog>
+
+    {appointmentData && (
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        appointmentId={"temp-" + Date.now()}
+        amount={10000}
+        onSuccess={handlePaymentSuccess}
+      />
+    )}
+    </>
   );
 }
