@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, Phone, MapPin, LogIn } from "lucide-react";
+import { Heart, Menu, Phone, MapPin, LogIn, UserPlus, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,6 +72,13 @@ export default function Header() {
               <MapPin className="h-4 w-4" />
               Recherche
             </button>
+            <button 
+              onClick={() => navigate("/admin/login")}
+              className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+              title="Espace Administration"
+            >
+              <Shield className="h-4 w-4" />
+            </button>
           </nav>
 
           {/* Emergency Button & Auth */}
@@ -91,15 +98,26 @@ export default function Header() {
                 Déconnexion
               </Button>
             ) : (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => navigate("/login")}
-                className="hidden md:flex"
-              >
-                <LogIn className="h-4 w-4 mr-2" />
-                Connexion
-              </Button>
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => navigate("/login")}
+                  className="hidden md:flex"
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Connexion
+                </Button>
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={() => navigate("/signup")}
+                  className="hidden md:flex"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  S'inscrire
+                </Button>
+              </>
             )}
 
             <Button
@@ -145,6 +163,13 @@ export default function Header() {
                 <MapPin className="h-4 w-4" />
                 Rechercher un praticien
               </button>
+              <button 
+                onClick={() => navigate("/admin/login")}
+                className="text-muted-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
+              >
+                <Shield className="h-4 w-4" />
+                Administration
+              </button>
               <Button variant="urgent" size="sm" className="w-full sm:hidden">
                 <Phone className="h-4 w-4" />
                 Urgence 112
@@ -160,15 +185,26 @@ export default function Header() {
                   Déconnexion
                 </Button>
               ) : (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => navigate("/login")}
-                  className="w-full"
-                >
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Connexion
-                </Button>
+                <>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => navigate("/login")}
+                    className="w-full"
+                  >
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Connexion
+                  </Button>
+                  <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={() => navigate("/signup")}
+                    className="w-full"
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    S'inscrire
+                  </Button>
+                </>
               )}
             </nav>
           </div>
