@@ -346,6 +346,54 @@ export type Database = {
         }
         Relationships: []
       }
+      practitioners: {
+        Row: {
+          address: string | null
+          available: boolean | null
+          created_at: string | null
+          id: string
+          image: string | null
+          latitude: number | null
+          longitude: number | null
+          name: string
+          phone: string | null
+          rating: number | null
+          specialty: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          available?: boolean | null
+          created_at?: string | null
+          id?: string
+          image?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          phone?: string | null
+          rating?: number | null
+          specialty: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          available?: boolean | null
+          created_at?: string | null
+          id?: string
+          image?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          phone?: string | null
+          rating?: number | null
+          specialty?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
