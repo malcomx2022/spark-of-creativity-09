@@ -31,15 +31,19 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (patientError) throw patientError;
+    if (patientError && patientError.message !== 'A user with this email address has already been registered') {
+      throw patientError;
+    }
 
-    await supabaseAdmin.from('profiles').insert({
-      id: patientUser.user.id,
-      full_name: 'Patient Test',
-      phone: '+22967000001',
-      gender: 'masculin',
-      date_of_birth: '1990-01-01',
-    });
+    if (patientUser?.user) {
+      await supabaseAdmin.from('profiles').upsert({
+        id: patientUser.user.id,
+        full_name: 'Patient Test',
+        phone: '+22967000001',
+        gender: 'masculin',
+        date_of_birth: '1990-01-01',
+      }, { onConflict: 'id' });
+    }
 
     // Créer le praticien
     const { data: practitionerUser, error: practitionerError } = await supabaseAdmin.auth.admin.createUser({
@@ -51,31 +55,35 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (practitionerError) throw practitionerError;
+    if (practitionerError && practitionerError.message !== 'A user with this email address has already been registered') {
+      throw practitionerError;
+    }
 
-    await supabaseAdmin.from('profiles').insert({
-      id: practitionerUser.user.id,
-      full_name: 'Dr. Praticien Test',
-      phone: '+22967000002',
-      gender: 'masculin',
-      date_of_birth: '1985-01-01',
-    });
+    if (practitionerUser?.user) {
+      await supabaseAdmin.from('profiles').upsert({
+        id: practitionerUser.user.id,
+        full_name: 'Dr. Praticien Test',
+        phone: '+22967000002',
+        gender: 'masculin',
+        date_of_birth: '1985-01-01',
+      }, { onConflict: 'id' });
 
-    const { data: practitioner } = await supabaseAdmin.from('practitioners').insert({
-      user_id: practitionerUser.user.id,
-      name: 'Dr. Praticien Test',
-      specialty: 'Médecine Générale',
-      phone: '+22967000002',
-      address: 'Cotonou, Bénin',
-      latitude: 6.3654,
-      longitude: 2.4183,
-      available: true,
-      rating: 4.5,
-      years_experience: 10,
-      bio: 'Médecin généraliste expérimenté disponible pour consultations à domicile',
-      kyc_status: 'validated',
-      can_accept_missions: true,
-    }).select().single();
+      await supabaseAdmin.from('practitioners').upsert({
+        user_id: practitionerUser.user.id,
+        name: 'Dr. Praticien Test',
+        specialty: 'Médecine Générale',
+        phone: '+22967000002',
+        address: 'Cotonou, Bénin',
+        latitude: 6.3654,
+        longitude: 2.4183,
+        available: true,
+        rating: 4.5,
+        years_experience: 10,
+        bio: 'Médecin généraliste expérimenté disponible pour consultations à domicile',
+        kyc_status: 'validated',
+        can_accept_missions: true,
+      }, { onConflict: 'user_id' });
+    }
 
     // Créer l'admin
     const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.createUser({
@@ -87,20 +95,24 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (adminError) throw adminError;
+    if (adminError && adminError.message !== 'A user with this email address has already been registered') {
+      throw adminError;
+    }
 
-    await supabaseAdmin.from('profiles').insert({
-      id: adminUser.user.id,
-      full_name: 'Admin Test',
-      phone: '+22967000003',
-      gender: 'masculin',
-      date_of_birth: '1980-01-01',
-    });
+    if (adminUser?.user) {
+      await supabaseAdmin.from('profiles').upsert({
+        id: adminUser.user.id,
+        full_name: 'Admin Test',
+        phone: '+22967000003',
+        gender: 'masculin',
+        date_of_birth: '1980-01-01',
+      }, { onConflict: 'id' });
 
-    await supabaseAdmin.from('user_roles').insert({
-      user_id: adminUser.user.id,
-      role: 'super_admin',
-    });
+      await supabaseAdmin.from('user_roles').upsert({
+        user_id: adminUser.user.id,
+        role: 'super_admin',
+      }, { onConflict: 'user_id' });
+    }
 
     return new Response(
       JSON.stringify({
