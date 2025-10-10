@@ -14,9 +14,12 @@ export default function VerifyOTP() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otp, setOtp] = useState("");
+  
   const phone = location.state?.phone;
+  const email = location.state?.email;
+  const type = location.state?.type;
 
-  if (!phone) {
+  if (!phone && !email) {
     navigate("/login");
     return null;
   }
@@ -25,44 +28,55 @@ export default function VerifyOTP() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { error } = await supabase.auth.verifyOtp({
-      phone,
-      token: otp,
-      type: 'sms'
-    });
+    try {
+      const verifyOptions = type === "sms" 
+        ? { phone, token: otp, type: 'sms' as const }
+        : { email, token: otp, type: 'email' as const };
 
-    if (error) {
-      toast({
-        title: "Erreur de vérification",
-        description: error.message,
-        variant: "destructive"
-      });
-    } else {
+      const { error } = await supabase.auth.verifyOtp(verifyOptions);
+
+      if (error) throw error;
+
       toast({
         title: "Connexion réussie !",
         description: "Vous êtes maintenant connecté.",
       });
       navigate("/");
+    } catch (error: any) {
+      toast({
+        title: "Erreur de vérification",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   const handleResendCode = async () => {
-    const { error } = await supabase.auth.signInWithOtp({
-      phone,
-    });
+    try {
+      if (type === "sms") {
+        const { error } = await supabase.auth.signInWithOtp({ phone });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: window.location.origin,
+          },
+        });
+        if (error) throw error;
+      }
 
-    if (error) {
+      toast({
+        title: "Code renvoyé !",
+        description: `Vérifiez vos ${type === "sms" ? "SMS" : "emails"}.`,
+      });
+    } catch (error: any) {
       toast({
         title: "Erreur",
         description: error.message,
         variant: "destructive"
-      });
-    } else {
-      toast({
-        title: "Code renvoyé !",
-        description: "Vérifiez vos SMS.",
       });
     }
   };
@@ -91,7 +105,7 @@ export default function VerifyOTP() {
               </div>
               <CardTitle className="text-2xl font-bold">Vérification</CardTitle>
               <CardDescription>
-                Entrez le code à 6 chiffres envoyé au {phone}
+                Entrez le code à 6 chiffres envoyé {type === "sms" ? `au ${phone}` : `à ${email}`}
               </CardDescription>
             </CardHeader>
 
