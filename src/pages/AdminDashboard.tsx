@@ -11,11 +11,18 @@ import { useIsAdmin } from "@/hooks/useAdminRole";
 import { AdminManagement } from "@/components/admin/AdminManagement";
 import { KYCQueue } from "@/components/admin/KYCQueue";
 import { AuditLogs } from "@/components/admin/AuditLogs";
+import { FinanceSection } from "@/components/admin/FinanceSection";
+import { SupportSection } from "@/components/admin/SupportSection";
+import { OperationsSection } from "@/components/admin/OperationsSection";
+import { ComplianceSection } from "@/components/admin/ComplianceSection";
+import { UsersManagementSection } from "@/components/admin/UsersManagementSection";
+import { useAdminStats } from "@/hooks/useAdminStats";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const { isAdmin, isLoading } = useIsAdmin();
+  const { data: stats } = useAdminStats();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -52,11 +59,11 @@ export default function AdminDashboard() {
     return null;
   }
 
-  const stats = [
-    { title: "Patients", value: "1,234", icon: Users, color: "text-primary" },
-    { title: "Praticiens", value: "156", icon: Stethoscope, color: "text-secondary" },
-    { title: "Rendez-vous", value: "89", icon: Calendar, color: "text-primary" },
-    { title: "Revenus", value: "45,678 XOF", icon: DollarSign, color: "text-secondary" },
+  const statsCards = [
+    { title: "Patients", value: stats?.patientsCount || 0, icon: Users, color: "text-primary" },
+    { title: "Praticiens", value: stats?.practitionersCount || 0, icon: Stethoscope, color: "text-secondary" },
+    { title: "Rendez-vous", value: stats?.appointmentsCount || 0, icon: Calendar, color: "text-primary" },
+    { title: "Revenus", value: `${stats?.totalRevenue.toLocaleString() || 0} XOF`, icon: DollarSign, color: "text-secondary" },
   ];
 
   return (
@@ -88,7 +95,7 @@ export default function AdminDashboard() {
 
         {/* Statistics Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
+          {statsCards.map((stat, index) => (
             <Card key={index} className="shadow-medical">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -141,45 +148,7 @@ export default function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-primary" />
-                    Gestion des utilisateurs
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-start">
-                      Voir tous les patients
-                    </Button>
-                    <Button variant="outline" className="w-full justify-start">
-                      Voir tous les praticiens
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-secondary" />
-                    Rendez-vous
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-start">
-                      Rendez-vous du jour
-                    </Button>
-                    <Button variant="outline" className="w-full justify-start">
-                      Historique complet
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <UsersManagementSection />
           </TabsContent>
 
           <TabsContent value="admins">
@@ -191,59 +160,19 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="operations">
-            <Card>
-              <CardHeader>
-                <CardTitle>Opérations en temps réel</CardTitle>
-                <CardDescription>Suivi des rendez-vous et incidents</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  À implémenter : Carte temps réel, modération avis, gestion litiges
-                </div>
-              </CardContent>
-            </Card>
+            <OperationsSection />
           </TabsContent>
 
           <TabsContent value="finance">
-            <Card>
-              <CardHeader>
-                <CardTitle>Gestion financière</CardTitle>
-                <CardDescription>Transactions, reversements, remboursements</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  À implémenter : Liste transactions, payouts, réconciliation
-                </div>
-              </CardContent>
-            </Card>
+            <FinanceSection />
           </TabsContent>
 
           <TabsContent value="support">
-            <Card>
-              <CardHeader>
-                <CardTitle>Support client</CardTitle>
-                <CardDescription>Tickets et base de connaissances</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  À implémenter : File tickets, FAQ, guides
-                </div>
-              </CardContent>
-            </Card>
+            <SupportSection />
           </TabsContent>
 
           <TabsContent value="compliance">
-            <Card>
-              <CardHeader>
-                <CardTitle>Conformité & paramètres</CardTitle>
-                <CardDescription>CGU, consents, configuration système</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  À implémenter : Gestion CGU, paramètres triage, intégrations
-                </div>
-              </CardContent>
-            </Card>
+            <ComplianceSection />
           </TabsContent>
 
           <TabsContent value="audit">
