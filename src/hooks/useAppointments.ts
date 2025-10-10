@@ -1,12 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import type { Appointment, AppointmentStatus, CreateAppointmentData } from '@/types/appointment';
 
 function toAppointment(row: Tables<'appointments'>): Appointment {
-  const scheduledAt = row.scheduled_at ? new Date(row.scheduled_at) : null;
-
   return {
     id: row.id,
     patientName: row.patient_name ?? 'Patient',
@@ -14,13 +11,8 @@ function toAppointment(row: Tables<'appointments'>): Appointment {
     practitionerId: row.practitioner_id ?? 'pending',
     practitionerName: row.practitioner_name ?? "En attente d'attribution",
     specialty: row.specialty ?? 'Non spécifié',
-    date: scheduledAt ? scheduledAt.toISOString().split('T')[0] : '',
-    time: scheduledAt
-      ? scheduledAt.toLocaleTimeString('fr-FR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : '',
+    date: row.date ?? '',
+    time: row.time ?? '',
     duration: row.duration ?? 0,
     status: (row.status ?? 'pending') as AppointmentStatus,
     address: row.address ?? 'Adresse à confirmer',
@@ -39,7 +31,7 @@ async function fetchAppointmentsByField(field: 'patient_id' | 'practitioner_id',
     .from('appointments')
     .select('*')
     .eq(field, id)
-    .order('scheduled_at', { ascending: true });
+    .order('date', { ascending: true });
 
   if (error) {
     throw error;
@@ -102,15 +94,17 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
         throw new Error('Patient non identifié');
       }
 
-      const scheduledAt = formatISO(new Date(`${data.date}T${data.time}`));
-
       return insertAppointment({
         patient_id: patientId,
         patient_name: patientName ?? 'Patient',
+        practitioner_id: '',
+        practitioner_name: '',
         specialty: data.specialty,
+        date: data.date,
+        time: data.time,
+        address: '',
         reason: data.reason,
-        urgency_level: (data.urgencyLevel as TablesInsert<'appointments'>['urgency_level']) ?? null,
-        scheduled_at: scheduledAt,
+        urgency_level: data.urgencyLevel ?? null,
         status: 'pending',
         duration: 60,
       });

@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PractitionerLocation } from '@/types/practitioner';
-import type { Tables } from '@/integrations/supabase/types';
 
-function mapPractitioner(row: Tables<'practitioners'>): PractitionerLocation {
+function mapPractitioner(row: any): PractitionerLocation {
   return {
     id: row.id,
     name: row.name,

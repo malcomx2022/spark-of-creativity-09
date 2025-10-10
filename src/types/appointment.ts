@@ -14,7 +14,7 @@ export interface Appointment {
   address: string;
   reason: string;
   notes?: string;
-  urgencyLevel?: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent';
+  urgencyLevel?: string;
 }
 
 export interface CreateAppointmentData {
