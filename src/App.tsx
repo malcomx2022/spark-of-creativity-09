@@ -13,6 +13,8 @@ import PractitionerSearch from "./pages/PractitionerSearch";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import LoginWithOTP from "./pages/LoginWithOTP";
+import VerifyOTP from "./pages/VerifyOTP";
 import AdminDashboard from "./pages/AdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -26,7 +28,9 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<LoginWithOTP />} />
+          <Route path="/login-email" element={<LoginPage />} />
+          <Route path="/verify-otp" element={<VerifyOTP />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/signup/patient" element={<PatientSignup />} />
           <Route path="/signup/practitioner" element={<PractitionerSignup />} />
