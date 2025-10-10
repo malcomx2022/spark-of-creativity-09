@@ -44,6 +44,12 @@ export default function Header() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
+            <button 
+              onClick={() => navigate("/")}
+              className="text-foreground hover:text-primary transition-colors"
+            >
+              Accueil
+            </button>
             <a href="#services" className="text-foreground hover:text-primary transition-colors">
               Services
             </a>
@@ -135,6 +141,12 @@ export default function Header() {
         {isMenuOpen && (
           <div className="md:hidden mt-4 pb-4 border-t border-border">
             <nav className="flex flex-col space-y-3 pt-4">
+              <button 
+                onClick={() => navigate("/")}
+                className="text-foreground hover:text-primary transition-colors text-left"
+              >
+                Accueil
+              </button>
               <a href="#services" className="text-foreground hover:text-primary transition-colors">
                 Services
               </a>
