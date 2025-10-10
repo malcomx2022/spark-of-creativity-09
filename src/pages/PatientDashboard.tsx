@@ -14,6 +14,9 @@ import { ProfileSection } from '@/components/dashboard/ProfileSection';
 import { MedicalSection } from '@/components/dashboard/MedicalSection';
 import { PaymentsSection } from '@/components/dashboard/PaymentsSection';
 import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
+import { MessagesSection } from '@/components/dashboard/MessagesSection';
+import { ReviewsSection } from '@/components/dashboard/ReviewsSection';
+import { SupportSection } from '@/components/dashboard/SupportSection';
 
 export default function PatientDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -328,66 +331,15 @@ export default function PatientDashboard() {
           </TabsContent>
 
           <TabsContent value="messages">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Messages
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Aucun message</p>
-              </CardContent>
-            </Card>
+            <MessagesSection />
           </TabsContent>
 
           <TabsContent value="reviews">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Star className="h-5 w-5" />
-                  Mes évaluations
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Aucune évaluation pour le moment</p>
-              </CardContent>
-            </Card>
+            <ReviewsSection />
           </TabsContent>
 
           <TabsContent value="support">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <HelpCircle className="h-5 w-5" />
-                  Aide & Support
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <p className="text-muted-foreground">
-                    Besoin d'aide ? Contactez notre équipe de support.
-                  </p>
-                  <div className="p-4 border rounded-lg">
-                    <h3 className="font-medium mb-2">Conformité & Consentements</h3>
-                    <div className="space-y-2 text-sm">
-                      <p className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Conditions générales d'utilisation
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Politique de confidentialité
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Export de mes données
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <SupportSection />
           </TabsContent>
         </Tabs>
       </main>

@@ -8,6 +8,8 @@ import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { User, MapPin, Phone } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { AddEmergencyContactDialog } from '@/components/AddEmergencyContactDialog';
+import { AddAddressDialog } from '@/components/AddAddressDialog';
 
 export function ProfileSection() {
   const { data: user } = useSupabaseUser();
@@ -135,7 +137,7 @@ export function ProfileSection() {
               ))}
             </div>
           )}
-          <Button variant="outline" className="mt-4">Ajouter un contact</Button>
+          {user?.id && <AddEmergencyContactDialog userId={user.id} />}
         </CardContent>
       </Card>
 
@@ -171,7 +173,7 @@ export function ProfileSection() {
               ))}
             </div>
           )}
-          <Button variant="outline" className="mt-4">Ajouter une adresse</Button>
+          {user?.id && <AddAddressDialog userId={user.id} />}
         </CardContent>
       </Card>
     </div>

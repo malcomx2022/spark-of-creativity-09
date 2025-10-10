@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -5,12 +6,47 @@ import { Badge } from '@/components/ui/badge';
 import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
 import { useNotifications, useNotificationPreferences, useMarkNotificationAsRead } from '@/hooks/useNotifications';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 export function NotificationsSection() {
   const { data: user } = useSupabaseUser();
   const { data: notifications = [] } = useNotifications(user?.id);
   const { data: preferences } = useNotificationPreferences(user?.id);
   const markAsRead = useMarkNotificationAsRead();
+  
+  const [localPrefs, setLocalPrefs] = useState({
+    email: preferences?.email_enabled ?? true,
+    sms: preferences?.sms_enabled ?? false,
+    whatsapp: preferences?.whatsapp_enabled ?? false,
+    push: preferences?.push_enabled ?? true,
+  });
+
+  const handlePreferenceChange = async (key: keyof typeof localPrefs, value: boolean) => {
+    if (!user?.id) return;
+    setLocalPrefs(prev => ({ ...prev, [key]: value }));
+
+    try {
+      const columnMap = {
+        email: 'email_enabled',
+        sms: 'sms_enabled',
+        whatsapp: 'whatsapp_enabled',
+        push: 'push_enabled',
+      };
+      const updateData: any = { user_id: user.id };
+      updateData[columnMap[key]] = value;
+
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(updateData);
+
+      if (error) throw error;
+      toast({ title: 'Préférences mises à jour' });
+    } catch (error) {
+      toast({ title: 'Erreur', variant: 'destructive' });
+      setLocalPrefs(prev => ({ ...prev, [key]: !value }));
+    }
+  };
 
   const handleNotificationClick = (notificationId: string, isRead: boolean) => {
     if (!isRead) {
@@ -79,7 +115,7 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={preferences?.email_enabled ?? true} />
+            <Switch checked={localPrefs.email} onCheckedChange={(v) => handlePreferenceChange('email', v)} />
           </div>
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -92,7 +128,7 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={preferences?.sms_enabled ?? false} />
+            <Switch checked={localPrefs.sms} onCheckedChange={(v) => handlePreferenceChange('sms', v)} />
           </div>
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -105,7 +141,7 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={preferences?.whatsapp_enabled ?? false} />
+            <Switch checked={localPrefs.whatsapp} onCheckedChange={(v) => handlePreferenceChange('whatsapp', v)} />
           </div>
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -118,7 +154,7 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={preferences?.push_enabled ?? true} />
+            <Switch checked={localPrefs.push} onCheckedChange={(v) => handlePreferenceChange('push', v)} />
           </div>
         </CardContent>
       </Card>

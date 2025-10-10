@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, MapPin, User, FileText, Phone } from 'lucide-react';
 import type { Appointment } from '@/types/appointment';
+import { ContactDialog } from '@/components/ContactDialog';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -13,6 +16,8 @@ interface AppointmentCardProps {
 }
 
 export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onComplete }: AppointmentCardProps) {
+  const { data: user } = useSupabaseUser();
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -109,12 +114,26 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
               Annuler
             </Button>
           )}
-          <Button size="sm" variant="outline" className="flex-1">
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="flex-1"
+            onClick={() => setContactDialogOpen(true)}
+          >
             <Phone className="h-4 w-4 mr-1" />
             Contacter
           </Button>
         </div>
       </CardContent>
+
+      {user?.id && (
+        <ContactDialog
+          open={contactDialogOpen}
+          onOpenChange={setContactDialogOpen}
+          appointment={appointment}
+          userId={user.id}
+        />
+      )}
     </Card>
   );
 }
