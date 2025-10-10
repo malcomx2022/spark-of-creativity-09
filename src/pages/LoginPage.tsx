@@ -22,7 +22,7 @@ export default function LoginPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: formData.email,
       password: formData.password,
     });
@@ -33,12 +33,35 @@ export default function LoginPage() {
         description: error.message,
         variant: "destructive"
       });
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Vérifier le rôle de l'utilisateur
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', data.user.id)
+      .maybeSingle();
+
+    const { data: practitionerData } = await supabase
+      .from('practitioners')
+      .select('id')
+      .eq('user_id', data.user.id)
+      .maybeSingle();
+
+    toast({
+      title: "Connexion réussie !",
+      description: "Vous allez être redirigé vers le tableau de bord.",
+    });
+
+    // Rediriger selon le rôle
+    if (roleData?.role) {
+      navigate('/admin');
+    } else if (practitionerData) {
+      navigate('/dashboard/practitioner');
     } else {
-      toast({
-        title: "Connexion réussie !",
-        description: "Vous allez être redirigé vers le tableau de bord.",
-      });
-      navigate("/admin"); // Redirect to admin dashboard after login
+      navigate('/dashboard/patient');
     }
 
     setIsSubmitting(false);

@@ -21,7 +21,8 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Créer le patient
+    // Créer ou récupérer le patient
+    let patientUserId;
     const { data: patientUser, error: patientError } = await supabaseAdmin.auth.admin.createUser({
       email: 'patient@test.com',
       password: 'Patient123!',
@@ -31,13 +32,28 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (patientError && patientError.message !== 'A user with this email address has already been registered') {
-      throw patientError;
+    if (patientError) {
+      if (patientError.message.includes('already been registered')) {
+        // Récupérer l'utilisateur existant
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = existingUsers.users.find(u => u.email === 'patient@test.com');
+        if (existingUser) {
+          patientUserId = existingUser.id;
+          // Mettre à jour le mot de passe
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Patient123!',
+          });
+        }
+      } else {
+        throw patientError;
+      }
+    } else {
+      patientUserId = patientUser.user.id;
     }
 
-    if (patientUser?.user) {
+    if (patientUserId) {
       await supabaseAdmin.from('profiles').upsert({
-        id: patientUser.user.id,
+        id: patientUserId,
         full_name: 'Patient Test',
         phone: '+22967000001',
         gender: 'masculin',
@@ -45,7 +61,8 @@ Deno.serve(async (req) => {
       }, { onConflict: 'id' });
     }
 
-    // Créer le praticien
+    // Créer ou récupérer le praticien
+    let practitionerUserId;
     const { data: practitionerUser, error: practitionerError } = await supabaseAdmin.auth.admin.createUser({
       email: 'praticien@test.com',
       password: 'Praticien123!',
@@ -55,13 +72,26 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (practitionerError && practitionerError.message !== 'A user with this email address has already been registered') {
-      throw practitionerError;
+    if (practitionerError) {
+      if (practitionerError.message.includes('already been registered')) {
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = existingUsers.users.find(u => u.email === 'praticien@test.com');
+        if (existingUser) {
+          practitionerUserId = existingUser.id;
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Praticien123!',
+          });
+        }
+      } else {
+        throw practitionerError;
+      }
+    } else {
+      practitionerUserId = practitionerUser.user.id;
     }
 
-    if (practitionerUser?.user) {
+    if (practitionerUserId) {
       await supabaseAdmin.from('profiles').upsert({
-        id: practitionerUser.user.id,
+        id: practitionerUserId,
         full_name: 'Dr. Praticien Test',
         phone: '+22967000002',
         gender: 'masculin',
@@ -69,7 +99,7 @@ Deno.serve(async (req) => {
       }, { onConflict: 'id' });
 
       await supabaseAdmin.from('practitioners').upsert({
-        user_id: practitionerUser.user.id,
+        user_id: practitionerUserId,
         name: 'Dr. Praticien Test',
         specialty: 'Médecine Générale',
         phone: '+22967000002',
@@ -85,7 +115,8 @@ Deno.serve(async (req) => {
       }, { onConflict: 'user_id' });
     }
 
-    // Créer l'admin
+    // Créer ou récupérer l'admin
+    let adminUserId;
     const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.createUser({
       email: 'admin@test.com',
       password: 'Admin123!',
@@ -95,13 +126,26 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (adminError && adminError.message !== 'A user with this email address has already been registered') {
-      throw adminError;
+    if (adminError) {
+      if (adminError.message.includes('already been registered')) {
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = existingUsers.users.find(u => u.email === 'admin@test.com');
+        if (existingUser) {
+          adminUserId = existingUser.id;
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Admin123!',
+          });
+        }
+      } else {
+        throw adminError;
+      }
+    } else {
+      adminUserId = adminUser.user.id;
     }
 
-    if (adminUser?.user) {
+    if (adminUserId) {
       await supabaseAdmin.from('profiles').upsert({
-        id: adminUser.user.id,
+        id: adminUserId,
         full_name: 'Admin Test',
         phone: '+22967000003',
         gender: 'masculin',
@@ -109,7 +153,7 @@ Deno.serve(async (req) => {
       }, { onConflict: 'id' });
 
       await supabaseAdmin.from('user_roles').upsert({
-        user_id: adminUser.user.id,
+        user_id: adminUserId,
         role: 'super_admin',
       }, { onConflict: 'user_id' });
     }
