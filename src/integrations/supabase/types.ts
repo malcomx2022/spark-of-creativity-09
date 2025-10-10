@@ -14,57 +14,293 @@ export type Database = {
   }
   public: {
     Tables: {
-      appointments: {
+      addresses: {
         Row: {
-          id: string
-          patient_id: string
-          patient_name: string | null
-          practitioner_id: string | null
-          practitioner_name: string | null
-          specialty: string | null
-          scheduled_at: string | null
-          duration: number | null
-          status: string
-          address: string | null
-          reason: string | null
-          notes: string | null
-          urgency_level: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent' | null
+          address: string
+          city: string | null
           created_at: string | null
-          updated_at: string | null
+          id: string
+          is_default: boolean | null
+          label: string
+          latitude: number | null
+          longitude: number | null
+          postal_code: string | null
+          user_id: string
         }
         Insert: {
-          id?: string
-          patient_id: string
-          patient_name?: string | null
-          practitioner_id?: string | null
-          practitioner_name?: string | null
-          specialty?: string | null
-          scheduled_at?: string | null
-          duration?: number | null
-          status?: string
-          address?: string | null
-          reason?: string | null
-          notes?: string | null
-          urgency_level?: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent' | null
+          address: string
+          city?: string | null
           created_at?: string | null
-          updated_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          label: string
+          latitude?: number | null
+          longitude?: number | null
+          postal_code?: string | null
+          user_id: string
         }
         Update: {
-          id?: string
-          patient_id?: string
-          patient_name?: string | null
-          practitioner_id?: string | null
-          practitioner_name?: string | null
-          specialty?: string | null
-          scheduled_at?: string | null
-          duration?: number | null
-          status?: string
-          address?: string | null
-          reason?: string | null
-          notes?: string | null
-          urgency_level?: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent' | null
+          address?: string
+          city?: string | null
           created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          label?: string
+          latitude?: number | null
+          longitude?: number | null
+          postal_code?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      appointments: {
+        Row: {
+          address: string
+          created_at: string | null
+          date: string
+          duration: number
+          id: string
+          notes: string | null
+          patient_id: string
+          patient_name: string
+          practitioner_id: string
+          practitioner_name: string
+          reason: string
+          specialty: string
+          status: string
+          time: string
+          updated_at: string | null
+          urgency_level: string | null
+        }
+        Insert: {
+          address: string
+          created_at?: string | null
+          date: string
+          duration?: number
+          id?: string
+          notes?: string | null
+          patient_id: string
+          patient_name: string
+          practitioner_id: string
+          practitioner_name: string
+          reason: string
+          specialty: string
+          status?: string
+          time: string
           updated_at?: string | null
+          urgency_level?: string | null
+        }
+        Update: {
+          address?: string
+          created_at?: string | null
+          date?: string
+          duration?: number
+          id?: string
+          notes?: string | null
+          patient_id?: string
+          patient_name?: string
+          practitioner_id?: string
+          practitioner_name?: string
+          reason?: string
+          specialty?: string
+          status?: string
+          time?: string
+          updated_at?: string | null
+          urgency_level?: string | null
+        }
+        Relationships: []
+      }
+      consents: {
+        Row: {
+          accepted_at: string | null
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at: string | null
+          id: string
+          is_accepted: boolean | null
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at?: string | null
+          id?: string
+          is_accepted?: boolean | null
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          consent_type?: Database["public"]["Enums"]["consent_type"]
+          created_at?: string | null
+          id?: string
+          is_accepted?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      emergency_contacts: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          phone: string
+          relationship: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          phone: string
+          relationship?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          phone?: string
+          relationship?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      medical_profiles: {
+        Row: {
+          additional_notes: string | null
+          allergies: string | null
+          blood_type: Database["public"]["Enums"]["blood_type"] | null
+          chronic_diseases: string | null
+          created_at: string | null
+          current_medications: string | null
+          id: string
+          share_with_practitioner: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          additional_notes?: string | null
+          allergies?: string | null
+          blood_type?: Database["public"]["Enums"]["blood_type"] | null
+          chronic_diseases?: string | null
+          created_at?: string | null
+          current_medications?: string | null
+          id?: string
+          share_with_practitioner?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          additional_notes?: string | null
+          allergies?: string | null
+          blood_type?: Database["public"]["Enums"]["blood_type"] | null
+          chronic_diseases?: string | null
+          created_at?: string | null
+          current_medications?: string | null
+          id?: string
+          share_with_practitioner?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          appointment_id: string
+          content: string
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          sender_id: string
+        }
+        Insert: {
+          appointment_id: string
+          content: string
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          sender_id: string
+        }
+        Update: {
+          appointment_id?: string
+          content?: string
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          created_at: string | null
+          email_enabled: boolean | null
+          id: string
+          push_enabled: boolean | null
+          sms_enabled: boolean | null
+          updated_at: string | null
+          user_id: string
+          whatsapp_enabled: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          push_enabled?: boolean | null
+          sms_enabled?: boolean | null
+          updated_at?: string | null
+          user_id: string
+          whatsapp_enabled?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          push_enabled?: boolean | null
+          sms_enabled?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+          whatsapp_enabled?: boolean | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          link: string | null
+          message: string
+          title: string
+          type: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          link?: string | null
+          message: string
+          title: string
+          type?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          link?: string | null
+          message?: string
+          title?: string
+          type?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -110,48 +346,184 @@ export type Database = {
         }
         Relationships: []
       }
-      practitioners: {
+      profiles: {
         Row: {
-          id: string
-          name: string
-          specialty: string | null
-          address: string | null
-          latitude: number | null
-          longitude: number | null
-          available: boolean | null
-          rating: number | null
-          phone: string | null
-          image: string | null
+          avatar_url: string | null
           created_at: string | null
+          date_of_birth: string | null
+          full_name: string | null
+          gender: Database["public"]["Enums"]["gender"] | null
+          id: string
+          phone: string | null
           updated_at: string | null
         }
         Insert: {
-          id?: string
-          name: string
-          specialty?: string | null
-          address?: string | null
-          latitude?: number | null
-          longitude?: number | null
-          available?: boolean | null
-          rating?: number | null
-          phone?: string | null
-          image?: string | null
+          avatar_url?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
+          full_name?: string | null
+          gender?: Database["public"]["Enums"]["gender"] | null
+          id: string
+          phone?: string | null
           updated_at?: string | null
         }
         Update: {
-          id?: string
-          name?: string
-          specialty?: string | null
-          address?: string | null
-          latitude?: number | null
-          longitude?: number | null
-          available?: boolean | null
-          rating?: number | null
-          phone?: string | null
-          image?: string | null
+          avatar_url?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
+          full_name?: string | null
+          gender?: Database["public"]["Enums"]["gender"] | null
+          id?: string
+          phone?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      reviews: {
+        Row: {
+          appointment_id: string
+          comment: string | null
+          created_at: string | null
+          id: string
+          patient_id: string
+          practitioner_id: string
+          rating: number
+        }
+        Insert: {
+          appointment_id: string
+          comment?: string | null
+          created_at?: string | null
+          id?: string
+          patient_id: string
+          practitioner_id: string
+          rating: number
+        }
+        Update: {
+          appointment_id?: string
+          comment?: string | null
+          created_at?: string | null
+          id?: string
+          patient_id?: string
+          practitioner_id?: string
+          rating?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: true
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          base_price: number | null
+          category: string | null
+          created_at: string | null
+          description: string | null
+          duration: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          base_price?: number | null
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          duration?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          base_price?: number | null
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          duration?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
+      support_tickets: {
+        Row: {
+          appointment_id: string | null
+          attachments: string[] | null
+          created_at: string | null
+          description: string
+          id: string
+          status: Database["public"]["Enums"]["ticket_status"] | null
+          subject: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          appointment_id?: string | null
+          attachments?: string[] | null
+          created_at?: string | null
+          description: string
+          id?: string
+          status?: Database["public"]["Enums"]["ticket_status"] | null
+          subject: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          appointment_id?: string | null
+          attachments?: string[] | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          status?: Database["public"]["Enums"]["ticket_status"] | null
+          subject?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      triage_results: {
+        Row: {
+          answers: Json | null
+          created_at: string | null
+          id: string
+          message: string | null
+          recommendations: string[] | null
+          score: number
+          urgency_level: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json | null
+          created_at?: string | null
+          id?: string
+          message?: string | null
+          recommendations?: string[] | null
+          score: number
+          urgency_level: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json | null
+          created_at?: string | null
+          id?: string
+          message?: string | null
+          recommendations?: string[] | null
+          score?: number
+          urgency_level?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -163,7 +535,19 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      blood_type:
+        | "A+"
+        | "A-"
+        | "B+"
+        | "B-"
+        | "AB+"
+        | "AB-"
+        | "O+"
+        | "O-"
+        | "inconnu"
+      consent_type: "cgu" | "charte" | "partage_donnees" | "marketing"
+      gender: "homme" | "femme" | "autre" | "non_specifie"
+      ticket_status: "ouvert" | "en_cours" | "resolu" | "ferme"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -290,7 +674,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      blood_type: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "inconnu"],
+      consent_type: ["cgu", "charte", "partage_donnees", "marketing"],
+      gender: ["homme", "femme", "autre", "non_specifie"],
+      ticket_status: ["ouvert", "en_cours", "resolu", "ferme"],
+    },
   },
 } as const
-
