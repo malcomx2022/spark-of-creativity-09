@@ -149,6 +149,20 @@ export default function LoginWithOTP() {
                     {isSubmitting ? "Envoi en cours..." : "Recevoir le code"}
                   </Button>
                 </form>
+
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Problème avec l'envoi du code ?
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate("/login-email")}
+                    className="w-full"
+                  >
+                    Se connecter avec mot de passe
+                  </Button>
+                </div>
               </Tabs>
             </CardContent>
           </Card>
