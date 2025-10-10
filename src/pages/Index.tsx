@@ -282,9 +282,7 @@ const Index = () => {
           <div className="grid md:grid-cols-4 gap-8">
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-                  <Heart className="h-5 w-5 text-white" />
-                </div>
+                <img src={heroImage} alt="DomiCares" className="w-8 h-8 rounded-lg" />
                 <span className="text-xl font-bold">DomiCares</span>
               </div>
               <p className="text-white/70">
@@ -295,27 +293,27 @@ const Index = () => {
             <div>
               <h4 className="font-semibold mb-4">Services</h4>
               <ul className="space-y-2 text-white/70">
-                <li>Médecins à domicile</li>
-                <li>Soins infirmiers</li>
-                <li>Kinésithérapie</li>
-                <li>Consultations d'urgence</li>
+                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Médecins à domicile</button></li>
+                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Soins infirmiers</button></li>
+                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Kinésithérapie</button></li>
+                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Consultations d'urgence</button></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4">Légal</h4>
               <ul className="space-y-2 text-white/70">
-                <li>Conditions d'utilisation</li>
-                <li>Politique de confidentialité</li>
-                <li>Charte praticiens</li>
-                <li>Mentions légales</li>
+                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Conditions d'utilisation</button></li>
+                <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition-colors">Politique de confidentialité</button></li>
+                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Charte praticiens</button></li>
+                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Mentions légales</button></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-white/70">
-                <li>Support: +221 77 xxx xx xx</li>
+                <li><button onClick={() => navigate('/contact')} className="hover:text-white transition-colors">Nous contacter</button></li>
                 <li>Urgences: 112</li>
                 <li>Email: contact@domicares.com</li>
               </ul>

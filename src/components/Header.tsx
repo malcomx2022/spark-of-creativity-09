@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, Phone, MapPin, LogIn, UserPlus, Shield } from "lucide-react";
+import { Menu, Phone, MapPin, LogIn, UserPlus, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
+import logo from "@/assets/logo.png";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -32,15 +33,13 @@ export default function Header() {
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center space-x-2">
-            <div className="w-10 h-10 gradient-primary rounded-lg flex items-center justify-center">
-              <Heart className="h-6 w-6 text-white" />
-            </div>
+          <button onClick={() => navigate("/")} className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
+            <img src={logo} alt="DomiCares Logo" className="w-10 h-10" />
             <div>
               <h1 className="text-xl font-bold text-foreground">DomiCares</h1>
               <p className="text-xs text-muted-foreground">Soins à domicile</p>
             </div>
-          </div>
+          </button>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
@@ -50,9 +49,12 @@ export default function Header() {
             >
               Accueil
             </button>
-            <a href="#services" className="text-foreground hover:text-primary transition-colors">
+            <button 
+              onClick={() => navigate("/services")}
+              className="text-foreground hover:text-primary transition-colors"
+            >
               Services
-            </a>
+            </button>
             <button 
               onClick={() => navigate("/dashboard/patient")}
               className="text-foreground hover:text-primary transition-colors"
@@ -147,9 +149,12 @@ export default function Header() {
               >
                 Accueil
               </button>
-              <a href="#services" className="text-foreground hover:text-primary transition-colors">
+              <button 
+                onClick={() => navigate("/services")}
+                className="text-foreground hover:text-primary transition-colors text-left"
+              >
                 Services
-              </a>
+              </button>
               <button 
                 onClick={() => navigate("/dashboard/patient")}
                 className="text-foreground hover:text-primary transition-colors text-left"
