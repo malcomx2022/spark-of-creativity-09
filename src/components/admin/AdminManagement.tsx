@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, Shield, KeyRound } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { UserPlus, Shield, KeyRound, UserX, Copy, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import type { AdminRole } from "@/hooks/useAdminRole";
 
@@ -25,6 +26,9 @@ export function AdminManagement() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [selectedRole, setSelectedRole] = useState<AdminRole>("support");
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
 
   const { data: admins, isLoading } = useQuery({
     queryKey: ['admins'],
@@ -56,14 +60,21 @@ export function AdminManagement() {
 
   const createAdminMutation = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: AdminRole }) => {
-      // Note: Pour créer un admin, il faudrait une edge function
-      // Pour l'instant, on ne peut qu'assigner un rôle à un utilisateur existant
-      throw new Error("Fonctionnalité à implémenter via edge function");
+      const { data, error } = await supabase.functions.invoke('admin-management', {
+        body: { action: 'create', email, role, fullName: email.split('@')[0] }
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
-      toast({ title: "Admin créé avec succès" });
+      setTempPassword(data.tempPassword);
+      setShowPasswordDialog(true);
       setEmail("");
+      toast({ title: "Admin créé avec succès" });
     },
     onError: (error: Error) => {
       toast({ 
@@ -75,22 +86,88 @@ export function AdminManagement() {
   });
 
   const deleteAdminMutation = useMutation({
-    mutationFn: async (roleId: string) => {
-      const { error } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('id', roleId);
+    mutationFn: async (userId: string) => {
+      const { data, error } = await supabase.functions.invoke('admin-management', {
+        body: { action: 'disable', userId }
+      });
 
       if (error) throw error;
+      if (data.error) throw new Error(data.error);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
-      toast({ title: "Rôle admin révoqué" });
+      toast({ title: "Admin désactivé avec succès" });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Erreur", 
+        description: error.message,
+        variant: "destructive" 
+      });
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const { data, error } = await supabase.functions.invoke('admin-management', {
+        body: { action: 'reset_password', userId }
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      setTempPassword(data.newPassword);
+      setShowPasswordDialog(true);
+      toast({ title: "Mot de passe réinitialisé" });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Erreur", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const copyToClipboard = async () => {
+    if (tempPassword) {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopiedPassword(true);
+      setTimeout(() => setCopiedPassword(false), 2000);
+      toast({ title: "Mot de passe copié" });
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mot de passe temporaire</DialogTitle>
+            <DialogDescription>
+              Partagez ce mot de passe avec l'administrateur. Il sera demandé lors de la première connexion.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-muted rounded-lg font-mono text-sm flex items-center justify-between">
+              <span>{tempPassword}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={copyToClipboard}
+              >
+                {copiedPassword ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              ⚠️ Ce mot de passe ne sera plus visible après fermeture de cette fenêtre.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -173,14 +250,26 @@ export function AdminManagement() {
                       {new Date(admin.created_at).toLocaleDateString('fr-FR')}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteAdminMutation.mutate(admin.id)}
-                        disabled={deleteAdminMutation.isPending}
-                      >
-                        Révoquer
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => resetPasswordMutation.mutate(admin.user_id)}
+                          disabled={resetPasswordMutation.isPending}
+                        >
+                          <KeyRound className="h-4 w-4 mr-1" />
+                          Reset MDP
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteAdminMutation.mutate(admin.user_id)}
+                          disabled={deleteAdminMutation.isPending}
+                        >
+                          <UserX className="h-4 w-4 mr-1" />
+                          Désactiver
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

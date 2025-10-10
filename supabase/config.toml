@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.payment-webhook]
 verify_jwt = false
+
+[functions.admin-management]
+verify_jwt = true
