@@ -27,6 +27,8 @@ import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
 import CareNotesSection from '@/components/dashboard/practitioner/CareNotesSection';
 import ReviewsSection from '@/components/dashboard/practitioner/ReviewsSection';
 import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
+import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
+import { SupportSection } from '@/components/dashboard/SupportSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -345,19 +347,11 @@ export default function PractitionerDashboard() {
           </TabsContent>
 
           <TabsContent value="reviews">
-            <ReviewsSection />
+            <ReviewsSection practitionerId={practitioner.id} />
           </TabsContent>
 
           <TabsContent value="messages">
-            <Card>
-              <CardHeader>
-                <CardTitle>Messagerie</CardTitle>
-                <CardDescription>Communication avec vos patients</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Fonctionnalité en développement...</p>
-              </CardContent>
-            </Card>
+            <PractitionerMessagesSection />
           </TabsContent>
 
           <TabsContent value="notifications">
@@ -365,15 +359,7 @@ export default function PractitionerDashboard() {
           </TabsContent>
 
           <TabsContent value="support">
-            <Card>
-              <CardHeader>
-                <CardTitle>Support & Litiges</CardTitle>
-                <CardDescription>Ouvrir un ticket ou gérer vos litiges</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Fonctionnalité en développement...</p>
-              </CardContent>
-            </Card>
+            <SupportSection />
           </TabsContent>
         </Tabs>
       </main>

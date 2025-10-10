@@ -7,7 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Calendar as CalendarIcon, Clock, Plus } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Plus, Trash2 } from "lucide-react";
+import { AddAvailabilityDialog } from '@/components/AddAvailabilityDialog';
+import { AddExceptionDialog } from '@/components/AddExceptionDialog';
+import { usePractitionerAvailability, usePractitionerExceptions, useDeleteAvailability, useDeleteException } from '@/hooks/useAvailability';
 
 interface AvailabilitySectionProps {
   practitionerId: string;
@@ -20,6 +23,11 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
   const { toast } = useToast();
   const [isOnline, setIsOnline] = useState(practitionerData?.is_online || false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  
+  const { data: availabilities = [] } = usePractitionerAvailability(practitionerId);
+  const { data: exceptions = [] } = usePractitionerExceptions(practitionerId);
+  const deleteAvailability = useDeleteAvailability();
+  const deleteException = useDeleteException();
 
   const handleToggleOnline = async (checked: boolean) => {
     try {
@@ -78,27 +86,49 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
               <CardTitle>Planning hebdomadaire</CardTitle>
               <CardDescription>Créneaux répétitifs par jour de la semaine</CardDescription>
             </div>
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter un créneau
-            </Button>
+            <AddAvailabilityDialog practitionerId={practitionerId} />
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {DAYS_FR.map((day, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{day}</span>
+            {DAYS_FR.map((day, index) => {
+              const dayAvailabilities = availabilities.filter(a => a.day_of_week === index);
+              return (
+                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{day}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {dayAvailabilities.length === 0 ? (
+                      <span className="text-sm text-muted-foreground">Non disponible</span>
+                    ) : (
+                      dayAvailabilities.map((avail) => (
+                        <div key={avail.id} className="flex items-center gap-1">
+                          <Badge variant="outline">
+                            {avail.start_time.substring(0, 5)} - {avail.end_time.substring(0, 5)}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                await deleteAvailability.mutateAsync(avail.id);
+                                toast({ title: 'Créneau supprimé' });
+                              } catch (error) {
+                                toast({ title: 'Erreur', variant: 'destructive' });
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">09:00 - 12:00</Badge>
-                  <Badge variant="outline">14:00 - 18:00</Badge>
-                  <Button variant="ghost" size="sm">Modifier</Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -128,21 +158,44 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
             </div>
             <div className="space-y-3">
               <h4 className="font-medium">Exceptions à venir</h4>
-              <div className="space-y-2">
-                <div className="p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Vacances d'été</p>
-                      <p className="text-sm text-muted-foreground">15 Jul - 30 Jul 2025</p>
+              {exceptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune exception programmée</p>
+              ) : (
+                <div className="space-y-2">
+                  {exceptions.map((exception) => (
+                    <div key={exception.id} className="p-3 border rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">
+                            {exception.is_available ? 'Disponibilité' : 'Indisponibilité'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(exception.date).toLocaleDateString('fr-FR')}
+                          </p>
+                          {exception.reason && (
+                            <p className="text-xs text-muted-foreground mt-1">{exception.reason}</p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await deleteException.mutateAsync(exception.id);
+                              toast({ title: 'Exception supprimée' });
+                            } catch (error) {
+                              toast({ title: 'Erreur', variant: 'destructive' });
+                            }
+                          }}
+                        >
+                          Supprimer
+                        </Button>
+                      </div>
                     </div>
-                    <Button variant="ghost" size="sm">Supprimer</Button>
-                  </div>
+                  ))}
                 </div>
-              </div>
-              <Button className="w-full">
-                <Plus className="h-4 w-4 mr-2" />
-                Ajouter une exception
-              </Button>
+              )}
+              <AddExceptionDialog practitionerId={practitionerId} />
             </div>
           </div>
         </CardContent>
