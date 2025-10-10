@@ -4,8 +4,8 @@ export interface Payment {
   patient_id: string;
   amount: number;
   currency: string;
-  payment_method: 'mtn' | 'orange' | 'moov';
-  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  payment_method: string;
+  status: string;
   fedapay_transaction_id?: string;
   fedapay_payment_url?: string;
   created_at: string;

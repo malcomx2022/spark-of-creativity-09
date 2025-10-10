@@ -4,13 +4,16 @@ import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Activity, Calendar, Clock, FileText } from 'lucide-react';
+import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { Loader2 } from 'lucide-react';
+import { ProfileSection } from '@/components/dashboard/ProfileSection';
+import { MedicalSection } from '@/components/dashboard/MedicalSection';
+import { PaymentsSection } from '@/components/dashboard/PaymentsSection';
+import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
 
 export default function PatientDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -140,58 +143,251 @@ export default function PatientDashboard() {
           )}
         </div>
 
-        <Tabs defaultValue="upcoming" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="upcoming">À venir</TabsTrigger>
-            <TabsTrigger value="past">Historique</TabsTrigger>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid grid-cols-3 lg:grid-cols-9 gap-2">
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">Accueil</span>
+            </TabsTrigger>
+            <TabsTrigger value="appointments" className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">RDV</span>
+            </TabsTrigger>
+            <TabsTrigger value="profile" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">Profil</span>
+            </TabsTrigger>
+            <TabsTrigger value="medical" className="flex items-center gap-2">
+              <Heart className="h-4 w-4" />
+              <span className="hidden sm:inline">Médical</span>
+            </TabsTrigger>
+            <TabsTrigger value="payments" className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline">Paiements</span>
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              <span className="hidden sm:inline">Notifs</span>
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span className="hidden sm:inline">Messages</span>
+            </TabsTrigger>
+            <TabsTrigger value="reviews" className="flex items-center gap-2">
+              <Star className="h-4 w-4" />
+              <span className="hidden sm:inline">Avis</span>
+            </TabsTrigger>
+            <TabsTrigger value="support" className="flex items-center gap-2">
+              <HelpCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Aide</span>
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="upcoming" className="space-y-4">
-            {upcomingAppointments.length === 0 ? (
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
-                  {patientId && (
-                    <NewAppointmentDialog onSubmit={handleNewAppointment} />
-                  )}
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Rendez-vous à venir</CardTitle>
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{upcomingAppointments.length}</div>
                 </CardContent>
               </Card>
-            ) : (
-              <>
-                {upcomingAppointments.map(appointment => (
-                  <div key={appointment.id} className="space-y-4">
-                    <AppointmentCard
-                      appointment={appointment}
-                      userRole="patient"
-                      onCancel={handleCancel}
-                    />
-                    {appointment.status === 'confirmed' && (
-                      <GPSTracking appointment={appointment} />
-                    )}
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">En attente</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {appointments.filter(apt => apt.status === 'pending').length}
                   </div>
-                ))}
-              </>
-            )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Consultations totales</CardTitle>
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{appointments.length}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Prochains rendez-vous</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {upcomingAppointments.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
+                    {patientId && <NewAppointmentDialog onSubmit={handleNewAppointment} />}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {upcomingAppointments.slice(0, 3).map(appointment => (
+                      <div key={appointment.id} className="space-y-4">
+                        <AppointmentCard
+                          appointment={appointment}
+                          userRole="patient"
+                          onCancel={handleCancel}
+                        />
+                        {appointment.status === 'confirmed' && (
+                          <GPSTracking appointment={appointment} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
-          <TabsContent value="past" className="space-y-4">
-            {pastAppointments.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Aucun rendez-vous passé</p>
-                </CardContent>
-              </Card>
-            ) : (
-              pastAppointments.map(appointment => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  userRole="patient"
-                />
-              ))
-            )}
+          <TabsContent value="appointments" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-semibold">Mes rendez-vous</h3>
+              {patientId && <NewAppointmentDialog onSubmit={handleNewAppointment} />}
+            </div>
+            
+            <Tabs defaultValue="upcoming" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="upcoming">À venir</TabsTrigger>
+                <TabsTrigger value="past">Historique</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="upcoming" className="space-y-4">
+                {upcomingAppointments.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
+                      {patientId && (
+                        <NewAppointmentDialog onSubmit={handleNewAppointment} />
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    {upcomingAppointments.map(appointment => (
+                      <div key={appointment.id} className="space-y-4">
+                        <AppointmentCard
+                          appointment={appointment}
+                          userRole="patient"
+                          onCancel={handleCancel}
+                        />
+                        {appointment.status === 'confirmed' && (
+                          <GPSTracking appointment={appointment} />
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="past" className="space-y-4">
+                {pastAppointments.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Aucun rendez-vous passé</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  pastAppointments.map(appointment => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={appointment}
+                      userRole="patient"
+                    />
+                  ))
+                )}
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          <TabsContent value="profile">
+            <ProfileSection />
+          </TabsContent>
+
+          <TabsContent value="medical">
+            <MedicalSection />
+          </TabsContent>
+
+          <TabsContent value="payments">
+            <PaymentsSection />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationsSection />
+          </TabsContent>
+
+          <TabsContent value="messages">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Messages
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">Aucun message</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="reviews">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5" />
+                  Mes évaluations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">Aucune évaluation pour le moment</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="support">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <HelpCircle className="h-5 w-5" />
+                  Aide & Support
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-muted-foreground">
+                    Besoin d'aide ? Contactez notre équipe de support.
+                  </p>
+                  <div className="p-4 border rounded-lg">
+                    <h3 className="font-medium mb-2">Conformité & Consentements</h3>
+                    <div className="space-y-2 text-sm">
+                      <p className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Conditions générales d'utilisation
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Politique de confidentialité
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Export de mes données
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </main>
