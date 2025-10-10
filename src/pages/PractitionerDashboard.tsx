@@ -21,6 +21,7 @@ import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import Header from '@/components/Header';
 import ProfessionalProfileSection from '@/components/dashboard/practitioner/ProfessionalProfileSection';
 import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
 import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
@@ -146,7 +147,8 @@ export default function PractitionerDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
-      <main className="container mx-auto px-4 py-8">
+      <Header />
+      <main className="container mx-auto px-4 py-8 mt-20">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Tableau de bord Praticien</h1>
           <p className="text-muted-foreground">Bienvenue, {practitioner.name}</p>

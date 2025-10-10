@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
           id: results.patient,
           full_name: 'Patient Test',
           phone: '+22967000001',
-          gender: 'masculin',
+          gender: 'homme',
           date_of_birth: '1990-01-01',
         }, { onConflict: 'id' });
         if (profileError) console.error('Patient profile error:', profileError);
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
           id: results.praticien,
           full_name: 'Dr. Praticien Test',
           phone: '+22967000002',
-          gender: 'masculin',
+          gender: 'homme',
           date_of_birth: '1985-01-01',
         }, { onConflict: 'id' });
         if (profileError) console.error('Practitioner profile error:', profileError);
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
           id: results.admin,
           full_name: 'Admin Test',
           phone: '+22967000003',
-          gender: 'masculin',
+          gender: 'homme',
           date_of_birth: '1980-01-01',
         }, { onConflict: 'id' });
         if (profileError) console.error('Admin profile error:', profileError);
@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
         const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({
           user_id: results.admin,
           role: 'super_admin',
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id,role' });
         if (roleError) console.error('Admin role error:', roleError);
       }
     } catch (e) {
