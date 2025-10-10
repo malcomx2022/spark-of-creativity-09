@@ -1,11 +1,31 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, Phone, MapPin } from "lucide-react";
-import { useState } from "react";
+import { Heart, Menu, Phone, MapPin, LogIn } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
@@ -54,12 +74,34 @@ export default function Header() {
             </button>
           </nav>
 
-          {/* Emergency Button */}
+          {/* Emergency Button & Auth */}
           <div className="flex items-center space-x-3">
             <Button variant="urgent" size="sm" className="hidden sm:flex">
               <Phone className="h-4 w-4" />
               Urgence 112
             </Button>
+            
+            {user ? (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleLogout}
+                className="hidden md:flex"
+              >
+                Déconnexion
+              </Button>
+            ) : (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate("/login")}
+                className="hidden md:flex"
+              >
+                <LogIn className="h-4 w-4 mr-2" />
+                Connexion
+              </Button>
+            )}
+
             <Button
               variant="ghost"
               size="icon"
@@ -107,6 +149,27 @@ export default function Header() {
                 <Phone className="h-4 w-4" />
                 Urgence 112
               </Button>
+              
+              {user ? (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleLogout}
+                  className="w-full"
+                >
+                  Déconnexion
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => navigate("/login")}
+                  className="w-full"
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Connexion
+                </Button>
+              )}
             </nav>
           </div>
         )}
