@@ -53,6 +53,39 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_audit_logs: {
+        Row: {
+          action: string
+          admin_id: string
+          created_at: string | null
+          details: Json | null
+          entity_id: string | null
+          entity_type: string
+          id: string
+          ip_address: string | null
+        }
+        Insert: {
+          action: string
+          admin_id: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          ip_address?: string | null
+        }
+        Update: {
+          action?: string
+          admin_id?: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          ip_address?: string | null
+        }
+        Relationships: []
+      }
       appointments: {
         Row: {
           address: string
@@ -176,6 +209,39 @@ export type Database = {
           },
         ]
       }
+      consent_versions: {
+        Row: {
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          content: string
+          created_at: string | null
+          created_by: string | null
+          effective_date: string | null
+          id: string
+          is_active: boolean | null
+          version: string
+        }
+        Insert: {
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          content: string
+          created_at?: string | null
+          created_by?: string | null
+          effective_date?: string | null
+          id?: string
+          is_active?: boolean | null
+          version: string
+        }
+        Update: {
+          consent_type?: Database["public"]["Enums"]["consent_type"]
+          content?: string
+          created_at?: string | null
+          created_by?: string | null
+          effective_date?: string | null
+          id?: string
+          is_active?: boolean | null
+          version?: string
+        }
+        Relationships: []
+      }
       consents: {
         Row: {
           accepted_at: string | null
@@ -203,6 +269,97 @@ export type Database = {
         }
         Relationships: []
       }
+      dispute_messages: {
+        Row: {
+          attachments: string[] | null
+          created_at: string | null
+          dispute_id: string
+          id: string
+          message: string
+          sender_id: string
+        }
+        Insert: {
+          attachments?: string[] | null
+          created_at?: string | null
+          dispute_id: string
+          id?: string
+          message: string
+          sender_id: string
+        }
+        Update: {
+          attachments?: string[] | null
+          created_at?: string | null
+          dispute_id?: string
+          id?: string
+          message?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispute_messages_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      disputes: {
+        Row: {
+          appointment_id: string | null
+          assigned_to: string | null
+          created_at: string | null
+          description: string
+          id: string
+          priority: string | null
+          raised_by: string
+          resolution: string | null
+          resolved_at: string | null
+          sla_deadline: string | null
+          status: string | null
+          subject: string
+          updated_at: string | null
+        }
+        Insert: {
+          appointment_id?: string | null
+          assigned_to?: string | null
+          created_at?: string | null
+          description: string
+          id?: string
+          priority?: string | null
+          raised_by: string
+          resolution?: string | null
+          resolved_at?: string | null
+          sla_deadline?: string | null
+          status?: string | null
+          subject: string
+          updated_at?: string | null
+        }
+        Update: {
+          appointment_id?: string | null
+          assigned_to?: string | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          priority?: string | null
+          raised_by?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          sla_deadline?: string | null
+          status?: string | null
+          subject?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disputes_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       emergency_contacts: {
         Row: {
           created_at: string | null
@@ -227,6 +384,48 @@ export type Database = {
           phone?: string
           relationship?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      faqs: {
+        Row: {
+          answer: string
+          category: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_published: boolean | null
+          question: string
+          target_audience: string | null
+          updated_at: string | null
+          updated_by: string | null
+          version: number | null
+        }
+        Insert: {
+          answer: string
+          category: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_published?: boolean | null
+          question: string
+          target_audience?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          version?: number | null
+        }
+        Update: {
+          answer?: string
+          category?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_published?: boolean | null
+          question?: string
+          target_audience?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          version?: number | null
         }
         Relationships: []
       }
@@ -592,17 +791,22 @@ export type Database = {
           created_at: string | null
           diplomas: string[] | null
           id: string
+          id_document_expiry: string | null
           id_document_url: string | null
           image: string | null
           insurance_document_url: string | null
+          insurance_expiry: string | null
           intervention_radius: number | null
           is_online: boolean | null
           kyc_comment: string | null
+          kyc_reviewed_at: string | null
+          kyc_reviewed_by: string | null
           kyc_status: string | null
           kyc_validated_at: string | null
           languages: string[] | null
           latitude: number | null
           license_document_url: string | null
+          license_expiry: string | null
           license_number: string | null
           longitude: number | null
           name: string
@@ -622,17 +826,22 @@ export type Database = {
           created_at?: string | null
           diplomas?: string[] | null
           id?: string
+          id_document_expiry?: string | null
           id_document_url?: string | null
           image?: string | null
           insurance_document_url?: string | null
+          insurance_expiry?: string | null
           intervention_radius?: number | null
           is_online?: boolean | null
           kyc_comment?: string | null
+          kyc_reviewed_at?: string | null
+          kyc_reviewed_by?: string | null
           kyc_status?: string | null
           kyc_validated_at?: string | null
           languages?: string[] | null
           latitude?: number | null
           license_document_url?: string | null
+          license_expiry?: string | null
           license_number?: string | null
           longitude?: number | null
           name: string
@@ -652,17 +861,22 @@ export type Database = {
           created_at?: string | null
           diplomas?: string[] | null
           id?: string
+          id_document_expiry?: string | null
           id_document_url?: string | null
           image?: string | null
           insurance_document_url?: string | null
+          insurance_expiry?: string | null
           intervention_radius?: number | null
           is_online?: boolean | null
           kyc_comment?: string | null
+          kyc_reviewed_at?: string | null
+          kyc_reviewed_by?: string | null
           kyc_status?: string | null
           kyc_validated_at?: string | null
           languages?: string[] | null
           latitude?: number | null
           license_document_url?: string | null
+          license_expiry?: string | null
           license_number?: string | null
           longitude?: number | null
           name?: string
@@ -684,6 +898,8 @@ export type Database = {
           gender: Database["public"]["Enums"]["gender"] | null
           id: string
           phone: string | null
+          two_factor_enabled: boolean | null
+          two_factor_secret: string | null
           updated_at: string | null
         }
         Insert: {
@@ -694,6 +910,8 @@ export type Database = {
           gender?: Database["public"]["Enums"]["gender"] | null
           id: string
           phone?: string | null
+          two_factor_enabled?: boolean | null
+          two_factor_secret?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -704,6 +922,8 @@ export type Database = {
           gender?: Database["public"]["Enums"]["gender"] | null
           id?: string
           phone?: string | null
+          two_factor_enabled?: boolean | null
+          two_factor_secret?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -714,6 +934,10 @@ export type Database = {
           comment: string | null
           created_at: string | null
           id: string
+          is_hidden: boolean | null
+          moderated_at: string | null
+          moderated_by: string | null
+          moderation_reason: string | null
           patient_id: string
           practitioner_id: string
           rating: number
@@ -723,6 +947,10 @@ export type Database = {
           comment?: string | null
           created_at?: string | null
           id?: string
+          is_hidden?: boolean | null
+          moderated_at?: string | null
+          moderated_by?: string | null
+          moderation_reason?: string | null
           patient_id: string
           practitioner_id: string
           rating: number
@@ -732,6 +960,10 @@ export type Database = {
           comment?: string | null
           created_at?: string | null
           id?: string
+          is_hidden?: boolean | null
+          moderated_at?: string | null
+          moderated_by?: string | null
+          moderation_reason?: string | null
           patient_id?: string
           practitioner_id?: string
           rating?: number
@@ -782,34 +1014,46 @@ export type Database = {
       support_tickets: {
         Row: {
           appointment_id: string | null
+          assigned_to: string | null
           attachments: string[] | null
           created_at: string | null
           description: string
           id: string
+          priority: string | null
+          resolved_at: string | null
           status: Database["public"]["Enums"]["ticket_status"] | null
           subject: string
+          tags: string[] | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           appointment_id?: string | null
+          assigned_to?: string | null
           attachments?: string[] | null
           created_at?: string | null
           description: string
           id?: string
+          priority?: string | null
+          resolved_at?: string | null
           status?: Database["public"]["Enums"]["ticket_status"] | null
           subject: string
+          tags?: string[] | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           appointment_id?: string | null
+          assigned_to?: string | null
           attachments?: string[] | null
           created_at?: string | null
           description?: string
           id?: string
+          priority?: string | null
+          resolved_at?: string | null
           status?: Database["public"]["Enums"]["ticket_status"] | null
           subject?: string
+          tags?: string[] | null
           updated_at?: string | null
           user_id?: string
         }
@@ -822,6 +1066,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      system_config: {
+        Row: {
+          description: string | null
+          id: string
+          key: string
+          updated_at: string | null
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
       }
       triage_results: {
         Row: {
@@ -856,14 +1127,55 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role:
+        | "super_admin"
+        | "ops"
+        | "finance"
+        | "compliance"
+        | "support"
+        | "analyst"
       blood_type:
         | "A+"
         | "A-"
@@ -1004,6 +1316,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: [
+        "super_admin",
+        "ops",
+        "finance",
+        "compliance",
+        "support",
+        "analyst",
+      ],
       blood_type: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "inconnu"],
       consent_type: ["cgu", "charte", "partage_donnees", "marketing"],
       gender: ["homme", "femme", "autre", "non_specifie"],
