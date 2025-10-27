@@ -429,6 +429,103 @@ export type Database = {
         }
         Relationships: []
       }
+      group_session_participants: {
+        Row: {
+          id: string
+          joined_at: string | null
+          patient_id: string
+          payment_status: string | null
+          session_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string | null
+          patient_id: string
+          payment_status?: string | null
+          session_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string | null
+          patient_id?: string
+          payment_status?: string | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_session_participants_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "group_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_sessions: {
+        Row: {
+          coach_id: string
+          created_at: string | null
+          current_participants: number | null
+          description: string | null
+          end_time: string
+          id: string
+          location: string
+          max_participants: number | null
+          min_participants: number | null
+          price_per_person: number
+          scheduled_date: string
+          session_name: string
+          session_type: string
+          start_time: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          coach_id: string
+          created_at?: string | null
+          current_participants?: number | null
+          description?: string | null
+          end_time: string
+          id?: string
+          location: string
+          max_participants?: number | null
+          min_participants?: number | null
+          price_per_person: number
+          scheduled_date: string
+          session_name: string
+          session_type: string
+          start_time: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          coach_id?: string
+          created_at?: string | null
+          current_participants?: number | null
+          description?: string | null
+          end_time?: string
+          id?: string
+          location?: string
+          max_participants?: number | null
+          min_participants?: number | null
+          price_per_person?: number
+          scheduled_date?: string
+          session_name?: string
+          session_type?: string
+          start_time?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_sessions_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       medical_profiles: {
         Row: {
           additional_notes: string | null
@@ -787,6 +884,7 @@ export type Database = {
           available: boolean | null
           bio: string | null
           can_accept_missions: boolean | null
+          certifications: string[] | null
           communes_served: string[] | null
           created_at: string | null
           diplomas: string[] | null
@@ -797,6 +895,7 @@ export type Database = {
           insurance_document_url: string | null
           insurance_expiry: string | null
           intervention_radius: number | null
+          intervention_zone: string | null
           is_online: boolean | null
           kyc_comment: string | null
           kyc_reviewed_at: string | null
@@ -811,7 +910,11 @@ export type Database = {
           longitude: number | null
           name: string
           phone: string | null
+          practitioner_type:
+            | Database["public"]["Enums"]["practitioner_type"]
+            | null
           rating: number | null
+          session_types: string[] | null
           specialty: string
           updated_at: string | null
           user_id: string
@@ -822,6 +925,7 @@ export type Database = {
           available?: boolean | null
           bio?: string | null
           can_accept_missions?: boolean | null
+          certifications?: string[] | null
           communes_served?: string[] | null
           created_at?: string | null
           diplomas?: string[] | null
@@ -832,6 +936,7 @@ export type Database = {
           insurance_document_url?: string | null
           insurance_expiry?: string | null
           intervention_radius?: number | null
+          intervention_zone?: string | null
           is_online?: boolean | null
           kyc_comment?: string | null
           kyc_reviewed_at?: string | null
@@ -846,7 +951,11 @@ export type Database = {
           longitude?: number | null
           name: string
           phone?: string | null
+          practitioner_type?:
+            | Database["public"]["Enums"]["practitioner_type"]
+            | null
           rating?: number | null
+          session_types?: string[] | null
           specialty: string
           updated_at?: string | null
           user_id: string
@@ -857,6 +966,7 @@ export type Database = {
           available?: boolean | null
           bio?: string | null
           can_accept_missions?: boolean | null
+          certifications?: string[] | null
           communes_served?: string[] | null
           created_at?: string | null
           diplomas?: string[] | null
@@ -867,6 +977,7 @@ export type Database = {
           insurance_document_url?: string | null
           insurance_expiry?: string | null
           intervention_radius?: number | null
+          intervention_zone?: string | null
           is_online?: boolean | null
           kyc_comment?: string | null
           kyc_reviewed_at?: string | null
@@ -881,7 +992,11 @@ export type Database = {
           longitude?: number | null
           name?: string
           phone?: string | null
+          practitioner_type?:
+            | Database["public"]["Enums"]["practitioner_type"]
+            | null
           rating?: number | null
+          session_types?: string[] | null
           specialty?: string
           updated_at?: string | null
           user_id?: string
@@ -1163,10 +1278,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_admin: {
-        Args: { _user_id: string }
-        Returns: boolean
-      }
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role:
@@ -1188,6 +1300,15 @@ export type Database = {
         | "inconnu"
       consent_type: "cgu" | "charte" | "partage_donnees" | "marketing"
       gender: "homme" | "femme" | "autre" | "non_specifie"
+      practitioner_type:
+        | "medecin"
+        | "infirmier"
+        | "kinesitherapeute"
+        | "nutritionniste"
+        | "sage_femme"
+        | "psychologue"
+        | "coach_sportif"
+        | "autre"
       ticket_status: "ouvert" | "en_cours" | "resolu" | "ferme"
     }
     CompositeTypes: {
@@ -1327,6 +1448,16 @@ export const Constants = {
       blood_type: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "inconnu"],
       consent_type: ["cgu", "charte", "partage_donnees", "marketing"],
       gender: ["homme", "femme", "autre", "non_specifie"],
+      practitioner_type: [
+        "medecin",
+        "infirmier",
+        "kinesitherapeute",
+        "nutritionniste",
+        "sage_femme",
+        "psychologue",
+        "coach_sportif",
+        "autre",
+      ],
       ticket_status: ["ouvert", "en_cours", "resolu", "ferme"],
     },
   },
