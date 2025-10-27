@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import PatientSignup from "./pages/PatientSignup";
 import PractitionerSignup from "./pages/PractitionerSignup";
+import CoachDashboard from "./pages/CoachDashboard";
 import Triage from "./pages/Triage";
 import PatientDashboard from "./pages/PatientDashboard";
 import PractitionerDashboard from "./pages/PractitionerDashboard";
@@ -50,6 +51,7 @@ const App = () => (
           <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
           <Route path="/dashboard/patient" element={<ProtectedRoute><PatientDashboard /></ProtectedRoute>} />
           <Route path="/dashboard/practitioner" element={<ProtectedRoute><PractitionerDashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/coach" element={<ProtectedRoute><CoachDashboard /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

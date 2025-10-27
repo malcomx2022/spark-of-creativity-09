@@ -35,6 +35,11 @@ export default function PractitionerSignup() {
     diploma: null,
     licenseDocument: null,
     acceptTerms: false,
+    // Coach sportif specific fields
+    sessionTypes: [] as string[],
+    interventionZone: "",
+    interventionRadius: "",
+    certifications: "",
   });
 
   const professions = [
@@ -44,8 +49,11 @@ export default function PractitionerSignup() {
     "Nutritionniste",
     "Sage-femme",
     "Psychologue",
+    "Coach sportif",
     "Autre"
   ];
+
+  const sessionTypes = ["individuelle", "duo", "groupe"];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,6 +290,83 @@ export default function PractitionerSignup() {
                     />
                   </div>
                 </div>
+
+                {/* Coach Sportif Specific Fields */}
+                {formData.profession === "Coach sportif" && (
+                  <div className="space-y-4 mt-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                    <h4 className="font-semibold text-primary">Informations spécifiques Coach Sportif</h4>
+                    
+                    <div className="space-y-2">
+                      <Label>Types de séances proposées *</Label>
+                      <div className="flex gap-4">
+                        {sessionTypes.map((type) => (
+                          <div key={type} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`session-${type}`}
+                              checked={formData.sessionTypes.includes(type)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    sessionTypes: [...prev.sessionTypes, type] 
+                                  }));
+                                } else {
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    sessionTypes: prev.sessionTypes.filter(t => t !== type) 
+                                  }));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`session-${type}`} className="capitalize cursor-pointer">
+                              {type}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="interventionZone">Zone d'intervention *</Label>
+                        <Input
+                          id="interventionZone"
+                          placeholder="Ex: Dakar, Thiès..."
+                          value={formData.interventionZone}
+                          onChange={(e) => setFormData(prev => ({ ...prev, interventionZone: e.target.value }))}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="interventionRadius">Rayon d'intervention (km) *</Label>
+                        <Input
+                          id="interventionRadius"
+                          type="number"
+                          min="1"
+                          max="50"
+                          placeholder="Ex: 15"
+                          value={formData.interventionRadius}
+                          onChange={(e) => setFormData(prev => ({ ...prev, interventionRadius: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="certifications">Certifications / Diplômes en coaching sportif *</Label>
+                      <Textarea
+                        id="certifications"
+                        placeholder="Listez vos certifications (fitness, kinésithérapie sportive, etc.)"
+                        value={formData.certifications}
+                        onChange={(e) => setFormData(prev => ({ ...prev, certifications: e.target.value }))}
+                        required
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
                 {/* Documents */}
                 <div className="space-y-4">

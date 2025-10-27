@@ -12,9 +12,10 @@ import { FileText, Upload, CheckCircle, XCircle, Clock, AlertCircle } from "luci
 interface ProfessionalProfileSectionProps {
   practitionerId: string;
   practitionerData: any;
+  isCoach?: boolean;
 }
 
-export default function ProfessionalProfileSection({ practitionerId, practitionerData }: ProfessionalProfileSectionProps) {
+export function ProfessionalProfileSection({ practitionerId, practitionerData, isCoach = false }: ProfessionalProfileSectionProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
