@@ -23,7 +23,7 @@ import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAp
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import Header from '@/components/Header';
-import ProfessionalProfileSection from '@/components/dashboard/practitioner/ProfessionalProfileSection';
+import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
 import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
 import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
 import CareNotesSection from '@/components/dashboard/practitioner/CareNotesSection';

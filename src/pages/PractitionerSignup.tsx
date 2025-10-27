@@ -366,7 +366,6 @@ export default function PractitionerSignup() {
                     </div>
                   </div>
                 )}
-              </div>
 
                 {/* Documents */}
                 <div className="space-y-4">
