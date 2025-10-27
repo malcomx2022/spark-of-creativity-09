@@ -14,7 +14,8 @@ import {
   Star,
   MessageSquare,
   HelpCircle,
-  Shield
+  Shield,
+  Stethoscope
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -30,6 +31,7 @@ import ReviewsSection from '@/components/dashboard/practitioner/ReviewsSection';
 import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
 import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
+import { TriageForm } from '@/components/TriageForm';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -204,10 +206,14 @@ export default function PractitionerDashboard() {
         </div>
 
         <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-9">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
             <TabsTrigger value="appointments" className="gap-2">
               <Calendar className="h-4 w-4" />
               <span className="hidden sm:inline">RDV</span>
+            </TabsTrigger>
+            <TabsTrigger value="triage" className="gap-2">
+              <Stethoscope className="h-4 w-4" />
+              <span className="hidden sm:inline">Triage</span>
             </TabsTrigger>
             <TabsTrigger value="profile" className="gap-2">
               <User className="h-4 w-4" />
@@ -324,6 +330,14 @@ export default function PractitionerDashboard() {
                 )}
               </TabsContent>
             </Tabs>
+          </TabsContent>
+
+          <TabsContent value="triage">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold">Triage Médical</h2>
+              <CardDescription>Évaluez l'urgence d'une situation médicale</CardDescription>
+            </div>
+            <TriageForm />
           </TabsContent>
 
           <TabsContent value="profile">
