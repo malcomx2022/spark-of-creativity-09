@@ -96,9 +96,9 @@ export function RefundsSection() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
+                <TableHead>Montant</TableHead>
                 <TableHead>Patient</TableHead>
-                <TableHead>Praticien</TableHead>
-                <TableHead className="text-right">Montant</TableHead>
+                <TableHead>RDV</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
@@ -114,11 +114,11 @@ export function RefundsSection() {
                     <TableCell>
                       {new Date(payment.created_at).toLocaleDateString('fr-FR')}
                     </TableCell>
-                    <TableCell>{payment.appointments?.patient_name || 'Patient'}</TableCell>
-                    <TableCell>{payment.appointments?.practitioner_name || 'Praticien'}</TableCell>
                     <TableCell className="text-right font-semibold">
                       {payment.amount.toLocaleString()} XOF
                     </TableCell>
+                    <TableCell>Patient ID: {payment.patient_id.substring(0, 8)}</TableCell>
+                    <TableCell>RDV: {payment.appointment_id.substring(0, 8)}</TableCell>
                     <TableCell>
                       <Badge variant={payment.status === 'paid' ? 'outline' : 'secondary'}>
                         {payment.status}

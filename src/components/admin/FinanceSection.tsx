@@ -5,7 +5,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, Download, TrendingUp, CreditCard } from 'lucide-react';
+import { Download } from 'lucide-react';
+import { PayoutsManagementSection } from './PayoutsManagementSection';
+import { RefundsSection } from './RefundsSection';
 
 export function FinanceSection() {
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
@@ -37,18 +39,20 @@ export function FinanceSection() {
   });
 
   const stats = {
-    totalRevenue: payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0),
+    totalRevenue: payments.filter(p => p.status === 'completed' || p.status === 'paid').reduce((sum, p) => sum + p.amount, 0),
     pendingPayments: payments.filter(p => p.status === 'pending').length,
-    completedPayments: payments.filter(p => p.status === 'completed').length,
+    completedPayments: payments.filter(p => p.status === 'completed' || p.status === 'paid').length,
     pendingPayouts: payouts.filter(p => p.status === 'planned').reduce((sum, p) => sum + p.amount, 0),
   };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
       completed: 'default',
+      paid: 'default',
       pending: 'secondary',
       failed: 'destructive',
       cancelled: 'outline',
+      canceled: 'outline',
       planned: 'secondary',
       sent: 'outline',
     };
@@ -105,6 +109,8 @@ export function FinanceSection() {
         <TabsList>
           <TabsTrigger value="payments">Paiements</TabsTrigger>
           <TabsTrigger value="payouts">Reversements</TabsTrigger>
+          <TabsTrigger value="lots">Lots de Versement</TabsTrigger>
+          <TabsTrigger value="remboursements">Remboursements</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payments" className="space-y-4">
