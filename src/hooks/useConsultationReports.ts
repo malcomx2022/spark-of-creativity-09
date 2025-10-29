@@ -61,3 +61,34 @@ export const useConsultationReportByAppointment = (appointmentId?: string) => {
     enabled: !!appointmentId,
   });
 };
+
+export const usePatientConsultationReports = (patientId?: string) => {
+  return useQuery({
+    queryKey: ['patient-consultation-reports', patientId],
+    queryFn: async () => {
+      if (!patientId) return [];
+      
+      // Get all appointments for the patient
+      const { data: appointments, error: appointmentsError } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('patient_id', patientId);
+      
+      if (appointmentsError) throw appointmentsError;
+      if (!appointments || appointments.length === 0) return [];
+      
+      const appointmentIds = appointments.map(apt => apt.id);
+      
+      // Get all consultation reports for those appointments
+      const { data, error } = await supabase
+        .from('consultation_reports')
+        .select('*, appointments(patient_name, practitioner_name, date, time)')
+        .in('appointment_id', appointmentIds)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data as ConsultationReport[];
+    },
+    enabled: !!patientId,
+  });
+};
