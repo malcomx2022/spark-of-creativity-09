@@ -178,6 +178,34 @@ serve(async (req) => {
 
     console.log(`Payment ${transactionId} updated to status: ${paymentStatus}, hold until: ${holdUntil}`);
 
+    // Récupérer le paiement pour émettre les événements
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('fedapay_transaction_id', transactionId.toString())
+      .single();
+
+    if (payment) {
+      // Émettre événement selon le statut
+      const eventType = paymentStatus === 'paid' 
+        ? 'payment.intent.succeeded' 
+        : paymentStatus === 'failed' 
+        ? 'payment.intent.failed'
+        : 'payment.intent.updated';
+
+      await supabase
+        .from('payment_events')
+        .insert({
+          payment_id: payment.id,
+          event_type: eventType,
+          event_data: {
+            status: paymentStatus,
+            fedapay_status: status,
+            transaction_id: transactionId
+          }
+        });
+    }
+
     return new Response(
       JSON.stringify({ success: true }),
       { 

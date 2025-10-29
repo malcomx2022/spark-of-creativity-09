@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import type { Payment } from '@/types/payment';
 import { useState } from 'react';
+import { PaymentReceiptDialog } from '@/components/PaymentReceiptDialog';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,8 @@ export function PaymentsSection() {
   const [isPaymentMethodDialogOpen, setIsPaymentMethodDialogOpen] = useState(false);
   const [paymentProvider, setPaymentProvider] = useState('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false);
 
   const { data: payments = [], isLoading } = useQuery<Payment[]>({
     queryKey: ['payments', user?.id],
@@ -171,7 +174,14 @@ export function PaymentsSection() {
                       })}
                     </p>
                    </div>
-                   <Button variant="outline" size="sm">
+                   <Button 
+                     variant="outline" 
+                     size="sm"
+                     onClick={() => {
+                       setSelectedPayment(payment);
+                       setIsReceiptDialogOpen(true);
+                     }}
+                   >
                      <Download className="h-4 w-4 mr-2" />
                      Reçu
                    </Button>
@@ -243,9 +253,15 @@ export function PaymentsSection() {
              <Button onClick={handleSavePaymentMethod}>
                Enregistrer
              </Button>
-           </DialogFooter>
-         </DialogContent>
-       </Dialog>
-     </div>
-   );
- }
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <PaymentReceiptDialog
+        open={isReceiptDialogOpen}
+        onOpenChange={setIsReceiptDialogOpen}
+        payment={selectedPayment}
+      />
+    </div>
+  );
+}

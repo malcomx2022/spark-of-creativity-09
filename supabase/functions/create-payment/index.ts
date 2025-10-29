@@ -71,7 +71,33 @@ serve(async (req) => {
 
     const { appointmentId, amount, paymentMethod, phoneNumber } = validation.data;
 
-    console.log('Creating payment:', { appointmentId, amount, paymentMethod, phoneNumber });
+    // Générer une clé d'idempotence
+    const idempotencyKey = `${user.id}-${appointmentId}-${Date.now()}`;
+
+    // Vérifier si un paiement avec cette clé existe déjà
+    const { data: existingPayment } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('appointment_id', appointmentId)
+      .eq('patient_id', user.id)
+      .in('status', ['pending', 'paid', 'initiated'])
+      .maybeSingle();
+
+    if (existingPayment) {
+      console.log('Payment already exists for this appointment:', existingPayment);
+      return new Response(
+        JSON.stringify({
+          paymentId: existingPayment.id,
+          transactionId: existingPayment.fedapay_transaction_id,
+          paymentUrl: existingPayment.fedapay_payment_url,
+          status: existingPayment.status,
+          message: 'Payment already initiated'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Creating payment:', { appointmentId, amount, paymentMethod, phoneNumber, idempotencyKey });
 
     // Map payment methods to FedaPay mode
     const modeMap = {
@@ -195,7 +221,11 @@ serve(async (req) => {
         hold_until: holdUntil.toISOString(),
         payout_status: 'pending',
         fedapay_transaction_id: transactionData.id.toString(),
-        fedapay_payment_url: transactionData.url
+        fedapay_payment_url: transactionData.url,
+        idempotency_key: idempotencyKey,
+        channel: 'momo',
+        provider_ref: transactionData.id.toString(),
+        payment_session_data: fedapayData
       })
       .select()
       .single();
@@ -208,12 +238,27 @@ serve(async (req) => {
     console.log('Payment stored in database:', payment);
     console.log('Fee breakdown:', feeBreakdown);
 
+    // Émettre événement payment.intent.created
+    await supabase
+      .from('payment_events')
+      .insert({
+        payment_id: payment.id,
+        event_type: 'payment.intent.created',
+        event_data: {
+          amount: feeBreakdown.amount,
+          currency: feeBreakdown.currency,
+          payment_method: paymentMethod,
+          idempotency_key: idempotencyKey
+        }
+      });
+
     return new Response(
       JSON.stringify({
         paymentId: payment.id,
         transactionId: transactionData.id,
         paymentUrl: transactionData.url,
-        status: transactionData.status
+        status: transactionData.status,
+        idempotencyKey: idempotencyKey
       }),
       {
         status: 200,
