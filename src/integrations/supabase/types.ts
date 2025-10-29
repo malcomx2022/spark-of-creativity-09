@@ -733,10 +733,13 @@ export type Database = {
           fedapay_payment_url: string | null
           fedapay_transaction_id: string | null
           fees_amount: number | null
+          gateway_fees_amount: number | null
+          hold_until: string | null
           id: string
           net_amount: number | null
           patient_id: string
           payment_method: string
+          payout_status: string | null
           status: string
           updated_at: string
         }
@@ -749,10 +752,13 @@ export type Database = {
           fedapay_payment_url?: string | null
           fedapay_transaction_id?: string | null
           fees_amount?: number | null
+          gateway_fees_amount?: number | null
+          hold_until?: string | null
           id?: string
           net_amount?: number | null
           patient_id: string
           payment_method: string
+          payout_status?: string | null
           status?: string
           updated_at?: string
         }
@@ -765,10 +771,13 @@ export type Database = {
           fedapay_payment_url?: string | null
           fedapay_transaction_id?: string | null
           fees_amount?: number | null
+          gateway_fees_amount?: number | null
+          hold_until?: string | null
           id?: string
           net_amount?: number | null
           patient_id?: string
           payment_method?: string
+          payout_status?: string | null
           status?: string
           updated_at?: string
         }
@@ -1320,6 +1329,33 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          created_at: string | null
+          event_id: string
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_id: string
+          event_type: string
+          id?: string
+          payload: Json
+          processed_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_id?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
         }
         Relationships: []
       }

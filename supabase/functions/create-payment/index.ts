@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseFedaPayResponse, validatePaymentRequest } from "./utils.ts";
+import { calculateFees, parseFeeConfig, calculateHoldUntil } from "./fee-calculator.ts";
+import { normalizeStatus } from "./payment-status.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -149,16 +151,49 @@ serve(async (req) => {
     }
     console.log('FedaPay transaction created:', fedapayData);
 
-    // Store payment in database
+    // Récupérer la configuration des frais
+    const { data: configData } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', [
+        'payment_commission_rate',
+        'payment_gateway_fees',
+        'payment_rounding_mode',
+        'payment_hold_period_days'
+      ]);
+    
+    const systemConfig: Record<string, any> = {};
+    configData?.forEach(row => {
+      systemConfig[row.key] = row.value;
+    });
+    
+    // Calculer les frais
+    const feeConfig = parseFeeConfig(systemConfig);
+    const feeBreakdown = calculateFees(amount, 'XOF', feeConfig);
+    
+    // Calculer la date de hold
+    const holdPeriodDays = systemConfig.payment_hold_period_days?.days || 2;
+    const holdUntil = calculateHoldUntil(holdPeriodDays);
+    
+    // Normaliser le statut initial
+    const initialStatus = normalizeStatus(transactionData.status || 'pending');
+
+    // Store payment in database avec détails des frais
     const { data: payment, error: dbError } = await supabase
       .from('payments')
       .insert({
         appointment_id: appointmentId,
         patient_id: user.id,
-        amount: amount,
-        currency: 'XOF',
+        amount: feeBreakdown.amount,
+        currency: feeBreakdown.currency,
         payment_method: paymentMethod,
-        status: 'pending',
+        status: initialStatus,
+        commission_amount: feeBreakdown.commissionAmount,
+        gateway_fees_amount: feeBreakdown.gatewayFeesAmount,
+        fees_amount: feeBreakdown.feesAmount,
+        net_amount: feeBreakdown.netAmount,
+        hold_until: holdUntil.toISOString(),
+        payout_status: 'pending',
         fedapay_transaction_id: transactionData.id.toString(),
         fedapay_payment_url: transactionData.url
       })
@@ -171,6 +206,7 @@ serve(async (req) => {
     }
 
     console.log('Payment stored in database:', payment);
+    console.log('Fee breakdown:', feeBreakdown);
 
     return new Response(
       JSON.stringify({
