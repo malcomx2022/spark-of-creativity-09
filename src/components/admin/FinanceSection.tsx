@@ -235,6 +235,14 @@ export function FinanceSection() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="lots">
+          <PayoutsManagementSection />
+        </TabsContent>
+
+        <TabsContent value="remboursements">
+          <RefundsSection />
+        </TabsContent>
       </Tabs>
     </div>
   );

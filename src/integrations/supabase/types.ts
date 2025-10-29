@@ -583,6 +583,77 @@ export type Database = {
           },
         ]
       }
+      ledger_accounts: {
+        Row: {
+          account_type: Database["public"]["Enums"]["ledger_account_type"]
+          created_at: string
+          currency: string
+          id: string
+          owner_id: string | null
+          owner_type: Database["public"]["Enums"]["ledger_owner_type"]
+        }
+        Insert: {
+          account_type: Database["public"]["Enums"]["ledger_account_type"]
+          created_at?: string
+          currency?: string
+          id?: string
+          owner_id?: string | null
+          owner_type: Database["public"]["Enums"]["ledger_owner_type"]
+        }
+        Update: {
+          account_type?: Database["public"]["Enums"]["ledger_account_type"]
+          created_at?: string
+          currency?: string
+          id?: string
+          owner_id?: string | null
+          owner_type?: Database["public"]["Enums"]["ledger_owner_type"]
+        }
+        Relationships: []
+      }
+      ledger_entries: {
+        Row: {
+          account_id: string
+          created_at: string
+          credit: number
+          currency: string
+          debit: number
+          description: string | null
+          id: string
+          reference_id: string
+          reference_type: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          credit?: number
+          currency?: string
+          debit?: number
+          description?: string | null
+          id?: string
+          reference_id: string
+          reference_type: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          credit?: number
+          currency?: string
+          debit?: number
+          description?: string | null
+          id?: string
+          reference_id?: string
+          reference_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ledger_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       medical_profiles: {
         Row: {
           additional_notes: string | null
@@ -755,6 +826,50 @@ export type Database = {
           },
         ]
       }
+      payment_refunds: {
+        Row: {
+          created_at: string
+          id: string
+          payment_id: string
+          processed_at: string | null
+          provider_refund_id: string | null
+          refund_amount: number
+          refund_reason: string | null
+          refunded_by: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          payment_id: string
+          processed_at?: string | null
+          provider_refund_id?: string | null
+          refund_amount: number
+          refund_reason?: string | null
+          refunded_by: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          payment_id?: string
+          processed_at?: string | null
+          provider_refund_id?: string | null
+          refund_amount?: number
+          refund_reason?: string | null
+          refunded_by?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_refunds_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -833,6 +948,48 @@ export type Database = {
         }
         Relationships: []
       }
+      payout_batches: {
+        Row: {
+          batch_date: string
+          created_at: string
+          created_by: string
+          id: string
+          payment_method: string
+          practitioners_count: number
+          processed_at: string | null
+          statement_url: string | null
+          status: Database["public"]["Enums"]["payout_batch_status"]
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          batch_date?: string
+          created_at?: string
+          created_by: string
+          id?: string
+          payment_method: string
+          practitioners_count?: number
+          processed_at?: string | null
+          statement_url?: string | null
+          status?: Database["public"]["Enums"]["payout_batch_status"]
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          batch_date?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          payment_method?: string
+          practitioners_count?: number
+          processed_at?: string | null
+          statement_url?: string | null
+          status?: Database["public"]["Enums"]["payout_batch_status"]
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       practitioner_availability: {
         Row: {
           created_at: string | null
@@ -866,6 +1023,44 @@ export type Database = {
             foreignKeyName: "practitioner_availability_practitioner_id_fkey"
             columns: ["practitioner_id"]
             isOneToOne: false
+            referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practitioner_balances: {
+        Row: {
+          balance_available: number
+          balance_on_hold: number
+          balance_pending: number
+          currency: string
+          last_payout_at: string | null
+          practitioner_id: string
+          updated_at: string
+        }
+        Insert: {
+          balance_available?: number
+          balance_on_hold?: number
+          balance_pending?: number
+          currency?: string
+          last_payout_at?: string | null
+          practitioner_id: string
+          updated_at?: string
+        }
+        Update: {
+          balance_available?: number
+          balance_on_hold?: number
+          balance_pending?: number
+          currency?: string
+          last_payout_at?: string | null
+          practitioner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practitioner_balances_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: true
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
@@ -910,43 +1105,65 @@ export type Database = {
         Row: {
           account_details: Json | null
           amount: number
+          batch_id: string | null
+          commission_amount: number | null
           created_at: string | null
           currency: string | null
+          fees_amount: number | null
           id: string
+          net_amount: number | null
           payment_method: string
           period_end: string
           period_start: string
           practitioner_id: string
           processed_at: string | null
           status: string | null
+          transaction_ids: string[] | null
         }
         Insert: {
           account_details?: Json | null
           amount: number
+          batch_id?: string | null
+          commission_amount?: number | null
           created_at?: string | null
           currency?: string | null
+          fees_amount?: number | null
           id?: string
+          net_amount?: number | null
           payment_method: string
           period_end: string
           period_start: string
           practitioner_id: string
           processed_at?: string | null
           status?: string | null
+          transaction_ids?: string[] | null
         }
         Update: {
           account_details?: Json | null
           amount?: number
+          batch_id?: string | null
+          commission_amount?: number | null
           created_at?: string | null
           currency?: string | null
+          fees_amount?: number | null
           id?: string
+          net_amount?: number | null
           payment_method?: string
           period_end?: string
           period_start?: string
           practitioner_id?: string
           processed_at?: string | null
           status?: string | null
+          transaction_ids?: string[] | null
         }
         Relationships: [
+          {
+            foreignKeyName: "practitioner_payouts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "payout_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "practitioner_payouts_practitioner_id_fkey"
             columns: ["practitioner_id"]
@@ -1480,6 +1697,20 @@ export type Database = {
         | "inconnu"
       consent_type: "cgu" | "charte" | "partage_donnees" | "marketing"
       gender: "homme" | "femme" | "autre" | "non_specifie"
+      ledger_account_type:
+        | "cash"
+        | "payable"
+        | "receivable"
+        | "revenue_commission"
+        | "revenue_fees"
+        | "obligation"
+      ledger_owner_type: "platform" | "patient" | "practitioner"
+      payout_batch_status:
+        | "queued"
+        | "processing"
+        | "sent"
+        | "failed"
+        | "partially_sent"
       practitioner_type:
         | "medecin"
         | "infirmier"
@@ -1628,6 +1859,22 @@ export const Constants = {
       blood_type: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "inconnu"],
       consent_type: ["cgu", "charte", "partage_donnees", "marketing"],
       gender: ["homme", "femme", "autre", "non_specifie"],
+      ledger_account_type: [
+        "cash",
+        "payable",
+        "receivable",
+        "revenue_commission",
+        "revenue_fees",
+        "obligation",
+      ],
+      ledger_owner_type: ["platform", "patient", "practitioner"],
+      payout_batch_status: [
+        "queued",
+        "processing",
+        "sent",
+        "failed",
+        "partially_sent",
+      ],
       practitioner_type: [
         "medecin",
         "infirmier",
