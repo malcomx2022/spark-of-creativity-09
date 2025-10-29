@@ -25,6 +25,7 @@ Deno.serve(async (req) => {
     const results = {
       patient: null as any,
       praticien: null as any,
+      coach: null as any,
       admin: null as any,
     };
 
@@ -138,6 +139,75 @@ Deno.serve(async (req) => {
       console.error('Practitioner creation exception:', e);
     }
 
+    // Créer le coach sportif
+    try {
+      console.log('Creating coach user...');
+      const { data: coachData, error: coachError } = await supabaseAdmin.auth.admin.createUser({
+        email: 'coach@test.com',
+        password: 'Coach123!',
+        email_confirm: true,
+        user_metadata: {
+          full_name: 'Coach Sportif Test',
+        },
+      });
+
+      if (coachError) {
+        console.error('Coach creation error:', coachError);
+        if (coachError.message.includes('already been registered')) {
+          console.log('Coach already exists, updating...');
+          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+          const existingUser = users.users.find(u => u.email === 'coach@test.com');
+          if (existingUser) {
+            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+              password: 'Coach123!',
+              email_confirm: true,
+            });
+            results.coach = existingUser.id;
+          }
+        }
+      } else {
+        console.log('Coach created:', coachData.user.id);
+        results.coach = coachData.user.id;
+      }
+
+      if (results.coach) {
+        console.log('Creating coach profile...');
+        const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
+          id: results.coach,
+          full_name: 'Coach Sportif Test',
+          phone: '+22967000004',
+          gender: 'homme',
+          date_of_birth: '1988-01-01',
+        }, { onConflict: 'id' });
+        if (profileError) console.error('Coach profile error:', profileError);
+
+        console.log('Creating coach practitioner entry...');
+        const { error: coachError } = await supabaseAdmin.from('practitioners').upsert({
+          user_id: results.coach,
+          name: 'Coach Sportif Test',
+          specialty: 'Coaching Sportif',
+          phone: '+22967000004',
+          address: 'Cotonou, Bénin',
+          latitude: 6.3654,
+          longitude: 2.4183,
+          available: true,
+          rating: 4.8,
+          years_experience: 7,
+          bio: 'Coach sportif certifié spécialisé en préparation physique et nutrition',
+          practitioner_type: 'coach_sportif',
+          session_types: ['Remise en forme', 'Préparation physique', 'Nutrition'],
+          intervention_zone: 'Cotonou et environs',
+          intervention_radius: 15,
+          certifications: ['Certificat de coach sportif', 'Nutrition sportive'],
+          kyc_status: 'validated',
+          can_accept_missions: true,
+        }, { onConflict: 'user_id' });
+        if (coachError) console.error('Coach practitioner entry error:', coachError);
+      }
+    } catch (e) {
+      console.error('Coach creation exception:', e);
+    }
+
     // Créer l'admin
     try {
       console.log('Creating admin user...');
@@ -200,6 +270,7 @@ Deno.serve(async (req) => {
         accounts: {
           patient: { email: 'patient@test.com', password: 'Patient123!', created: !!results.patient },
           praticien: { email: 'praticien@test.com', password: 'Praticien123!', created: !!results.praticien },
+          coach: { email: 'coach@test.com', password: 'Coach123!', created: !!results.coach },
           admin: { email: 'admin@test.com', password: 'Admin123!', created: !!results.admin },
         },
       }),

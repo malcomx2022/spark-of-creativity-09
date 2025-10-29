@@ -68,6 +68,8 @@ export default function CreateTestAccounts() {
       // Rediriger selon le type de compte
       if (email.includes('admin')) {
         navigate('/admin');
+      } else if (email.includes('coach')) {
+        navigate('/dashboard/coach');
       } else if (email.includes('praticien')) {
         navigate('/dashboard/practitioner');
       } else {
@@ -155,6 +157,25 @@ export default function CreateTestAccounts() {
                     className="w-full"
                   >
                     Tester connexion Praticien
+                  </Button>
+                </div>
+
+                <div className="p-4 bg-muted rounded-lg space-y-3">
+                  <div>
+                    <p className="font-medium">Coach Sportif</p>
+                    <p className="text-sm">Email: {accounts.coach.email}</p>
+                    <p className="text-sm">Mot de passe: {accounts.coach.password}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Statut: {accounts.coach.created ? '✅ Créé' : '⚠️ Existant'}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => testLogin(accounts.coach.email, accounts.coach.password)}
+                    disabled={isTesting}
+                    className="w-full"
+                  >
+                    Tester connexion Coach
                   </Button>
                 </div>
 
