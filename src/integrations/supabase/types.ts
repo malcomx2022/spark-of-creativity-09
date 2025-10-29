@@ -269,6 +269,63 @@ export type Database = {
         }
         Relationships: []
       }
+      consultation_reports: {
+        Row: {
+          additional_comments: string | null
+          appointment_id: string
+          clinical_findings: string | null
+          consultation_date: string
+          consultation_reason: string | null
+          consultation_type: string
+          created_at: string | null
+          follow_up_recommendation: string | null
+          follow_up_timeframe: string | null
+          id: string
+          practitioner_id: string
+          primary_diagnosis: string | null
+          severity_level: string
+          share_with_doctor: boolean | null
+          treatment_prescription: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          additional_comments?: string | null
+          appointment_id: string
+          clinical_findings?: string | null
+          consultation_date?: string
+          consultation_reason?: string | null
+          consultation_type: string
+          created_at?: string | null
+          follow_up_recommendation?: string | null
+          follow_up_timeframe?: string | null
+          id?: string
+          practitioner_id: string
+          primary_diagnosis?: string | null
+          severity_level: string
+          share_with_doctor?: boolean | null
+          treatment_prescription?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          additional_comments?: string | null
+          appointment_id?: string
+          clinical_findings?: string | null
+          consultation_date?: string
+          consultation_reason?: string | null
+          consultation_type?: string
+          created_at?: string | null
+          follow_up_recommendation?: string | null
+          follow_up_timeframe?: string | null
+          id?: string
+          practitioner_id?: string
+          primary_diagnosis?: string | null
+          severity_level?: string
+          share_with_doctor?: boolean | null
+          treatment_prescription?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       dispute_messages: {
         Row: {
           attachments: string[] | null

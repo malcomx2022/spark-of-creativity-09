@@ -15,7 +15,8 @@ import {
   MessageSquare,
   HelpCircle,
   Shield,
-  Stethoscope
+  Stethoscope,
+  ClipboardCheck
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -32,6 +33,7 @@ import { NotificationsSection } from '@/components/dashboard/NotificationsSectio
 import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
+import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -206,7 +208,7 @@ export default function PractitionerDashboard() {
         </div>
 
         <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-11">
             <TabsTrigger value="appointments" className="gap-2">
               <Calendar className="h-4 w-4" />
               <span className="hidden sm:inline">RDV</span>
@@ -230,6 +232,10 @@ export default function PractitionerDashboard() {
             <TabsTrigger value="notes" className="gap-2">
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Notes</span>
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="gap-2">
+              <ClipboardCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Rapports</span>
             </TabsTrigger>
             <TabsTrigger value="reviews" className="gap-2">
               <Star className="h-4 w-4" />
@@ -360,6 +366,10 @@ export default function PractitionerDashboard() {
 
           <TabsContent value="notes">
             <CareNotesSection />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <ConsultationReportSection />
           </TabsContent>
 
           <TabsContent value="reviews">
