@@ -723,10 +723,43 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_events: {
+        Row: {
+          created_at: string | null
+          event_data: Json | null
+          event_type: string
+          id: string
+          payment_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          payment_id: string
+        }
+        Update: {
+          created_at?: string | null
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          payment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
           appointment_id: string
+          channel: string | null
           commission_amount: number | null
           created_at: string
           currency: string
@@ -736,16 +769,22 @@ export type Database = {
           gateway_fees_amount: number | null
           hold_until: string | null
           id: string
+          idempotency_key: string | null
+          invoice_number: string | null
           net_amount: number | null
           patient_id: string
           payment_method: string
+          payment_session_data: Json | null
           payout_status: string | null
+          provider_ref: string | null
+          receipt_url: string | null
           status: string
           updated_at: string
         }
         Insert: {
           amount: number
           appointment_id: string
+          channel?: string | null
           commission_amount?: number | null
           created_at?: string
           currency?: string
@@ -755,16 +794,22 @@ export type Database = {
           gateway_fees_amount?: number | null
           hold_until?: string | null
           id?: string
+          idempotency_key?: string | null
+          invoice_number?: string | null
           net_amount?: number | null
           patient_id: string
           payment_method: string
+          payment_session_data?: Json | null
           payout_status?: string | null
+          provider_ref?: string | null
+          receipt_url?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
           amount?: number
           appointment_id?: string
+          channel?: string | null
           commission_amount?: number | null
           created_at?: string
           currency?: string
@@ -774,10 +819,15 @@ export type Database = {
           gateway_fees_amount?: number | null
           hold_until?: string | null
           id?: string
+          idempotency_key?: string | null
+          invoice_number?: string | null
           net_amount?: number | null
           patient_id?: string
           payment_method?: string
+          payment_session_data?: Json | null
           payout_status?: string | null
+          provider_ref?: string | null
+          receipt_url?: string | null
           status?: string
           updated_at?: string
         }
@@ -1159,6 +1209,42 @@ export type Database = {
           },
         ]
       }
+      saved_payment_methods: {
+        Row: {
+          consent_given_at: string
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          phone_number_encrypted: string
+          phone_number_masked: string
+          provider: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          consent_given_at?: string
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          phone_number_encrypted: string
+          phone_number_masked: string
+          provider: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          consent_given_at?: string
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          phone_number_encrypted?: string
+          phone_number_masked?: string
+          provider?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       services: {
         Row: {
           base_price: number | null
@@ -1364,6 +1450,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_invoice_number: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
