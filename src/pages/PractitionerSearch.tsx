@@ -23,16 +23,13 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function PractitionerSearch() {
-  const [mapboxToken, setMapboxToken] = useState<string>(() => {
-    return localStorage.getItem('mapbox_token') || '';
-  });
+  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
   const [searchRadius, setSearchRadius] = useState<string>('5');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-  const [tokenInput, setTokenInput] = useState('');
 
   const {
     data: practitionersData = [],
@@ -127,17 +124,6 @@ export default function PractitionerSearch() {
     }
   };
 
-  const saveMapboxToken = () => {
-    if (tokenInput.trim()) {
-      localStorage.setItem('mapbox_token', tokenInput.trim());
-      setMapboxToken(tokenInput.trim());
-      setTokenInput('');
-      toast({
-        title: 'Token enregistré',
-        description: 'Votre token Mapbox a été enregistré avec succès.'
-      });
-    }
-  };
 
 
   return (
@@ -274,43 +260,13 @@ export default function PractitionerSearch() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {mapboxToken ? (
-                  <div className="h-[500px]">
-                    <PractitionerMap
-                      practitioners={filteredPractitioners}
-                      userLocation={userLocation}
-                      mapboxToken={mapboxToken}
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Entrez votre token Mapbox public pour activer la carte.
-                    </p>
-                    <div className="flex gap-2">
-                      <Input
-                        type="text"
-                        placeholder="pk.eyJ1..."
-                        value={tokenInput}
-                        onChange={(e) => setTokenInput(e.target.value)}
-                      />
-                      <Button onClick={saveMapboxToken}>
-                        Enregistrer
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Trouvez votre token sur{' '}
-                      <a 
-                        href="https://account.mapbox.com/access-tokens/" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        mapbox.com
-                      </a>
-                    </p>
-                  </div>
-                )}
+                <div className="h-[500px]">
+                  <PractitionerMap
+                    practitioners={filteredPractitioners}
+                    userLocation={userLocation}
+                    mapboxToken={mapboxToken}
+                  />
+                </div>
               </CardContent>
             </Card>
           </div>
