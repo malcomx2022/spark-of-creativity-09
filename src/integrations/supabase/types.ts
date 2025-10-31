@@ -486,6 +486,89 @@ export type Database = {
         }
         Relationships: []
       }
+      file_access_logs: {
+        Row: {
+          access_type: string
+          created_at: string | null
+          file_id: string | null
+          id: string
+          ip_address: unknown
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          access_type: string
+          created_at?: string | null
+          file_id?: string | null
+          id?: string
+          ip_address?: unknown
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          access_type?: string
+          created_at?: string | null
+          file_id?: string | null
+          id?: string
+          ip_address?: unknown
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "file_access_logs_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      files: {
+        Row: {
+          created_at: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string | null
+          folder: string | null
+          id: string
+          metadata: Json | null
+          shared_with: string[] | null
+          storage_provider: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type?: string | null
+          folder?: string | null
+          id?: string
+          metadata?: Json | null
+          shared_with?: string[] | null
+          storage_provider?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          file_type?: string | null
+          folder?: string | null
+          id?: string
+          metadata?: Json | null
+          shared_with?: string[] | null
+          storage_provider?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       group_session_participants: {
         Row: {
           id: string
@@ -1703,6 +1786,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_file_access_logs: { Args: never; Returns: undefined }
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
       has_role: {
