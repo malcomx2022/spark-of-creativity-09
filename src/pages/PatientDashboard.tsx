@@ -38,17 +38,23 @@ export default function PatientDashboard() {
   const mutateAppointment = useMutateAppointment();
 
   const handleNewAppointment = async (data: CreateAppointmentData) => {
+    console.log('🟢 handleNewAppointment appelé avec:', data);
+    console.log('🟢 Patient ID:', patientId);
+    console.log('🟢 Patient Name:', patientName);
+    
     try {
-      await createAppointment.mutateAsync(data);
+      console.log('🟢 Appel de createAppointment.mutateAsync...');
+      const result = await createAppointment.mutateAsync(data);
+      console.log('✅ Rendez-vous créé:', result);
       toast({
         title: 'Rendez-vous créé',
         description: 'Votre rendez-vous a été créé. Veuillez procéder au paiement pour le confirmer.'
       });
     } catch (error) {
-      console.error('Erreur lors de la création du rendez-vous', error);
+      console.error('❌ Erreur lors de la création du rendez-vous:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de créer le rendez-vous pour le moment.',
+        description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous pour le moment.',
         variant: 'destructive'
       });
       throw error; // Propager l'erreur pour arrêter le processus

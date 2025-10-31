@@ -48,6 +48,8 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   });
 
   const handleSubmit = async (data: FormValues) => {
+    console.log('🔵 Formulaire soumis avec les données:', data);
+    
     const appointmentPayload = {
       specialty: data.specialty,
       date: data.date.toISOString(),
@@ -56,19 +58,23 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       urgencyLevel: data.urgencyLevel
     };
     
+    console.log('🔵 Payload du rendez-vous:', appointmentPayload);
+    
     // Créer le rendez-vous immédiatement
     try {
+      console.log('🔵 Appel de onSubmit...');
       await onSubmit(appointmentPayload);
+      console.log('✅ Rendez-vous créé avec succès');
       setAppointmentData(appointmentPayload);
       setOpen(false);
       // Ouvrir le dialogue de paiement après la création
       setPaymentDialogOpen(true);
       form.reset();
     } catch (error) {
-      console.error('Erreur lors de la création du rendez-vous', error);
+      console.error('❌ Erreur lors de la création du rendez-vous:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de créer le rendez-vous. Veuillez réessayer.',
+        description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous. Veuillez réessayer.',
         variant: 'destructive'
       });
     }
