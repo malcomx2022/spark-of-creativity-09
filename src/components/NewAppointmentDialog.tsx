@@ -16,6 +16,7 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { PaymentDialog } from '@/components/PaymentDialog';
+import { toast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
@@ -65,7 +66,28 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       form.reset();
     } catch (error) {
       console.error('Erreur lors de la création du rendez-vous', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de créer le rendez-vous. Veuillez réessayer.',
+        variant: 'destructive'
+      });
     }
+  };
+  
+  const handleFormError = () => {
+    const errors = form.formState.errors;
+    const errorMessages = [];
+    
+    if (errors.specialty) errorMessages.push('Veuillez sélectionner une spécialité');
+    if (errors.date) errorMessages.push('Veuillez sélectionner une date');
+    if (errors.time) errorMessages.push('Veuillez sélectionner une heure');
+    if (errors.reason) errorMessages.push('Veuillez décrire la raison (minimum 10 caractères)');
+    
+    toast({
+      title: 'Formulaire incomplet',
+      description: errorMessages.join('\n'),
+      variant: 'destructive'
+    });
   };
 
   const handlePaymentSuccess = () => {
@@ -107,7 +129,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit, handleFormError)} className="space-y-4">
             <FormField
               control={form.control}
               name="specialty"
