@@ -17,8 +17,12 @@ type PaymentMethod = 'mtn' | 'orange' | 'moov';
 interface PaymentResponse {
   paymentUrl?: string;
   status?: string;
+  paymentId?: string;
   idempotencyKey?: string;
 }
+
+const POLL_INTERVAL = 3000; // 3 seconds
+const MAX_POLL_TIME = 5 * 60 * 1000; // 5 minutes
 
 function normalizePhoneNumber(input: string): string | null {
   const trimmed = input.trim();
@@ -83,6 +87,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
   const [saveMethod, setSaveMethod] = useState(false);
   const [useSavedMethod, setUseSavedMethod] = useState(false);
   const [selectedSavedMethod, setSelectedSavedMethod] = useState<string>('');
@@ -99,6 +105,81 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       setPhoneNumber(getDecryptedPhone(defaultMethod));
     }
   }, [paymentMethods, phoneNumber, getDecryptedPhone]);
+
+  // Poll payment status
+  useEffect(() => {
+    if (!paymentId || paymentStatus !== 'pending') return;
+
+    const startTime = Date.now();
+    let pollInterval: NodeJS.Timeout;
+    
+    const checkPaymentStatus = async () => {
+      try {
+        // Check if max poll time exceeded
+        if (Date.now() - startTime > MAX_POLL_TIME) {
+          clearInterval(pollInterval);
+          setPaymentStatus('error');
+          setIsProcessing(false);
+          toast({
+            variant: "destructive",
+            title: "Délai dépassé",
+            description: "Le paiement prend trop de temps. Veuillez vérifier votre téléphone et contacter le support si nécessaire.",
+          });
+          return;
+        }
+
+        // Query payment status from database
+        const { data: payment, error } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('id', paymentId)
+          .single();
+
+        if (error) {
+          console.error('Error polling payment:', error);
+          return;
+        }
+
+        setPollCount(prev => prev + 1);
+
+        if (payment.status === 'paid') {
+          clearInterval(pollInterval);
+          setPaymentStatus('success');
+          setIsProcessing(false);
+          toast({
+            title: "Paiement réussi !",
+            description: "Votre rendez-vous a été confirmé.",
+          });
+          
+          if (onSuccess) {
+            onSuccess();
+          }
+          
+          // Close dialog after success
+          setTimeout(() => {
+            handleClose();
+          }, 2000);
+        } else if (['failed', 'canceled'].includes(payment.status)) {
+          clearInterval(pollInterval);
+          setPaymentStatus('error');
+          setIsProcessing(false);
+          toast({
+            variant: "destructive",
+            title: "Paiement échoué",
+            description: "Le paiement n'a pas pu être complété. Veuillez réessayer.",
+          });
+        }
+      } catch (error) {
+        console.error('Error in payment polling:', error);
+      }
+    };
+
+    pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
+    
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [paymentId, paymentStatus, onSuccess]);
 
   const handlePayment = async () => {
     // Si une méthode sauvegardée est sélectionnée, l'utiliser
@@ -145,6 +226,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       if (isPaymentResponse(result)) {
         console.log('Payment created successfully:', result);
         setPaymentUrl(result.paymentUrl);
+        setPaymentId(result.paymentId || null);
+        setPaymentStatus('pending');
+        setPollCount(0);
         
         // Sauvegarder la méthode si demandé et consentement donné
         if (saveMethod && !useSavedMethod) {
@@ -155,27 +239,42 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           });
         }
 
-        toast({
-          title: 'Paiement initié',
-          description: 'Redirection vers la page de paiement...',
-        });
-
         if (result.paymentUrl) {
-          // Ouvrir la page de paiement dans une nouvelle fenêtre
-          window.open(result.paymentUrl, '_blank');
-          
-          // Simuler l'attente de confirmation (à améliorer avec webhook)
-          setTimeout(() => {
-            setPaymentStatus('success');
-            toast({
-              title: 'Paiement en cours',
-              description: 'Veuillez confirmer le paiement sur votre téléphone',
-            });
-          }, 2000);
-        }
+          toast({
+            title: 'Paiement initié',
+            description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+          });
 
-        if (onSuccess) {
-          onSuccess();
+          // Ouvrir la page de paiement dans une nouvelle fenêtre
+          const paymentWindow = window.open(
+            result.paymentUrl,
+            '_blank',
+            'width=600,height=700,scrollbars=yes'
+          );
+
+          if (!paymentWindow) {
+            toast({
+              variant: "destructive",
+              title: "Popup bloqué",
+              description: "Veuillez autoriser les popups pour continuer le paiement.",
+            });
+            setIsProcessing(false);
+            setPaymentStatus('idle');
+            return;
+          }
+
+          // Monitor if window is closed
+          const windowCheckInterval = setInterval(() => {
+            if (paymentWindow.closed) {
+              clearInterval(windowCheckInterval);
+              if (paymentStatus === 'pending') {
+                toast({
+                  title: "Fenêtre fermée",
+                  description: "Vérification du statut du paiement en cours...",
+                });
+              }
+            }
+          }, 1000);
         }
       } else {
         throw new Error('Invalid payment response');
@@ -196,6 +295,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const handleClose = () => {
     setPaymentStatus('idle');
     setPaymentUrl(null);
+    setPaymentId(null);
+    setPollCount(0);
     setPhoneNumber('');
     setSaveMethod(false);
     setUseSavedMethod(false);
@@ -216,11 +317,21 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       case 'pending':
         return (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
-            <Clock className="h-16 w-16 text-primary animate-pulse" />
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="text-lg font-semibold">Paiement en cours...</p>
             <p className="text-sm text-muted-foreground text-center">
               Veuillez confirmer le paiement sur votre téléphone via USSD/OTP
             </p>
+            <p className="text-xs text-muted-foreground">
+              Vérification {pollCount} / {Math.floor(MAX_POLL_TIME / POLL_INTERVAL)}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClose}
+            >
+              Annuler
+            </Button>
           </div>
         );
       case 'success':
