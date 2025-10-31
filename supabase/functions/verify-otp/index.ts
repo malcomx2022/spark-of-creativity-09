@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,13 +7,31 @@ const corsHeaders = {
 };
 
 /**
- * EPIC 1: Vérification des codes OTP via Twilio
- * Vérifie qu'un code OTP est correct pour un numéro de téléphone
+ * Normalise un numéro de téléphone pour créer un email temporaire
+ * +22890123456 -> 22890123456@temp.sparkofcreativity.app
+ */
+function generateTempEmail(phoneNumber: string): string {
+  const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+  return `${cleanPhone}@temp.sparkofcreativity.app`;
+}
+
+/**
+ * EPIC 1: Vérification des codes OTP via Twilio avec authentification automatique
+ * 
+ * Fonctionnalités:
+ * - Vérifie le code OTP avec Twilio Verify
+ * - Crée automatiquement un utilisateur Supabase si nouveau
+ * - Génère une session de connexion
+ * - Enregistre les tentatives dans admin_audit_logs
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
     const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
@@ -27,25 +46,22 @@ serve(async (req) => {
 
     if (!phoneNumber || !code) {
       return new Response(
-        JSON.stringify({ error: 'Phone number and code are required' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Phone number and code are required' 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validate phone number format (E.164)
-    const phoneRegex = /^\+[1-9]\d{1,14}$/;
-    if (!phoneRegex.test(phoneNumber)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid phone number format. Use E.164 format (e.g., +22890123456)' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Validate code format (6 digits)
+    // Validate code format (exactly 6 digits)
     const codeRegex = /^\d{6}$/;
     if (!codeRegex.test(code)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid code format. Must be 6 digits' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Invalid code format. Must be exactly 6 digits' 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -67,40 +83,249 @@ serve(async (req) => {
       }),
     });
 
+    const responseData = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Twilio verification error:', errorData);
-      throw new Error(`Twilio API error: ${response.status} - ${errorData}`);
-    }
+      console.error('Twilio verification error:', responseData);
+      
+      // Log failed verification attempt
+      await supabase.from('admin_audit_logs').insert({
+        admin_id: '00000000-0000-0000-0000-000000000000',
+        action: 'otp_verification_failed',
+        entity_type: 'auth',
+        entity_id: phoneNumber,
+        details: {
+          phone: phoneNumber,
+          error: responseData.message,
+        },
+      });
 
-    const data = await response.json();
-
-    if (data.status === 'approved') {
       return new Response(
-        JSON.stringify({
-          success: true,
-          verified: true,
-          status: data.status,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else {
-      return new Response(
-        JSON.stringify({
+        JSON.stringify({ 
           success: false,
-          verified: false,
-          status: data.status,
-          error: 'Invalid or expired code',
+          error: 'Invalid or expired OTP',
+          details: responseData.message
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Check if OTP was approved
+    if (responseData.status !== 'approved') {
+      // Log invalid OTP attempt
+      await supabase.from('admin_audit_logs').insert({
+        admin_id: '00000000-0000-0000-0000-000000000000',
+        action: 'otp_verification_rejected',
+        entity_type: 'auth',
+        entity_id: phoneNumber,
+        details: {
+          phone: phoneNumber,
+          status: responseData.status,
+        },
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid or expired OTP',
+          status: responseData.status,
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('OTP verified successfully, checking for existing user...');
+
+    // Generate temporary email from phone number
+    const tempEmail = generateTempEmail(phoneNumber);
+
+    // Check if user exists with this phone number
+    const { data: existingProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, phone')
+      .eq('phone', phoneNumber)
+      .maybeSingle();
+
+    let user;
+    let session;
+    let isNewUser = false;
+
+    if (existingProfile) {
+      console.log('Existing user found:', existingProfile.id);
+
+      // Get the user from auth
+      const { data: { user: authUser }, error: getUserError } = await supabase.auth.admin.getUserById(
+        existingProfile.id
+      );
+
+      if (getUserError || !authUser) {
+        console.error('Error fetching user:', getUserError);
+        throw new Error('User profile exists but auth user not found');
+      }
+
+      user = authUser;
+
+      // Generate a sign-in link (magic link)
+      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email: authUser.email || tempEmail,
+      });
+
+      if (linkError) {
+        console.error('Error generating link:', linkError);
+        throw linkError;
+      }
+
+      // Extract the token from the generated link
+      const urlParams = new URL(linkData.properties.action_link).searchParams;
+      const token = urlParams.get('token');
+      const tokenHash = urlParams.get('token_hash');
+
+      if (!token || !tokenHash) {
+        throw new Error('Failed to extract token from magic link');
+      }
+
+      // Verify the token to create a session
+      const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: 'magiclink',
+      });
+
+      if (sessionError) {
+        console.error('Error verifying OTP:', sessionError);
+        throw sessionError;
+      }
+
+      session = sessionData.session;
+
+    } else {
+      console.log('New user, creating account...');
+      isNewUser = true;
+
+      // Create new user with temporary email
+      const { data: newUserData, error: createError } = await supabase.auth.admin.createUser({
+        email: tempEmail,
+        email_confirm: true,
+        phone: phoneNumber,
+        phone_confirm: true,
+        user_metadata: {
+          phone: phoneNumber,
+          phone_verified: true,
+        },
+      });
+
+      if (createError) {
+        console.error('Error creating user:', createError);
+        throw createError;
+      }
+
+      user = newUserData.user;
+
+      // Create profile
+      const { error: profileInsertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          phone: phoneNumber,
+          full_name: phoneNumber, // Default to phone number
+        });
+
+      if (profileInsertError) {
+        console.error('Error creating profile:', profileInsertError);
+        // Continue anyway as the user was created in auth
+      }
+
+      // Generate session for new user
+      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email: tempEmail,
+      });
+
+      if (linkError) {
+        console.error('Error generating link for new user:', linkError);
+        throw linkError;
+      }
+
+      // Extract token and create session
+      const urlParams = new URL(linkData.properties.action_link).searchParams;
+      const token = urlParams.get('token');
+      const tokenHash = urlParams.get('token_hash');
+
+      if (!token || !tokenHash) {
+        throw new Error('Failed to extract token from magic link');
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: 'magiclink',
+      });
+
+      if (sessionError) {
+        console.error('Error creating session:', sessionError);
+        throw sessionError;
+      }
+
+      session = sessionData.session;
+    }
+
+    // Log successful verification and authentication
+    await supabase.from('admin_audit_logs').insert({
+      admin_id: user.id,
+      action: isNewUser ? 'otp_signup_success' : 'otp_login_success',
+      entity_type: 'auth',
+      entity_id: user.id,
+      details: {
+        phone: phoneNumber,
+        is_new_user: isNewUser,
+      },
+    });
+
+    console.log('Authentication successful for user:', user.id);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        verified: true,
+        is_new_user: isNewUser,
+        session: {
+          access_token: session?.access_token,
+          refresh_token: session?.refresh_token,
+          expires_at: session?.expires_at,
+          expires_in: session?.expires_in,
+        },
+        user: {
+          id: user.id,
+          phone: phoneNumber,
+          email: user.email,
+        },
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
   } catch (error) {
     console.error('Error in verify-otp:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Log error
+    try {
+      await supabase.from('admin_audit_logs').insert({
+        admin_id: '00000000-0000-0000-0000-000000000000',
+        action: 'otp_verification_error',
+        entity_type: 'auth',
+        entity_id: 'unknown',
+        details: {
+          error: errorMessage,
+        },
+      });
+    } catch (logError) {
+      console.error('Failed to log error:', logError);
+    }
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ 
+        success: false,
+        error: errorMessage 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
