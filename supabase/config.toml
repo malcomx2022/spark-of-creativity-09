@@ -8,3 +8,33 @@ verify_jwt = false
 
 [functions.admin-management]
 verify_jwt = true
+
+[functions.send-otp]
+verify_jwt = false
+
+[functions.verify-otp]
+verify_jwt = false
+
+[functions.upload-to-wasabi]
+verify_jwt = true
+
+[functions.get-presigned-url]
+verify_jwt = true
+
+[functions.create-payout-batch]
+verify_jwt = true
+
+[functions.apply-ledger-entries]
+verify_jwt = true
+
+[functions.process-refund]
+verify_jwt = true
+
+[functions.reconcile-fedapay]
+verify_jwt = true
+
+[functions.manage-momo-wallet]
+verify_jwt = true
+
+[functions.create-test-users]
+verify_jwt = false
