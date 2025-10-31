@@ -41,8 +41,8 @@ export default function PatientDashboard() {
     try {
       await createAppointment.mutateAsync(data);
       toast({
-        title: 'Demande envoyée',
-        description: 'Votre demande de rendez-vous a été envoyée avec succès.'
+        title: 'Rendez-vous créé',
+        description: 'Votre rendez-vous a été créé. Veuillez procéder au paiement pour le confirmer.'
       });
     } catch (error) {
       console.error('Erreur lors de la création du rendez-vous', error);
@@ -51,6 +51,7 @@ export default function PatientDashboard() {
         description: 'Impossible de créer le rendez-vous pour le moment.',
         variant: 'destructive'
       });
+      throw error; // Propager l'erreur pour arrêter le processus
     }
   };
 

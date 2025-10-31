@@ -46,7 +46,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
     }
   });
 
-  const handleSubmit = (data: FormValues) => {
+  const handleSubmit = async (data: FormValues) => {
     const appointmentPayload = {
       specialty: data.specialty,
       date: data.date.toISOString(),
@@ -54,17 +54,24 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       reason: data.reason,
       urgencyLevel: data.urgencyLevel
     };
-    setAppointmentData(appointmentPayload);
-    setOpen(false);
-    setPaymentDialogOpen(true);
+    
+    // Créer le rendez-vous immédiatement
+    try {
+      await onSubmit(appointmentPayload);
+      setAppointmentData(appointmentPayload);
+      setOpen(false);
+      // Ouvrir le dialogue de paiement après la création
+      setPaymentDialogOpen(true);
+      form.reset();
+    } catch (error) {
+      console.error('Erreur lors de la création du rendez-vous', error);
+    }
   };
 
   const handlePaymentSuccess = () => {
-    if (appointmentData) {
-      onSubmit(appointmentData);
-      form.reset();
-      setAppointmentData(null);
-    }
+    // Le rendez-vous existe déjà, le paiement le confirmera
+    setAppointmentData(null);
+    setPaymentDialogOpen(false);
   };
 
   const specialties = [
