@@ -794,6 +794,36 @@ export type Database = {
         }
         Relationships: []
       }
+      otp_attempts: {
+        Row: {
+          channel: string
+          created_at: string
+          error_message: string | null
+          id: string
+          phone_number: string
+          status: string
+          twilio_sid: string | null
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          phone_number: string
+          status: string
+          twilio_sid?: string | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          phone_number?: string
+          status?: string
+          twilio_sid?: string | null
+        }
+        Relationships: []
+      }
       payment_events: {
         Row: {
           created_at: string | null
