@@ -1,8 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { parseFedaPayResponse, validatePaymentRequest } from "./utils.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { parseFedaPayResponse } from "./utils.ts";
 import { calculateFees, parseFeeConfig, calculateHoldUntil } from "./fee-calculator.ts";
 import { normalizeStatus } from "./payment-status.ts";
+
+// Validation schema avec Zod
+const PaymentRequestSchema = z.object({
+  appointmentId: z.string().uuid({ message: "Invalid appointment ID format" }),
+  amount: z.number()
+    .min(100, { message: "Amount must be at least 100 XOF" })
+    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" }),
+  paymentMethod: z.enum(['mtn', 'orange', 'moov'], { 
+    errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
+  }),
+  phoneNumber: z.string()
+    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" })
+});
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,32 +68,54 @@ serve(async (req) => {
       );
     }
 
-    const validation = validatePaymentRequest({
-      appointmentId: (payload as Record<string, unknown>).appointmentId,
-      amount: (payload as Record<string, unknown>).amount,
-      paymentMethod: (payload as Record<string, unknown>).paymentMethod,
-      phoneNumber: (payload as Record<string, unknown>).phoneNumber,
-    });
-
-    if (!validation.success || !validation.data) {
-      console.warn('Validation errors:', validation.errors);
+    // Validation Zod stricte
+    const validationResult = PaymentRequestSchema.safeParse(payload);
+    
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map(err => ({
+        field: err.path.join('.'),
+        message: err.message
+      }));
+      console.warn('Zod validation errors:', errors);
       return new Response(
-        JSON.stringify({ error: 'Validation failed', details: validation.errors }),
+        JSON.stringify({ error: 'Validation failed', details: errors }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { appointmentId, amount, paymentMethod, phoneNumber } = validation.data;
+    const { appointmentId, amount, paymentMethod, phoneNumber } = validationResult.data;
+
+    // Vérifier que l'appointment existe et appartient à l'utilisateur
+    const { data: appointment, error: appointmentError } = await supabase
+      .from('appointments')
+      .select('id, patient_id, status')
+      .eq('id', appointmentId)
+      .single();
+
+    if (appointmentError || !appointment) {
+      console.error('Appointment not found:', appointmentError);
+      return new Response(
+        JSON.stringify({ error: 'Appointment not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (appointment.patient_id !== user.id) {
+      console.error('Appointment does not belong to user');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Appointment does not belong to you' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Générer une clé d'idempotence
     const idempotencyKey = `${user.id}-${appointmentId}-${Date.now()}`;
 
-    // Vérifier si un paiement avec cette clé existe déjà
+    // Vérifier si l'appointment a déjà été payé
     const { data: existingPayment } = await supabase
       .from('payments')
       .select('*')
       .eq('appointment_id', appointmentId)
-      .eq('patient_id', user.id)
       .in('status', ['pending', 'paid', 'initiated'])
       .maybeSingle();
 
@@ -91,6 +127,7 @@ serve(async (req) => {
           transactionId: existingPayment.fedapay_transaction_id,
           paymentUrl: existingPayment.fedapay_payment_url,
           status: existingPayment.status,
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
           message: 'Payment already initiated'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -115,37 +152,78 @@ serve(async (req) => {
       );
     }
 
-    // Create FedaPay transaction
-    let fedapayResponse: Response;
-    try {
-      fedapayResponse = await fetch('https://api.fedapay.com/v1/transactions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${fedapaySecretKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          description: `Paiement rendez-vous médical #${appointmentId}`,
-          amount: amount,
-          currency: {
-            iso: 'XOF'
+    // Create FedaPay transaction avec retry et timeout
+    let fedapayResponse: Response | null = null;
+    let lastError: Error | null = null;
+    const maxRetries = 3;
+    const timeoutMs = 10000;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`FedaPay attempt ${attempt}/${maxRetries}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        
+        fedapayResponse = await fetch('https://api.fedapay.com/v1/transactions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${fedapaySecretKey}`,
+            'Content-Type': 'application/json',
           },
-          callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-          customer: {
-            firstname: 'Patient',
-            lastname: 'User',
-            phone_number: {
-              number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
-              country: 'bj'
+          body: JSON.stringify({
+            description: `Paiement rendez-vous médical #${appointmentId}`,
+            amount: amount,
+            currency: {
+              iso: 'XOF'
+            },
+            callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+            customer: {
+              firstname: 'Patient',
+              lastname: 'User',
+              phone_number: {
+                number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
+                country: 'bj'
+              }
+            },
+            mode: selectedMode,
+            metadata: {
+              user_id: user.id,
+              appointment_id: appointmentId,
+              practitioner_id: appointment.patient_id,
+              timestamp: new Date().toISOString(),
+              source: 'spark_of_creativity'
             }
-          },
-          mode: selectedMode
-        })
-      });
-    } catch (networkError) {
-      console.error('Network error while contacting FedaPay:', networkError);
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        break; // Success, exit retry loop
+        
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`FedaPay attempt ${attempt} failed:`, error);
+        
+        if (attempt === maxRetries) {
+          console.error('All FedaPay retry attempts failed');
+          return new Response(
+            JSON.stringify({ 
+              error: 'Unable to reach payment provider after multiple attempts',
+              details: lastError.message
+            }),
+            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+
+    if (!fedapayResponse) {
       return new Response(
-        JSON.stringify({ error: 'Unable to reach FedaPay at the moment' }),
+        JSON.stringify({ error: 'Failed to create payment transaction' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -252,13 +330,27 @@ serve(async (req) => {
         }
       });
 
+    // Envoyer notification au patient
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: user.id,
+        title: 'Paiement initialisé',
+        message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Veuillez compléter le paiement.`,
+        type: 'payment',
+        link: transactionData.url
+      });
+
+    // Calculer l'expiration (30 minutes)
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
     return new Response(
       JSON.stringify({
         paymentId: payment.id,
         transactionId: transactionData.id,
         paymentUrl: transactionData.url,
         status: transactionData.status,
-        idempotencyKey: idempotencyKey
+        expiresAt: expiresAt
       }),
       {
         status: 200,

@@ -42,6 +42,229 @@ async function verifyWebhookSignature(
   }
 }
 
+/**
+ * Gère les événements de transaction (paiements)
+ */
+async function handleTransactionEvent(
+  supabase: any,
+  supabaseUrl: string,
+  supabaseKey: string,
+  transactionId: string,
+  status: string,
+  eventType: string
+) {
+  // Map FedaPay status to normalized status
+  const statusMap: Record<string, string> = {
+    'pending': 'pending',
+    'approved': 'paid',
+    'declined': 'failed',
+    'canceled': 'canceled',
+    'refunded': 'refunded',
+  };
+  
+  const paymentStatus = statusMap[status] || 'pending';
+
+  // Récupérer la config pour calculer la date de hold
+  const { data: configData } = await supabase
+    .from('system_config')
+    .select('key, value')
+    .in('key', ['payment_hold_period_days']);
+  
+  const config: Record<string, any> = {};
+  configData?.forEach((row: { key: string; value: any }) => {
+    config[row.key] = row.value;
+  });
+  
+  const holdPeriodDays = config.payment_hold_period_days?.days || 2;
+  const holdUntil = new Date();
+  holdUntil.setDate(holdUntil.getDate() + holdPeriodDays);
+
+  // Mettre à jour le statut du paiement et la date de hold
+  const updateData: any = { 
+    status: paymentStatus,
+    updated_at: new Date().toISOString(),
+  };
+  
+  // Si le paiement est complété, définir le hold et le statut de payout
+  if (paymentStatus === 'paid') {
+    updateData.hold_until = holdUntil.toISOString();
+    updateData.payout_status = 'held';
+  } else if (['failed', 'canceled'].includes(paymentStatus)) {
+    updateData.payout_status = 'failed';
+  }
+
+  const { error: updateError } = await supabase
+    .from('payments')
+    .update(updateData)
+    .eq('fedapay_transaction_id', transactionId.toString());
+
+  if (updateError) {
+    console.error('Database update error:', updateError);
+    throw updateError;
+  }
+
+  console.log(`Payment ${transactionId} updated to status: ${paymentStatus}`);
+
+  // Récupérer le paiement pour émettre les événements et notifications
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, patient_id, appointment_id, amount')
+    .eq('fedapay_transaction_id', transactionId.toString())
+    .single();
+
+  if (payment) {
+    // Émettre événement selon le statut
+    const paymentEventType = paymentStatus === 'paid' 
+      ? 'payment.intent.succeeded' 
+      : paymentStatus === 'failed' 
+      ? 'payment.intent.failed'
+      : 'payment.intent.updated';
+
+    await supabase
+      .from('payment_events')
+      .insert({
+        payment_id: payment.id,
+        event_type: paymentEventType,
+        event_data: {
+          status: paymentStatus,
+          fedapay_status: status,
+          transaction_id: transactionId
+        }
+      });
+
+    // Mettre à jour le statut de l'appointment
+    if (paymentStatus === 'paid') {
+      await supabase
+        .from('appointments')
+        .update({ status: 'confirmed' })
+        .eq('id', payment.appointment_id);
+    } else if (['failed', 'canceled'].includes(paymentStatus)) {
+      await supabase
+        .from('appointments')
+        .update({ status: 'canceled' })
+        .eq('id', payment.appointment_id);
+    }
+
+    // Envoyer notifications
+    const notificationMessages = {
+      'paid': `Votre paiement de ${payment.amount} XOF a été confirmé avec succès !`,
+      'failed': `Le paiement de ${payment.amount} XOF a échoué. Veuillez réessayer.`,
+      'canceled': `Le paiement de ${payment.amount} XOF a été annulé.`,
+      'refunded': `Votre paiement de ${payment.amount} XOF a été remboursé.`
+    };
+
+    if (notificationMessages[paymentStatus as keyof typeof notificationMessages]) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: payment.patient_id,
+          title: `Paiement ${paymentStatus === 'paid' ? 'confirmé' : 'mis à jour'}`,
+          message: notificationMessages[paymentStatus as keyof typeof notificationMessages],
+          type: 'payment'
+        });
+    }
+
+    // Audit log
+    await supabase
+      .from('admin_audit_logs')
+      .insert({
+        admin_id: payment.patient_id,
+        action: `payment.${paymentStatus}`,
+        entity_type: 'payment',
+        entity_id: payment.id,
+        details: {
+          transaction_id: transactionId,
+          amount: payment.amount,
+          status: paymentStatus,
+          event_type: eventType
+        }
+      });
+
+    // Apply ledger entries for paid payment
+    if (paymentStatus === 'paid') {
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/apply-ledger-entries`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            paymentId: payment.id,
+            status: 'paid'
+          })
+        });
+      } catch (ledgerError) {
+        console.error('Error applying ledger entries:', ledgerError);
+      }
+    }
+  }
+}
+
+/**
+ * Gère les événements de transfer (reversements)
+ */
+async function handleTransferEvent(
+  supabase: any,
+  transferId: string,
+  status: string,
+  eventType: string
+) {
+  console.log(`Processing transfer event: ${eventType}, status: ${status}`);
+
+  const transferStatus = status === 'approved' ? 'paid' : status === 'declined' ? 'failed' : status;
+
+  // Mettre à jour le payout
+  const { data: payout, error: payoutError } = await supabase
+    .from('practitioner_payouts')
+    .update({ 
+      status: transferStatus,
+      processed_at: status === 'approved' ? new Date().toISOString() : null
+    })
+    .eq('id', transferId)
+    .select('practitioner_id, amount')
+    .single();
+
+  if (payoutError) {
+    console.error('Error updating payout:', payoutError);
+    return;
+  }
+
+  if (payout) {
+    // Envoyer notification au praticien
+    const notificationMessages = {
+      'approved': `Votre reversement de ${payout.amount} XOF a été effectué avec succès !`,
+      'declined': `Le reversement de ${payout.amount} XOF a échoué. Contactez le support.`
+    };
+
+    if (notificationMessages[status as keyof typeof notificationMessages]) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: payout.practitioner_id,
+          title: `Reversement ${status === 'approved' ? 'effectué' : 'échoué'}`,
+          message: notificationMessages[status as keyof typeof notificationMessages],
+          type: 'payout'
+        });
+    }
+
+    // Audit log
+    await supabase
+      .from('admin_audit_logs')
+      .insert({
+        admin_id: payout.practitioner_id,
+        action: `transfer.${transferStatus}`,
+        entity_type: 'payout',
+        entity_id: transferId,
+        details: {
+          amount: payout.amount,
+          status: transferStatus,
+          event_type: eventType
+        }
+      });
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -115,115 +338,31 @@ serve(async (req) => {
         });
     }
 
+    const eventType = webhookData.type;
+    const entityType = eventType?.includes('transfer') ? 'transfer' : 'transaction';
     const transactionId = webhookData.entity?.id;
     const status = webhookData.entity?.status;
 
     if (!transactionId) {
-      console.error('No transaction ID in webhook');
+      console.error('No transaction/transfer ID in webhook');
       return new Response(
-        JSON.stringify({ error: 'No transaction ID' }),
+        JSON.stringify({ error: 'No entity ID' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Map FedaPay status to normalized status
-    const statusMap: Record<string, string> = {
-      'pending': 'pending',
-      'approved': 'paid',
-      'declined': 'failed',
-      'canceled': 'canceled',
-      'refunded': 'refunded',
-    };
-    
-    const paymentStatus = statusMap[status] || 'pending';
+    console.log(`Processing ${entityType} event: ${eventType}, status: ${status}`);
 
-    // Récupérer la config pour calculer la date de hold
-    const { data: configData } = await supabase
-      .from('system_config')
-      .select('key, value')
-      .in('key', ['payment_hold_period_days']);
+    // Gestion des événements de transaction (paiements)
+    if (entityType === 'transaction') {
+      await handleTransactionEvent(supabase, supabaseUrl, supabaseKey, transactionId, status, eventType);
+    }
     
-    const config: Record<string, any> = {};
-    configData?.forEach(row => {
-      config[row.key] = row.value;
-    });
-    
-    const holdPeriodDays = config.payment_hold_period_days?.days || 2;
-    const holdUntil = new Date();
-    holdUntil.setDate(holdUntil.getDate() + holdPeriodDays);
-
-    // Mettre à jour le statut du paiement et la date de hold
-    const updateData: any = { 
-      status: paymentStatus,
-      updated_at: new Date().toISOString(),
-    };
-    
-    // Si le paiement est complété, définir le hold et le statut de payout
-    if (paymentStatus === 'paid') {
-      updateData.hold_until = holdUntil.toISOString();
-      updateData.payout_status = 'held';
-    } else if (['failed', 'canceled'].includes(paymentStatus)) {
-      updateData.payout_status = 'failed';
+    // Gestion des événements de transfer (reversements)
+    if (entityType === 'transfer') {
+      await handleTransferEvent(supabase, transactionId, status, eventType);
     }
 
-    const { error: updateError } = await supabase
-      .from('payments')
-      .update(updateData)
-      .eq('fedapay_transaction_id', transactionId.toString());
-
-    if (updateError) {
-      console.error('Database update error:', updateError);
-      throw updateError;
-    }
-
-    console.log(`Payment ${transactionId} updated to status: ${paymentStatus}, hold until: ${holdUntil}`);
-
-    // Récupérer le paiement pour émettre les événements
-    const { data: payment } = await supabase
-      .from('payments')
-      .select('id')
-      .eq('fedapay_transaction_id', transactionId.toString())
-      .single();
-
-    if (payment) {
-      // Émettre événement selon le statut
-      const eventType = paymentStatus === 'paid' 
-        ? 'payment.intent.succeeded' 
-        : paymentStatus === 'failed' 
-        ? 'payment.intent.failed'
-        : 'payment.intent.updated';
-
-      await supabase
-        .from('payment_events')
-        .insert({
-          payment_id: payment.id,
-          event_type: eventType,
-          event_data: {
-            status: paymentStatus,
-            fedapay_status: status,
-            transaction_id: transactionId
-          }
-        });
-
-      // Apply ledger entries for paid payment
-      if (paymentStatus === 'paid') {
-        try {
-          await fetch(`${supabaseUrl}/functions/v1/apply-ledger-entries`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              paymentId: payment.id,
-              status: 'paid'
-            })
-          });
-        } catch (ledgerError) {
-          console.error('Error applying ledger entries:', ledgerError);
-        }
-      }
-    }
 
     return new Response(
       JSON.stringify({ success: true }),

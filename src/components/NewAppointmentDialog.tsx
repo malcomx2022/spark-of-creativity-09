@@ -19,7 +19,7 @@ import { PaymentDialog } from '@/components/PaymentDialog';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
-  date: z.date({ required_error: 'Veuillez sélectionner une date' }),
+  date: z.date({ message: 'Veuillez sélectionner une date' }),
   time: z.string().min(1, 'Veuillez sélectionner une heure'),
   reason: z.string().min(10, 'Veuillez décrire la raison (minimum 10 caractères)').max(500),
   urgencyLevel: z.string().optional()
