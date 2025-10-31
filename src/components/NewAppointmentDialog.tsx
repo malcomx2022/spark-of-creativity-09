@@ -261,12 +261,15 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                   <FormLabel>Motif de la consultation</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Décrivez brièvement la raison de votre demande..."
+                      placeholder="Décrivez brièvement la raison de votre demande... (minimum 10 caractères)"
                       className="min-h-[100px]"
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <div className="text-xs text-muted-foreground">
+                    {field.value?.length || 0} / 10 caractères minimum
+                  </div>
+                  <FormMessage className="text-destructive font-medium" />
                 </FormItem>
               )}
             />
