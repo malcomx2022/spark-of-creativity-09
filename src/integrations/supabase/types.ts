@@ -800,27 +800,33 @@ export type Database = {
           created_at: string
           error_message: string | null
           id: string
+          ip_address: unknown
           phone_number: string
           status: string
           twilio_sid: string | null
+          user_agent: string | null
         }
         Insert: {
           channel?: string
           created_at?: string
           error_message?: string | null
           id?: string
+          ip_address?: unknown
           phone_number: string
           status: string
           twilio_sid?: string | null
+          user_agent?: string | null
         }
         Update: {
           channel?: string
           created_at?: string
           error_message?: string | null
           id?: string
+          ip_address?: unknown
           phone_number?: string
           status?: string
           twilio_sid?: string | null
+          user_agent?: string | null
         }
         Relationships: []
       }
@@ -1697,6 +1703,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_otp_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
       has_role: {
         Args: {

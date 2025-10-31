@@ -1,80 +1,135 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ArrowLeft, Phone, Mail } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
-import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import Header from '@/components/Header';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { useOTPAuth } from '@/hooks/useOTPAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
+
+type OTPChannel = 'sms' | 'whatsapp' | 'call';
 
 export default function LoginWithOTP() {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [email, setEmail] = useState("");
-  const [activeTab, setActiveTab] = useState<"email" | "sms">("email");
+  const { sendOTP, verifyOTP, sendingOTP, verifyingOTP, phoneStored } = useOTPAuth();
+  
+  const [step, setStep] = useState<'phone' | 'code'>('phone');
+  const [phoneNumber, setPhoneNumber] = useState(phoneStored || '');
+  const [code, setCode] = useState('');
+  const [channel, setChannel] = useState<OTPChannel>('sms');
+  const [countdown, setCountdown] = useState(0);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Vérifier si l'utilisateur est déjà connecté
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/');
+      }
+    };
+    checkSession();
+  }, [navigate]);
+
+  // Countdown pour le renvoi du code
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // Format du numéro de téléphone pour l'affichage
+  const formatPhoneDisplay = (value: string) => {
+    // Remove all non-numeric characters
+    const numbers = value.replace(/\D/g, '');
+    
+    // Add + if not present and has digits
+    if (numbers && !value.startsWith('+')) {
+      return '+' + numbers;
+    }
+    return value;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneDisplay(e.target.value);
+    setPhoneNumber(formatted);
+  };
+
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    
+    if (!phoneNumber || phoneNumber.length < 8) {
+      return;
+    }
 
     try {
-      if (activeTab === "sms") {
-        // Format phone number to E.164 format (add +33 for France if not present)
-        let formattedPhone = phoneNumber.trim();
-        if (!formattedPhone.startsWith('+')) {
-          formattedPhone = '+33' + formattedPhone.replace(/^0/, '');
-        }
-
-        const { error } = await supabase.auth.signInWithOtp({
-          phone: formattedPhone,
-        });
-
-        if (error) throw error;
-
-        toast({
-          title: "Code envoyé !",
-          description: "Vérifiez vos SMS pour le code de vérification.",
-        });
-        navigate("/verify-otp", { state: { phone: formattedPhone, type: "sms" } });
-      } else {
-        // Email OTP
-        const { error } = await supabase.auth.signInWithOtp({
-          email: email.trim(),
-          options: {
-            emailRedirectTo: window.location.origin,
-          },
-        });
-
-        if (error) throw error;
-
-        toast({
-          title: "Code envoyé !",
-          description: "Vérifiez votre email pour le code de vérification.",
-        });
-        navigate("/verify-otp", { state: { email: email.trim(), type: "email" } });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erreur lors de l'envoi du code",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
+      await sendOTP(phoneNumber, channel);
+      setStep('code');
+      setCountdown(60); // 60 seconds countdown
+    } catch (error) {
+      console.error('Error sending OTP:', error);
     }
+  };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (code.length !== 6) {
+      return;
+    }
+
+    try {
+      await verifyOTP(phoneNumber, code);
+      
+      // Rediriger vers le dashboard approprié
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Vérifier le type d'utilisateur pour rediriger vers le bon dashboard
+        const { data: practitioner } = await supabase
+          .from('practitioners')
+          .select('practitioner_type')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (practitioner?.practitioner_type === 'coach_sportif') {
+          navigate('/coach-dashboard');
+        } else if (practitioner) {
+          navigate('/practitioner-dashboard');
+        } else {
+          navigate('/patient-dashboard');
+        }
+      } else {
+        navigate('/');
+      }
+    } catch (error) {
+      console.error('Error verifying OTP:', error);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (countdown > 0) return;
+    
+    try {
+      await sendOTP(phoneNumber, channel);
+      setCountdown(60);
+    } catch (error) {
+      console.error('Error resending OTP:', error);
+    }
+  };
+
+  const handleBackToPhone = () => {
+    setStep('phone');
+    setCode('');
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10">
       <Header />
-
       <main className="pt-24 pb-12">
-        <div className="container mx-auto px-4 max-w-md">
+        <div className="container max-w-md mx-auto px-4">
           <div className="mb-6">
             <Button
               variant="ghost"
@@ -88,82 +143,174 @@ export default function LoginWithOTP() {
 
           <Card className="shadow-medical">
             <CardHeader className="text-center">
-              <CardTitle className="text-2xl font-bold">Connexion avec code OTP</CardTitle>
+              <CardTitle className="text-2xl font-bold">Connexion par SMS</CardTitle>
               <CardDescription>
-                Choisissez votre méthode de réception du code
+                {step === 'phone' 
+                  ? "Entrez votre numéro de téléphone pour recevoir un code de vérification"
+                  : "Entrez le code à 6 chiffres envoyé par SMS"}
               </CardDescription>
             </CardHeader>
-
             <CardContent>
-              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "email" | "sms")} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-6">
-                  <TabsTrigger value="email" className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Email
-                  </TabsTrigger>
-                  <TabsTrigger value="sms" className="flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    SMS
-                  </TabsTrigger>
-                </TabsList>
+              {step === 'phone' ? (
+                <form onSubmit={handleSendOTP} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Numéro de téléphone</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+229 XX XX XX XX"
+                      value={phoneNumber}
+                      onChange={handlePhoneChange}
+                      required
+                      autoFocus
+                      autoComplete="tel"
+                      aria-label="Numéro de téléphone au format international"
+                      disabled={sendingOTP}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Format international (ex: +229 90 12 34 56)
+                    </p>
+                  </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <TabsContent value="email" className="space-y-4 mt-0">
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Adresse email *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="votre@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required={activeTab === "email"}
-                      />
+                  <div className="space-y-2">
+                    <Label>Canal d'envoi</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={channel === 'sms' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => setChannel('sms')}
+                        disabled={sendingOTP}
+                        aria-label="Envoyer par SMS"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        SMS
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={channel === 'whatsapp' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => setChannel('whatsapp')}
+                        disabled={sendingOTP}
+                        aria-label="Envoyer par WhatsApp"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        WhatsApp
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={channel === 'call' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => setChannel('call')}
+                        disabled={sendingOTP}
+                        aria-label="Recevoir par appel vocal"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        Appel
+                      </Button>
                     </div>
-                  </TabsContent>
-
-                  <TabsContent value="sms" className="space-y-4 mt-0">
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Numéro de téléphone *</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        placeholder="06 12 34 56 78"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        required={activeTab === "sms"}
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        Format: 06 12 34 56 78 ou +33612345678
-                      </p>
-                    </div>
-                  </TabsContent>
+                  </div>
 
                   <Button
                     type="submit"
                     variant="patient"
                     size="xl"
                     className="w-full"
-                    disabled={isSubmitting}
+                    disabled={sendingOTP || !phoneNumber || phoneNumber.length < 8}
                   >
-                    {isSubmitting ? "Envoi en cours..." : "Recevoir le code"}
+                    {sendingOTP ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      'Envoyer le code'
+                    )}
                   </Button>
-                </form>
 
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Problème avec l'envoi du code ?
-                  </p>
+                  <div className="text-center">
+                    <Link
+                      to="/login"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Se connecter avec email/mot de passe
+                    </Link>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOTP} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="code">Code de vérification</Label>
+                    <Input
+                      id="code"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]{6}"
+                      placeholder="000000"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      maxLength={6}
+                      required
+                      autoFocus
+                      autoComplete="one-time-code"
+                      aria-label="Code de vérification à 6 chiffres"
+                      disabled={verifyingOTP}
+                      className="text-center text-2xl tracking-widest"
+                    />
+                    <p className="text-xs text-muted-foreground text-center">
+                      Code envoyé au {phoneNumber}
+                    </p>
+                  </div>
+
                   <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate("/login-email")}
+                    type="submit"
+                    variant="patient"
+                    size="xl"
                     className="w-full"
+                    disabled={verifyingOTP || code.length !== 6}
                   >
-                    Se connecter avec mot de passe
+                    {verifyingOTP ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Vérification...
+                      </>
+                    ) : (
+                      'Vérifier le code'
+                    )}
                   </Button>
-                </div>
-              </Tabs>
+
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full"
+                      onClick={handleResendOTP}
+                      disabled={countdown > 0 || sendingOTP}
+                    >
+                      {countdown > 0 ? (
+                        `Renvoyer le code dans ${countdown}s`
+                      ) : sendingOTP ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Envoi...
+                        </>
+                      ) : (
+                        'Renvoyer le code'
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleBackToPhone}
+                      disabled={verifyingOTP || sendingOTP}
+                    >
+                      Modifier le numéro
+                    </Button>
+                  </div>
+                </form>
+              )}
             </CardContent>
           </Card>
         </div>
