@@ -133,18 +133,20 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       const createdAppointment = await onSubmit(appointmentPayload);
       console.log('✅ Rendez-vous créé avec succès', createdAppointment);
       
-      // Stocker l'ID du rendez-vous créé
+      // Stocker l'ID du rendez-vous créé et ouvrir le dialogue de paiement
       if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
-        setCreatedAppointmentId(createdAppointment.id as string);
+        const appointmentId = createdAppointment.id as string;
+        setCreatedAppointmentId(appointmentId);
+        setAppointmentData(appointmentPayload);
+        setOpen(false);
+        setIsSearchingPractitioner(false);
+        form.reset();
+        
+        // Ouvrir le dialogue de paiement avec l'ID valide
+        setPaymentDialogOpen(true);
+      } else {
+        throw new Error('L\'ID du rendez-vous n\'a pas été retourné');
       }
-      
-      setAppointmentData(appointmentPayload);
-      setOpen(false);
-      setIsSearchingPractitioner(false);
-      
-      // Ouvrir le dialogue de paiement après la création
-      setPaymentDialogOpen(true);
-      form.reset();
       
     } catch (error) {
       console.error('❌ Erreur:', error);

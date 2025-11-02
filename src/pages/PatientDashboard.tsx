@@ -50,6 +50,7 @@ export default function PatientDashboard() {
         title: 'Rendez-vous créé',
         description: 'Votre rendez-vous a été créé. Veuillez procéder au paiement pour le confirmer.'
       });
+      return result; // Retourner le rendez-vous créé avec son ID
     } catch (error) {
       console.error('❌ Erreur lors de la création du rendez-vous:', error);
       toast({
