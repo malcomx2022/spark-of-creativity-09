@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
           message: `Aucun praticien disponible trouvé pour la spécialité "${specialty}"`,
         }),
         { 
-          status: 404,
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
           message: `Aucun praticien trouvé dans un rayon de ${maxRadius} km`,
         }),
         { 
-          status: 404,
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
         nearbyCount: nearbyPractitioners.length,
       }),
       { 
-        status: 404,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );

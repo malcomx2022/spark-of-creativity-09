@@ -105,9 +105,13 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       }
 
       if (!practitionerData?.success || !practitionerData?.practitioner) {
-        throw new Error(
-          practitionerData?.message || 'Aucun praticien disponible trouvé dans votre zone'
-        );
+        setIsSearchingPractitioner(false);
+        toast({
+          title: 'Aucun praticien disponible',
+          description: practitionerData?.message || 'Veuillez choisir une autre date ou heure',
+          variant: 'destructive',
+        });
+        return;
       }
 
       const practitioner = practitionerData.practitioner;
