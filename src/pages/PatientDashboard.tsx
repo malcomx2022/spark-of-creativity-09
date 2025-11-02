@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
@@ -19,8 +20,11 @@ import { ReviewsSection } from '@/components/dashboard/ReviewsSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
+import { PaymentDialog } from '@/components/PaymentDialog';
 
 export default function PatientDashboard() {
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const patientId = user?.id;
   const patientName =
@@ -60,6 +64,18 @@ export default function PatientDashboard() {
       });
       throw error; // Propager l'erreur pour arrêter le processus
     }
+  };
+
+  const handlePaymentRequired = (appointmentId: string) => {
+    console.log('💳 Ouverture du dialogue de paiement pour:', appointmentId);
+    setAppointmentIdForPayment(appointmentId);
+    setPaymentDialogOpen(true);
+  };
+
+  const handlePaymentSuccess = () => {
+    console.log('✅ Paiement réussi');
+    setPaymentDialogOpen(false);
+    setAppointmentIdForPayment(null);
   };
 
   const handleCancel = async (id: string) => {
@@ -154,7 +170,10 @@ export default function PatientDashboard() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Mes rendez-vous</h2>
           {patientId && (
-            <NewAppointmentDialog onSubmit={handleNewAppointment} />
+            <NewAppointmentDialog 
+              onSubmit={handleNewAppointment}
+              onPaymentRequired={handlePaymentRequired}
+            />
           )}
         </div>
 
@@ -252,7 +271,12 @@ export default function PatientDashboard() {
                   <div className="text-center py-8">
                     <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
-                    {patientId && <NewAppointmentDialog onSubmit={handleNewAppointment} />}
+                    {patientId && (
+                      <NewAppointmentDialog 
+                        onSubmit={handleNewAppointment}
+                        onPaymentRequired={handlePaymentRequired}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -277,7 +301,12 @@ export default function PatientDashboard() {
           <TabsContent value="appointments" className="space-y-6">
             <div className="flex justify-between items-center">
               <h3 className="text-xl font-semibold">Mes rendez-vous</h3>
-              {patientId && <NewAppointmentDialog onSubmit={handleNewAppointment} />}
+              {patientId && (
+                <NewAppointmentDialog 
+                  onSubmit={handleNewAppointment}
+                  onPaymentRequired={handlePaymentRequired}
+                />
+              )}
             </div>
             
             <Tabs defaultValue="upcoming" className="space-y-4">
@@ -293,7 +322,10 @@ export default function PatientDashboard() {
                       <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
                       <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
                       {patientId && (
-                        <NewAppointmentDialog onSubmit={handleNewAppointment} />
+                        <NewAppointmentDialog 
+                          onSubmit={handleNewAppointment}
+                          onPaymentRequired={handlePaymentRequired}
+                        />
                       )}
                     </CardContent>
                   </Card>
@@ -373,6 +405,17 @@ export default function PatientDashboard() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Payment Dialog - géré au niveau du dashboard */}
+      {appointmentIdForPayment && (
+        <PaymentDialog
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
+          appointmentId={appointmentIdForPayment}
+          amount={10000}
+          onSuccess={handlePaymentSuccess}
+        />
+      )}
     </div>
   );
 }

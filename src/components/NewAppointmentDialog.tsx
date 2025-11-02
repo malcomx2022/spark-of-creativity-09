@@ -15,7 +15,6 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
-import { PaymentDialog } from '@/components/PaymentDialog';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useGeolocation } from '@/hooks/useGeolocation';
@@ -33,13 +32,11 @@ type FormValues = z.infer<typeof formSchema>;
 
 interface NewAppointmentDialogProps {
   onSubmit: (data: CreateAppointmentData) => Promise<any>;
+  onPaymentRequired: (appointmentId: string) => void;
 }
 
-export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
+export function NewAppointmentDialog({ onSubmit, onPaymentRequired }: NewAppointmentDialogProps) {
   const [open, setOpen] = useState(false);
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [appointmentData, setAppointmentData] = useState<CreateAppointmentData | null>(null);
-  const [createdAppointmentId, setCreatedAppointmentId] = useState<string | null>(null);
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
   
   const { position, requestPosition, loading: geoLoading } = useGeolocation();
@@ -137,17 +134,15 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       const createdAppointment = await onSubmit(appointmentPayload);
       console.log('✅ Rendez-vous créé avec succès', createdAppointment);
       
-      // Stocker l'ID du rendez-vous créé et ouvrir le dialogue de paiement
+      // Appeler onPaymentRequired avec l'ID du rendez-vous
       if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
         const appointmentId = createdAppointment.id as string;
-        setCreatedAppointmentId(appointmentId);
-        setAppointmentData(appointmentPayload);
         setOpen(false);
         setIsSearchingPractitioner(false);
         form.reset();
         
-        // Ouvrir le dialogue de paiement avec l'ID valide
-        setPaymentDialogOpen(true);
+        // Notifier le parent pour ouvrir le dialogue de paiement
+        onPaymentRequired(appointmentId);
       } else {
         throw new Error('L\'ID du rendez-vous n\'a pas été retourné');
       }
@@ -179,13 +174,6 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
     });
   };
 
-  const handlePaymentSuccess = () => {
-    // Le rendez-vous existe déjà, le paiement le confirmera
-    setAppointmentData(null);
-    setCreatedAppointmentId(null);
-    setPaymentDialogOpen(false);
-  };
-
   const specialties = [
     'Médecine Générale',
     'Coaching Sportif',
@@ -198,7 +186,6 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   ];
 
   return (
-    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="w-full sm:w-auto">
@@ -397,16 +384,5 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
         </Form>
       </DialogContent>
     </Dialog>
-
-    {appointmentData && createdAppointmentId && (
-      <PaymentDialog
-        open={paymentDialogOpen}
-        onOpenChange={setPaymentDialogOpen}
-        appointmentId={createdAppointmentId}
-        amount={10000}
-        onSuccess={handlePaymentSuccess}
-      />
-    )}
-    </>
   );
 }
