@@ -63,7 +63,7 @@ export default function PractitionerDashboard() {
     data: appointments = [],
     isLoading: isLoadingAppointments,
     isError,
-  } = usePractitionerAppointments(practitioner?.id);
+  } = usePractitionerAppointments(user?.id);
 
   const mutateAppointment = useMutateAppointment();
 
