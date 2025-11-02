@@ -4,20 +4,51 @@ import type { Tables, TablesInsert } from '@/integrations/supabase/types';
 
 export type Message = Tables<'messages'>;
 
-export function useMessages(userId?: string) {
+export function useMessages(userId?: string, userType?: 'patient' | 'practitioner') {
   return useQuery<Message[]>({
-    queryKey: ['messages', userId],
+    queryKey: ['messages', userId, userType],
     queryFn: async () => {
       if (!userId) return [];
       
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('sender_id', userId)
-        .order('created_at', { ascending: false });
+      if (userType === 'practitioner') {
+        // Pour le praticien: récupérer les messages des rendez-vous où il est le praticien
+        const { data: appointments } = await supabase
+          .from('appointments')
+          .select('id')
+          .eq('practitioner_id', userId);
+        
+        if (!appointments || appointments.length === 0) return [];
+        
+        const appointmentIds = appointments.map(apt => apt.id);
+        
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .in('appointment_id', appointmentIds)
+          .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data || [];
+        if (error) throw error;
+        return data || [];
+      } else {
+        // Pour le patient: récupérer les messages envoyés ou reçus via ses rendez-vous
+        const { data: appointments } = await supabase
+          .from('appointments')
+          .select('id')
+          .eq('patient_id', userId);
+        
+        if (!appointments || appointments.length === 0) return [];
+        
+        const appointmentIds = appointments.map(apt => apt.id);
+        
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .in('appointment_id', appointmentIds)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+      }
     },
     enabled: !!userId,
   });

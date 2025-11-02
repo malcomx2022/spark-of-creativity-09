@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 
 export function PractitionerMessagesSection() {
   const { data: user } = useSupabaseUser();
-  const { data: messages = [] } = useMessages(user?.id);
+  const { data: messages = [] } = useMessages(user?.id, 'practitioner');
   const sendMessage = useSendMessage();
   const markAsRead = useMarkMessageAsRead();
   const [newMessage, setNewMessage] = useState('');
