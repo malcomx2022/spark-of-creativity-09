@@ -152,20 +152,25 @@ serve(async (req) => {
       );
     }
 
-    // Create FedaPay transaction avec retry et timeout
+    // Étape 1: Créer la transaction FedaPay
     let fedapayResponse: Response | null = null;
     let lastError: Error | null = null;
     const maxRetries = 3;
     const timeoutMs = 10000;
+    const fedapayBaseUrl = Deno.env.get('FEDAPAY_MODE') === 'live' 
+      ? 'https://api.fedapay.com' 
+      : 'https://sandbox-api.fedapay.com';
+
+    console.log(`Using FedaPay endpoint: ${fedapayBaseUrl}`);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`FedaPay attempt ${attempt}/${maxRetries}`);
+        console.log(`FedaPay attempt ${attempt}/${maxRetries} - Creating transaction`);
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         
-        fedapayResponse = await fetch('https://api.fedapay.com/v1/transactions', {
+        fedapayResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${fedapaySecretKey}`,
@@ -181,19 +186,13 @@ serve(async (req) => {
             customer: {
               firstname: 'Patient',
               lastname: 'User',
+              email: `patient-${user.id}@santemada.app`,
               phone_number: {
                 number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
                 country: 'bj'
               }
             },
-            mode: selectedMode,
-            metadata: {
-              user_id: user.id,
-              appointment_id: appointmentId,
-              practitioner_id: appointment.patient_id,
-              timestamp: new Date().toISOString(),
-              source: 'spark_of_creativity'
-            }
+            mode: selectedMode
           }),
           signal: controller.signal
         });
@@ -209,7 +208,7 @@ serve(async (req) => {
           console.error('All FedaPay retry attempts failed');
           return new Response(
             JSON.stringify({ 
-              error: 'Unable to reach payment provider after multiple attempts',
+              error: 'Impossible de contacter le service de paiement. Veuillez réessayer.',
               details: lastError.message
             }),
             { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -223,7 +222,7 @@ serve(async (req) => {
 
     if (!fedapayResponse) {
       return new Response(
-        JSON.stringify({ error: 'Failed to create payment transaction' }),
+        JSON.stringify({ error: 'Échec de la création de la transaction' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -234,26 +233,99 @@ serve(async (req) => {
     } catch (parseError) {
       console.error('Unable to parse FedaPay response:', parseError);
       return new Response(
-        JSON.stringify({ error: 'Invalid response from payment provider' }),
+        JSON.stringify({ error: 'Réponse invalide du service de paiement' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!fedapayResponse.ok) {
-      console.error('FedaPay error:', fedapayData);
-      throw new Error(`FedaPay error: ${JSON.stringify(fedapayData)}`);
-    }
-
-    const transactionData = parseFedaPayResponse(fedapayData);
-
-    if (!transactionData) {
-      console.error('Unexpected FedaPay payload:', fedapayData);
+      console.error('FedaPay error response:', fedapayData);
       return new Response(
-        JSON.stringify({ error: 'Invalid response from payment provider' }),
+        JSON.stringify({ 
+          error: 'Erreur lors de la création du paiement',
+          details: fedapayData
+        }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    console.log('FedaPay transaction created:', fedapayData);
+
+    console.log('FedaPay transaction created successfully:', fedapayData);
+
+    // Extraire l'ID de la transaction
+    const transactionData = parseFedaPayResponse(fedapayData);
+    if (!transactionData) {
+      console.error('Unexpected FedaPay payload structure:', fedapayData);
+      return new Response(
+        JSON.stringify({ error: 'Format de réponse invalide du service de paiement' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Étape 2: Générer le token pour obtenir l'URL de paiement
+    console.log(`Generating payment token for transaction ${transactionData.id}`);
+    
+    let tokenResponse: Response;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      tokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transactionData.id}/token`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+    } catch (error) {
+      console.error('Error generating token:', error);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Impossible de générer le lien de paiement',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    let tokenData: unknown;
+    try {
+      tokenData = await tokenResponse.json();
+    } catch (parseError) {
+      console.error('Unable to parse token response:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Réponse invalide lors de la génération du lien de paiement' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!tokenResponse.ok) {
+      console.error('FedaPay token generation error:', tokenData);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur lors de la génération du lien de paiement',
+          details: tokenData
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Token generated successfully:', tokenData);
+
+    // Parser la réponse du token
+    const tokenInfo = parseFedaPayResponse(tokenData);
+    if (!tokenInfo || !tokenInfo.url) {
+      console.error('Invalid token response structure:', tokenData);
+      return new Response(
+        JSON.stringify({ error: 'URL de paiement non disponible' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const paymentUrl = tokenInfo.url;
+    console.log('Payment URL generated:', paymentUrl);
 
     // Récupérer la configuration des frais
     const { data: configData } = await supabase
@@ -299,11 +371,15 @@ serve(async (req) => {
         hold_until: holdUntil.toISOString(),
         payout_status: 'pending',
         fedapay_transaction_id: transactionData.id.toString(),
-        fedapay_payment_url: transactionData.url,
+        fedapay_payment_url: paymentUrl,
         idempotency_key: idempotencyKey,
-        channel: 'momo',
+        channel: 'mobile_money',
         provider_ref: transactionData.id.toString(),
-        payment_session_data: fedapayData
+        payment_session_data: {
+          transaction: fedapayData,
+          token: tokenData,
+          mode: selectedMode
+        }
       })
       .select()
       .single();
@@ -336,21 +412,29 @@ serve(async (req) => {
       .insert({
         user_id: user.id,
         title: 'Paiement initialisé',
-        message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Veuillez compléter le paiement.`,
+        message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Cliquez pour compléter le paiement.`,
         type: 'payment',
-        link: transactionData.url
+        link: paymentUrl
       });
 
-    // Calculer l'expiration (30 minutes)
+    // Calculer l'expiration (30 minutes pour FedaPay)
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+    console.log('Payment created successfully:', {
+      paymentId: payment.id,
+      transactionId: transactionData.id,
+      paymentUrl: paymentUrl
+    });
 
     return new Response(
       JSON.stringify({
+        success: true,
         paymentId: payment.id,
         transactionId: transactionData.id,
-        paymentUrl: transactionData.url,
-        status: transactionData.status,
-        expiresAt: expiresAt
+        paymentUrl: paymentUrl,
+        status: initialStatus,
+        expiresAt: expiresAt,
+        message: 'Paiement initialisé avec succès'
       }),
       {
         status: 200,

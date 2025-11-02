@@ -15,10 +15,14 @@ import { MOBILE_MONEY_PROVIDERS } from '@/lib/payment-config';
 type PaymentMethod = 'mtn' | 'orange' | 'moov';
 
 interface PaymentResponse {
+  success?: boolean;
   paymentUrl?: string;
   status?: string;
   paymentId?: string;
-  idempotencyKey?: string;
+  transactionId?: string;
+  message?: string;
+  expiresAt?: string;
+  error?: string;
 }
 
 const POLL_INTERVAL = 3000; // 3 seconds
@@ -60,13 +64,22 @@ function isPaymentResponse(payload: unknown): payload is PaymentResponse {
   }
 
   const candidate = payload as Record<string, unknown>;
-  const { paymentUrl, status } = candidate;
-
-  if (paymentUrl !== undefined && typeof paymentUrl !== 'string') {
+  
+  // Check for error response
+  if (candidate.error !== undefined && typeof candidate.error !== 'string') {
     return false;
   }
 
-  if (status !== undefined && typeof status !== 'string') {
+  // Check for success response fields
+  if (candidate.paymentUrl !== undefined && typeof candidate.paymentUrl !== 'string') {
+    return false;
+  }
+
+  if (candidate.status !== undefined && typeof candidate.status !== 'string') {
+    return false;
+  }
+
+  if (candidate.paymentId !== undefined && typeof candidate.paymentId !== 'string') {
     return false;
   }
 
@@ -212,6 +225,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         throw new Error('Vous devez être connecté pour effectuer un paiement');
       }
 
+      console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
+
       const { data: result, error } = await supabase.functions.invoke('create-payment', {
         body: {
           appointmentId,
@@ -221,10 +236,24 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
+
+      console.log('Payment response received:', result);
 
       if (isPaymentResponse(result)) {
-        console.log('Payment created successfully:', result);
+        // Vérifier si une erreur est retournée
+        if (result.error) {
+          throw new Error(result.error);
+        }
+
+        // Vérifier que nous avons une URL de paiement
+        if (!result.paymentUrl) {
+          throw new Error('URL de paiement non reçue du serveur');
+        }
+
         setPaymentUrl(result.paymentUrl);
         setPaymentId(result.paymentId || null);
         setPaymentStatus('pending');
@@ -232,63 +261,68 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         
         // Sauvegarder la méthode si demandé et consentement donné
         if (saveMethod && !useSavedMethod) {
-          addPaymentMethod({
-            provider: paymentMethod,
-            phoneNumber: phoneNumber,
-            setAsDefault: paymentMethods.length === 0,
-          });
-        }
-
-        if (result.paymentUrl) {
-          toast({
-            title: 'Paiement initié',
-            description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-          });
-
-          // Ouvrir la page de paiement dans une nouvelle fenêtre
-          const paymentWindow = window.open(
-            result.paymentUrl,
-            '_blank',
-            'width=600,height=700,scrollbars=yes'
-          );
-
-          if (!paymentWindow) {
-            toast({
-              variant: "destructive",
-              title: "Popup bloqué",
-              description: "Veuillez autoriser les popups pour continuer le paiement.",
+          try {
+            await addPaymentMethod({
+              provider: paymentMethod,
+              phoneNumber: phoneNumber,
+              setAsDefault: paymentMethods.length === 0,
             });
-            setIsProcessing(false);
-            setPaymentStatus('idle');
-            return;
+          } catch (saveError) {
+            console.error('Error saving payment method:', saveError);
+            // Ne pas bloquer le paiement si la sauvegarde échoue
           }
-
-          // Monitor if window is closed
-          const windowCheckInterval = setInterval(() => {
-            if (paymentWindow.closed) {
-              clearInterval(windowCheckInterval);
-              if (paymentStatus === 'pending') {
-                toast({
-                  title: "Fenêtre fermée",
-                  description: "Vérification du statut du paiement en cours...",
-                });
-              }
-            }
-          }, 1000);
         }
+
+        toast({
+          title: 'Paiement initié',
+          description: result.message || 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+        });
+
+        // Ouvrir la page de paiement dans une nouvelle fenêtre
+        const paymentWindow = window.open(
+          result.paymentUrl,
+          '_blank',
+          'width=600,height=700,scrollbars=yes,location=yes'
+        );
+
+        if (!paymentWindow) {
+          toast({
+            variant: "destructive",
+            title: "Popup bloqué",
+            description: "Veuillez autoriser les popups pour continuer le paiement.",
+          });
+          setIsProcessing(false);
+          setPaymentStatus('idle');
+          return;
+        }
+
+        // Monitor if window is closed
+        const windowCheckInterval = setInterval(() => {
+          if (paymentWindow.closed) {
+            clearInterval(windowCheckInterval);
+            if (paymentStatus === 'pending') {
+              toast({
+                title: "Fenêtre fermée",
+                description: "Vérification du statut du paiement en cours...",
+              });
+            }
+          }
+        }, 1000);
       } else {
-        throw new Error('Invalid payment response');
+        throw new Error('Format de réponse invalide du serveur');
       }
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
+      setIsProcessing(false);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
+      
       toast({
-        title: 'Erreur',
-        description: error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement',
+        title: 'Erreur de paiement',
+        description: errorMessage,
         variant: 'destructive',
       });
-    } finally {
-      setIsProcessing(false);
     }
   };
 
