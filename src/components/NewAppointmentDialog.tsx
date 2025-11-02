@@ -95,7 +95,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
             specialty: data.specialty,
             appointmentDate: data.date.toISOString().split('T')[0],
             appointmentTime: data.time,
-            maxRadius: 5,
+            maxRadius: 10,
           },
         }
       );
