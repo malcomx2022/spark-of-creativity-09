@@ -275,7 +275,13 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          disabled={(date) => date < new Date()}
+                          disabled={(date) => {
+                            // Désactiver les dates passées
+                            if (date < new Date()) return true;
+                            // Désactiver les dimanches (jour 0)
+                            if (date.getDay() === 0) return true;
+                            return false;
+                          }}
                           initialFocus
                           className="pointer-events-auto"
                         />

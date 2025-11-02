@@ -232,6 +232,8 @@ Deno.serve(async (req) => {
         exceptions || []
       );
 
+      console.log(`🔍 ${practitioner.name}: ${isAvailable ? '✅ Disponible' : '❌ Non disponible'}`);
+
       if (isAvailable) {
         console.log(`✅ Praticien trouvé: ${practitioner.name} à ${practitioner.distance.toFixed(2)} km`);
         
