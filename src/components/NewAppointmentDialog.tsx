@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Plus, Loader2 } from 'lucide-react';
+import { CalendarIcon, Plus, Loader2, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,7 @@ import { PaymentDialog } from '@/components/PaymentDialog';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
@@ -206,6 +207,15 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
             Remplissez le formulaire pour demander un rendez-vous à domicile
           </DialogDescription>
         </DialogHeader>
+
+        {position && (
+          <Alert className="mb-4 bg-primary/5 border-primary/20">
+            <MapPin className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>10 km</strong> autour de votre position actuelle ({position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}°).
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit, handleFormError)} className="space-y-4">
