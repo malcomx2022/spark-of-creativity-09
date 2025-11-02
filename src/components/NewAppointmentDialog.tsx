@@ -10,13 +10,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Plus } from 'lucide-react';
+import { CalendarIcon, Plus, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { PaymentDialog } from '@/components/PaymentDialog';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useGeolocation } from '@/hooks/useGeolocation';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
@@ -37,6 +39,9 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentData, setAppointmentData] = useState<CreateAppointmentData | null>(null);
   const [createdAppointmentId, setCreatedAppointmentId] = useState<string | null>(null);
+  const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
+  
+  const { position, requestPosition, loading: geoLoading } = useGeolocation();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -47,23 +52,83 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       urgencyLevel: 'non-urgent'
     }
   });
+  
+  // Demander la localisation dès l'ouverture du dialogue
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (newOpen && !position && !geoLoading) {
+      requestPosition();
+      toast({
+        title: 'Localisation requise',
+        description: 'Nous avons besoin de votre localisation pour trouver un praticien près de vous.',
+      });
+    }
+  };
 
   const handleSubmit = async (data: FormValues) => {
     console.log('🔵 Formulaire soumis avec les données:', data);
     
-    const appointmentPayload = {
-      specialty: data.specialty,
-      date: data.date.toISOString(),
-      time: data.time,
-      reason: data.reason,
-      urgencyLevel: data.urgencyLevel
-    };
+    // Vérifier la géolocalisation
+    if (!position) {
+      toast({
+        title: 'Localisation requise',
+        description: 'Nous avons besoin de votre localisation pour trouver un praticien près de vous.',
+        variant: 'destructive'
+      });
+      requestPosition();
+      return;
+    }
     
-    console.log('🔵 Payload du rendez-vous:', appointmentPayload);
+    setIsSearchingPractitioner(true);
     
-    // Créer le rendez-vous immédiatement
     try {
-      console.log('🔵 Appel de onSubmit...');
+      // 1. Rechercher un praticien disponible
+      console.log('🔍 Recherche d\'un praticien disponible...');
+      
+      const { data: practitionerData, error: practitionerError } = await supabase.functions.invoke(
+        'find-available-practitioner',
+        {
+          body: {
+            patientLat: position.latitude,
+            patientLon: position.longitude,
+            specialty: data.specialty,
+            appointmentDate: data.date.toISOString().split('T')[0],
+            appointmentTime: data.time,
+            maxRadius: 5,
+          },
+        }
+      );
+
+      if (practitionerError) {
+        throw new Error(practitionerError.message);
+      }
+
+      if (!practitionerData?.success || !practitionerData?.practitioner) {
+        throw new Error(
+          practitionerData?.message || 'Aucun praticien disponible trouvé dans votre zone'
+        );
+      }
+
+      const practitioner = practitionerData.practitioner;
+      console.log('✅ Praticien trouvé:', practitioner);
+
+      toast({
+        title: 'Praticien trouvé !',
+        description: `${practitioner.name} (${practitioner.distance.toFixed(1)} km)`,
+      });
+
+      // 2. Créer le rendez-vous avec le praticien assigné
+      const appointmentPayload = {
+        specialty: data.specialty,
+        date: data.date.toISOString(),
+        time: data.time,
+        reason: data.reason,
+        urgencyLevel: data.urgencyLevel,
+        practitionerId: practitioner.user_id,
+        practitionerName: practitioner.name,
+      };
+      
+      console.log('🔵 Création du rendez-vous avec praticien assigné...');
       const createdAppointment = await onSubmit(appointmentPayload);
       console.log('✅ Rendez-vous créé avec succès', createdAppointment);
       
@@ -74,11 +139,15 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       
       setAppointmentData(appointmentPayload);
       setOpen(false);
+      setIsSearchingPractitioner(false);
+      
       // Ouvrir le dialogue de paiement après la création
       setPaymentDialogOpen(true);
       form.reset();
+      
     } catch (error) {
-      console.error('❌ Erreur lors de la création du rendez-vous:', error);
+      console.error('❌ Erreur:', error);
+      setIsSearchingPractitioner(false);
       toast({
         title: 'Erreur',
         description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous. Veuillez réessayer.',
@@ -127,7 +196,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
 
   return (
     <>
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
@@ -286,8 +355,24 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
               <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
                 Annuler
               </Button>
-              <Button type="submit" className="flex-1">
-                Envoyer la demande
+              <Button 
+                type="submit" 
+                className="flex-1" 
+                disabled={isSearchingPractitioner || geoLoading}
+              >
+                {isSearchingPractitioner ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Recherche...
+                  </>
+                ) : geoLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Localisation...
+                  </>
+                ) : (
+                  'Envoyer la demande'
+                )}
               </Button>
             </div>
           </form>

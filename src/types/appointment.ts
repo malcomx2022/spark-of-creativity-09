@@ -23,4 +23,6 @@ export interface CreateAppointmentData {
   time: string;
   reason: string;
   urgencyLevel?: string;
+  practitionerId?: string;
+  practitionerName?: string;
 }

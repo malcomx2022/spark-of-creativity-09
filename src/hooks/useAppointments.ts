@@ -97,8 +97,8 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       return insertAppointment({
         patient_id: patientId,
         patient_name: patientName ?? 'Patient',
-        practitioner_id: '',
-        practitioner_name: '',
+        practitioner_id: data.practitionerId || '',
+        practitioner_name: data.practitionerName || '',
         specialty: data.specialty,
         date: data.date,
         time: data.time,
