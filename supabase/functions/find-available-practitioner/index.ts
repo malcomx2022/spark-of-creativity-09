@@ -153,6 +153,8 @@ Deno.serve(async (req) => {
       .eq('can_accept_missions', true)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
+    
+    console.log(`📊 ${practitioners?.length || 0} praticien(s) trouvé(s) avec la spécialité "${specialty}"`);
 
     if (practitionersError) {
       throw practitionersError;

@@ -180,12 +180,8 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   };
 
   const specialties = [
-    'Médecin généraliste',
-    'Infirmier(ère)',
-    'Kinésithérapeute',
-    'Aide-soignant(e)',
-    'Psychologue',
-    'Diététicien(ne)'
+    'Médecine Générale',
+    'Coaching Sportif',
   ];
 
   const timeSlots = [
