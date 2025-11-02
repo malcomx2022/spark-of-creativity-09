@@ -29,13 +29,14 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface NewAppointmentDialogProps {
-  onSubmit: (data: CreateAppointmentData) => void;
+  onSubmit: (data: CreateAppointmentData) => Promise<any>;
 }
 
 export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const [open, setOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentData, setAppointmentData] = useState<CreateAppointmentData | null>(null);
+  const [createdAppointmentId, setCreatedAppointmentId] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -63,8 +64,14 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
     // Créer le rendez-vous immédiatement
     try {
       console.log('🔵 Appel de onSubmit...');
-      await onSubmit(appointmentPayload);
-      console.log('✅ Rendez-vous créé avec succès');
+      const createdAppointment = await onSubmit(appointmentPayload);
+      console.log('✅ Rendez-vous créé avec succès', createdAppointment);
+      
+      // Stocker l'ID du rendez-vous créé
+      if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
+        setCreatedAppointmentId(createdAppointment.id as string);
+      }
+      
       setAppointmentData(appointmentPayload);
       setOpen(false);
       // Ouvrir le dialogue de paiement après la création
@@ -99,6 +106,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const handlePaymentSuccess = () => {
     // Le rendez-vous existe déjà, le paiement le confirmera
     setAppointmentData(null);
+    setCreatedAppointmentId(null);
     setPaymentDialogOpen(false);
   };
 
@@ -287,11 +295,11 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       </DialogContent>
     </Dialog>
 
-    {appointmentData && (
+    {appointmentData && createdAppointmentId && (
       <PaymentDialog
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
-        appointmentId={"temp-" + Date.now()}
+        appointmentId={createdAppointmentId}
         amount={10000}
         onSuccess={handlePaymentSuccess}
       />
