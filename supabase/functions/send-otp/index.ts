@@ -144,8 +144,8 @@ serve(async (req) => {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        to: normalizedPhone,
-        channel: channel,
+        To: normalizedPhone,
+        Channel: channel,
       }),
     });
 
