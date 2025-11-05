@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseUser } from './useSupabaseUser';
@@ -23,26 +24,47 @@ function maskPhoneNumber(phone: string): string {
   return `****${phone.slice(-4)}`;
 }
 
-/**
- * Simple encryption pour le stockage (à améliorer avec une vraie solution crypto)
- */
-function encryptPhone(phone: string): string {
-  // TODO: Implémenter une vraie encryption avec une clé serveur
-  // Pour l'instant, on utilise base64 (pas sécurisé pour la production!)
-  return btoa(phone);
-}
-
-function decryptPhone(encrypted: string): string {
-  try {
-    return atob(encrypted);
-  } catch {
-    return '';
-  }
-}
-
 export function useSavedPaymentMethods() {
   const { data: user } = useSupabaseUser();
   const queryClient = useQueryClient();
+
+  const encryptPhone = useCallback(async (phone: string): Promise<string> => {
+    const { data, error } = await supabase.functions.invoke<{ encrypted: string }>('secure-phone', {
+      body: {
+        action: 'encrypt',
+        phone,
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Impossible de chiffrer le numéro.');
+    }
+
+    if (!data?.encrypted) {
+      throw new Error('Réponse de chiffrement invalide.');
+    }
+
+    return data.encrypted;
+  }, []);
+
+  const decryptPhone = useCallback(async (methodId: string): Promise<string> => {
+    const { data, error } = await supabase.functions.invoke<{ phone: string }>('secure-phone', {
+      body: {
+        action: 'decrypt',
+        methodId,
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Impossible de récupérer le numéro enregistré.');
+    }
+
+    if (!data?.phone) {
+      throw new Error('Réponse de déchiffrement invalide.');
+    }
+
+    return data.phone;
+  }, []);
 
   const { data: paymentMethods = [], isLoading } = useQuery({
     queryKey: ['saved-payment-methods', user?.id],
@@ -82,13 +104,15 @@ export function useSavedPaymentMethods() {
           .eq('user_id', user.id);
       }
 
+      const encryptedPhone = await encryptPhone(phoneNumber);
+
       const { data, error } = await supabase
         .from('saved_payment_methods')
         .insert({
           user_id: user.id,
           provider,
           phone_number_masked: maskPhoneNumber(phoneNumber),
-          phone_number_encrypted: encryptPhone(phoneNumber),
+          phone_number_encrypted: encryptedPhone,
           is_default: setAsDefault,
           consent_given_at: new Date().toISOString(),
         })
@@ -172,9 +196,9 @@ export function useSavedPaymentMethods() {
     },
   });
 
-  const getDecryptedPhone = (method: SavedPaymentMethod): string => {
-    return decryptPhone(method.phone_number_encrypted);
-  };
+  const getDecryptedPhone = useCallback(async (methodId: string): Promise<string> => {
+    return decryptPhone(methodId);
+  }, [decryptPhone]);
 
   return {
     paymentMethods,

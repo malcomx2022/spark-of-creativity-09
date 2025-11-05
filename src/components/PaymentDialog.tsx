@@ -105,19 +105,73 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [saveMethod, setSaveMethod] = useState(false);
   const [useSavedMethod, setUseSavedMethod] = useState(false);
   const [selectedSavedMethod, setSelectedSavedMethod] = useState<string>('');
+  const [autoPrefilled, setAutoPrefilled] = useState(false);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
 
-  // Charger la méthode par défaut
+  // Pré-sélectionner la méthode par défaut lorsqu'aucun numéro n'est fourni
   useEffect(() => {
-    const defaultMethod = paymentMethods.find(m => m.is_default);
-    if (defaultMethod && !phoneNumber) {
+    if (autoPrefilled) return;
+    if (paymentMethods.length === 0) return;
+    if (selectedSavedMethod) return;
+    if (phoneNumber) return;
+
+    const defaultMethod = paymentMethods.find((m) => m.is_default) ?? paymentMethods[0];
+
+    if (defaultMethod) {
       setUseSavedMethod(true);
       setSelectedSavedMethod(defaultMethod.id);
-      setPaymentMethod(defaultMethod.provider);
-      setPhoneNumber(getDecryptedPhone(defaultMethod));
+      setAutoPrefilled(true);
     }
-  }, [paymentMethods, phoneNumber, getDecryptedPhone]);
+  }, [autoPrefilled, paymentMethods, selectedSavedMethod, phoneNumber]);
+
+  // Charger et déchiffrer le numéro lorsque l'utilisateur choisit une méthode sauvegardée
+  useEffect(() => {
+    if (!useSavedMethod || !selectedSavedMethod) {
+      return;
+    }
+
+    const method = paymentMethods.find((m) => m.id === selectedSavedMethod);
+
+    if (!method) {
+      return;
+    }
+
+    setPaymentMethod(method.provider);
+
+    let isActive = true;
+
+    (async () => {
+      try {
+        const decrypted = await getDecryptedPhone(method.id);
+        if (isActive) {
+          setPhoneNumber(decrypted);
+        }
+      } catch (error) {
+        console.error('Erreur lors du déchiffrement du numéro enregistré:', error);
+        toast({
+          title: 'Impossible de récupérer le numéro',
+          description: "Veuillez saisir manuellement votre numéro pour continuer.",
+          variant: 'destructive',
+        });
+        if (isActive) {
+          setUseSavedMethod(false);
+          setSelectedSavedMethod('');
+          setPhoneNumber('');
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [useSavedMethod, selectedSavedMethod, paymentMethods, getDecryptedPhone]);
+
+  useEffect(() => {
+    if (!useSavedMethod) {
+      setSelectedSavedMethod('');
+    }
+  }, [useSavedMethod]);
 
   // Poll payment status
   useEffect(() => {
@@ -196,15 +250,34 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
   const handlePayment = async () => {
     // Si une méthode sauvegardée est sélectionnée, l'utiliser
+    let resolvedPhoneNumber = phoneNumber;
+
     if (useSavedMethod && selectedSavedMethod) {
-      const method = paymentMethods.find(m => m.id === selectedSavedMethod);
+      const method = paymentMethods.find((m) => m.id === selectedSavedMethod);
       if (method) {
-        setPaymentMethod(method.provider);
-        setPhoneNumber(getDecryptedPhone(method));
+        try {
+          const decrypted = await getDecryptedPhone(method.id);
+          resolvedPhoneNumber = decrypted;
+          setPaymentMethod(method.provider);
+          setPhoneNumber(decrypted);
+        } catch (error) {
+          console.error('Erreur lors du déchiffrement de la méthode sélectionnée:', error);
+          toast({
+            title: 'Méthode indisponible',
+            description: 'Impossible de récupérer votre numéro. Veuillez le saisir manuellement.',
+            variant: 'destructive',
+          });
+          setIsProcessing(false);
+          setPaymentStatus('idle');
+          setUseSavedMethod(false);
+          setSelectedSavedMethod('');
+          setPhoneNumber('');
+          return;
+        }
       }
     }
 
-    const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    const sanitizedPhoneNumber = normalizePhoneNumber(resolvedPhoneNumber);
 
     if (!sanitizedPhoneNumber) {
       toast({
@@ -264,7 +337,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           try {
             await addPaymentMethod({
               provider: paymentMethod,
-              phoneNumber: phoneNumber,
+              phoneNumber: sanitizedPhoneNumber,
               setAsDefault: paymentMethods.length === 0,
             });
           } catch (saveError) {
@@ -335,6 +408,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setSaveMethod(false);
     setUseSavedMethod(false);
     setSelectedSavedMethod('');
+    setAutoPrefilled(false);
     onOpenChange(false);
   };
 
@@ -417,7 +491,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                   <Checkbox
                     id="use-saved"
                     checked={useSavedMethod}
-                    onCheckedChange={(checked) => setUseSavedMethod(checked as boolean)}
+                    onCheckedChange={(checked) => {
+                      const isChecked = checked as boolean;
+                      setUseSavedMethod(isChecked);
+                      if (!isChecked) {
+                        setPhoneNumber('');
+                      }
+                    }}
                   />
                   <Label htmlFor="use-saved" className="font-normal cursor-pointer">
                     Utiliser une méthode enregistrée
