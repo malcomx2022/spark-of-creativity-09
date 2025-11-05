@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
+import { Bell, Mail, MessageSquare, Smartphone, Phone } from 'lucide-react';
 import { useNotifications, useNotificationPreferences, useMarkNotificationAsRead } from '@/hooks/useNotifications';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,8 +22,22 @@ export function NotificationsSection() {
     push: preferences?.push_enabled ?? true,
   });
 
+  // Synchroniser localPrefs avec les préférences chargées
+  useEffect(() => {
+    if (preferences) {
+      setLocalPrefs({
+        email: preferences.email_enabled,
+        sms: preferences.sms_enabled,
+        whatsapp: preferences.whatsapp_enabled,
+        push: preferences.push_enabled,
+      });
+    }
+  }, [preferences]);
+
   const handlePreferenceChange = async (key: keyof typeof localPrefs, value: boolean) => {
     if (!user?.id) return;
+    
+    // Optimistic update
     setLocalPrefs(prev => ({ ...prev, [key]: value }));
 
     try {
@@ -33,17 +47,33 @@ export function NotificationsSection() {
         whatsapp: 'whatsapp_enabled',
         push: 'push_enabled',
       };
-      const updateData: any = { user_id: user.id };
-      updateData[columnMap[key]] = value;
+      
+      const updateData: any = { 
+        user_id: user.id,
+        [columnMap[key]]: value 
+      };
 
       const { error } = await supabase
         .from('notification_preferences')
-        .upsert(updateData);
+        .upsert(updateData, { 
+          onConflict: 'user_id',
+          ignoreDuplicates: false 
+        });
 
       if (error) throw error;
-      toast({ title: 'Préférences mises à jour' });
-    } catch (error) {
-      toast({ title: 'Erreur', variant: 'destructive' });
+      
+      toast({ 
+        title: 'Préférences mises à jour',
+        description: 'Vos préférences de notification ont été enregistrées.'
+      });
+    } catch (error: any) {
+      console.error('Error updating preferences:', error);
+      toast({ 
+        title: 'Erreur lors de la mise à jour',
+        description: error.message || 'Impossible de mettre à jour vos préférences.',
+        variant: 'destructive' 
+      });
+      // Revert optimistic update
       setLocalPrefs(prev => ({ ...prev, [key]: !value }));
     }
   };
@@ -120,7 +150,7 @@ export function NotificationsSection() {
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
             <div className="flex items-center gap-3">
-              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <Phone className="h-5 w-5 text-muted-foreground" />
               <div>
                 <Label>SMS</Label>
                 <p className="text-sm text-muted-foreground">
