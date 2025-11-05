@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Mail, MessageSquare, Smartphone, Phone } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Bell, Mail, MessageSquare, Smartphone, Phone, BellRing } from 'lucide-react';
 import { useNotifications, useNotificationPreferences, useMarkNotificationAsRead } from '@/hooks/useNotifications';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -14,6 +16,7 @@ export function NotificationsSection() {
   const { data: notifications = [] } = useNotifications(user?.id);
   const { data: preferences } = useNotificationPreferences(user?.id);
   const markAsRead = useMarkNotificationAsRead();
+  const { isSupported, isSubscribed, isLoading, subscribe, unsubscribe } = usePushNotifications(user?.id);
   
   const [localPrefs, setLocalPrefs] = useState({
     email: preferences?.email_enabled ?? true,
@@ -196,6 +199,40 @@ export function NotificationsSection() {
             </div>
             <Switch checked={localPrefs.push} onCheckedChange={(v) => handlePreferenceChange('push', v)} />
           </div>
+
+          {/* Push Notifications Browser */}
+          {isSupported && (
+            <div className="mt-6 p-4 border rounded-lg bg-muted/50">
+              <div className="flex items-start gap-3 mb-4">
+                <BellRing className="h-5 w-5 text-primary mt-1" />
+                <div className="flex-1">
+                  <Label className="text-base">Notifications Push Navigateur</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Recevez des notifications même quand l'application est fermée. 
+                    Vous devez autoriser les notifications dans votre navigateur.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={isSubscribed ? unsubscribe : subscribe}
+                disabled={isLoading}
+                variant={isSubscribed ? 'outline' : 'default'}
+                className="w-full"
+              >
+                {isLoading 
+                  ? 'Chargement...' 
+                  : isSubscribed 
+                    ? 'Désactiver les notifications push' 
+                    : 'Activer les notifications push'
+                }
+              </Button>
+              {isSubscribed && (
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  ✓ Les notifications push sont activées
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
