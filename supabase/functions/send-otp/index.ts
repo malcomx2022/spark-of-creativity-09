@@ -105,6 +105,33 @@ serve(async (req) => {
       );
     }
 
+    // Check rate limiting: max 5 attempts per hour per phone number
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: recentAttempts, error: attemptsError } = await supabase
+      .from('otp_attempts')
+      .select('id')
+      .eq('phone_number', normalizedPhone)
+      .gte('created_at', oneHourAgo);
+
+    if (attemptsError) {
+      console.error('Error checking OTP attempts:', attemptsError);
+    } else if (recentAttempts && recentAttempts.length >= 5) {
+      await supabase.from('otp_attempts').insert({
+        phone_number: normalizedPhone,
+        channel,
+        status: 'failed',
+        error_message: 'Rate limit exceeded',
+      });
+
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Trop de tentatives. Veuillez réessayer dans 1 heure.' 
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('Sending OTP to:', normalizedPhone, 'via', channel);
 
     // Send verification code via Twilio Verify API
