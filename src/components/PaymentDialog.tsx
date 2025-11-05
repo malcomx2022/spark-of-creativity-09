@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
@@ -101,6 +103,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
   const [saveMethod, setSaveMethod] = useState(false);
   const [useSavedMethod, setUseSavedMethod] = useState(false);
@@ -178,8 +182,6 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     if (!paymentId || paymentStatus !== 'pending') return;
 
     const startTime = Date.now();
-    let pollInterval: NodeJS.Timeout;
-    
     const checkPaymentStatus = async () => {
       try {
         // Check if max poll time exceeded
@@ -224,7 +226,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           
           // Close dialog after success
           setTimeout(() => {
-            handleClose();
+            closeDialog();
           }, 2000);
         } else if (['failed', 'canceled'].includes(payment.status)) {
           clearInterval(pollInterval);
@@ -241,12 +243,12 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       }
     };
 
-    pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
-    
+    const pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
+
     return () => {
-      if (pollInterval) clearInterval(pollInterval);
+      clearInterval(pollInterval);
     };
-  }, [paymentId, paymentStatus, onSuccess]);
+  }, [paymentId, paymentStatus, onSuccess, closeDialog]);
 
   const handlePayment = async () => {
     // Si une méthode sauvegardée est sélectionnée, l'utiliser
@@ -329,9 +331,11 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
         setPaymentUrl(result.paymentUrl);
         setPaymentId(result.paymentId || null);
+        setTransactionId(result.transactionId || null);
+        setExpiresAt(result.expiresAt || null);
         setPaymentStatus('pending');
         setPollCount(0);
-        
+
         // Sauvegarder la méthode si demandé et consentement donné
         if (saveMethod && !useSavedMethod) {
           try {
@@ -399,18 +403,57 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     }
   };
 
-  const handleClose = () => {
+  const resetPaymentState = useCallback(() => {
     setPaymentStatus('idle');
     setPaymentUrl(null);
     setPaymentId(null);
+    setTransactionId(null);
+    setExpiresAt(null);
     setPollCount(0);
     setPhoneNumber('');
     setSaveMethod(false);
     setUseSavedMethod(false);
     setSelectedSavedMethod('');
     setAutoPrefilled(false);
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    resetPaymentState();
     onOpenChange(false);
+  }, [onOpenChange, resetPaymentState]);
+
+  const handleDialogOpenChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      resetPaymentState();
+    }
+    onOpenChange(isOpen);
+  }, [onOpenChange, resetPaymentState]);
+
+  const handleReopenPaymentWindow = () => {
+    if (!paymentUrl) return;
+
+    const features = 'width=600,height=700,scrollbars=yes,location=yes';
+    window.open(paymentUrl, '_blank', features);
   };
+
+  const formatExpiry = (value: string | null) => {
+    if (!value) return null;
+
+    try {
+      return new Date(value).toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      console.error('Unable to format expiry date', error);
+      return null;
+    }
+  };
+
+  const selectedProvider = MOBILE_MONEY_PROVIDERS[paymentMethod];
 
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -424,31 +467,59 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     switch (paymentStatus) {
       case 'pending':
         return (
-          <div className="flex flex-col items-center justify-center py-8 space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-lg font-semibold">Paiement en cours...</p>
-            <p className="text-sm text-muted-foreground text-center">
-              Veuillez confirmer le paiement sur votre téléphone via USSD/OTP
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Vérification {pollCount} / {Math.floor(MAX_POLL_TIME / POLL_INTERVAL)}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClose}
-            >
-              Annuler
-            </Button>
+          <div className="space-y-4">
+            <div className="flex flex-col items-center justify-center py-6 space-y-3">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <p className="text-lg font-semibold">Redirection vers FedaPay</p>
+              <p className="text-sm text-muted-foreground text-center">
+                Validez la transaction via le popup FedaPay ou le code USSD reçu sur votre téléphone.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Vérification {pollCount} / {Math.floor(MAX_POLL_TIME / POLL_INTERVAL)}
+              </p>
+              {formatExpiry(expiresAt) && (
+                <p className="text-xs text-muted-foreground">
+                  Expiration du lien : {formatExpiry(expiresAt)}
+                </p>
+              )}
+              {transactionId && (
+                <p className="text-xs font-mono text-muted-foreground">
+                  Transaction FedaPay : {transactionId}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center gap-2 font-semibold">
+                <Clock className="h-4 w-4" />
+                Suivi du paiement
+              </div>
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                <li>Confirmez le paiement dans l&apos;onglet FedaPay qui vient de s&apos;ouvrir.</li>
+                <li>Saisissez le code OTP reçu par SMS ou validez la requête USSD.</li>
+                <li>Revenez ici : nous mettons à jour le statut automatiquement.</li>
+              </ol>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {paymentUrl && (
+                  <Button className="flex-1" variant="secondary" onClick={handleReopenPaymentWindow}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Ré-ouvrir FedaPay
+                  </Button>
+                )}
+                <Button className="flex-1" variant="outline" onClick={closeDialog}>
+                  Annuler
+                </Button>
+              </div>
+            </div>
           </div>
         );
       case 'success':
         return (
           <div className="flex flex-col items-center justify-center py-8 space-y-4">
             <CheckCircle2 className="h-16 w-16 text-green-500" />
-            <p className="text-lg font-semibold">Paiement initié avec succès!</p>
+            <p className="text-lg font-semibold">Paiement initié avec succès !</p>
             <p className="text-sm text-muted-foreground text-center">
-              Suivez les instructions sur votre téléphone pour finaliser le paiement
+              Suivez les instructions sur votre téléphone ou sur FedaPay pour finaliser le paiement.
             </p>
           </div>
         );
@@ -471,7 +542,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Payer le rendez-vous</DialogTitle>
@@ -484,6 +555,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           renderPaymentStatus()
         ) : (
           <div className="space-y-4 py-4">
+            <Alert>
+              <ShieldCheck className="h-4 w-4" />
+              <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
+              <AlertDescription>
+                Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
+              </AlertDescription>
+            </Alert>
+
             {/* Méthodes sauvegardées */}
             {paymentMethods.length > 0 && (
               <div className="space-y-3">
@@ -580,12 +659,32 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 </div>
               </>
             )}
+
+            <div className="space-y-2 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    {selectedProvider.icon} {selectedProvider.name}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {phoneNumber ? `Numéro débité : ${phoneNumber}` : 'Numéro à confirmer'}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Montant</p>
+                  <p className="text-base font-semibold">{formatAmount(amount)}</p>
+                </div>
+              </div>
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <ReceiptText className="h-3 w-3" /> Une trace du paiement sera disponible dans vos reçus une fois l&apos;opération confirmée.
+              </p>
+            </div>
           </div>
         )}
 
         {paymentStatus === 'idle' && (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleClose} className="flex-1">
+            <Button variant="outline" onClick={closeDialog} className="flex-1">
               Annuler
             </Button>
             <Button onClick={handlePayment} disabled={isProcessing} className="flex-1">

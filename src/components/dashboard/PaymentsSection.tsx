@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Download, Edit } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -26,6 +27,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import {
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_VARIANTS,
+  PAYOUT_STATUS_LABELS,
+  type PaymentStatus,
+  formatAmount,
+  isPaymentFinal,
+} from '@/lib/payment-config';
 
 export function PaymentsSection() {
   const { data: user } = useSupabaseUser();
@@ -52,24 +61,37 @@ export function PaymentsSection() {
     enabled: !!user?.id,
   });
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-      completed: 'default',
-      pending: 'secondary',
-      failed: 'destructive',
-      cancelled: 'outline',
-    };
-    return variants[status] || 'outline';
+  const resolveStatusVariant = (status: string) => {
+    if (status in PAYMENT_STATUS_VARIANTS) {
+      return PAYMENT_STATUS_VARIANTS[status as keyof typeof PAYMENT_STATUS_VARIANTS];
+    }
+
+    return 'outline';
   };
 
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      completed: 'Complété',
-      pending: 'En attente',
-      failed: 'Échec',
-      cancelled: 'Annulé',
-    };
-    return labels[status] || status;
+  const resolveStatusLabel = (status: string) => {
+    if (status in PAYMENT_STATUS_LABELS) {
+      return PAYMENT_STATUS_LABELS[status as keyof typeof PAYMENT_STATUS_LABELS];
+    }
+
+    return status;
+  };
+
+  const resolvePayoutLabel = (status?: string | null) => {
+    if (!status) return null;
+
+    if (status in PAYOUT_STATUS_LABELS) {
+      return PAYOUT_STATUS_LABELS[status as keyof typeof PAYOUT_STATUS_LABELS];
+    }
+
+    return status;
+  };
+
+  const handleOpenFedaPay = (url: string) => {
+    if (typeof window === 'undefined') return;
+
+    const features = 'width=600,height=700,scrollbars=yes,location=yes';
+    window.open(url, '_blank', features);
   };
 
   const handleSavePaymentMethod = () => {
@@ -110,7 +132,7 @@ export function PaymentsSection() {
         payment.amount,
         payment.currency,
         payment.payment_method.toUpperCase(),
-        getStatusLabel(payment.status),
+        resolveStatusLabel(payment.status),
       ].join(',')),
     ].join('\n');
 
@@ -133,6 +155,14 @@ export function PaymentsSection() {
 
   return (
     <div className="space-y-6">
+      <Alert>
+        <ShieldCheck className="h-4 w-4" />
+        <AlertTitle>Paiements gérés par FedaPay</AlertTitle>
+        <AlertDescription>
+          Consultez vos transactions mobile money. Si un paiement est encore en attente, vous pouvez reprendre le processus directement sur la plateforme sécurisée FedaPay.
+        </AlertDescription>
+      </Alert>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -150,19 +180,24 @@ export function PaymentsSection() {
               {payments.map((payment) => (
                 <div
                   key={payment.id}
-                  className="flex justify-between items-center p-4 border rounded-lg"
+                  className="flex flex-col gap-4 p-4 border rounded-lg"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">
-                        {payment.amount} {payment.currency}
+                        {formatAmount(payment.amount, payment.currency)}
                       </p>
-                      <Badge variant={getStatusBadge(payment.status)}>
-                        {getStatusLabel(payment.status)}
+                      <Badge variant={resolveStatusVariant(payment.status)}>
+                        {resolveStatusLabel(payment.status)}
                       </Badge>
+                      {isPaymentFinal(payment.status as PaymentStatus) && payment.payout_status && (
+                        <Badge variant="outline">
+                          Versement : {resolvePayoutLabel(payment.payout_status)}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Mode: {payment.payment_method.toUpperCase()}
+                      Mode : {payment.payment_method.toUpperCase()}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(payment.created_at).toLocaleDateString('fr-FR', {
@@ -173,20 +208,48 @@ export function PaymentsSection() {
                         minute: '2-digit',
                       })}
                     </p>
-                   </div>
-                   <Button 
-                     variant="outline" 
-                     size="sm"
-                     onClick={() => {
-                       setSelectedPayment(payment);
-                       setIsReceiptDialogOpen(true);
-                     }}
-                   >
-                     <Download className="h-4 w-4 mr-2" />
-                     Reçu
-                   </Button>
-                 </div>
-               ))}
+                    {payment.fedapay_transaction_id && (
+                      <p className="text-xs font-mono text-muted-foreground">
+                        Transaction FedaPay : {payment.fedapay_transaction_id}
+                      </p>
+                    )}
+                    {payment.hold_until && (
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" /> Versement estimé le {new Date(payment.hold_until).toLocaleDateString('fr-FR', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                    {['initiated', 'pending', 'authorized'].includes(payment.status) && payment.fedapay_payment_url && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleOpenFedaPay(payment.fedapay_payment_url!)}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Continuer sur FedaPay
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedPayment(payment);
+                        setIsReceiptDialogOpen(true);
+                      }}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Reçu
+                    </Button>
+                  </div>
+                </div>
+              ))}
                <div className="mt-4">
                  <Button variant="outline" onClick={handleExportPayments} className="w-full">
                    <Download className="h-4 w-4 mr-2" />
@@ -203,9 +266,9 @@ export function PaymentsSection() {
            <CardTitle>Moyens de paiement</CardTitle>
          </CardHeader>
          <CardContent>
-           <p className="text-muted-foreground mb-4">
-             Modes de paiement acceptés : MTN Mobile Money, Orange Money, Moov Money
-           </p>
+          <p className="text-muted-foreground mb-4">
+            Modes de paiement acceptés via FedaPay : MTN Mobile Money, Orange Money, Moov Money
+          </p>
            <Button variant="outline" onClick={() => setIsPaymentMethodDialogOpen(true)}>
              <Edit className="h-4 w-4 mr-2" />
              Ajouter un moyen de paiement
@@ -217,9 +280,9 @@ export function PaymentsSection() {
          <DialogContent>
            <DialogHeader>
              <DialogTitle>Ajouter un moyen de paiement</DialogTitle>
-             <DialogDescription>
-               Enregistrez votre numéro de téléphone pour les paiements mobile money
-             </DialogDescription>
+            <DialogDescription>
+              Enregistrez votre numéro de téléphone pour les paiements mobile money sécurisés par FedaPay
+            </DialogDescription>
            </DialogHeader>
            <div className="space-y-4 py-4">
              <div className="space-y-2">
