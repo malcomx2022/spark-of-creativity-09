@@ -32,10 +32,9 @@ type FormValues = z.infer<typeof formSchema>;
 
 interface NewAppointmentDialogProps {
   onSubmit: (data: CreateAppointmentData) => Promise<any>;
-  onPaymentRequired: (appointmentId: string) => void;
 }
 
-export function NewAppointmentDialog({ onSubmit, onPaymentRequired }: NewAppointmentDialogProps) {
+export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
   
@@ -116,10 +115,10 @@ export function NewAppointmentDialog({ onSubmit, onPaymentRequired }: NewAppoint
 
       toast({
         title: 'Praticien trouvé !',
-        description: `${practitioner.name} (${practitioner.distance.toFixed(1)} km)`,
+        description: `${practitioner.name} (${practitioner.distance.toFixed(1)} km). En attente de confirmation...`,
       });
 
-      // 2. Créer le rendez-vous avec le praticien assigné
+      // 2. Créer le rendez-vous avec statut "awaiting_practitioner"
       const appointmentPayload = {
         specialty: data.specialty,
         date: data.date.toISOString(),
@@ -130,19 +129,19 @@ export function NewAppointmentDialog({ onSubmit, onPaymentRequired }: NewAppoint
         practitionerName: practitioner.name,
       };
       
-      console.log('🔵 Création du rendez-vous avec praticien assigné...');
+      console.log('🔵 Création du rendez-vous en attente de confirmation du praticien...');
       const createdAppointment = await onSubmit(appointmentPayload);
       console.log('✅ Rendez-vous créé avec succès', createdAppointment);
       
-      // Appeler onPaymentRequired avec l'ID du rendez-vous
       if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
-        const appointmentId = createdAppointment.id as string;
         setOpen(false);
         setIsSearchingPractitioner(false);
         form.reset();
         
-        // Notifier le parent pour ouvrir le dialogue de paiement
-        onPaymentRequired(appointmentId);
+        toast({
+          title: 'Demande envoyée',
+          description: 'Le praticien a été notifié. Vous serez informé dès qu\'il acceptera.',
+        });
       } else {
         throw new Error('L\'ID du rendez-vous n\'a pas été retourné');
       }

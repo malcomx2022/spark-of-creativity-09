@@ -67,7 +67,51 @@ export default function PractitionerDashboard() {
 
   const mutateAppointment = useMutateAppointment();
 
-  const handleStatusUpdate = async (id: string, status: 'confirmed' | 'completed' | 'cancelled') => {
+  const handleAccept = async (appointmentId: string) => {
+    try {
+      const { error } = await supabase.functions.invoke('handle-appointment-response', {
+        body: { appointmentId, action: 'accept' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Rendez-vous accepté',
+        description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'acceptation', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'accepter le rendez-vous.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleReject = async (appointmentId: string) => {
+    try {
+      const { error } = await supabase.functions.invoke('handle-appointment-response', {
+        body: { appointmentId, action: 'reject' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Rendez-vous refusé',
+        description: 'Le système recherche un praticien alternatif pour le patient.'
+      });
+    } catch (error) {
+      console.error('Erreur lors du refus', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de refuser le rendez-vous.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleStatusUpdate = async (id: string, status: 'completed' | 'cancelled') => {
     if (!practitionerId) {
       toast({
         title: 'Action impossible',
@@ -88,10 +132,6 @@ export default function PractitionerDashboard() {
       });
 
       const messages = {
-        confirmed: {
-          title: 'Rendez-vous confirmé',
-          description: 'Le patient a été notifié de la confirmation.'
-        },
         completed: {
           title: 'Consultation terminée',
           description: 'Le rendez-vous a été marqué comme terminé.'
@@ -114,6 +154,7 @@ export default function PractitionerDashboard() {
     }
   };
 
+  const awaitingAppointments = appointments.filter(apt => apt.status === 'awaiting_practitioner');
   const pendingAppointments = appointments.filter(apt => apt.status === 'pending');
   const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmed');
   const completedAppointments = appointments.filter(apt => apt.status === 'completed');
@@ -160,12 +201,12 @@ export default function PractitionerDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">En attente</CardTitle>
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
+              <CardTitle className="text-sm font-medium">À traiter</CardTitle>
+              <AlertCircle className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{pendingAppointments.length}</div>
-              <p className="text-xs text-muted-foreground">À confirmer</p>
+              <div className="text-2xl font-bold">{awaitingAppointments.length}</div>
+              <p className="text-xs text-muted-foreground">Demandes</p>
             </CardContent>
           </Card>
 
@@ -256,10 +297,10 @@ export default function PractitionerDashboard() {
               <CardDescription>Confirmez, terminez ou annulez vos rendez-vous en un clic.</CardDescription>
             </div>
 
-            <Tabs defaultValue="pending">
+            <Tabs defaultValue="awaiting">
               <TabsList>
-                <TabsTrigger value="pending">
-                  En attente ({pendingAppointments.length})
+                <TabsTrigger value="awaiting">
+                  À traiter ({awaitingAppointments.length})
                 </TabsTrigger>
                 <TabsTrigger value="confirmed">
                   Confirmés ({confirmedAppointments.length})
@@ -269,8 +310,8 @@ export default function PractitionerDashboard() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="pending" className="space-y-4 mt-4">
-                {pendingAppointments.length === 0 ? (
+              <TabsContent value="awaiting" className="space-y-4 mt-4">
+                {awaitingAppointments.length === 0 ? (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
@@ -278,13 +319,13 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  pendingAppointments.map(appointment => (
+                  awaitingAppointments.map(appointment => (
                     <AppointmentCard
                       key={appointment.id}
                       appointment={appointment}
                       userRole="practitioner"
-                      onConfirm={() => handleStatusUpdate(appointment.id, 'confirmed')}
-                      onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
+                      onConfirm={() => handleAccept(appointment.id)}
+                      onReject={() => handleReject(appointment.id)}
                     />
                   ))
                 )}

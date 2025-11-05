@@ -94,18 +94,34 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
         throw new Error('Patient non identifié');
       }
 
+      const currentUser = await supabase.auth.getUser();
+      if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
+      
+      const profile = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', currentUser.data.user.id)
+        .single();
+
+      const addresses = await supabase
+        .from('addresses')
+        .select('*')
+        .eq('user_id', currentUser.data.user.id)
+        .eq('is_default', true)
+        .maybeSingle();
+
       return insertAppointment({
         patient_id: patientId,
-        patient_name: patientName ?? 'Patient',
+        patient_name: profile.data?.full_name || patientName || 'Patient',
         practitioner_id: data.practitionerId || '',
         practitioner_name: data.practitionerName || '',
         specialty: data.specialty,
-        date: data.date,
+        date: new Date(data.date).toISOString().split('T')[0],
         time: data.time,
-        address: '',
         reason: data.reason,
-        urgency_level: data.urgencyLevel ?? null,
-        status: 'pending',
+        urgency_level: data.urgencyLevel,
+        status: 'awaiting_practitioner',
+        address: addresses.data?.address || 'Adresse à préciser',
         duration: 60,
       });
     },

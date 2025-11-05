@@ -99,10 +99,10 @@ export default function PatientDashboard() {
   };
 
   const upcomingAppointments = appointments.filter(
-    apt => apt.status !== 'completed' && apt.status !== 'cancelled'
+    apt => apt.status !== 'completed' && apt.status !== 'cancelled' && apt.status !== 'rejected'
   );
   const pastAppointments = appointments.filter(
-    apt => apt.status === 'completed' || apt.status === 'cancelled'
+    apt => apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'rejected'
   );
 
   const isLoading = isLoadingUser || isLoadingAppointments;
@@ -172,7 +172,6 @@ export default function PatientDashboard() {
           {patientId && (
             <NewAppointmentDialog 
               onSubmit={handleNewAppointment}
-              onPaymentRequired={handlePaymentRequired}
             />
           )}
         </div>
@@ -274,7 +273,6 @@ export default function PatientDashboard() {
                     {patientId && (
                       <NewAppointmentDialog 
                         onSubmit={handleNewAppointment}
-                        onPaymentRequired={handlePaymentRequired}
                       />
                     )}
                   </div>
@@ -286,6 +284,7 @@ export default function PatientDashboard() {
                           appointment={appointment}
                           userRole="patient"
                           onCancel={handleCancel}
+                          onPaymentRequired={handlePaymentRequired}
                         />
                         {appointment.status === 'confirmed' && (
                           <GPSTracking appointment={appointment} />
@@ -304,7 +303,6 @@ export default function PatientDashboard() {
               {patientId && (
                 <NewAppointmentDialog 
                   onSubmit={handleNewAppointment}
-                  onPaymentRequired={handlePaymentRequired}
                 />
               )}
             </div>
@@ -324,7 +322,6 @@ export default function PatientDashboard() {
                       {patientId && (
                         <NewAppointmentDialog 
                           onSubmit={handleNewAppointment}
-                          onPaymentRequired={handlePaymentRequired}
                         />
                       )}
                     </CardContent>
@@ -337,6 +334,7 @@ export default function PatientDashboard() {
                           appointment={appointment}
                           userRole="patient"
                           onCancel={handleCancel}
+                          onPaymentRequired={handlePaymentRequired}
                         />
                         {appointment.status === 'confirmed' && (
                           <GPSTracking appointment={appointment} />

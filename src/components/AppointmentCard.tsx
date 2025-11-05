@@ -12,16 +12,20 @@ interface AppointmentCardProps {
   userRole: 'patient' | 'practitioner';
   onCancel?: (id: string) => void;
   onConfirm?: (id: string) => void;
+  onReject?: (id: string) => void;
   onComplete?: (id: string) => void;
+  onPaymentRequired?: (appointmentId: string) => void;
 }
 
-export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onComplete }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired }: AppointmentCardProps) {
   const { data: user } = useSupabaseUser();
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
         return 'bg-green-500/10 text-green-500 border-green-500/20';
+      case 'awaiting_practitioner':
+        return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
       case 'pending':
         return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
       case 'in-progress':
@@ -29,6 +33,8 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
       case 'completed':
         return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
       case 'cancelled':
+        return 'bg-red-500/10 text-red-500 border-red-500/20';
+      case 'rejected':
         return 'bg-red-500/10 text-red-500 border-red-500/20';
       default:
         return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
@@ -39,14 +45,18 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
     switch (status) {
       case 'confirmed':
         return 'Confirmé';
+      case 'awaiting_practitioner':
+        return 'En attente praticien';
       case 'pending':
-        return 'En attente';
+        return 'En attente paiement';
       case 'in-progress':
         return 'En cours';
       case 'completed':
         return 'Terminé';
       case 'cancelled':
         return 'Annulé';
+      case 'rejected':
+        return 'Refusé';
       default:
         return status;
     }
@@ -99,9 +109,19 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
         )}
 
         <div className="flex gap-2 pt-2">
-          {userRole === 'practitioner' && appointment.status === 'pending' && onConfirm && (
-            <Button onClick={() => onConfirm(appointment.id)} size="sm" className="flex-1">
-              Confirmer
+          {userRole === 'practitioner' && appointment.status === 'awaiting_practitioner' && onConfirm && onReject && (
+            <>
+              <Button onClick={() => onConfirm(appointment.id)} size="sm" className="flex-1">
+                Accepter
+              </Button>
+              <Button onClick={() => onReject(appointment.id)} size="sm" variant="destructive" className="flex-1">
+                Refuser
+              </Button>
+            </>
+          )}
+          {userRole === 'patient' && appointment.status === 'pending' && onPaymentRequired && (
+            <Button onClick={() => onPaymentRequired(appointment.id)} size="sm" className="flex-1">
+              Payer
             </Button>
           )}
           {userRole === 'practitioner' && appointment.status === 'confirmed' && onComplete && (
@@ -109,8 +129,8 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
               Terminer
             </Button>
           )}
-          {appointment.status !== 'completed' && appointment.status !== 'cancelled' && onCancel && (
-            <Button onClick={() => onCancel(appointment.id)} size="sm" variant="destructive" className="flex-1">
+          {appointment.status !== 'completed' && appointment.status !== 'cancelled' && appointment.status !== 'rejected' && onCancel && (
+            <Button onClick={() => onCancel(appointment.id)} size="sm" variant="outline" className="flex-1">
               Annuler
             </Button>
           )}
