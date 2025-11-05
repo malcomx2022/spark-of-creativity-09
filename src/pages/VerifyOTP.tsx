@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
+import { getDashboardPathFromAuth } from "@/lib/dashboardNavigation";
 
 export default function VerifyOTP() {
   const navigate = useNavigate();
@@ -41,7 +42,9 @@ export default function VerifyOTP() {
         title: "Connexion réussie !",
         description: "Vous êtes maintenant connecté.",
       });
-      navigate("/");
+
+      const destination = await getDashboardPathFromAuth();
+      navigate(destination, { replace: true });
     } catch (error: any) {
       toast({
         title: "Erreur de vérification",
