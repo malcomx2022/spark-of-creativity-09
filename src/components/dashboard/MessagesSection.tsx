@@ -1,111 +1,55 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { MessageSquare, Send } from 'lucide-react';
-import { useMessages, useSendMessage, useMarkMessageAsRead } from '@/hooks/useMessages';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useState } from 'react';
-import { toast } from '@/hooks/use-toast';
-import { Badge } from '@/components/ui/badge';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useConversations } from '@/hooks/useConversations';
+import { ConversationsList } from '@/components/messaging/ConversationsList';
+import { ChatInterface } from '@/components/messaging/ChatInterface';
+import type { Conversation } from '@/hooks/useConversations';
 
 export function MessagesSection() {
   const { data: user } = useSupabaseUser();
-  const { data: messages = [] } = useMessages(user?.id, 'patient');
-  const sendMessage = useSendMessage();
-  const markAsRead = useMarkMessageAsRead();
-  const [newMessage, setNewMessage] = useState('');
+  const { data: conversations = [], isLoading } = useConversations(user?.id, 'patient');
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>(
+    conversations[0]
+  );
 
-  const handleSendMessage = async () => {
-    if (!user?.id || !newMessage.trim()) return;
+  // Auto-select first conversation when loaded
+  if (!selectedConversation && conversations.length > 0) {
+    setSelectedConversation(conversations[0]);
+  }
 
-    try {
-      await sendMessage.mutateAsync({
-        sender_id: user.id,
-        content: newMessage,
-        appointment_id: '', // Message général sans rendez-vous associé
-      });
-      setNewMessage('');
-      toast({
-        title: 'Message envoyé',
-        description: 'Votre message a été envoyé avec succès.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Erreur',
-        description: 'Impossible d\'envoyer le message.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleMarkAsRead = async (messageId: string) => {
-    try {
-      await markAsRead.mutateAsync(messageId);
-    } catch (error) {
-      console.error('Erreur lors du marquage du message comme lu', error);
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <p className="text-muted-foreground">Chargement des conversations...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            Messages
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {messages.length === 0 ? (
-            <p className="text-muted-foreground mb-4">Aucun message</p>
-          ) : (
-            <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  onClick={() => !message.is_read && handleMarkAsRead(message.id)}
-                  className={`p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
-                    !message.is_read ? 'bg-primary/5 border-primary/20' : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="text-sm font-medium">
-                      {message.sender_id === user?.id ? 'Vous' : 'Message'}
-                    </p>
-                    {message.is_read === false && <Badge variant="default">Nouveau</Badge>}
-                  </div>
-                  <p className="text-sm">{message.content}</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {new Date(message.created_at).toLocaleDateString('fr-FR', {
-                      day: 'numeric',
-                      month: 'long',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <Textarea
-              placeholder="Écrivez votre message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              rows={3}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!newMessage.trim() || sendMessage.isPending}
-              className="w-full"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {sendMessage.isPending ? 'Envoi...' : 'Envoyer'}
-            </Button>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-1">
+        <ConversationsList
+          conversations={conversations}
+          selectedConversation={selectedConversation}
+          onSelectConversation={setSelectedConversation}
+          userType="patient"
+        />
+      </div>
+      <div className="lg:col-span-2">
+        {selectedConversation && user ? (
+          <ChatInterface
+            conversation={selectedConversation}
+            currentUserId={user.id}
+            userType="patient"
+          />
+        ) : (
+          <div className="flex items-center justify-center h-[calc(100vh-12rem)] border rounded-lg bg-muted/20">
+            <p className="text-muted-foreground">
+              Sélectionnez une conversation pour commencer
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
     </div>
   );
 }
