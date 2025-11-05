@@ -177,79 +177,6 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     }
   }, [useSavedMethod]);
 
-  // Poll payment status
-  useEffect(() => {
-    if (!paymentId || paymentStatus !== 'pending') return;
-
-    const startTime = Date.now();
-    const checkPaymentStatus = async () => {
-      try {
-        // Check if max poll time exceeded
-        if (Date.now() - startTime > MAX_POLL_TIME) {
-          clearInterval(pollInterval);
-          setPaymentStatus('error');
-          setIsProcessing(false);
-          toast({
-            variant: "destructive",
-            title: "Délai dépassé",
-            description: "Le paiement prend trop de temps. Veuillez vérifier votre téléphone et contacter le support si nécessaire.",
-          });
-          return;
-        }
-
-        // Query payment status from database
-        const { data: payment, error } = await supabase
-          .from('payments')
-          .select('status')
-          .eq('id', paymentId)
-          .single();
-
-        if (error) {
-          console.error('Error polling payment:', error);
-          return;
-        }
-
-        setPollCount(prev => prev + 1);
-
-        if (payment.status === 'paid') {
-          clearInterval(pollInterval);
-          setPaymentStatus('success');
-          setIsProcessing(false);
-          toast({
-            title: "Paiement réussi !",
-            description: "Votre rendez-vous a été confirmé.",
-          });
-          
-          if (onSuccess) {
-            onSuccess();
-          }
-          
-          // Close dialog after success
-          setTimeout(() => {
-            closeDialog();
-          }, 2000);
-        } else if (['failed', 'canceled'].includes(payment.status)) {
-          clearInterval(pollInterval);
-          setPaymentStatus('error');
-          setIsProcessing(false);
-          toast({
-            variant: "destructive",
-            title: "Paiement échoué",
-            description: "Le paiement n'a pas pu être complété. Veuillez réessayer.",
-          });
-        }
-      } catch (error) {
-        console.error('Error in payment polling:', error);
-      }
-    };
-
-    const pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
-
-    return () => {
-      clearInterval(pollInterval);
-    };
-  }, [paymentId, paymentStatus, onSuccess, closeDialog]);
-
   const handlePayment = async () => {
     // Si une méthode sauvegardée est sélectionnée, l'utiliser
     let resolvedPhoneNumber = phoneNumber;
@@ -421,6 +348,79 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     resetPaymentState();
     onOpenChange(false);
   }, [onOpenChange, resetPaymentState]);
+
+  // Poll payment status
+  useEffect(() => {
+    if (!paymentId || paymentStatus !== 'pending') return;
+
+    const startTime = Date.now();
+    const checkPaymentStatus = async () => {
+      try {
+        // Check if max poll time exceeded
+        if (Date.now() - startTime > MAX_POLL_TIME) {
+          clearInterval(pollInterval);
+          setPaymentStatus('error');
+          setIsProcessing(false);
+          toast({
+            variant: "destructive",
+            title: "Délai dépassé",
+            description: "Le paiement prend trop de temps. Veuillez vérifier votre téléphone et contacter le support si nécessaire.",
+          });
+          return;
+        }
+
+        // Query payment status from database
+        const { data: payment, error } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('id', paymentId)
+          .single();
+
+        if (error) {
+          console.error('Error polling payment:', error);
+          return;
+        }
+
+        setPollCount(prev => prev + 1);
+
+        if (payment.status === 'paid') {
+          clearInterval(pollInterval);
+          setPaymentStatus('success');
+          setIsProcessing(false);
+          toast({
+            title: "Paiement réussi !",
+            description: "Votre rendez-vous a été confirmé.",
+          });
+          
+          if (onSuccess) {
+            onSuccess();
+          }
+          
+          // Close dialog after success
+          setTimeout(() => {
+            closeDialog();
+          }, 2000);
+        } else if (['failed', 'canceled'].includes(payment.status)) {
+          clearInterval(pollInterval);
+          setPaymentStatus('error');
+          setIsProcessing(false);
+          toast({
+            variant: "destructive",
+            title: "Paiement échoué",
+            description: "Le paiement n'a pas pu être complété. Veuillez réessayer.",
+          });
+        }
+      } catch (error) {
+        console.error('Error in payment polling:', error);
+      }
+    };
+
+    const pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
+
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, [paymentId, paymentStatus, onSuccess, closeDialog]);
 
   const handleDialogOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {

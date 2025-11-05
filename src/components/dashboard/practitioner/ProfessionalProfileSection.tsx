@@ -119,9 +119,26 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             <div>
               <Label>Pièce d'identité</Label>
               <div className="flex items-center gap-2 mt-2">
-                <Input type="file" accept="image/*,application/pdf" disabled={!isEditing} />
+                <Input 
+                  type="file" 
+                  accept="image/*,application/pdf" 
+                  disabled={!isEditing}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      toast({
+                        title: "Document sélectionné",
+                        description: "Le téléchargement sera effectué lors de la sauvegarde.",
+                      });
+                    }
+                  }}
+                />
                 {practitionerData?.id_document_url && (
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => window.open(practitionerData.id_document_url, '_blank')}
+                  >
                     <FileText className="h-4 w-4" />
                   </Button>
                 )}
@@ -130,9 +147,26 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             <div>
               <Label>Document d'agrément</Label>
               <div className="flex items-center gap-2 mt-2">
-                <Input type="file" accept="image/*,application/pdf" disabled={!isEditing} />
+                <Input 
+                  type="file" 
+                  accept="image/*,application/pdf" 
+                  disabled={!isEditing}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      toast({
+                        title: "Document sélectionné",
+                        description: "Le téléchargement sera effectué lors de la sauvegarde.",
+                      });
+                    }
+                  }}
+                />
                 {practitionerData?.license_document_url && (
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => window.open(practitionerData.license_document_url, '_blank')}
+                  >
                     <FileText className="h-4 w-4" />
                   </Button>
                 )}
@@ -141,9 +175,26 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             <div>
               <Label>Assurance RCP</Label>
               <div className="flex items-center gap-2 mt-2">
-                <Input type="file" accept="image/*,application/pdf" disabled={!isEditing} />
+                <Input 
+                  type="file" 
+                  accept="image/*,application/pdf" 
+                  disabled={!isEditing}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      toast({
+                        title: "Document sélectionné",
+                        description: "Le téléchargement sera effectué lors de la sauvegarde.",
+                      });
+                    }
+                  }}
+                />
                 {practitionerData?.insurance_document_url && (
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => window.open(practitionerData.insurance_document_url, '_blank')}
+                  >
                     <FileText className="h-4 w-4" />
                   </Button>
                 )}

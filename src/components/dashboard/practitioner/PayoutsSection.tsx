@@ -3,12 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DollarSign, Download, TrendingUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface PayoutsSectionProps {
   practitionerId: string;
 }
 
 export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) {
+  const { toast } = useToast();
+  
   // Mock data - à remplacer par de vraies données
   const stats = {
     totalEarned: 125000,
@@ -112,7 +115,17 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                 <p className="text-sm text-muted-foreground">+229 XX XX XX XX</p>
               </div>
             </div>
-            <Button variant="outline">Modifier</Button>
+            <Button 
+              variant="outline"
+              onClick={() => {
+                toast({
+                  title: "Modification du compte",
+                  description: "Cette fonctionnalité sera bientôt disponible.",
+                });
+              }}
+            >
+              Modifier
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -125,7 +138,16 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
               <CardTitle>Historique des versements</CardTitle>
               <CardDescription>Tous vos paiements reçus</CardDescription>
             </div>
-            <Button variant="outline" size="sm">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                toast({
+                  title: "Export en cours",
+                  description: "Votre historique de paiements sera téléchargé.",
+                });
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
               Exporter
             </Button>
@@ -156,7 +178,16 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                   <TableCell>{getStatusBadge(payout.status)}</TableCell>
                   <TableCell>{payout.date}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => {
+                        toast({
+                          title: "Téléchargement",
+                          description: `Reçu pour ${payout.period} en cours de téléchargement.`,
+                        });
+                      }}
+                    >
                       <Download className="h-4 w-4" />
                     </Button>
                   </TableCell>

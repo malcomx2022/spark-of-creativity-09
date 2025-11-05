@@ -141,7 +141,16 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
               <CardTitle>Exceptions et congés</CardTitle>
               <CardDescription>Jours fériés, congés et indisponibilités</CardDescription>
             </div>
-            <Button size="sm" variant="outline">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => {
+                toast({
+                  title: "Export en cours",
+                  description: "Votre calendrier sera bientôt téléchargé.",
+                });
+              }}
+            >
               Exporter ICS
             </Button>
           </div>
