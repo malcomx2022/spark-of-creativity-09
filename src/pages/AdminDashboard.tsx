@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
-import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen } from "lucide-react";
+import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { AdminManagement } from "@/components/admin/AdminManagement";
 import { KYCQueue } from "@/components/admin/KYCQueue";
@@ -16,6 +16,7 @@ import { SupportSection } from "@/components/admin/SupportSection";
 import { OperationsSection } from "@/components/admin/OperationsSection";
 import { ComplianceSection } from "@/components/admin/ComplianceSection";
 import { UsersManagementSection } from "@/components/admin/UsersManagementSection";
+import { OTPManagementSection } from "@/components/admin/OTPManagementSection";
 import { useAdminStats } from "@/hooks/useAdminStats";
 
 export default function AdminDashboard() {
@@ -112,7 +113,7 @@ export default function AdminDashboard() {
 
         {/* Main Admin Interface */}
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
+          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9 gap-1">
             <TabsTrigger value="dashboard">
               <Activity className="h-4 w-4 mr-2" />
               Vue d'ensemble
@@ -136,6 +137,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="support">
               <MessageSquare className="h-4 w-4 mr-2" />
               Support
+            </TabsTrigger>
+            <TabsTrigger value="otp">
+              <Phone className="h-4 w-4 mr-2" />
+              OTP
             </TabsTrigger>
             <TabsTrigger value="compliance">
               <BookOpen className="h-4 w-4 mr-2" />
@@ -169,6 +174,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="support">
             <SupportSection />
+          </TabsContent>
+
+          <TabsContent value="otp">
+            <OTPManagementSection />
           </TabsContent>
 
           <TabsContent value="compliance">
