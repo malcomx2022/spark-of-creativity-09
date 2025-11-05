@@ -7,6 +7,32 @@ const corsHeaders = {
 };
 
 /**
+ * Normalise un numéro de téléphone au format E.164
+ * Ajoute le + si manquant et valide le format international
+ */
+function normalizePhoneNumber(phone: string): string {
+  // Remove all non-digit characters except +
+  let normalized = phone.replace(/[^\d+]/g, '');
+
+  // Add + prefix if missing
+  if (!normalized.startsWith('+')) {
+    normalized = '+' + normalized;
+  }
+
+  return normalized;
+}
+
+/**
+ * Valide le format d'un numéro de téléphone E.164
+ * Format: +[country code][subscriber number]
+ * Exemple: +22890123456 (Bénin)
+ */
+function validatePhoneNumber(phone: string): boolean {
+  const e164Regex = /^\+[1-9]\d{1,14}$/;
+  return e164Regex.test(phone);
+}
+
+/**
  * Normalise un numéro de téléphone pour créer un email temporaire
  * +22890123456 -> 22890123456@temp.sparkofcreativity.app
  */
@@ -42,13 +68,27 @@ serve(async (req) => {
       throw new Error('Twilio credentials not configured');
     }
 
-    const { phoneNumber, code } = await req.json();
+    const { phoneNumber: rawPhoneNumber, code } = await req.json();
 
-    if (!phoneNumber || !code) {
+    if (!rawPhoneNumber || !code) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
-          error: 'Phone number and code are required' 
+          error: 'Phone number and code are required'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Normalize phone number
+    const normalizedPhone = normalizePhoneNumber(rawPhoneNumber);
+
+    // Validate phone number format (E.164)
+    if (!validatePhoneNumber(normalizedPhone)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid phone number format. Use international format (e.g., +22890123456 or 22890123456)'
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -58,7 +98,7 @@ serve(async (req) => {
     const codeRegex = /^\d{6}$/;
     if (!codeRegex.test(code)) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: false,
           error: 'Invalid code format. Must be exactly 6 digits' 
         }),
@@ -66,7 +106,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('Verifying OTP for:', phoneNumber);
+    console.log('Verifying OTP for:', normalizedPhone);
 
     // Verify code via Twilio Verify API
     const verifyUrl = `https://verify.twilio.com/v2/Services/${twilioVerifyServiceSid}/VerificationCheck`;
@@ -78,7 +118,7 @@ serve(async (req) => {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        To: phoneNumber,
+        To: normalizedPhone,
         Code: code,
       }),
     });
@@ -93,9 +133,9 @@ serve(async (req) => {
         admin_id: '00000000-0000-0000-0000-000000000000',
         action: 'otp_verification_failed',
         entity_type: 'auth',
-        entity_id: phoneNumber,
+        entity_id: normalizedPhone,
         details: {
-          phone: phoneNumber,
+          phone: normalizedPhone,
           error: responseData.message,
         },
       });
@@ -117,9 +157,9 @@ serve(async (req) => {
         admin_id: '00000000-0000-0000-0000-000000000000',
         action: 'otp_verification_rejected',
         entity_type: 'auth',
-        entity_id: phoneNumber,
+        entity_id: normalizedPhone,
         details: {
-          phone: phoneNumber,
+          phone: normalizedPhone,
           status: responseData.status,
         },
       });
@@ -137,13 +177,13 @@ serve(async (req) => {
     console.log('OTP verified successfully, checking for existing user...');
 
     // Generate temporary email from phone number
-    const tempEmail = generateTempEmail(phoneNumber);
+    const tempEmail = generateTempEmail(normalizedPhone);
 
     // Check if user exists with this phone number
     const { data: existingProfile, error: profileError } = await supabase
       .from('profiles')
       .select('id, phone')
-      .eq('phone', phoneNumber)
+      .eq('phone', normalizedPhone)
       .maybeSingle();
 
     let user;
@@ -198,10 +238,10 @@ serve(async (req) => {
         email: tempEmail,
         password: tempPassword,
         email_confirm: true,
-        phone: phoneNumber,
+        phone: normalizedPhone,
         phone_confirm: true,
         user_metadata: {
-          phone: phoneNumber,
+          phone: normalizedPhone,
           phone_verified: true,
         },
       });
@@ -218,8 +258,8 @@ serve(async (req) => {
         .from('profiles')
         .insert({
           id: user.id,
-          phone: phoneNumber,
-          full_name: phoneNumber, // Default to phone number
+          phone: normalizedPhone,
+          full_name: normalizedPhone, // Default to phone number
         });
 
       if (profileInsertError) {
@@ -252,7 +292,7 @@ serve(async (req) => {
       entity_type: 'auth',
       entity_id: user.id,
       details: {
-        phone: phoneNumber,
+        phone: normalizedPhone,
         is_new_user: isNewUser,
       },
     });
@@ -272,7 +312,7 @@ serve(async (req) => {
         },
         user: {
           id: user.id,
-          phone: phoneNumber,
+          phone: normalizedPhone,
           email: user.email,
         },
       }),
