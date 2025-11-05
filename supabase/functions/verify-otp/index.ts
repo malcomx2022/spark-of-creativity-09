@@ -118,8 +118,8 @@ serve(async (req) => {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        To: normalizedPhone,
-        Code: code,
+        to: normalizedPhone,
+        code: code,
       }),
     });
 
