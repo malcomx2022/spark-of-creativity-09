@@ -13,9 +13,12 @@ import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
-import { useCreateConsultationReport, useConsultationReportByAppointment } from '@/hooks/useConsultationReports';
+import { useCreateConsultationReport, useConsultationReportByAppointment, useConsultationReports } from '@/hooks/useConsultationReports';
 import { toast } from 'sonner';
-import { FileText, Save } from 'lucide-react';
+import { FileText, Save, Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Form,
   FormControl,
@@ -69,6 +72,7 @@ export function ConsultationReportSection() {
   const completedAppointments = appointments?.filter(apt => apt.status === 'completed') || [];
 
   const { data: existingReport } = useConsultationReportByAppointment(selectedAppointmentId);
+  const { data: allReports } = useConsultationReports(practitioner?.id);
   const createReport = useCreateConsultationReport();
 
   const form = useForm<ConsultationReportForm>({
@@ -124,9 +128,110 @@ export function ConsultationReportSection() {
     }
   };
 
+  const getSeverityBadge = (severity: string) => {
+    switch (severity) {
+      case 'urgent':
+        return <Badge variant="destructive">Urgent</Badge>;
+      case 'modere':
+        return <Badge variant="outline" className="border-yellow-500 text-yellow-700">Modéré</Badge>;
+      case 'leger':
+        return <Badge variant="outline" className="border-green-500 text-green-700">Léger</Badge>;
+      default:
+        return <Badge variant="outline">{severity}</Badge>;
+    }
+  };
+
+  const getConsultationType = (type: string) => {
+    switch (type) {
+      case 'domicile':
+        return 'À domicile';
+      case 'teleconsultation':
+        return 'Téléconsultation';
+      case 'suivi':
+        return 'Suivi';
+      default:
+        return type;
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <Card>
+      <Tabs defaultValue="list" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="list">Liste des rapports</TabsTrigger>
+          <TabsTrigger value="create">Nouveau rapport</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Rapports de consultation
+              </CardTitle>
+              <CardDescription>
+                Liste de tous vos rapports de consultation
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!allReports || allReports.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p>Aucun rapport de consultation pour le moment</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Patient</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Diagnostic</TableHead>
+                        <TableHead>Gravité</TableHead>
+                        <TableHead>Suivi</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allReports.map((report) => {
+                        const appointment = appointments?.find(apt => apt.id === report.appointment_id);
+                        return (
+                          <TableRow key={report.id}>
+                            <TableCell className="font-medium">
+                              {new Date(report.consultation_date).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>{appointment?.patientName || 'N/A'}</TableCell>
+                            <TableCell>{getConsultationType(report.consultation_type)}</TableCell>
+                            <TableCell className="max-w-[200px] truncate">
+                              {report.primary_diagnosis || 'Non spécifié'}
+                            </TableCell>
+                            <TableCell>{getSeverityBadge(report.severity_level)}</TableCell>
+                            <TableCell>{report.follow_up_timeframe}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  toast.info('Fonctionnalité de visualisation détaillée à venir');
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="create">
+          <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -391,6 +496,8 @@ export function ConsultationReportSection() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
