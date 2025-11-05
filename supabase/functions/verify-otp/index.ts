@@ -153,49 +153,17 @@ serve(async (req) => {
     if (existingProfile) {
       console.log('Existing user found:', existingProfile.id);
 
-      // Get the user from auth
-      const { data: { user: authUser }, error: getUserError } = await supabase.auth.admin.getUserById(
-        existingProfile.id
-      );
-
-      if (getUserError || !authUser) {
-        console.error('Error fetching user:', getUserError);
-        throw new Error('User profile exists but auth user not found');
-      }
-
-      user = authUser;
-
-      // Generate a sign-in link (magic link)
-      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: authUser.email || tempEmail,
-      });
-
-      if (linkError) {
-        console.error('Error generating link:', linkError);
-        throw linkError;
-      }
-
-      // Extract the token from the generated link
-      const urlParams = new URL(linkData.properties.action_link).searchParams;
-      const token = urlParams.get('token');
-      const tokenHash = urlParams.get('token_hash');
-
-      if (!token || !tokenHash) {
-        throw new Error('Failed to extract token from magic link');
-      }
-
-      // Verify the token to create a session
-      const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
-        token_hash: tokenHash,
-        type: 'magiclink',
+      // Create a custom token for the user
+      const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
+        user_id: existingProfile.id,
       });
 
       if (sessionError) {
-        console.error('Error verifying OTP:', sessionError);
+        console.error('Error creating session:', sessionError);
         throw sessionError;
       }
 
+      user = sessionData.user;
       session = sessionData.session;
 
     } else {
@@ -235,29 +203,9 @@ serve(async (req) => {
         // Continue anyway as the user was created in auth
       }
 
-      // Generate session for new user
-      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: tempEmail,
-      });
-
-      if (linkError) {
-        console.error('Error generating link for new user:', linkError);
-        throw linkError;
-      }
-
-      // Extract token and create session
-      const urlParams = new URL(linkData.properties.action_link).searchParams;
-      const token = urlParams.get('token');
-      const tokenHash = urlParams.get('token_hash');
-
-      if (!token || !tokenHash) {
-        throw new Error('Failed to extract token from magic link');
-      }
-
-      const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
-        token_hash: tokenHash,
-        type: 'magiclink',
+      // Create session for new user
+      const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
+        user_id: user.id,
       });
 
       if (sessionError) {
