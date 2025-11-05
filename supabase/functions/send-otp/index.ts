@@ -109,7 +109,7 @@ serve(async (req) => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { data: recentAttempts, error: attemptsError } = await supabase
       .from('otp_attempts')
-      .select('id')
+      .select('id, status')
       .eq('phone_number', normalizedPhone)
       .gte('created_at', oneHourAgo);
 
@@ -130,6 +130,37 @@ serve(async (req) => {
         }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Notify admins after 3 failed attempts
+    if (recentAttempts) {
+      const failedAttempts = recentAttempts.filter(a => a.status === 'failed').length;
+      
+      if (failedAttempts === 2) {
+        // This will be the 3rd failed attempt, notify admins
+        console.log('User has 3 failed OTP attempts, notifying admins:', normalizedPhone);
+        
+        // Get all admin users
+        const { data: adminRoles } = await supabase
+          .from('user_roles')
+          .select('user_id')
+          .in('role', ['admin', 'super_admin']);
+        
+        if (adminRoles && adminRoles.length > 0) {
+          // Create notifications for all admins
+          const notifications = adminRoles.map(admin => ({
+            user_id: admin.user_id,
+            title: '⚠️ Utilisateur bloqué - OTP',
+            message: `L'utilisateur ${normalizedPhone} a échoué 3 tentatives OTP et pourrait être bloqué.`,
+            type: 'security',
+            link: '/admin?tab=otp',
+            is_read: false,
+          }));
+          
+          await supabase.from('notifications').insert(notifications);
+          console.log(`Notified ${adminRoles.length} admin(s) about blocked user`);
+        }
+      }
     }
 
     console.log('Sending OTP to:', normalizedPhone, 'via', channel);
