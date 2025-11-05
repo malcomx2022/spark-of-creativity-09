@@ -153,26 +153,50 @@ serve(async (req) => {
     if (existingProfile) {
       console.log('Existing user found:', existingProfile.id);
 
-      // Create a custom token for the user
-      const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
-        user_id: existingProfile.id,
-      });
+      // Generate a temporary password for session creation
+      const tempPassword = crypto.randomUUID();
+      
+      // Update user with temporary password
+      const { data: updatedUser, error: updateError } = await supabase.auth.admin.updateUserById(
+        existingProfile.id,
+        { password: tempPassword }
+      );
 
-      if (sessionError) {
-        console.error('Error creating session:', sessionError);
-        throw sessionError;
+      if (updateError) {
+        console.error('Error updating user password:', updateError);
+        throw updateError;
       }
 
-      user = sessionData.user;
-      session = sessionData.session;
+      user = updatedUser.user;
+
+      // Create a non-admin client to sign in
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const clientSupabase = createClient(supabaseUrl, anonKey);
+
+      // Sign in with temporary password to get session
+      const { data: signInData, error: signInError } = await clientSupabase.auth.signInWithPassword({
+        email: tempEmail,
+        password: tempPassword,
+      });
+
+      if (signInError) {
+        console.error('Error signing in:', signInError);
+        throw signInError;
+      }
+
+      session = signInData.session;
 
     } else {
       console.log('New user, creating account...');
       isNewUser = true;
 
-      // Create new user with temporary email
+      // Generate a temporary password for the new user
+      const tempPassword = crypto.randomUUID();
+
+      // Create new user with temporary email and password
       const { data: newUserData, error: createError } = await supabase.auth.admin.createUser({
         email: tempEmail,
+        password: tempPassword,
         email_confirm: true,
         phone: phoneNumber,
         phone_confirm: true,
@@ -203,17 +227,22 @@ serve(async (req) => {
         // Continue anyway as the user was created in auth
       }
 
-      // Create session for new user
-      const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
-        user_id: user.id,
+      // Create a non-admin client to sign in
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const clientSupabase = createClient(supabaseUrl, anonKey);
+
+      // Sign in with email/password to get session
+      const { data: signInData, error: signInError } = await clientSupabase.auth.signInWithPassword({
+        email: tempEmail,
+        password: tempPassword,
       });
 
-      if (sessionError) {
-        console.error('Error creating session:', sessionError);
-        throw sessionError;
+      if (signInError) {
+        console.error('Error signing in new user:', signInError);
+        throw signInError;
       }
 
-      session = sessionData.session;
+      session = signInData.session;
     }
 
     // Log successful verification and authentication
