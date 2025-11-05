@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 
 export interface Conversation {
@@ -263,4 +263,54 @@ export function useMarkMessagesAsRead() {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
   });
+}
+
+// Typing indicator hook
+export function useTypingIndicator(appointmentId: string, userId: string) {
+  const [typingUsers, setTypingUsers] = useState<any>({});
+
+  useEffect(() => {
+    if (!appointmentId || !userId) return;
+
+    const channel = supabase.channel(`typing:${appointmentId}`);
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        setTypingUsers(state);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('User started typing:', key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('User stopped typing:', key, leftPresences);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [appointmentId, userId]);
+
+  const setTyping = async (isTyping: boolean) => {
+    const channel = supabase.channel(`typing:${appointmentId}`);
+    
+    await channel.subscribe();
+    
+    if (isTyping) {
+      await channel.track({ user_id: userId });
+    } else {
+      await channel.untrack();
+    }
+  };
+
+  // Check if other users (not current user) are typing
+  const isOtherUserTyping = Object.values(typingUsers).some(
+    (presences: any) => {
+      if (!Array.isArray(presences)) return false;
+      return presences.some((presence: any) => presence.user_id !== userId);
+    }
+  );
+
+  return { isOtherUserTyping, setTyping };
 }

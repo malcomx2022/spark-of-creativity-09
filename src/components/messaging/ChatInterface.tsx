@@ -22,6 +22,7 @@ import {
   useConversationMessages, 
   useSendMessage, 
   useMarkMessagesAsRead,
+  useTypingIndicator,
   type Conversation 
 } from '@/hooks/useConversations';
 
@@ -36,9 +37,11 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
   const [attachment, setAttachment] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
   const { data: messages = [] } = useConversationMessages(conversation.appointment_id, currentUserId);
   const sendMessage = useSendMessage();
   const markAsRead = useMarkMessagesAsRead();
+  const { isOtherUserTyping, setTyping } = useTypingIndicator(conversation.appointment_id, currentUserId);
 
   const otherUserName = userType === 'patient' 
     ? conversation.practitioner_name 
@@ -122,10 +125,28 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessage(e.target.value);
+    
+    // Set typing indicator
+    setTyping(true);
+    
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Stop typing after 2 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      setTyping(false);
+    }, 2000);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+      setTyping(false);
     }
   };
 
@@ -284,6 +305,23 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
                 );
               })
             )}
+            {isOtherUserTyping && (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Avatar className="h-6 w-6 flex-shrink-0">
+                  <AvatarFallback className="bg-muted text-xs">
+                    {getInitials(otherUserName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex items-center gap-1 px-3 py-2 bg-muted rounded-2xl rounded-bl-sm">
+                  <span className="animate-pulse">En train d'écrire</span>
+                  <span className="flex gap-0.5">
+                    <span className="w-1 h-1 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-1 h-1 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-1 h-1 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </span>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
@@ -336,7 +374,7 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
             <Textarea
               placeholder="Écrivez votre message..."
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={handleMessageChange}
               onKeyDown={handleKeyPress}
               rows={1}
               className="resize-none min-h-[40px] max-h-[120px]"
