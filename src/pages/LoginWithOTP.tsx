@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useOTPAuth } from '@/hooks/useOTPAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
 import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
@@ -21,16 +22,21 @@ export default function LoginWithOTP() {
   const [channel, setChannel] = useState<OTPChannel>('sms');
   const [countdown, setCountdown] = useState(0);
 
+  const redirectToDashboard = useCallback(async () => {
+    const destination = await getDashboardPathFromAuth();
+    navigate(destination, { replace: true });
+  }, [navigate]);
+
   // Vérifier si l'utilisateur est déjà connecté
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate('/');
+        await redirectToDashboard();
       }
     };
-    checkSession();
-  }, [navigate]);
+    void checkSession();
+  }, [redirectToDashboard]);
 
   // Countdown pour le renvoi du code
   useEffect(() => {
@@ -87,22 +93,11 @@ export default function LoginWithOTP() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // Vérifier le type d'utilisateur pour rediriger vers le bon dashboard
-        const { data: practitioner } = await supabase
-          .from('practitioners')
-          .select('practitioner_type')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        if (practitioner?.practitioner_type === 'coach_sportif') {
-          navigate('/coach-dashboard');
-        } else if (practitioner) {
-          navigate('/practitioner-dashboard');
-        } else {
-          navigate('/patient-dashboard');
-        }
+        const destination = await getDashboardPathForUser(user.id);
+        navigate(destination);
       } else {
-        navigate('/');
+        const destination = await getDashboardPathFromAuth();
+        navigate(destination);
       }
     } catch (error) {
       console.error('Error verifying OTP:', error);
