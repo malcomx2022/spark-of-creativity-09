@@ -23,7 +23,6 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
     address: '',
     city: '',
     postal_code: '',
-    country: 'Bénin',
     is_default: false,
   });
 
@@ -52,7 +51,6 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
         address: '',
         city: '',
         postal_code: '',
-        country: 'Bénin',
         is_default: false,
       });
       setOpen(false);
@@ -120,15 +118,6 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
                 placeholder="01234"
               />
             </div>
-          </div>
-          <div>
-            <Label htmlFor="country">Pays</Label>
-            <Input
-              id="country"
-              value={formData.country}
-              onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-              placeholder="Bénin"
-            />
           </div>
           <div className="flex items-center space-x-2">
             <Switch
