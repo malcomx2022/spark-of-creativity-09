@@ -1,8 +1,76 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Notification, NotificationPreferences } from '@/types/profile';
+import { toast } from '@/hooks/use-toast';
 
 export function useNotifications(userId?: string) {
+  const queryClient = useQueryClient();
+
+  // Listen to realtime notifications
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel('notifications-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log('New notification received:', payload);
+          
+          // Add the new notification to the cache
+          queryClient.setQueryData<Notification[]>(
+            ['notifications', userId],
+            (old) => {
+              if (!old) return [payload.new as Notification];
+              return [payload.new as Notification, ...old];
+            }
+          );
+
+          // Show a toast for the new notification
+          const notification = payload.new as Notification;
+          toast({
+            title: notification.title,
+            description: notification.message,
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log('Notification updated:', payload);
+          
+          // Update the notification in the cache
+          queryClient.setQueryData<Notification[]>(
+            ['notifications', userId],
+            (old) => {
+              if (!old) return [];
+              return old.map((n) =>
+                n.id === payload.new.id ? (payload.new as Notification) : n
+              );
+            }
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
+
   return useQuery<Notification[]>({
     queryKey: ['notifications', userId],
     queryFn: async () => {
