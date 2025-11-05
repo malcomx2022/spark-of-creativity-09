@@ -23,6 +23,10 @@ export interface Message {
   is_read: boolean;
   created_at: string;
   appointment_id: string;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  attachment_name?: string | null;
+  attachment_size?: number | null;
 }
 
 // Get all conversations for a user
@@ -178,7 +182,37 @@ export function useSendMessage() {
       sender_id: string;
       content: string;
       appointment_id: string;
+      attachment?: File;
     }) => {
+      let attachmentUrl = null;
+      let attachmentType = null;
+      let attachmentName = null;
+      let attachmentSize = null;
+
+      // Upload attachment if present
+      if (data.attachment) {
+        const fileExt = data.attachment.name.split('.').pop();
+        const fileName = `${data.appointment_id}/${Date.now()}.${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('message-attachments')
+          .upload(fileName, data.attachment, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('message-attachments')
+          .getPublicUrl(fileName);
+
+        attachmentUrl = publicUrl;
+        attachmentType = data.attachment.type;
+        attachmentName = data.attachment.name;
+        attachmentSize = data.attachment.size;
+      }
+
       const { error } = await supabase
         .from('messages')
         .insert({
@@ -186,6 +220,10 @@ export function useSendMessage() {
           content: data.content,
           appointment_id: data.appointment_id,
           is_read: false,
+          attachment_url: attachmentUrl,
+          attachment_type: attachmentType,
+          attachment_name: attachmentName,
+          attachment_size: attachmentSize,
         });
 
       if (error) throw error;

@@ -779,6 +779,10 @@ export type Database = {
       messages: {
         Row: {
           appointment_id: string
+          attachment_name: string | null
+          attachment_size: number | null
+          attachment_type: string | null
+          attachment_url: string | null
           content: string
           created_at: string | null
           id: string
@@ -787,6 +791,10 @@ export type Database = {
         }
         Insert: {
           appointment_id: string
+          attachment_name?: string | null
+          attachment_size?: number | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           content: string
           created_at?: string | null
           id?: string
@@ -795,6 +803,10 @@ export type Database = {
         }
         Update: {
           appointment_id?: string
+          attachment_name?: string | null
+          attachment_size?: number | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           content?: string
           created_at?: string | null
           id?: string

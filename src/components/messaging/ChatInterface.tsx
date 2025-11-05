@@ -5,13 +5,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { toast } from '@/hooks/use-toast';
 import { 
   Send, 
   Calendar, 
   User, 
   MessageSquare,
   CheckCheck,
-  Check
+  Check,
+  Paperclip,
+  X,
+  FileText,
+  Download
 } from 'lucide-react';
 import { 
   useConversationMessages, 
@@ -28,7 +33,9 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ conversation, currentUserId, userType }: ChatInterfaceProps) {
   const [message, setMessage] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: messages = [] } = useConversationMessages(conversation.appointment_id, currentUserId);
   const sendMessage = useSendMessage();
   const markAsRead = useMarkMessagesAsRead();
@@ -53,18 +60,66 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
   }, [conversation.appointment_id, currentUserId]);
 
   const handleSendMessage = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() && !attachment) return;
 
     try {
       await sendMessage.mutateAsync({
         sender_id: currentUserId,
-        content: message.trim(),
+        content: message.trim() || '📎 Pièce jointe',
         appointment_id: conversation.appointment_id,
+        attachment: attachment || undefined,
       });
       setMessage('');
+      setAttachment(null);
     } catch (error) {
       console.error('Error sending message:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'envoyer le message',
+        variant: 'destructive',
+      });
     }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Fichier trop volumineux',
+        description: 'La taille maximale est de 5 Mo',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Type de fichier non supporté',
+        description: 'Seuls les images (JPEG, PNG, GIF, WebP) et les PDF sont acceptés',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setAttachment(file);
+  };
+
+  const removeAttachment = () => {
+    setAttachment(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -173,6 +228,40 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
                           : 'bg-muted rounded-bl-sm'
                       }`}
                     >
+                      {msg.attachment_url && (
+                        <div className="mb-2">
+                          {msg.attachment_type?.startsWith('image/') ? (
+                            <img 
+                              src={msg.attachment_url} 
+                              alt={msg.attachment_name || 'Image'}
+                              className="max-w-full rounded-lg max-h-64 object-cover cursor-pointer"
+                              onClick={() => window.open(msg.attachment_url!, '_blank')}
+                            />
+                          ) : (
+                            <a
+                              href={msg.attachment_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`flex items-center gap-2 p-2 rounded-lg ${
+                                isOwn ? 'bg-primary-foreground/10' : 'bg-background'
+                              }`}
+                            >
+                              <FileText className="h-5 w-5" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {msg.attachment_name}
+                                </p>
+                                {msg.attachment_size && (
+                                  <p className="text-xs opacity-70">
+                                    {formatFileSize(msg.attachment_size)}
+                                  </p>
+                                )}
+                              </div>
+                              <Download className="h-4 w-4 flex-shrink-0" />
+                            </a>
+                          )}
+                        </div>
+                      )}
                       <p className="text-sm whitespace-pre-wrap break-words">
                         {msg.content}
                       </p>
@@ -200,7 +289,50 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
         </ScrollArea>
 
         <div className="border-t p-4 bg-background">
+          {attachment && (
+            <div className="mb-3 p-2 bg-muted rounded-lg flex items-center gap-2">
+              {attachment.type.startsWith('image/') ? (
+                <img 
+                  src={URL.createObjectURL(attachment)} 
+                  alt="Preview" 
+                  className="h-16 w-16 object-cover rounded"
+                />
+              ) : (
+                <FileText className="h-8 w-8 text-muted-foreground" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{attachment.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatFileSize(attachment.size)}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={removeAttachment}
+                className="h-8 w-8 flex-shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
           <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sendMessage.isPending}
+              className="h-10 w-10 flex-shrink-0"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Textarea
               placeholder="Écrivez votre message..."
               value={message}
@@ -211,7 +343,7 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
             />
             <Button
               onClick={handleSendMessage}
-              disabled={!message.trim() || sendMessage.isPending}
+              disabled={(!message.trim() && !attachment) || sendMessage.isPending}
               size="icon"
               className="h-10 w-10 flex-shrink-0"
             >
@@ -219,7 +351,7 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Appuyez sur Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne
+            Appuyez sur Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne • Max 5 Mo
           </p>
         </div>
       </CardContent>
