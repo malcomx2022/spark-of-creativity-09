@@ -152,24 +152,31 @@ serve(async (req) => {
     const responseData = await response.json();
 
     if (!response.ok) {
-      console.error('Twilio error:', responseData);
+      console.error('Twilio error response:', JSON.stringify(responseData, null, 2));
+      console.error('Request details - Phone:', normalizedPhone, 'Channel:', channel);
+      console.error('Verify Service SID:', twilioVerifyServiceSid);
       
       // Extract error message from Twilio response
       const errorMessage = responseData.message || `Twilio API error: ${response.status}`;
       
-      // Log failed attempt
+      // Log failed attempt with full details
       await supabase.from('otp_attempts').insert({
         phone_number: normalizedPhone,
         channel,
         status: 'failed',
-        error_message: errorMessage,
+        error_message: `${errorMessage} - Code: ${responseData.code || 'unknown'}`,
       });
 
       return new Response(
         JSON.stringify({ 
           success: false,
           error: errorMessage,
-          details: responseData
+          details: responseData,
+          debug: {
+            phone: normalizedPhone,
+            channel,
+            serviceSid: twilioVerifyServiceSid?.substring(0, 10) + '...' // Partial SID for debugging
+          }
         }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
