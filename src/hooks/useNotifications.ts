@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Notification, NotificationPreferences } from '@/types/profile';
 import { toast } from '@/hooks/use-toast';
+import { playNotificationSound } from '@/lib/notification-sound';
 
 export function useNotifications(userId?: string) {
   const queryClient = useQueryClient();
@@ -24,12 +25,15 @@ export function useNotifications(userId?: string) {
         (payload) => {
           console.log('New notification received:', payload);
           
-          // Add the new notification to the cache
+          // Play notification sound
+          playNotificationSound();
+          
+          // Add the new notification to the cache with animation flag
           queryClient.setQueryData<Notification[]>(
             ['notifications', userId],
             (old) => {
-              if (!old) return [payload.new as Notification];
-              return [payload.new as Notification, ...old];
+              if (!old) return [{ ...payload.new, isNew: true } as Notification & { isNew?: boolean }];
+              return [{ ...payload.new, isNew: true } as Notification & { isNew?: boolean }, ...old];
             }
           );
 
@@ -38,7 +42,21 @@ export function useNotifications(userId?: string) {
           toast({
             title: notification.title,
             description: notification.message,
+            duration: 5000,
           });
+
+          // Remove the isNew flag after animation completes
+          setTimeout(() => {
+            queryClient.setQueryData<Notification[]>(
+              ['notifications', userId],
+              (old) => {
+                if (!old) return [];
+                return old.map((n) =>
+                  n.id === notification.id ? { ...n, isNew: false } : n
+                );
+              }
+            );
+          }, 1000);
         }
       )
       .on(

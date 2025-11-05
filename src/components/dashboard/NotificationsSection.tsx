@@ -98,18 +98,27 @@ export function NotificationsSection() {
             <p className="text-muted-foreground">Aucune notification</p>
           ) : (
             <div className="space-y-3">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    !notification.is_read ? 'bg-primary/5 border-primary/20' : ''
-                  }`}
-                  onClick={() => handleNotificationClick(notification.id, notification.is_read)}
-                >
+              {notifications.map((notification) => {
+                const notificationWithAnimation = notification as typeof notification & { isNew?: boolean };
+                return (
+                  <div
+                    key={notification.id}
+                    className={`p-4 border rounded-lg cursor-pointer transition-all duration-300 ${
+                      !notification.is_read ? 'bg-primary/5 border-primary/20' : ''
+                    } ${
+                      notificationWithAnimation.isNew ? 'animate-scale-in shadow-lg ring-2 ring-primary/50' : ''
+                    }`}
+                    onClick={() => handleNotificationClick(notification.id, notification.is_read)}
+                  >
                   <div className="flex justify-between items-start mb-2">
                     <p className="font-medium">{notification.title}</p>
                     {!notification.is_read && (
-                      <Badge variant="default" className="ml-2">Nouveau</Badge>
+                      <Badge 
+                        variant="default" 
+                        className={`ml-2 ${notificationWithAnimation.isNew ? 'animate-pulse' : ''}`}
+                      >
+                        Nouveau
+                      </Badge>
                     )}
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
@@ -123,8 +132,9 @@ export function NotificationsSection() {
                       minute: '2-digit',
                     })}
                   </p>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
