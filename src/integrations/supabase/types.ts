@@ -1121,6 +1121,45 @@ export type Database = {
         }
         Relationships: []
       }
+      payout_payments: {
+        Row: {
+          amount_included: number
+          created_at: string | null
+          id: string
+          payment_id: string
+          payout_id: string
+        }
+        Insert: {
+          amount_included: number
+          created_at?: string | null
+          id?: string
+          payment_id: string
+          payout_id: string
+        }
+        Update: {
+          amount_included?: number
+          created_at?: string | null
+          id?: string
+          payment_id?: string
+          payout_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payout_payments_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payout_payments_payout_id_fkey"
+            columns: ["payout_id"]
+            isOneToOne: false
+            referencedRelation: "practitioner_payouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practitioner_availability: {
         Row: {
           created_at: string | null
