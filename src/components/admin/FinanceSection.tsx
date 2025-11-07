@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download } from 'lucide-react';
 import { PayoutsManagementSection } from './PayoutsManagementSection';
 import { RefundsSection } from './RefundsSection';
+import { WebhooksSection } from './WebhooksSection';
+import { PaymentEventsSection } from './PaymentEventsSection';
 
 export function FinanceSection() {
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
@@ -106,11 +108,13 @@ export function FinanceSection() {
       </div>
 
       <Tabs defaultValue="payments">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
           <TabsTrigger value="payments">Paiements</TabsTrigger>
           <TabsTrigger value="payouts">Reversements</TabsTrigger>
           <TabsTrigger value="lots">Lots de Versement</TabsTrigger>
           <TabsTrigger value="remboursements">Remboursements</TabsTrigger>
+          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
+          <TabsTrigger value="events">Événements</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payments" className="space-y-4">
@@ -248,6 +252,14 @@ export function FinanceSection() {
 
         <TabsContent value="remboursements">
           <RefundsSection />
+        </TabsContent>
+
+        <TabsContent value="webhooks">
+          <WebhooksSection />
+        </TabsContent>
+
+        <TabsContent value="events">
+          <PaymentEventsSection />
         </TabsContent>
       </Tabs>
     </div>
