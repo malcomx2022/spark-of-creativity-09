@@ -6,16 +6,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Stethoscope, Shield, Upload, FileText } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
+import { supabase } from "@/integrations/supabase/client";
+import { uploadUserDocument } from "@/lib/file-upload";
+
+interface SignupFormData {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  address: string;
+  phone: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  profession: string;
+  specialty: string;
+  registrationNumber: string;
+  experience: string;
+  currentWorkplace: string;
+  profilePhoto: File | null;
+  idDocument: File | null;
+  diploma: File | null;
+  licenseDocument: File | null;
+  acceptTerms: boolean;
+  sessionTypes: string[];
+  interventionZone: string;
+  interventionRadius: string;
+  certifications: string;
+}
 
 export default function PractitionerSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
     lastName: "",
     dateOfBirth: "",
@@ -41,6 +69,23 @@ export default function PractitionerSignup() {
     interventionRadius: "",
     certifications: "",
   });
+  const [documentUploads, setDocumentUploads] = useState({
+    profilePhoto: null as File | null,
+    idDocument: null as File | null,
+    diploma: null as File | null,
+    licenseDocument: null as File | null,
+  });
+
+  const professionToType = useMemo<Record<string, string>>(() => ({
+    "Médecin généraliste": "medecin",
+    "Infirmier(ère)": "infirmier",
+    "Kinésithérapeute": "kinesitherapeute",
+    "Nutritionniste": "nutritionniste",
+    "Sage-femme": "sage_femme",
+    "Psychologue": "psychologue",
+    "Coach sportif": "coach_sportif",
+    "Autre": "autre",
+  }), []);
 
   const professions = [
     "Médecin généraliste",
@@ -80,19 +125,151 @@ export default function PractitionerSignup() {
       return;
     }
 
-    // Simulation d'inscription
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+            role: "practitioner",
+            phone: formData.phone,
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.user) {
+        toast({
+          title: "Confirmez votre adresse email",
+          description: "Un lien de confirmation vous a été envoyé. Veuillez confirmer avant de finaliser votre inscription.",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const userId = data.user.id;
+
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: userId,
+        full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone,
+        gender: formData.gender || null,
+        date_of_birth: formData.dateOfBirth || null,
+      });
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      const uploadFolder = "practitioner-documents";
+      const uploads: Record<keyof typeof documentUploads, { url: string; path: string } | null> = {
+        profilePhoto: null,
+        idDocument: null,
+        diploma: null,
+        licenseDocument: null,
+      };
+
+      for (const key of Object.keys(documentUploads) as Array<keyof typeof documentUploads>) {
+        const file = documentUploads[key];
+        if (file) {
+          uploads[key] = await uploadUserDocument({
+            file,
+            folder: uploadFolder,
+            userId,
+          });
+        }
+      }
+
+      const practitionerType = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
+      const yearsExperience = Number.parseInt(formData.experience, 10) || null;
+      const interventionRadius = formData.interventionRadius ? Number.parseInt(formData.interventionRadius, 10) : null;
+
+      const { error: practitionerError } = await supabase.from("practitioners").insert({
+        user_id: userId,
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone,
+        address: formData.address,
+        specialty: formData.specialty || formData.profession,
+        practitioner_type: practitionerType,
+        years_experience: yearsExperience,
+        kyc_status: "pending",
+        can_accept_missions: false,
+        bio: `Profession: ${formData.profession}\nStructure: ${formData.currentWorkplace}`,
+        image: uploads.profilePhoto?.url ?? null,
+        id_document_url: uploads.idDocument?.path ?? null,
+        license_document_url: uploads.licenseDocument?.path ?? null,
+        diplomas: uploads.diploma ? [uploads.diploma.path] : null,
+        session_types: formData.profession === "Coach sportif" ? formData.sessionTypes : null,
+        intervention_zone: formData.profession === "Coach sportif" ? formData.interventionZone : null,
+        intervention_radius: formData.profession === "Coach sportif" ? interventionRadius : null,
+        certifications: formData.profession === "Coach sportif" && formData.certifications
+          ? formData.certifications.split(",").map(cert => cert.trim()).filter(Boolean)
+          : null,
+        license_number: formData.registrationNumber,
+      });
+
+      if (practitionerError) {
+        throw practitionerError;
+      }
+
       toast({
         title: "Demande d'inscription soumise !",
         description: "Votre dossier est en cours de validation par notre équipe",
       });
+
+      setFormData({
+        firstName: "",
+        lastName: "",
+        dateOfBirth: "",
+        gender: "",
+        address: "",
+        phone: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+        profession: "",
+        specialty: "",
+        registrationNumber: "",
+        experience: "",
+        currentWorkplace: "",
+        profilePhoto: null,
+        idDocument: null,
+        diploma: null,
+        licenseDocument: null,
+        acceptTerms: false,
+        sessionTypes: [],
+        interventionZone: "",
+        interventionRadius: "",
+        certifications: "",
+      });
+      setDocumentUploads({
+        profilePhoto: null,
+        idDocument: null,
+        diploma: null,
+        licenseDocument: null,
+      });
+
+      await supabase.auth.signOut();
+      navigate("/login");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
+      toast({
+        title: "Impossible de finaliser l'inscription",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
       setIsSubmitting(false);
-      navigate("/");
-    }, 2000);
+    }
   };
 
   const handleFileUpload = (field: string, file: File | null) => {
     setFormData(prev => ({ ...prev, [field]: file }));
+    setDocumentUploads(prev => ({ ...prev, [field]: file }));
   };
 
   return (

@@ -28,14 +28,20 @@ export function useCreateCareNote() {
 
   return useMutation({
     mutationFn: async (data: TablesInsert<'care_notes'>) => {
-      const { error } = await supabase
+      const { data: inserted, error } = await supabase
         .from('care_notes')
-        .insert(data);
+        .insert(data)
+        .select()
+        .single();
 
       if (error) throw error;
+      return inserted as CareNote;
     },
-    onSuccess: () => {
+    onSuccess: (note) => {
       queryClient.invalidateQueries({ queryKey: ['care-notes'] });
+      if (note?.appointment_id) {
+        queryClient.invalidateQueries({ queryKey: ['care-note', 'appointment', note.appointment_id] });
+      }
     },
   });
 }
@@ -45,15 +51,21 @@ export function useUpdateCareNote() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: TablesUpdate<'care_notes'> }) => {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from('care_notes')
         .update(data)
-        .eq('id', id);
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
+      return updated as CareNote;
     },
-    onSuccess: () => {
+    onSuccess: (note) => {
       queryClient.invalidateQueries({ queryKey: ['care-notes'] });
+      if (note?.appointment_id) {
+        queryClient.invalidateQueries({ queryKey: ['care-note', 'appointment', note.appointment_id] });
+      }
     },
   });
 }
