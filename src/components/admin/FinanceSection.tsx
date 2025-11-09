@@ -11,6 +11,7 @@ import { RefundsSection } from './RefundsSection';
 import { WebhooksSection } from './WebhooksSection';
 import { PaymentEventsSection } from './PaymentEventsSection';
 import { FundsReleaseSection } from './FundsReleaseSection';
+import ReconciliationSection from './ReconciliationSection';
 
 export function FinanceSection() {
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
@@ -109,12 +110,13 @@ export function FinanceSection() {
       </div>
 
       <Tabs defaultValue="payments">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-7">
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-8">
           <TabsTrigger value="payments">Paiements</TabsTrigger>
           <TabsTrigger value="payouts">Reversements</TabsTrigger>
           <TabsTrigger value="lots">Lots de Versement</TabsTrigger>
           <TabsTrigger value="release">Release Fonds</TabsTrigger>
           <TabsTrigger value="remboursements">Remboursements</TabsTrigger>
+          <TabsTrigger value="reconciliation">Réconciliation</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
           <TabsTrigger value="events">Événements</TabsTrigger>
         </TabsList>
@@ -258,6 +260,10 @@ export function FinanceSection() {
 
         <TabsContent value="remboursements">
           <RefundsSection />
+        </TabsContent>
+
+        <TabsContent value="reconciliation">
+          <ReconciliationSection />
         </TabsContent>
 
         <TabsContent value="webhooks">

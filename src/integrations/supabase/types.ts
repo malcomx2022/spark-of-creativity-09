@@ -1579,6 +1579,69 @@ export type Database = {
         }
         Relationships: []
       }
+      reconciliation_reports: {
+        Row: {
+          amount_mismatch_count: number
+          anomalies: Json | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          matched_count: number
+          missing_in_db_count: number
+          missing_in_fedapay_count: number
+          period_end: string
+          period_start: string
+          recommendations: Json | null
+          status: string
+          status_mismatch_count: number
+          total_amount_discrepancy: number
+          total_db_payments: number
+          total_fedapay_transactions: number
+          updated_at: string
+        }
+        Insert: {
+          amount_mismatch_count?: number
+          anomalies?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          matched_count?: number
+          missing_in_db_count?: number
+          missing_in_fedapay_count?: number
+          period_end: string
+          period_start: string
+          recommendations?: Json | null
+          status?: string
+          status_mismatch_count?: number
+          total_amount_discrepancy?: number
+          total_db_payments?: number
+          total_fedapay_transactions?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_mismatch_count?: number
+          anomalies?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          matched_count?: number
+          missing_in_db_count?: number
+          missing_in_fedapay_count?: number
+          period_end?: string
+          period_start?: string
+          recommendations?: Json | null
+          status?: string
+          status_mismatch_count?: number
+          total_amount_discrepancy?: number
+          total_db_payments?: number
+          total_fedapay_transactions?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       reviews: {
         Row: {
           appointment_id: string
