@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Calendar as CalendarIcon, Clock, Plus, Trash2 } from "lucide-react";
+import { Clock, Plus, Trash2 } from "lucide-react";
 import { AddAvailabilityDialog } from '@/components/AddAvailabilityDialog';
 import { AddExceptionDialog } from '@/components/AddExceptionDialog';
 import { usePractitionerAvailability, usePractitionerExceptions, useDeleteAvailability, useDeleteException } from '@/hooks/useAvailability';
+import { format } from "date-fns";
 
 interface AvailabilitySectionProps {
   practitionerId: string;
@@ -23,11 +24,18 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
   const { toast } = useToast();
   const [isOnline, setIsOnline] = useState(practitionerData?.is_online || false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  
+
   const { data: availabilities = [] } = usePractitionerAvailability(practitionerId);
   const { data: exceptions = [] } = usePractitionerExceptions(practitionerId);
   const deleteAvailability = useDeleteAvailability();
   const deleteException = useDeleteException();
+
+  const exceptionDates = useMemo(() =>
+    exceptions.reduce<Record<string, boolean>>((acc, exception) => {
+      const dateKey = new Date(exception.date).toDateString();
+      acc[dateKey] = exception.is_available ?? false;
+      return acc;
+    }, {}), [exceptions]);
 
   const handleToggleOnline = async (checked: boolean) => {
     try {
@@ -52,6 +60,122 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
         variant: "destructive",
       });
     }
+  };
+
+  const formatICSDateTime = (date: Date) => {
+    const iso = date.toISOString();
+    return iso.replace(/[-:]/g, "").split(".")[0] + "Z";
+  };
+
+  const formatICSDate = (date: Date) => format(date, "yyyyMMdd");
+
+  const handleExportICS = () => {
+    if (!practitionerId || availabilities.length === 0) {
+      toast({
+        title: "Aucune disponibilité",
+        description: "Ajoutez au moins un créneau avant d'exporter votre calendrier.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const daysToGenerate = 30;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const events: string[] = [];
+    let uidCounter = 0;
+
+    for (let i = 0; i < daysToGenerate; i += 1) {
+      const currentDate = new Date(now);
+      currentDate.setDate(now.getDate() + i);
+      const dateKey = currentDate.toDateString();
+
+      if (exceptionDates[dateKey] === false) {
+        // Indisponibilité totale déclarée, ne pas générer d'événements pour cette journée
+        continue;
+      }
+
+      const dayAvailabilities = availabilities.filter((a) => a.day_of_week === currentDate.getDay());
+      for (const availability of dayAvailabilities) {
+        const [startHour, startMinute] = availability.start_time.split(":").map(Number);
+        const [endHour, endMinute] = availability.end_time.split(":").map(Number);
+
+        const start = new Date(currentDate);
+        start.setHours(startHour, startMinute, 0, 0);
+        const end = new Date(currentDate);
+        end.setHours(endHour, endMinute, 0, 0);
+
+        const summary = `Disponibilité ${practitionerData?.name ?? "Praticien"}`;
+        const description = `Créneau disponible pour les rendez-vous (${DAYS_FR[currentDate.getDay()]})`;
+
+        events.push([
+          "BEGIN:VEVENT",
+          `UID:${practitionerId}-${uidCounter}@domicares`,
+          `DTSTAMP:${formatICSDateTime(new Date())}`,
+          `DTSTART:${formatICSDateTime(start)}`,
+          `DTEND:${formatICSDateTime(end)}`,
+          `SUMMARY:${summary}`,
+          `DESCRIPTION:${description}`,
+          "TRANSP:OPAQUE",
+          "END:VEVENT",
+        ].join("\n"));
+        uidCounter += 1;
+      }
+    }
+
+    for (const exception of exceptions) {
+      if (exception.is_available) {
+        continue;
+      }
+
+      const exceptionDate = new Date(exception.date);
+      events.push([
+        "BEGIN:VEVENT",
+        `UID:${practitionerId}-exception-${uidCounter}@domicares`,
+        `DTSTAMP:${formatICSDateTime(new Date())}`,
+        `DTSTART;VALUE=DATE:${formatICSDate(exceptionDate)}`,
+        `DTEND;VALUE=DATE:${formatICSDate(exceptionDate)}`,
+        "SUMMARY:Indisponibilité",
+        `DESCRIPTION:${exception.reason ?? "Indisponibilité déclarée"}`,
+        "TRANSP:OPAQUE",
+        "END:VEVENT",
+      ].join("\n"));
+      uidCounter += 1;
+    }
+
+    if (events.length === 0) {
+      toast({
+        title: "Rien à exporter",
+        description: "Aucun événement à générer pour la période sélectionnée.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const calendar = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//DomiCares//Availability//FR",
+      "CALSCALE:GREGORIAN",
+      ...events,
+      "END:VCALENDAR",
+    ].join("\n");
+
+    const blob = new Blob([calendar], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `disponibilites-${format(new Date(), "yyyyMMdd")}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export réussi",
+      description: "Votre planning vient d'être téléchargé.",
+    });
   };
 
   return (
@@ -141,15 +265,10 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
               <CardTitle>Exceptions et congés</CardTitle>
               <CardDescription>Jours fériés, congés et indisponibilités</CardDescription>
             </div>
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               variant="outline"
-              onClick={() => {
-                toast({
-                  title: "Export en cours",
-                  description: "Votre calendrier sera bientôt téléchargé.",
-                });
-              }}
+              onClick={handleExportICS}
             >
               Exporter ICS
             </Button>

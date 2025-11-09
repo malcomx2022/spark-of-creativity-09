@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,11 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { FileText, Upload, Share2 } from "lucide-react";
+import { FileText, Share2 } from "lucide-react";
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote } from '@/hooks/useCareNotes';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -45,10 +45,15 @@ export default function CareNotesSection() {
   const { data: currentNote } = useCareNoteByAppointment(selectedAppointmentId || undefined);
   const createNote = useCreateCareNote();
   const updateNote = useUpdateCareNote();
+  const queryClient = useQueryClient();
 
-  const handleSelectAppointment = (appointmentId: string) => {
-    setSelectedAppointmentId(appointmentId);
-    // Reset form when selecting different appointment
+  useEffect(() => {
+    if (!selectedAppointmentId) {
+      setFormData({ subjective: '', objective: '', assessment: '', plan: '' });
+      setShareWithPatient(false);
+      return;
+    }
+
     if (currentNote) {
       setFormData({
         subjective: currentNote.subjective || '',
@@ -61,29 +66,44 @@ export default function CareNotesSection() {
       setFormData({ subjective: '', objective: '', assessment: '', plan: '' });
       setShareWithPatient(false);
     }
+  }, [currentNote, selectedAppointmentId]);
+
+  const handleSelectAppointment = (appointmentId: string) => {
+    setSelectedAppointmentId(appointmentId);
+  };
+
+  const persistNote = async (forceShare = shareWithPatient) => {
+    if (!selectedAppointmentId || !practitioner?.id) {
+      throw new Error('Aucun rendez-vous sélectionné');
+    }
+
+    const payload = {
+      subjective: formData.subjective || null,
+      objective: formData.objective || null,
+      assessment: formData.assessment || null,
+      plan: formData.plan || null,
+      shared_with_patient: forceShare,
+    };
+
+    if (currentNote) {
+      return updateNote.mutateAsync({
+        id: currentNote.id,
+        data: payload,
+      });
+    }
+
+    return createNote.mutateAsync({
+      practitioner_id: practitioner.id,
+      appointment_id: selectedAppointmentId,
+      ...payload,
+    });
   };
 
   const handleSave = async () => {
     if (!selectedAppointmentId || !practitioner?.id) return;
 
     try {
-      if (currentNote) {
-        await updateNote.mutateAsync({
-          id: currentNote.id,
-          data: {
-            ...formData,
-            shared_with_patient: shareWithPatient,
-          },
-        });
-      } else {
-        await createNote.mutateAsync({
-          practitioner_id: practitioner.id,
-          appointment_id: selectedAppointmentId,
-          ...formData,
-          shared_with_patient: shareWithPatient,
-        });
-      }
-
+      await persistNote();
       toast({
         title: 'Note sauvegardée',
         description: 'La note de soin a été enregistrée avec succès.',
@@ -92,6 +112,63 @@ export default function CareNotesSection() {
       toast({
         title: 'Erreur',
         description: 'Impossible de sauvegarder la note.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleShare = async () => {
+    if (!selectedAppointmentId || !practitioner?.id || !user?.id) {
+      toast({
+        title: 'Partage impossible',
+        description: 'Veuillez sélectionner une consultation et vérifier votre session.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const note = await persistNote(true);
+      setShareWithPatient(true);
+      queryClient.invalidateQueries({ queryKey: ['care-note', 'appointment', selectedAppointmentId] });
+
+      const appointment = completedAppointments.find((apt) => apt.id === selectedAppointmentId);
+
+      if (appointment?.patientId) {
+        const { error: notificationError } = await supabase.from('notifications').insert({
+          user_id: appointment.patientId,
+          title: 'Nouvelle note de soin',
+          message: `Votre praticien ${practitioner?.name ?? ''} a partagé une note de soin pour votre rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')}.`,
+          link: `/patient/appointments/${appointment.id}`,
+          type: 'care_note',
+        });
+
+        if (notificationError) {
+          throw notificationError;
+        }
+
+        const { error: messageError } = await supabase.from('messages').insert({
+          appointment_id: appointment.id,
+          sender_id: user.id,
+          content: 'Une nouvelle note de soin est disponible dans votre dossier patient.',
+        });
+
+        if (messageError) {
+          throw messageError;
+        }
+      }
+
+      toast({
+        title: 'Note partagée',
+        description: note?.shared_with_patient
+          ? 'Le patient a été notifié de la note de soin.'
+          : 'Le partage a été enregistré.',
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Erreur lors du partage',
+        description: 'Impossible de notifier le patient pour le moment.',
         variant: 'destructive',
       });
     }
@@ -206,15 +283,19 @@ export default function CareNotesSection() {
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button 
-                  className="flex-1" 
+                <Button
+                  className="flex-1"
                   onClick={handleSave}
                   disabled={createNote.isPending || updateNote.isPending}
                 >
                   {createNote.isPending || updateNote.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
                 </Button>
                 {shareWithPatient && (
-                  <Button variant="outline">
+                  <Button
+                    variant="outline"
+                    onClick={handleShare}
+                    disabled={createNote.isPending || updateNote.isPending}
+                  >
                     <Share2 className="h-4 w-4 mr-2" />
                     Partager
                   </Button>

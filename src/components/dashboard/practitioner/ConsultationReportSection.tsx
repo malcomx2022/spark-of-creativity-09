@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -13,12 +13,13 @@ import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
-import { useCreateConsultationReport, useConsultationReportByAppointment, useConsultationReports } from '@/hooks/useConsultationReports';
+import { useCreateConsultationReport, useConsultationReportByAppointment, useConsultationReports, ConsultationReport } from '@/hooks/useConsultationReports';
 import { toast } from 'sonner';
 import { FileText, Save, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   Form,
   FormControl,
@@ -34,6 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import jsPDF from 'jspdf';
+import { format } from 'date-fns';
 
 const consultationReportSchema = z.object({
   appointmentId: z.string().min(1, 'Veuillez sélectionner une consultation'),
@@ -51,9 +54,25 @@ const consultationReportSchema = z.object({
 
 type ConsultationReportForm = z.infer<typeof consultationReportSchema>;
 
+const defaultFormValues: ConsultationReportForm = {
+  appointmentId: '',
+  consultationType: '',
+  consultationReason: '',
+  clinicalFindings: '',
+  primaryDiagnosis: '',
+  treatmentPrescription: '',
+  followUpTimeframe: '',
+  followUpRecommendation: '',
+  additionalComments: '',
+  severityLevel: '',
+  shareWithDoctor: false,
+};
+
 export function ConsultationReportSection() {
   const { data: user } = useSupabaseUser();
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>('');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [reportToPreview, setReportToPreview] = useState<ConsultationReport | null>(null);
 
   const { data: practitioner } = useQuery({
     queryKey: ['practitioner', user?.id],
@@ -77,24 +96,36 @@ export function ConsultationReportSection() {
 
   const form = useForm<ConsultationReportForm>({
     resolver: zodResolver(consultationReportSchema),
-    defaultValues: {
-      consultationType: '',
-      consultationReason: '',
-      clinicalFindings: '',
-      primaryDiagnosis: '',
-      treatmentPrescription: '',
-      followUpTimeframe: '',
-      followUpRecommendation: '',
-      additionalComments: '',
-      severityLevel: '',
-      shareWithDoctor: false,
-    },
+    defaultValues: defaultFormValues,
   });
 
   const handleAppointmentSelect = (appointmentId: string) => {
     setSelectedAppointmentId(appointmentId);
     form.setValue('appointmentId', appointmentId);
   };
+
+  useEffect(() => {
+    if (existingReport) {
+      form.reset({
+        appointmentId: existingReport.appointment_id,
+        consultationType: existingReport.consultation_type,
+        consultationReason: existingReport.consultation_reason || '',
+        clinicalFindings: existingReport.clinical_findings || '',
+        primaryDiagnosis: existingReport.primary_diagnosis || '',
+        treatmentPrescription: existingReport.treatment_prescription || '',
+        followUpTimeframe: existingReport.follow_up_timeframe || '',
+        followUpRecommendation: existingReport.follow_up_recommendation || '',
+        additionalComments: existingReport.additional_comments || '',
+        severityLevel: existingReport.severity_level,
+        shareWithDoctor: existingReport.share_with_doctor || false,
+      });
+    } else {
+      form.reset({
+        ...defaultFormValues,
+        appointmentId: selectedAppointmentId,
+      });
+    }
+  }, [existingReport, selectedAppointmentId, form]);
 
   const onSubmit = async (data: ConsultationReportForm) => {
     if (!practitioner?.id) {
@@ -152,6 +183,53 @@ export function ConsultationReportSection() {
       default:
         return type;
     }
+  };
+
+  const previewAppointment = useMemo(() => {
+    if (!reportToPreview) return null;
+    return appointments?.find(apt => apt.id === reportToPreview.appointment_id) || null;
+  }, [appointments, reportToPreview]);
+
+  const handlePreview = (report: ConsultationReport) => {
+    setReportToPreview(report);
+    setIsPreviewOpen(true);
+  };
+
+  const exportReportToPdf = (report: ConsultationReport) => {
+    const appointment = appointments?.find(apt => apt.id === report.appointment_id);
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.text('Rapport de consultation', 14, 20);
+
+    doc.setFontSize(12);
+    doc.text(`Patient : ${appointment?.patientName ?? 'N/A'}`, 14, 30);
+    doc.text(`Praticien : ${practitioner?.name ?? 'N/A'}`, 14, 37);
+    doc.text(`Date : ${format(new Date(report.consultation_date), 'dd/MM/yyyy')}`, 14, 44);
+    doc.text(`Type : ${getConsultationType(report.consultation_type)}`, 14, 51);
+
+    const addParagraph = (label: string, value: string | null | undefined, startY: number) => {
+      const sanitized = value && value.trim().length > 0 ? value : 'Non renseigné';
+      doc.setFont(undefined, 'bold');
+      doc.text(`${label}`, 14, startY);
+      doc.setFont(undefined, 'normal');
+      const lines = doc.splitTextToSize(sanitized, 180);
+      doc.text(lines, 14, startY + 6);
+      return startY + lines.length * 6 + 8;
+    };
+
+    let cursor = 62;
+    cursor = addParagraph('Motif', report.consultation_reason, cursor);
+    cursor = addParagraph('Constat clinique', report.clinical_findings, cursor);
+    cursor = addParagraph('Diagnostic principal', report.primary_diagnosis, cursor);
+    cursor = addParagraph('Prescription / Traitement', report.treatment_prescription, cursor);
+    cursor = addParagraph('Recommandations de suivi', report.follow_up_recommendation, cursor);
+    cursor = addParagraph('Commentaires', report.additional_comments, cursor);
+
+    doc.setFont(undefined, 'bold');
+    doc.text(`Gravité : ${report.severity_level}`, 14, cursor);
+
+    doc.save(`rapport-consultation-${report.id}.pdf`);
   };
 
   return (
@@ -212,9 +290,7 @@ export function ConsultationReportSection() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  toast.info('Fonctionnalité de visualisation détaillée à venir');
-                                }}
+                                onClick={() => handlePreview(report)}
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
@@ -495,9 +571,81 @@ export function ConsultationReportSection() {
             </Form>
           )}
         </CardContent>
-      </Card>
+          </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Rapport de consultation</DialogTitle>
+            <DialogDescription>
+              Détails complets du rapport pour {previewAppointment?.patientName ?? 'le patient'}
+            </DialogDescription>
+          </DialogHeader>
+          {reportToPreview ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Patient</p>
+                  <p className="font-medium">{previewAppointment?.patientName ?? 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Date</p>
+                  <p className="font-medium">{format(new Date(reportToPreview.consultation_date), 'dd/MM/yyyy')}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Type</p>
+                  <p className="font-medium">{getConsultationType(reportToPreview.consultation_type)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Gravité</p>
+                  <div className="mt-1">{getSeverityBadge(reportToPreview.severity_level)}</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-semibold">Motif</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{reportToPreview.consultation_reason || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold">Constat clinique</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{reportToPreview.clinical_findings || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold">Diagnostic principal</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{reportToPreview.primary_diagnosis || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold">Prescription / Traitement</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{reportToPreview.treatment_prescription || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold">Recommandations de suivi</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{reportToPreview.follow_up_recommendation || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold">Commentaires additionnels</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{reportToPreview.additional_comments || 'Non renseigné'}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-muted-foreground">Aucun rapport sélectionné</div>
+          )}
+          <DialogFooter className="flex justify-between">
+            <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
+              Fermer
+            </Button>
+            {reportToPreview && (
+              <Button onClick={() => exportReportToPdf(reportToPreview)}>
+                <FileText className="h-4 w-4 mr-2" /> Exporter en PDF
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { FileText, Upload, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
+import { getSignedFileUrl, uploadUserDocument } from "@/lib/file-upload";
 
 interface ProfessionalProfileSectionProps {
   practitionerId: string;
@@ -19,7 +20,17 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+  const [documentState, setDocumentState] = useState({
+    idDocument: practitionerData?.id_document_url ?? null,
+    licenseDocument: practitionerData?.license_document_url ?? null,
+    insuranceDocument: practitionerData?.insurance_document_url ?? null,
+  });
+  const [pendingDocuments, setPendingDocuments] = useState({
+    idDocument: null as File | null,
+    licenseDocument: null as File | null,
+    insuranceDocument: null as File | null,
+  });
+
   const [formData, setFormData] = useState({
     bio: practitionerData?.bio || "",
     diplomas: practitionerData?.diplomas?.join(", ") || "",
@@ -30,9 +41,35 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
     license_number: practitionerData?.license_number || "",
   });
 
+  useEffect(() => {
+    setDocumentState({
+      idDocument: practitionerData?.id_document_url ?? null,
+      licenseDocument: practitionerData?.license_document_url ?? null,
+      insuranceDocument: practitionerData?.insurance_document_url ?? null,
+    });
+  }, [practitionerData]);
+
   const handleSave = async () => {
     setLoading(true);
     try {
+      if (!practitionerData?.user_id) {
+        throw new Error("Identifiant utilisateur introuvable");
+      }
+
+      const uploads: Partial<typeof documentState> = {};
+
+      for (const key of Object.keys(pendingDocuments) as Array<keyof typeof pendingDocuments>) {
+        const file = pendingDocuments[key];
+        if (file) {
+          const uploaded = await uploadUserDocument({
+            file,
+            folder: "practitioner-documents",
+            userId: practitionerData.user_id,
+          });
+          uploads[key] = uploaded.path;
+        }
+      }
+
       const { error } = await supabase
         .from("practitioners")
         .update({
@@ -43,10 +80,20 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
           intervention_radius: formData.intervention_radius,
           communes_served: formData.communes_served.split(",").map((c) => c.trim()),
           license_number: formData.license_number,
+          id_document_url: uploads.idDocument ?? documentState.idDocument,
+          license_document_url: uploads.licenseDocument ?? documentState.licenseDocument,
+          insurance_document_url: uploads.insuranceDocument ?? documentState.insuranceDocument,
         })
         .eq("id", practitionerId);
 
       if (error) throw error;
+
+      setDocumentState((prev) => ({
+        idDocument: uploads.idDocument ?? prev.idDocument,
+        licenseDocument: uploads.licenseDocument ?? prev.licenseDocument,
+        insuranceDocument: uploads.insuranceDocument ?? prev.insuranceDocument,
+      }));
+      setPendingDocuments({ idDocument: null, licenseDocument: null, insuranceDocument: null });
 
       toast({
         title: "Profil mis à jour",
@@ -61,6 +108,51 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDocumentSelection = (key: keyof typeof pendingDocuments, file: File | null) => {
+    if (!isEditing) {
+      toast({
+        title: "Mode édition requis",
+        description: "Cliquez sur modifier pour mettre à jour vos documents.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file) {
+      setPendingDocuments((prev) => ({ ...prev, [key]: file }));
+      toast({
+        title: "Document sélectionné",
+        description: "Le téléchargement sera effectué lors de la sauvegarde.",
+      });
+    }
+  };
+
+  const handleViewDocument = async (path: string | null) => {
+    if (!path) {
+      toast({
+        title: "Document indisponible",
+        description: "Aucun document n'a été fourni pour cette section.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const url = await getSignedFileUrl(path);
+      if (!url) {
+        throw new Error("URL non générée");
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Impossible d'ouvrir le document",
+        description: "Veuillez réessayer plus tard.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -119,25 +211,17 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             <div>
               <Label>Pièce d'identité</Label>
               <div className="flex items-center gap-2 mt-2">
-                <Input 
-                  type="file" 
-                  accept="image/*,application/pdf" 
+                <Input
+                  type="file"
+                  accept="image/*,application/pdf"
                   disabled={!isEditing}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      toast({
-                        title: "Document sélectionné",
-                        description: "Le téléchargement sera effectué lors de la sauvegarde.",
-                      });
-                    }
-                  }}
+                  onChange={(e) => handleDocumentSelection("idDocument", e.target.files?.[0] || null)}
                 />
-                {practitionerData?.id_document_url && (
-                  <Button 
-                    variant="outline" 
+                {documentState.idDocument && (
+                  <Button
+                    variant="outline"
                     size="sm"
-                    onClick={() => window.open(practitionerData.id_document_url, '_blank')}
+                    onClick={() => handleViewDocument(documentState.idDocument)}
                   >
                     <FileText className="h-4 w-4" />
                   </Button>
@@ -147,25 +231,17 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             <div>
               <Label>Document d'agrément</Label>
               <div className="flex items-center gap-2 mt-2">
-                <Input 
-                  type="file" 
-                  accept="image/*,application/pdf" 
+                <Input
+                  type="file"
+                  accept="image/*,application/pdf"
                   disabled={!isEditing}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      toast({
-                        title: "Document sélectionné",
-                        description: "Le téléchargement sera effectué lors de la sauvegarde.",
-                      });
-                    }
-                  }}
+                  onChange={(e) => handleDocumentSelection("licenseDocument", e.target.files?.[0] || null)}
                 />
-                {practitionerData?.license_document_url && (
-                  <Button 
-                    variant="outline" 
+                {documentState.licenseDocument && (
+                  <Button
+                    variant="outline"
                     size="sm"
-                    onClick={() => window.open(practitionerData.license_document_url, '_blank')}
+                    onClick={() => handleViewDocument(documentState.licenseDocument)}
                   >
                     <FileText className="h-4 w-4" />
                   </Button>
@@ -175,25 +251,17 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             <div>
               <Label>Assurance RCP</Label>
               <div className="flex items-center gap-2 mt-2">
-                <Input 
-                  type="file" 
-                  accept="image/*,application/pdf" 
+                <Input
+                  type="file"
+                  accept="image/*,application/pdf"
                   disabled={!isEditing}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      toast({
-                        title: "Document sélectionné",
-                        description: "Le téléchargement sera effectué lors de la sauvegarde.",
-                      });
-                    }
-                  }}
+                  onChange={(e) => handleDocumentSelection("insuranceDocument", e.target.files?.[0] || null)}
                 />
-                {practitionerData?.insurance_document_url && (
-                  <Button 
-                    variant="outline" 
+                {documentState.insuranceDocument && (
+                  <Button
+                    variant="outline"
                     size="sm"
-                    onClick={() => window.open(practitionerData.insurance_document_url, '_blank')}
+                    onClick={() => handleViewDocument(documentState.insuranceDocument)}
                   >
                     <FileText className="h-4 w-4" />
                   </Button>
