@@ -4,6 +4,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { parseFedaPayResponse } from "./utils.ts";
 import { calculateFees, parseFeeConfig, calculateHoldUntil } from "./fee-calculator.ts";
 import { normalizeStatus } from "./payment-status.ts";
+import { dispatchNotification } from "../_shared/notifications.ts";
 
 // Validation schema avec Zod
 const PaymentRequestSchema = z.object({
@@ -407,15 +408,16 @@ serve(async (req) => {
       });
 
     // Envoyer notification au patient
-    await supabase
-      .from('notifications')
-      .insert({
-        user_id: user.id,
-        title: 'Paiement initialisé',
-        message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Cliquez pour compléter le paiement.`,
-        type: 'payment',
-        link: paymentUrl
-      });
+    await dispatchNotification({
+      supabase,
+      supabaseUrl,
+      serviceRoleKey: supabaseKey,
+      userId: user.id,
+      title: 'Paiement initialisé',
+      message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Cliquez pour compléter le paiement.`,
+      type: 'payment',
+      link: paymentUrl,
+    });
 
     // Calculer l'expiration (30 minutes pour FedaPay)
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();

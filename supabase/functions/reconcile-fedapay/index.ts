@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { dispatchNotification, getUsersWithRoles } from "../_shared/notifications.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -230,6 +231,34 @@ serve(async (req) => {
     if (updateError) throw updateError;
 
     console.log(`Reconciliation completed: ${matched.size} matched, ${anomalies.length} anomalies found`);
+
+    if (anomalies.length > 0) {
+      const adminRecipients = await getUsersWithRoles(supabase, ['finance', 'ops', 'compliance']);
+      if (adminRecipients.length > 0) {
+        const criticalCount = anomalies.filter(a => a.severity === 'critical').length;
+        const highCount = anomalies.filter(a => a.severity === 'high').length;
+        const summaryDetails = criticalCount > 0
+          ? `${criticalCount} anomalie(s) critique(s)`
+          : highCount > 0
+            ? `${highCount} anomalie(s) majeure(s)`
+            : `${anomalies.length} anomalie(s)`;
+        const message = `Réconciliation FedaPay du ${startDate.toISOString().slice(0, 10)} au ${endDate.toISOString().slice(0, 10)}: ${summaryDetails} détectée(s). Rapport #${report.id}.`;
+
+        for (const adminId of adminRecipients) {
+          await dispatchNotification({
+            supabase,
+            supabaseUrl,
+            serviceRoleKey: supabaseServiceKey,
+            userId: adminId,
+            title: 'Anomalies de réconciliation détectées',
+            message,
+            type: 'reconciliation',
+            link: '/admin?tab=finance',
+            channels: ['email', 'sms', 'push'],
+          });
+        }
+      }
+    }
 
     return new Response(
       JSON.stringify({

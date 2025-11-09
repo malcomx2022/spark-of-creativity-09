@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { dispatchNotification } from "../_shared/notifications.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -196,14 +197,16 @@ serve(async (req) => {
     console.log('Payout created:', payout.id);
 
     // Send notification to practitioner
-    await supabase
-      .from('notifications')
-      .insert({
-        user_id: practitioner.user_id,
-        title: 'Reversement initié',
-        message: `Un reversement de ${payoutAmount} XOF a été initié pour la période du ${periodStart} au ${periodEnd}. Les fonds arriveront sous 2-3 jours ouvrés.`,
-        type: 'payout'
-      });
+    await dispatchNotification({
+      supabase,
+      supabaseUrl,
+      serviceRoleKey: supabaseKey,
+      userId: practitioner.user_id,
+      title: 'Reversement initié',
+      message: `Un reversement de ${payoutAmount} XOF a été initié pour la période du ${periodStart} au ${periodEnd}. Les fonds arriveront sous 2-3 jours ouvrés.`,
+      type: 'payout',
+      link: '/dashboard/practitioner',
+    });
 
     // Log audit
     await supabase

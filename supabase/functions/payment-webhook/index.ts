@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
+import { dispatchNotification, getUsersWithRoles } from "../_shared/notifications.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -154,14 +155,40 @@ async function handleTransactionEvent(
     };
 
     if (notificationMessages[paymentStatus as keyof typeof notificationMessages]) {
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: payment.patient_id,
-          title: `Paiement ${paymentStatus === 'paid' ? 'confirmé' : 'mis à jour'}`,
-          message: notificationMessages[paymentStatus as keyof typeof notificationMessages],
-          type: 'payment'
-        });
+      await dispatchNotification({
+        supabase,
+        supabaseUrl,
+        serviceRoleKey: supabaseKey,
+        userId: payment.patient_id,
+        title: `Paiement ${paymentStatus === 'paid' ? 'confirmé' : 'mis à jour'}`,
+        message: notificationMessages[paymentStatus as keyof typeof notificationMessages],
+        type: 'payment',
+        link: '/dashboard/patient',
+      });
+    }
+
+    const importantStatuses = new Set(['approved', 'declined', 'refunded']);
+    if (importantStatuses.has(status)) {
+      const adminUserIds = await getUsersWithRoles(supabase, ['ops', 'finance']);
+      if (adminUserIds.length > 0) {
+        const adminTitle = status === 'approved'
+          ? 'Webhook paiement confirmé'
+          : `Webhook paiement ${status}`;
+        const adminMessage = `Webhook ${eventType} reçu pour la transaction ${transactionId} (${status}). Montant: ${payment.amount} XOF.`;
+        for (const adminId of adminUserIds) {
+          await dispatchNotification({
+            supabase,
+            supabaseUrl,
+            serviceRoleKey: supabaseKey,
+            userId: adminId,
+            title: adminTitle,
+            message: adminMessage,
+            type: 'payment_webhook',
+            link: '/admin?tab=finance',
+            channels: ['email', 'sms', 'push'],
+          });
+        }
+      }
     }
 
     // Audit log
@@ -206,6 +233,8 @@ async function handleTransactionEvent(
  */
 async function handleTransferEvent(
   supabase: any,
+  supabaseUrl: string,
+  supabaseKey: string,
   transferId: string,
   status: string,
   eventType: string
@@ -238,14 +267,37 @@ async function handleTransferEvent(
     };
 
     if (notificationMessages[status as keyof typeof notificationMessages]) {
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: payout.practitioner_id,
-          title: `Reversement ${status === 'approved' ? 'effectué' : 'échoué'}`,
-          message: notificationMessages[status as keyof typeof notificationMessages],
-          type: 'payout'
-        });
+      await dispatchNotification({
+        supabase,
+        supabaseUrl,
+        serviceRoleKey: supabaseKey,
+        userId: payout.practitioner_id,
+        title: `Reversement ${status === 'approved' ? 'effectué' : 'échoué'}`,
+        message: notificationMessages[status as keyof typeof notificationMessages],
+        type: 'payout',
+        link: '/dashboard/practitioner',
+      });
+    }
+
+    if (['approved', 'declined'].includes(status)) {
+      const adminUserIds = await getUsersWithRoles(supabase, ['ops', 'finance']);
+      if (adminUserIds.length > 0) {
+        const adminTitle = status === 'approved' ? 'Reversement effectué' : 'Reversement échoué';
+        const adminMessage = `Webhook ${eventType} reçu pour le reversement ${transferId} (${status}). Montant: ${payout.amount} XOF.`;
+        for (const adminId of adminUserIds) {
+          await dispatchNotification({
+            supabase,
+            supabaseUrl,
+            serviceRoleKey: supabaseKey,
+            userId: adminId,
+            title: adminTitle,
+            message: adminMessage,
+            type: 'payout_webhook',
+            link: '/admin?tab=finance',
+            channels: ['email', 'sms', 'push'],
+          });
+        }
+      }
     }
 
     // Audit log
@@ -357,10 +409,10 @@ serve(async (req) => {
     if (entityType === 'transaction') {
       await handleTransactionEvent(supabase, supabaseUrl, supabaseKey, transactionId, status, eventType);
     }
-    
+
     // Gestion des événements de transfer (reversements)
     if (entityType === 'transfer') {
-      await handleTransferEvent(supabase, transactionId, status, eventType);
+      await handleTransferEvent(supabase, supabaseUrl, supabaseKey, transactionId, status, eventType);
     }
 
 
