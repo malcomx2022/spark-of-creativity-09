@@ -472,7 +472,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <p className="text-lg font-semibold">Redirection vers FedaPay</p>
               <p className="text-sm text-muted-foreground text-center">
-                Validez la transaction via le popup FedaPay ou le code USSD reçu sur votre téléphone.
+                Une requête USSD est envoyée sur votre téléphone : saisissez votre code PIN Mobile Money pour valider la transaction.
               </p>
               <p className="text-xs text-muted-foreground">
                 Vérification {pollCount} / {Math.floor(MAX_POLL_TIME / POLL_INTERVAL)}
@@ -496,7 +496,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
               </div>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
                 <li>Confirmez le paiement dans l&apos;onglet FedaPay qui vient de s&apos;ouvrir.</li>
-                <li>Saisissez le code OTP reçu par SMS ou validez la requête USSD.</li>
+                <li>Sur votre mobile, entrez le code PIN sur la requête USSD reçue ou utilisez le code OTP envoyé par SMS.</li>
                 <li>Revenez ici : nous mettons à jour le statut automatiquement.</li>
               </ol>
               <div className="flex flex-col gap-2 sm:flex-row">
