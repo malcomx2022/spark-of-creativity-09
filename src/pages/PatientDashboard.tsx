@@ -5,7 +5,7 @@ import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck } from 'lucide-react';
+import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
@@ -21,6 +21,10 @@ import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
 import { PaymentDialog } from '@/components/PaymentDialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function PatientDashboard() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -40,6 +44,20 @@ export default function PatientDashboard() {
 
   const createAppointment = useCreateAppointment(patientId, patientName);
   const mutateAppointment = useMutateAppointment();
+
+  const { data: payments } = useQuery({
+    queryKey: ['payments', patientId],
+    queryFn: async () => {
+      if (!patientId) return [];
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('patient_id', patientId);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!patientId,
+  });
 
   const handleNewAppointment = async (data: CreateAppointmentData) => {
     console.log('🟢 handleNewAppointment appelé avec:', data);
@@ -97,6 +115,10 @@ export default function PatientDashboard() {
       });
     }
   };
+
+  const confirmedAwaitingPayment = appointments?.filter(
+    apt => apt.status === 'confirmed' && !payments?.some(p => p.appointment_id === apt.id && p.status === 'paid')
+  ) || [];
 
   const upcomingAppointments = appointments.filter(
     apt => apt.status !== 'completed' && apt.status !== 'cancelled' && apt.status !== 'rejected'
@@ -298,6 +320,53 @@ export default function PatientDashboard() {
           </TabsContent>
 
           <TabsContent value="appointments" className="space-y-6">
+            {confirmedAwaitingPayment.length > 0 && (
+              <Card className="border-destructive bg-destructive/5">
+                <CardHeader>
+                  <CardTitle className="text-destructive flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" />
+                    Paiement requis ({confirmedAwaitingPayment.length})
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Les praticiens ont accepté ces rendez-vous. Procédez au paiement pour finaliser.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {confirmedAwaitingPayment.map(appointment => (
+                    <div key={appointment.id} className="p-4 bg-background rounded-lg border space-y-3">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold">{appointment.practitionerName}</p>
+                          <p className="text-sm text-muted-foreground">{appointment.specialty}</p>
+                        </div>
+                        <Badge variant="destructive">Paiement requis</Badge>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span>{new Date(appointment.date).toLocaleDateString('fr-FR')} à {appointment.time}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handlePaymentRequired(appointment.id)}
+                        >
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Payer maintenant
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCancel(appointment.id)}
+                        >
+                          Annuler
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
             <div className="flex justify-between items-center">
               <h3 className="text-xl font-semibold">Mes rendez-vous</h3>
               {patientId && (

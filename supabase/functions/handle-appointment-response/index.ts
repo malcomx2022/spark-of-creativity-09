@@ -108,10 +108,10 @@ serve(async (req) => {
     }
 
     if (action === 'accept') {
-      // Le praticien accepte → passer en statut "pending" (en attente de paiement)
+      // Le praticien accepte → passer en statut "confirmed" (en attente de paiement)
       const { error: updateError } = await supabase
         .from('appointments')
-        .update({ status: 'pending' })
+        .update({ status: 'confirmed' })
         .eq('id', appointmentId);
 
       if (updateError) throw updateError;
@@ -121,16 +121,16 @@ serve(async (req) => {
         .from('notifications')
         .insert({
           user_id: appointment.patient_id,
-          title: 'Rendez-vous confirmé !',
-          message: `${appointment.practitioner_name} a accepté votre rendez-vous. Veuillez procéder au paiement.`,
-          type: 'appointment',
-          link: `/dashboard/patient`,
+          title: 'Rendez-vous confirmé - Paiement requis',
+          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Veuillez procéder au paiement pour finaliser la réservation.`,
+          type: 'payment_required',
+          link: `/patient/dashboard?tab=appointments`,
         });
 
-      console.log('✅ Rendez-vous accepté, notification envoyée au patient');
+      console.log('✅ Rendez-vous confirmé, notification de paiement envoyée au patient');
 
       return new Response(
-        JSON.stringify({ success: true, message: 'Rendez-vous accepté' }),
+        JSON.stringify({ success: true, message: 'Rendez-vous confirmé, paiement requis' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
