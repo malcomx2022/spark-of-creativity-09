@@ -24,6 +24,81 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface FedaPayUssdResult {
+  attempted: boolean;
+  success: boolean;
+  payload?: unknown;
+  error?: string;
+}
+
+async function triggerFedapayUssdValidation({
+  transactionId,
+  phoneNumber,
+  mode,
+  fedapaySecretKey,
+  fedapayBaseUrl,
+}: {
+  transactionId: string;
+  phoneNumber: string;
+  mode: string;
+  fedapaySecretKey: string;
+  fedapayBaseUrl: string;
+}): Promise<FedaPayUssdResult> {
+  const normalizedPhone = phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber;
+
+  try {
+    console.log('Triggering FedaPay USSD validation request', { transactionId, mode });
+    const response = await fetch(`${fedapayBaseUrl}/v1/transactions/${transactionId}/send_otp`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${fedapaySecretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel: 'ussd',
+        mode,
+        customer: {
+          phone_number: {
+            number: normalizedPhone,
+            country: 'bj',
+          },
+        },
+      }),
+    });
+
+    let data: unknown = null;
+    try {
+      data = await response.json();
+    } catch (error) {
+      console.warn('Unable to parse USSD trigger response', error);
+    }
+
+    if (!response.ok) {
+      console.error('FedaPay USSD trigger returned an error', data);
+      return {
+        attempted: true,
+        success: false,
+        error: `HTTP ${response.status}`,
+        payload: data,
+      };
+    }
+
+    console.log('FedaPay USSD validation successfully triggered');
+    return {
+      attempted: true,
+      success: true,
+      payload: data,
+    };
+  } catch (error) {
+    console.error('Unable to trigger FedaPay USSD validation', error);
+    return {
+      attempted: true,
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -326,6 +401,16 @@ serve(async (req) => {
     }
 
     const paymentUrl = tokenInfo.url;
+    const ussdTriggerResult = await triggerFedapayUssdValidation({
+      transactionId: transactionData.id,
+      phoneNumber,
+      mode: selectedMode,
+      fedapaySecretKey,
+      fedapayBaseUrl,
+    });
+    if (!ussdTriggerResult.success) {
+      console.warn('FedaPay USSD trigger failed', ussdTriggerResult);
+    }
     console.log('Payment URL generated:', paymentUrl);
 
     // Récupérer la configuration des frais
@@ -379,7 +464,8 @@ serve(async (req) => {
         payment_session_data: {
           transaction: fedapayData,
           token: tokenData,
-          mode: selectedMode
+          mode: selectedMode,
+          ussd: ussdTriggerResult
         }
       })
       .select()
@@ -414,7 +500,7 @@ serve(async (req) => {
       serviceRoleKey: supabaseKey,
       userId: user.id,
       title: 'Paiement initialisé',
-      message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Cliquez pour compléter le paiement.`,
+      message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Confirmez sur votre mobile en entrant votre code PIN USSD ou cliquez pour ouvrir FedaPay.`,
       type: 'payment',
       link: paymentUrl,
     });
