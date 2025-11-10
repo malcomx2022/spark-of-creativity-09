@@ -1,9 +1,7 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-
 type NotificationChannel = "email" | "sms" | "push";
 
 interface DispatchNotificationOptions {
-  supabase: SupabaseClient<any, "public", any>;
+  supabase: any;
   supabaseUrl: string;
   serviceRoleKey: string;
   userId: string;
@@ -275,7 +273,7 @@ export async function dispatchNotification(options: DispatchNotificationOptions)
 }
 
 export async function getUsersWithRoles(
-  supabase: SupabaseClient<any, "public", any>,
+  supabase: any,
   roles: string[],
 ): Promise<string[]> {
   if (roles.length === 0) {

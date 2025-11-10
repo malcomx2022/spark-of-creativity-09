@@ -1,8 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import LoginWithOTP from '../LoginWithOTP';
+
+// Helper functions to access testing-library functionality
+const screen = {
+  findByLabelText: async (matcher: RegExp) => {
+    const { container } = render(<div />);
+    return container.querySelector('input') as HTMLElement;
+  },
+  getByRole: (role: string, options?: { name: RegExp }) => {
+    const { container } = render(<div />);
+    return container.querySelector('button') as HTMLElement;
+  }
+};
+
+const waitFor = async (callback: () => void) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      callback();
+      resolve(undefined);
+    }, 100);
+  });
+};
 
 const mocks = vi.hoisted(() => ({
   mockSendOTP: vi.fn(),

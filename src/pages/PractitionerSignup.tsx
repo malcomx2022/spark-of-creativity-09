@@ -153,13 +153,13 @@ export default function PractitionerSignup() {
 
       const userId = data.user.id;
 
-      const { error: profileError } = await supabase.from("profiles").upsert({
+      const { error: profileError } = await supabase.from("profiles").upsert([{
         id: userId,
         full_name: `${formData.firstName} ${formData.lastName}`.trim(),
         phone: formData.phone,
-        gender: formData.gender || null,
+        gender: (formData.gender as "homme" | "femme" | "autre" | "non_specifie") || null,
         date_of_birth: formData.dateOfBirth || null,
-      });
+      }]);
 
       if (profileError) {
         throw profileError;
@@ -188,13 +188,13 @@ export default function PractitionerSignup() {
       const yearsExperience = Number.parseInt(formData.experience, 10) || null;
       const interventionRadius = formData.interventionRadius ? Number.parseInt(formData.interventionRadius, 10) : null;
 
-      const { error: practitionerError } = await supabase.from("practitioners").insert({
+      const { error: practitionerError } = await supabase.from("practitioners").insert([{
         user_id: userId,
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         phone: formData.phone,
         address: formData.address,
         specialty: formData.specialty || formData.profession,
-        practitioner_type: practitionerType,
+        practitioner_type: practitionerType as "medecin" | "infirmier" | "kinesitherapeute" | "sage_femme" | "nutritionniste" | "psychologue" | "coach_sportif" | "autre",
         years_experience: yearsExperience,
         kyc_status: "pending",
         can_accept_missions: false,
@@ -210,7 +210,7 @@ export default function PractitionerSignup() {
           ? formData.certifications.split(",").map(cert => cert.trim()).filter(Boolean)
           : null,
         license_number: formData.registrationNumber,
-      });
+      }]);
 
       if (practitionerError) {
         throw practitionerError;
