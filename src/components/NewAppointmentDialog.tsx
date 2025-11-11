@@ -91,7 +91,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
             specialty: data.specialty,
             appointmentDate: data.date.toISOString().split('T')[0],
             appointmentTime: data.time,
-            maxRadius: 10,
+            maxRadius: 15,
           },
         }
       );
@@ -204,7 +204,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
           <Alert className="mb-4 bg-primary/5 border-primary/20">
             <MapPin className="h-4 w-4" />
             <AlertDescription>
-              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>10 km</strong> autour de votre position actuelle ({position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}°).
+              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>15 km</strong> autour de votre position actuelle ({position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}°).
             </AlertDescription>
           </Alert>
         )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import PractitionerMap from '@/components/PractitionerMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +10,9 @@ import { MapPin, Search, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
 import { usePractitioners } from '@/hooks/usePractitioners';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
+import { supabase } from '@/integrations/supabase/client';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -23,13 +27,17 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function PractitionerSearch() {
+  const navigate = useNavigate();
   const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
-  const [searchRadius, setSearchRadius] = useState<string>('5');
+  const [searchRadius, setSearchRadius] = useState<string>('15');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
+
+  const { data: user } = useSupabaseUser();
 
   const {
     data: practitionersData = [],
@@ -178,7 +186,7 @@ export default function PractitionerSearch() {
                       <SelectValue placeholder="Rayon" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['5', '10', '20', '50'].map(radius => (
+                      {['5', '10', '15'].map(radius => (
                         <SelectItem key={radius} value={radius}>
                           {radius} km
                         </SelectItem>
@@ -240,7 +248,21 @@ export default function PractitionerSearch() {
                         <Button onClick={() => toast({ title: 'Contact', description: `Appel en cours vers ${practitioner.phone}` })}>
                           Contacter
                         </Button>
-                        <Button variant="outline" onClick={() => toast({ title: 'Demande envoyée', description: `Une demande de rendez-vous a été envoyée à ${practitioner.name}` })}>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => {
+                            if (!user) {
+                              toast({
+                                title: 'Connexion requise',
+                                description: 'Veuillez vous connecter pour demander un rendez-vous.',
+                                variant: 'destructive'
+                              });
+                              navigate('/login');
+                              return;
+                            }
+                            setSelectedPractitioner(practitioner);
+                          }}
+                        >
                           Demander un rendez-vous
                         </Button>
                       </div>
@@ -272,6 +294,48 @@ export default function PractitionerSearch() {
           </div>
         </div>
       </main>
+
+      {selectedPractitioner && user && (
+        <NewAppointmentDialog
+          onSubmit={async (data) => {
+            const { data: session } = await supabase.auth.getSession();
+            if (!session?.session?.user) {
+              throw new Error('Utilisateur non authentifié');
+            }
+
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', session.session.user.id)
+              .single();
+
+            const appointmentData = {
+              patient_id: session.session.user.id,
+              patient_name: profile?.full_name || 'Patient',
+              practitioner_id: selectedPractitioner.id,
+              practitioner_name: selectedPractitioner.name,
+              specialty: data.specialty,
+              date: new Date(data.date).toISOString().split('T')[0],
+              time: data.time,
+              status: 'awaiting_practitioner',
+              address: selectedPractitioner.address,
+              reason: data.reason,
+              urgency_level: data.urgencyLevel,
+            };
+
+            const { data: appointment, error } = await supabase
+              .from('appointments')
+              .insert([appointmentData])
+              .select()
+              .single();
+
+            if (error) throw error;
+
+            setSelectedPractitioner(null);
+            return appointment;
+          }}
+        />
+      )}
     </div>
   );
 }
