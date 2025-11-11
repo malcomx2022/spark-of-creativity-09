@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Heart, User, Stethoscope, Clock, Shield, CheckCircle, Star, Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
 
@@ -276,55 +277,7 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 bg-foreground text-white">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <img src={heroImage} alt="DomiCares" className="w-8 h-8 rounded-lg" />
-                <span className="text-xl font-bold">DomiCares</span>
-              </div>
-              <p className="text-white/70">
-                Votre plateforme de confiance pour les soins de santé à domicile en Afrique.
-              </p>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Services</h4>
-              <ul className="space-y-2 text-white/70">
-                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Médecins à domicile</button></li>
-                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Soins infirmiers</button></li>
-                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Kinésithérapie</button></li>
-                <li><button onClick={() => navigate('/services')} className="hover:text-white transition-colors">Consultations d'urgence</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Légal</h4>
-              <ul className="space-y-2 text-white/70">
-                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Conditions d'utilisation</button></li>
-                <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition-colors">Politique de confidentialité</button></li>
-                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Charte praticiens</button></li>
-                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Mentions légales</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Contact</h4>
-              <ul className="space-y-2 text-white/70">
-                <li><button onClick={() => navigate('/contact')} className="hover:text-white transition-colors">Nous contacter</button></li>
-                <li>Urgences: 112</li>
-                <li>Email: contact@domicares.com</li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="border-t border-white/20 mt-8 pt-8 text-center text-white/70">
-            <p>&copy; 2024 DomiCares. Tous droits réservés.</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

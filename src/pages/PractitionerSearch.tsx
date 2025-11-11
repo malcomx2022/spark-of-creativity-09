@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 import PractitionerMap from '@/components/PractitionerMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -336,6 +337,7 @@ export default function PractitionerSearch() {
           }}
         />
       )}
+      <Footer />
     </div>
   );
 }

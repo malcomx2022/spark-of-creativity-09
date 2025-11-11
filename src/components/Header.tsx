@@ -68,24 +68,11 @@ export default function Header() {
               Praticien
             </button>
             <button 
-              onClick={() => navigate("/triage")}
-              className="text-foreground hover:text-primary transition-colors"
-            >
-              Triage
-            </button>
-            <button 
               onClick={() => navigate("/search-practitioners")}
               className="text-foreground hover:text-primary transition-colors flex items-center gap-1"
             >
               <MapPin className="h-4 w-4" />
               Recherche
-            </button>
-            <button 
-              onClick={() => navigate("/admin/login")}
-              className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-              title="Espace Administration"
-            >
-              <Shield className="h-4 w-4" />
             </button>
           </nav>
 
@@ -168,24 +155,11 @@ export default function Header() {
                 Espace Praticien
               </button>
               <button 
-                onClick={() => navigate("/triage")}
-                className="text-foreground hover:text-primary transition-colors text-left"
-              >
-                Triage Médical
-              </button>
-              <button 
                 onClick={() => navigate("/search-practitioners")}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
                 <MapPin className="h-4 w-4" />
                 Rechercher un praticien
-              </button>
-              <button 
-                onClick={() => navigate("/admin/login")}
-                className="text-muted-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
-              >
-                <Shield className="h-4 w-4" />
-                Administration
               </button>
               <Button variant="urgent" size="sm" className="w-full sm:hidden">
                 <Phone className="h-4 w-4" />
