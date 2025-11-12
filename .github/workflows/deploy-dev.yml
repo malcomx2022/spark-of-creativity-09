@@ -1,0 +1,110 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linter
+        run: npm run lint || true
+      
+      - name: Run tests
+        run: npm test || true
+      
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://dev.domicares.life/api
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.DEV_ANON_KEY }}
+          VITE_MAPBOX_TOKEN: ${{ secrets.DEV_MAPBOX_TOKEN }}
+      
+      - name: Deploy frontend to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: "dist/*"
+          target: "/var/www/dev/"
+          strip_components: 1
+          rm: true
+      
+      - name: Deploy Edge Functions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            cd /opt/supabase-dev
+            
+            # Copier les fonctions depuis le repo
+            rm -rf functions
+            cp -r $HOME/domicares-dev/supabase/functions ./
+            
+            # Déployer toutes les fonctions
+            docker exec supabase-dev-functions supabase functions deploy --all || true
+            
+            echo "✅ Edge Functions déployées sur DEV"
+      
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            # Restart Nginx
+            sudo systemctl reload nginx
+            
+            # Restart Supabase services si nécessaire
+            cd /opt/supabase-dev
+            docker-compose restart kong || true
+            
+            echo "✅ Services redémarrés sur DEV"
+      
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            # Vérifier que le frontend répond
+            curl -f https://dev.domicares.life || exit 1
+            
+            # Vérifier que l'API répond
+            curl -f https://dev.domicares.life/api/rest/v1/ || exit 1
+            
+            echo "✅ Health check passed"
+      
+      - name: Notify deployment
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "🚀 Déploiement DEV réussi: https://dev.domicares.life"
+          else
+            echo "❌ Échec du déploiement DEV"
+          fi

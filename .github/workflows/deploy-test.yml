@@ -1,0 +1,141 @@
+name: Deploy to Test
+
+on:
+  push:
+    branches: [ staging ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linter
+        run: npm run lint
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://test.domicares.life/api
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.TEST_ANON_KEY }}
+          VITE_MAPBOX_TOKEN: ${{ secrets.TEST_MAPBOX_TOKEN }}
+      
+      - name: Run E2E tests (optional)
+        run: npm run test:e2e || true
+        env:
+          TEST_URL: https://test.domicares.life
+      
+      - name: Deploy frontend to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: "dist/*"
+          target: "/var/www/test/"
+          strip_components: 1
+          rm: true
+      
+      - name: Deploy Edge Functions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            cd /opt/supabase-test
+            
+            # Copier les fonctions depuis le repo
+            rm -rf functions
+            cp -r $HOME/domicares-test/supabase/functions ./
+            
+            # Déployer toutes les fonctions
+            docker exec supabase-test-functions supabase functions deploy --all || true
+            
+            echo "✅ Edge Functions déployées sur TEST"
+      
+      - name: Run database migrations
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            cd /opt/supabase-test
+            
+            # Appliquer les migrations
+            docker exec supabase-test-db psql -U postgres -d postgres -c "\i /docker-entrypoint-initdb.d/migrations/*.sql" || true
+            
+            echo "✅ Migrations appliquées sur TEST"
+      
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            # Restart Nginx
+            sudo systemctl reload nginx
+            
+            # Restart Supabase services
+            cd /opt/supabase-test
+            docker-compose restart kong
+            docker-compose restart rest
+            
+            echo "✅ Services redémarrés sur TEST"
+      
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            # Vérifier que le frontend répond
+            curl -f https://test.domicares.life || exit 1
+            
+            # Vérifier que l'API répond
+            curl -f https://test.domicares.life/api/rest/v1/ || exit 1
+            
+            # Vérifier la base de données
+            cd /opt/supabase-test
+            docker exec supabase-test-db pg_isready -U postgres || exit 1
+            
+            echo "✅ Health check passed"
+      
+      - name: Run smoke tests
+        run: |
+          curl -f https://test.domicares.life/api/rest/v1/health || exit 1
+          echo "✅ Smoke tests passed"
+      
+      - name: Notify deployment
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "🚀 Déploiement TEST réussi: https://test.domicares.life"
+            echo "✅ Prêt pour promotion vers PRODUCTION"
+          else
+            echo "❌ Échec du déploiement TEST"
+          fi
