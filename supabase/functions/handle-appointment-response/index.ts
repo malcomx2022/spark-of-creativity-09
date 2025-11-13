@@ -108,11 +108,27 @@ serve(async (req) => {
     }
 
     if (action === 'accept') {
+      // Vérifier que le RDV est toujours en attente (protection race condition)
+      if (appointment.status !== 'awaiting_practitioner') {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Ce rendez-vous a déjà été traité',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          }
+        );
+      }
+
       // Le praticien accepte → passer en statut "confirmed" (en attente de paiement)
+      // Utiliser le statut actuel comme condition pour éviter race condition
       const { error: updateError } = await supabase
         .from('appointments')
         .update({ status: 'confirmed' })
-        .eq('id', appointmentId);
+        .eq('id', appointmentId)
+        .eq('status', 'awaiting_practitioner'); // Lock optimiste
 
       if (updateError) throw updateError;
 

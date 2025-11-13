@@ -126,10 +126,60 @@ export default function PractitionerSignup() {
     }
 
     try {
+      // Validation des documents obligatoires
+      if (!documentUploads.idDocument) {
+        toast({
+          title: "Document manquant",
+          description: "La pièce d'identité est obligatoire",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!documentUploads.licenseDocument) {
+        toast({
+          title: "Document manquant",
+          description: "Le document d'autorisation d'exercice est obligatoire",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validation taille et type des fichiers
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+      for (const [key, file] of Object.entries(documentUploads)) {
+        if (file) {
+          if (file.size > MAX_FILE_SIZE) {
+            toast({
+              title: "Fichier trop volumineux",
+              description: `${key}: Maximum 5MB autorisé`,
+              variant: "destructive"
+            });
+            setIsSubmitting(false);
+            return;
+          }
+
+          if (!ALLOWED_TYPES.includes(file.type)) {
+            toast({
+              title: "Type de fichier non supporté",
+              description: `${key}: Seuls PDF, JPG et PNG sont autorisés`,
+              variant: "destructive"
+            });
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
+          emailRedirectTo: `${window.location.origin}/dashboard/practitioner`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`.trim(),
             role: "practitioner",
@@ -139,7 +189,28 @@ export default function PractitionerSignup() {
       });
 
       if (error) {
-        throw error;
+        // Gestion erreurs spécifiques
+        if (error.message.includes('already registered') || error.message.includes('already been registered')) {
+          toast({
+            title: "Email déjà utilisé",
+            description: "Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.",
+            variant: "destructive"
+          });
+        } else if (error.message.includes('password') || error.message.includes('Password')) {
+          toast({
+            title: "Mot de passe trop faible",
+            description: "Le mot de passe doit contenir au moins 8 caractères.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Erreur d'inscription",
+            description: error.message,
+            variant: "destructive"
+          });
+        }
+        setIsSubmitting(false);
+        return;
       }
 
       if (!data.user) {
@@ -153,67 +224,68 @@ export default function PractitionerSignup() {
 
       const userId = data.user.id;
 
-      const { error: profileError } = await supabase.from("profiles").upsert([{
+      // Utiliser l'edge function transactionnelle pour créer le profil complet
+      const practitionerType = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
+      const yearsExperience = Number.parseInt(formData.experience, 10) || null;
+      const interventionRadius = formData.interventionRadius ? Number.parseInt(formData.interventionRadius, 10) : null;
+
+      // Préparer les données pour l'edge function
+      const profileData = {
         id: userId,
         full_name: `${formData.firstName} ${formData.lastName}`.trim(),
         phone: formData.phone,
         gender: (formData.gender as "homme" | "femme" | "autre" | "non_specifie") || null,
         date_of_birth: formData.dateOfBirth || null,
-      }]);
-
-      if (profileError) {
-        throw profileError;
-      }
-
-      const uploadFolder = "practitioner-documents";
-      const uploads: Record<keyof typeof documentUploads, { url: string; path: string } | null> = {
-        profilePhoto: null,
-        idDocument: null,
-        diploma: null,
-        licenseDocument: null,
       };
 
-      for (const key of Object.keys(documentUploads) as Array<keyof typeof documentUploads>) {
-        const file = documentUploads[key];
-        if (file) {
-          uploads[key] = await uploadUserDocument({
-            file,
-            folder: uploadFolder,
-            userId,
-          });
-        }
-      }
-
-      const practitionerType = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
-      const yearsExperience = Number.parseInt(formData.experience, 10) || null;
-      const interventionRadius = formData.interventionRadius ? Number.parseInt(formData.interventionRadius, 10) : null;
-
-      const { error: practitionerError } = await supabase.from("practitioners").insert([{
+      const practitionerData = {
         user_id: userId,
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         phone: formData.phone,
         address: formData.address,
         specialty: formData.specialty || formData.profession,
-        practitioner_type: practitionerType as "medecin" | "infirmier" | "kinesitherapeute" | "sage_femme" | "nutritionniste" | "psychologue" | "coach_sportif" | "autre",
+        practitioner_type: practitionerType,
         years_experience: yearsExperience,
         kyc_status: "pending",
         can_accept_missions: false,
         bio: `Profession: ${formData.profession}\nStructure: ${formData.currentWorkplace}`,
-        image: uploads.profilePhoto?.url ?? null,
-        id_document_url: uploads.idDocument?.path ?? null,
-        license_document_url: uploads.licenseDocument?.path ?? null,
-        diplomas: uploads.diploma ? [uploads.diploma.path] : null,
+        license_number: formData.registrationNumber,
         session_types: formData.profession === "Coach sportif" ? formData.sessionTypes : null,
         intervention_zone: formData.profession === "Coach sportif" ? formData.interventionZone : null,
         intervention_radius: formData.profession === "Coach sportif" ? interventionRadius : null,
         certifications: formData.profession === "Coach sportif" && formData.certifications
           ? formData.certifications.split(",").map(cert => cert.trim()).filter(Boolean)
           : null,
-        license_number: formData.registrationNumber,
-      }]);
+      };
 
-      if (practitionerError) {
-        throw practitionerError;
+      // Convertir les fichiers en base64 pour l'edge function
+      const documentsBase64: Record<string, string> = {};
+      for (const [key, file] of Object.entries(documentUploads)) {
+        if (file) {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          documentsBase64[key] = base64;
+        }
+      }
+
+      // Appeler l'edge function transactionnelle
+      const { data: createResult, error: createError } = await supabase.functions.invoke(
+        'create-practitioner-account',
+        {
+          body: {
+            userId,
+            profileData,
+            practitionerData,
+            documents: documentsBase64,
+          }
+        }
+      );
+
+      if (createError || !createResult?.success) {
+        throw new Error(createError?.message || createResult?.error || "Échec de création du compte");
       }
 
       toast({

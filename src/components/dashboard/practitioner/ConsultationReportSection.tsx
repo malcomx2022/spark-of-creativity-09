@@ -99,6 +99,72 @@ export function ConsultationReportSection() {
     defaultValues: defaultFormValues,
   });
 
+  // Auto-save brouillon dans localStorage toutes les 30 secondes
+  useEffect(() => {
+    if (!selectedAppointmentId) return;
+
+    const interval = setInterval(() => {
+      const currentValues = form.getValues();
+      // Ne sauvegarder que si des données ont été saisies
+      const hasData = Object.values(currentValues).some(v => 
+        v !== '' && v !== false && v !== undefined
+      );
+      
+      if (hasData) {
+        localStorage.setItem(
+          `consultation_draft_${selectedAppointmentId}`,
+          JSON.stringify({
+            ...currentValues,
+            savedAt: new Date().toISOString(),
+          })
+        );
+        console.log('💾 Brouillon auto-sauvegardé');
+      }
+    }, 30000); // 30 secondes
+
+    return () => clearInterval(interval);
+  }, [form, selectedAppointmentId]);
+
+  // Restaurer brouillon au montage si disponible
+  useEffect(() => {
+    if (!selectedAppointmentId) return;
+
+    const draftKey = `consultation_draft_${selectedAppointmentId}`;
+    const draft = localStorage.getItem(draftKey);
+    
+    if (draft && !existingReport) {
+      try {
+        const parsed = JSON.parse(draft);
+        const savedAt = new Date(parsed.savedAt);
+        const now = new Date();
+        const hoursSince = (now.getTime() - savedAt.getTime()) / (1000 * 60 * 60);
+
+        // Proposer restauration si < 24h
+        if (hoursSince < 24) {
+          const restore = window.confirm(
+            `Un brouillon sauvegardé a été trouvé (${Math.round(hoursSince)}h). Voulez-vous le restaurer ?`
+          );
+          
+          if (restore) {
+            delete parsed.savedAt;
+            form.reset(parsed);
+            toast({
+              title: "Brouillon restauré",
+              description: "Vos données ont été récupérées",
+            });
+          } else {
+            localStorage.removeItem(draftKey);
+          }
+        } else {
+          // Supprimer les brouillons > 24h
+          localStorage.removeItem(draftKey);
+        }
+      } catch (error) {
+        console.error('Erreur restauration brouillon:', error);
+      }
+    }
+  }, [selectedAppointmentId, existingReport, form]);
+
   const handleAppointmentSelect = (appointmentId: string) => {
     setSelectedAppointmentId(appointmentId);
     form.setValue('appointmentId', appointmentId);
