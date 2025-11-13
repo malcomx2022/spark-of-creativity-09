@@ -108,9 +108,9 @@ serve(async (req) => {
             uploadedDocs[key] = result;
             uploadedDocuments.push(result.path);
             console.log(`✅ ${key} uploadé`);
-          } catch (uploadError) {
+          } catch (uploadError: any) {
             console.error(`❌ Erreur upload ${key}:`, uploadError);
-            throw new Error(`Échec upload ${key}: ${uploadError.message}`);
+            throw new Error(`Échec upload ${key}: ${uploadError?.message || 'Erreur inconnue'}`);
           }
         }
       }

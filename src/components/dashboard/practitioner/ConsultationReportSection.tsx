@@ -148,8 +148,7 @@ export function ConsultationReportSection() {
           if (restore) {
             delete parsed.savedAt;
             form.reset(parsed);
-            toast({
-              title: "Brouillon restauré",
+            toast.success("Brouillon restauré", {
               description: "Vos données ont été récupérées",
             });
           } else {
