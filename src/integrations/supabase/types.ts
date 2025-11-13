@@ -1271,6 +1271,53 @@ export type Database = {
           },
         ]
       }
+      practitioner_payment_info: {
+        Row: {
+          account_holder_name: string
+          bank_account_number: string | null
+          bank_name: string | null
+          created_at: string
+          id: string
+          is_verified: boolean | null
+          payment_method: string
+          phone_number: string | null
+          practitioner_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_holder_name: string
+          bank_account_number?: string | null
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean | null
+          payment_method: string
+          phone_number?: string | null
+          practitioner_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_holder_name?: string
+          bank_account_number?: string | null
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean | null
+          payment_method?: string
+          phone_number?: string | null
+          practitioner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practitioner_payment_info_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practitioner_payouts: {
         Row: {
           account_details: Json | null
