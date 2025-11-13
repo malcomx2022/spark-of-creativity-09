@@ -1,52 +1,105 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle2, Clock, Smartphone, Building } from "lucide-react";
-import type { Database } from "@/integrations/supabase/types";
+import {
+  AlertTriangle,
+  Building,
+  CheckCircle2,
+  Loader2,
+  Phone,
+  ShieldCheck,
+  Smartphone,
+} from "lucide-react";
 
-const MOBILE_PROVIDERS = [
-  { value: "mtn", label: "MTN Mobile Money" },
-  { value: "orange", label: "Orange Money" },
-  { value: "moov", label: "Moov Money" },
-] as const;
-
-type MobileProvider = (typeof MOBILE_PROVIDERS)[number]["value"];
-
-type PractitionerPaymentInfo = Database["public"]["Tables"]["practitioner_payment_info"]["Row"];
-
-type PaymentInfoSectionProps = {
+interface PaymentInfoSectionProps {
   practitionerId: string;
+  practitionerName?: string | null;
+}
+
+type PaymentMethod = "mtn" | "orange" | "moov" | "bank";
+
+interface PractitionerPaymentInfo {
+  id: string;
+  practitioner_id: string;
+  payment_method: PaymentMethod;
+  phone_number: string | null;
+  bank_account_number: string | null;
+  bank_name: string | null;
+  account_holder_name: string;
+  is_verified: boolean | null;
+}
+
+interface FormState {
+  accountHolderName: string;
+  phoneNumber: string;
+  bankName: string;
+  bankAccountNumber: string;
+}
+
+interface FormErrors {
+  accountHolderName?: string;
+  phoneNumber?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+}
+
+const methodLabels: Record<PaymentMethod, string> = {
+  mtn: "MTN Mobile Money",
+  orange: "Orange Money",
+  moov: "Moov Money",
+  bank: "Compte bancaire",
 };
 
-export function PaymentInfoSection({ practitionerId }: PaymentInfoSectionProps) {
+const methodDescriptions: Record<PaymentMethod, string> = {
+  mtn: "Recevez vos versements sur votre numéro MTN Mobile Money.",
+  orange: "Recevez vos versements sur votre numéro Orange Money.",
+  moov: "Recevez vos versements sur votre numéro Moov Money.",
+  bank: "Recevez vos versements directement sur votre compte bancaire.",
+};
+
+const sanitizePhoneNumber = (value: string) => value.replace(/\s+/g, "");
+const sanitizeAccountNumber = (value: string) => value.replace(/\s+/g, "").toUpperCase();
+
+const isValidPhoneNumber = (value: string) => {
+  const normalized = sanitizePhoneNumber(value);
+  return /^\+?[0-9]{8,15}$/.test(normalized);
+};
+
+const isValidBankAccountNumber = (value: string) => {
+  const normalized = sanitizeAccountNumber(value);
+  return /^[0-9A-Za-z]{8,34}$/.test(normalized);
+};
+
+export function PaymentInfoSection({ practitionerId, practitionerName }: PaymentInfoSectionProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const [selectedMobileProvider, setSelectedMobileProvider] = useState<MobileProvider>("mtn");
-  const [mobileForm, setMobileForm] = useState({
-    accountHolderName: "",
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mtn");
+  const [formState, setFormState] = useState<FormState>({
+    accountHolderName: practitionerName || "",
     phoneNumber: "",
-  });
-  const [bankForm, setBankForm] = useState({
-    accountHolderName: "",
     bankName: "",
     bankAccountNumber: "",
   });
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [isVerified, setIsVerified] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"verify" | "save" | null>(null);
 
-  const {
-    data: paymentInfos = [],
-    isLoading,
-    error,
-    isFetching,
-  } = useQuery<PractitionerPaymentInfo[]>({
+  const { data: paymentInfos, isLoading } = useQuery({
     queryKey: ["practitioner-payment-info", practitionerId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -54,333 +107,339 @@ export function PaymentInfoSection({ practitionerId }: PaymentInfoSectionProps) 
         .select("*")
         .eq("practitioner_id", practitionerId);
 
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error("Erreur récupération payment info", error);
+        throw error;
+      }
+
+      return (data || []) as PractitionerPaymentInfo[];
     },
     enabled: !!practitionerId,
   });
 
-  const firstConfiguredProvider = useMemo(() => {
-    return paymentInfos.find((info) =>
-      MOBILE_PROVIDERS.some((provider) => provider.value === info.payment_method)
-    );
-  }, [paymentInfos]);
-
   useEffect(() => {
-    if (firstConfiguredProvider) {
-      setSelectedMobileProvider(firstConfiguredProvider.payment_method as MobileProvider);
+    if (!paymentInfos || paymentInfos.length === 0) return;
+
+    const methodExists = paymentInfos.some((info) => info.payment_method === selectedMethod);
+    if (!methodExists) {
+      const preferred = paymentInfos.find((info) => info.is_verified) || paymentInfos[0];
+      setSelectedMethod(preferred.payment_method);
     }
-  }, [firstConfiguredProvider]);
+  }, [paymentInfos, selectedMethod]);
 
   useEffect(() => {
-    const infoForProvider = paymentInfos.find((info) => info.payment_method === selectedMobileProvider);
+    if (!paymentInfos) return;
 
-    setMobileForm({
-      accountHolderName: infoForProvider?.account_holder_name ?? "",
-      phoneNumber: infoForProvider?.phone_number ?? "",
+    const info = paymentInfos.find((item) => item.payment_method === selectedMethod);
+
+    setFormState({
+      accountHolderName: info?.account_holder_name || practitionerName || "",
+      phoneNumber: info?.phone_number || "",
+      bankName: info?.bank_name || "",
+      bankAccountNumber: info?.bank_account_number || "",
     });
-  }, [paymentInfos, selectedMobileProvider]);
+    setIsVerified(!!info?.is_verified);
+    setFormErrors({});
+    setHasChanges(false);
+  }, [paymentInfos, selectedMethod, practitionerName]);
 
-  useEffect(() => {
-    const bankInfo = paymentInfos.find((info) => info.payment_method === "bank");
+  const mutation = useMutation({
+    mutationFn: async (payload: { verify: boolean }) => {
+      const sanitizedPhone = selectedMethod === "bank" ? null : sanitizePhoneNumber(formState.phoneNumber);
+      const sanitizedAccount = selectedMethod === "bank" ? sanitizeAccountNumber(formState.bankAccountNumber) : null;
 
-    setBankForm({
-      accountHolderName: bankInfo?.account_holder_name ?? "",
-      bankName: bankInfo?.bank_name ?? "",
-      bankAccountNumber: bankInfo?.bank_account_number ?? "",
-    });
-  }, [paymentInfos]);
+      const updatePayload = {
+        practitioner_id: practitionerId,
+        payment_method: selectedMethod,
+        account_holder_name: formState.accountHolderName.trim(),
+        phone_number: selectedMethod === "bank" ? null : sanitizedPhone,
+        bank_name: selectedMethod === "bank" ? formState.bankName.trim() || null : null,
+        bank_account_number: selectedMethod === "bank" ? sanitizedAccount : null,
+        is_verified: payload.verify,
+      };
 
-  const mobileMutation = useMutation({
-    mutationFn: async () => {
-      if (!practitionerId) {
-        throw new Error("Identifiant praticien manquant");
-      }
-
-      if (!mobileForm.accountHolderName.trim() || !mobileForm.phoneNumber.trim()) {
-        throw new Error("Veuillez renseigner le titulaire et le numéro de téléphone");
-      }
-
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("practitioner_payment_info")
-        .upsert(
-          {
-            practitioner_id: practitionerId,
-            payment_method: selectedMobileProvider,
-            account_holder_name: mobileForm.accountHolderName.trim(),
-            phone_number: mobileForm.phoneNumber.trim(),
-            bank_name: null,
-            bank_account_number: null,
-          },
-          { onConflict: "practitioner_id,payment_method" }
-        );
+        .upsert(updatePayload, { onConflict: "practitioner_id,payment_method" })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erreur mise à jour payment info", error);
+        throw error;
+      }
+
+      return data as PractitionerPaymentInfo;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      setIsVerified(!!data.is_verified);
+      setHasChanges(false);
       queryClient.invalidateQueries({ queryKey: ["practitioner-payment-info", practitionerId] });
+
       toast({
-        title: "Coordonnées Mobile Money sauvegardées",
-        description: "Vos informations de paiement ont été mises à jour.",
+        title: variables.verify ? "Informations vérifiées" : "Informations enregistrées",
+        description: variables.verify
+          ? "Vos informations de reversement ont été vérifiées."
+          : "Vos informations de reversement ont été sauvegardées.",
       });
     },
     onError: (error: any) => {
-      console.error("Failed to update mobile payment info", error);
       toast({
-        title: "Erreur lors de l'enregistrement",
-        description: error?.message || "Impossible de sauvegarder les informations Mobile Money.",
+        title: "Impossible d'enregistrer",
+        description: error?.message || "Une erreur est survenue lors de la sauvegarde.",
         variant: "destructive",
       });
     },
-  });
-
-  const bankMutation = useMutation({
-    mutationFn: async () => {
-      if (!practitionerId) {
-        throw new Error("Identifiant praticien manquant");
-      }
-
-      if (!bankForm.accountHolderName.trim() || !bankForm.bankName.trim() || !bankForm.bankAccountNumber.trim()) {
-        throw new Error("Veuillez renseigner le titulaire, la banque et le numéro de compte");
-      }
-
-      const { error } = await supabase
-        .from("practitioner_payment_info")
-        .upsert(
-          {
-            practitioner_id: practitionerId,
-            payment_method: "bank",
-            account_holder_name: bankForm.accountHolderName.trim(),
-            bank_name: bankForm.bankName.trim(),
-            bank_account_number: bankForm.bankAccountNumber.trim(),
-            phone_number: null,
-          },
-          { onConflict: "practitioner_id,payment_method" }
-        );
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["practitioner-payment-info", practitionerId] });
-      toast({
-        title: "Coordonnées bancaires sauvegardées",
-        description: "Vos informations bancaires ont été mises à jour.",
-      });
-    },
-    onError: (error: any) => {
-      console.error("Failed to update bank payment info", error);
-      toast({
-        title: "Erreur lors de l'enregistrement",
-        description: error?.message || "Impossible de sauvegarder les informations bancaires.",
-        variant: "destructive",
-      });
+    onSettled: () => {
+      setPendingAction(null);
     },
   });
 
-  const currentMobileInfo = paymentInfos.find((info) => info.payment_method === selectedMobileProvider);
-  const bankInfo = paymentInfos.find((info) => info.payment_method === "bank");
-
-  const renderStatusBadge = (info?: PractitionerPaymentInfo) => {
-    if (info?.is_verified) {
-      return (
-        <Badge className="gap-1">
-          <CheckCircle2 className="h-3 w-3" /> Vérifié
-        </Badge>
-      );
+  const handleFieldChange = (field: keyof FormState, value: string) => {
+    setFormState((prev) => ({ ...prev, [field]: value }));
+    setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+    setHasChanges(true);
+    if (isVerified) {
+      setIsVerified(false);
     }
-
-    return (
-      <Badge variant="secondary" className="gap-1">
-        <Clock className="h-3 w-3" /> En attente de validation
-      </Badge>
-    );
   };
 
-  const isSaving = mobileMutation.isPending || bankMutation.isPending;
+  const validateForm = () => {
+    const errors: FormErrors = {};
+
+    if (!formState.accountHolderName.trim()) {
+      errors.accountHolderName = "Le nom du titulaire est obligatoire.";
+    }
+
+    if (selectedMethod === "bank") {
+      if (!formState.bankName.trim()) {
+        errors.bankName = "Le nom de la banque est obligatoire.";
+      }
+
+      if (!formState.bankAccountNumber.trim()) {
+        errors.bankAccountNumber = "Le numéro de compte est obligatoire.";
+      } else if (!isValidBankAccountNumber(formState.bankAccountNumber)) {
+        errors.bankAccountNumber = "Numéro de compte invalide (8 à 34 caractères alphanumériques).";
+      }
+    } else {
+      if (!formState.phoneNumber.trim()) {
+        errors.phoneNumber = "Le numéro Mobile Money est obligatoire.";
+      } else if (!isValidPhoneNumber(formState.phoneNumber)) {
+        errors.phoneNumber = "Numéro de téléphone invalide (8 à 15 chiffres, + optionnel).";
+      }
+    }
+
+    setFormErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      toast({
+        title: "Champs invalides",
+        description: "Veuillez corriger les erreurs avant de continuer.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSave = (verify: boolean) => {
+    if (!validateForm()) return;
+
+    setPendingAction(verify ? "verify" : "save");
+    mutation.mutate({ verify });
+  };
+
+  if (!practitionerId) {
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration des reversements</CardTitle>
+          <CardDescription>Chargement des informations de paiement...</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Chargement...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const showVerifyButton = selectedMethod === "bank" ? !!formState.bankAccountNumber : !!formState.phoneNumber;
 
   return (
-    <div className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertTitle>Impossible de charger les informations de paiement</AlertTitle>
-          <AlertDescription>
-            Veuillez réessayer plus tard ou contacter le support si le problème persiste.
-          </AlertDescription>
+    <Card>
+      <CardHeader className="space-y-1">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <CardTitle>Configuration des reversements</CardTitle>
+            <CardDescription>
+              Configurez la méthode de paiement utilisée pour recevoir vos reversements.
+            </CardDescription>
+          </div>
+          <Badge variant={isVerified ? "default" : "secondary"} className={isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}>
+            {isVerified ? (
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5" /> Vérifié
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5" /> Non vérifié
+              </span>
+            )}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Méthode de reversement</Label>
+            <Select value={selectedMethod} onValueChange={(value) => setSelectedMethod(value as PaymentMethod)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionnez une méthode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mtn">MTN Mobile Money</SelectItem>
+                <SelectItem value="orange">Orange Money</SelectItem>
+                <SelectItem value="moov">Moov Money</SelectItem>
+                <SelectItem value="bank">Compte bancaire</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              {methodDescriptions[selectedMethod]}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground space-y-2">
+            <div className="flex items-center gap-2 font-medium text-foreground">
+              {selectedMethod === "bank" ? (
+                <Building className="h-4 w-4" />
+              ) : (
+                <Smartphone className="h-4 w-4" />
+              )}
+              {methodLabels[selectedMethod]}
+            </div>
+            <p>
+              Assurez-vous que les informations saisies correspondent exactement à celles détenues par votre opérateur ou votre banque.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="accountHolder">Nom du titulaire</Label>
+            <Input
+              id="accountHolder"
+              value={formState.accountHolderName}
+              onChange={(event) => handleFieldChange("accountHolderName", event.target.value)}
+              placeholder="Nom complet du titulaire"
+            />
+            {formErrors.accountHolderName && (
+              <p className="text-sm text-destructive">{formErrors.accountHolderName}</p>
+            )}
+          </div>
+
+          {selectedMethod === "bank" ? (
+            <div className="space-y-2">
+              <Label htmlFor="bankName">Banque</Label>
+              <Input
+                id="bankName"
+                value={formState.bankName}
+                onChange={(event) => handleFieldChange("bankName", event.target.value)}
+                placeholder="Nom de la banque"
+              />
+              {formErrors.bankName && (
+                <p className="text-sm text-destructive">{formErrors.bankName}</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumber">Numéro Mobile Money</Label>
+              <Input
+                id="phoneNumber"
+                value={formState.phoneNumber}
+                onChange={(event) => handleFieldChange("phoneNumber", event.target.value)}
+                placeholder="Ex: +22960000000"
+                inputMode="tel"
+              />
+              {formErrors.phoneNumber && (
+                <p className="text-sm text-destructive">{formErrors.phoneNumber}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {selectedMethod === "bank" && (
+          <div className="space-y-2">
+            <Label htmlFor="bankAccount">Numéro de compte / IBAN</Label>
+            <Input
+              id="bankAccount"
+              value={formState.bankAccountNumber}
+              onChange={(event) => handleFieldChange("bankAccountNumber", event.target.value)}
+              placeholder="Numéro de compte bancaire"
+            />
+            {formErrors.bankAccountNumber && (
+              <p className="text-sm text-destructive">{formErrors.bankAccountNumber}</p>
+            )}
+          </div>
+        )}
+
+        {selectedMethod !== "bank" && (
+          <div className="rounded-lg border border-dashed p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Phone className="h-4 w-4" />
+              Utilisez un numéro actif au format international (+229, +225, ...). Les espaces ne sont pas nécessaires.
+            </div>
+          </div>
+        )}
+
+        <Alert variant={isVerified ? "default" : "destructive"}>
+          {isVerified ? (
+            <>
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertTitle>Informations vérifiées</AlertTitle>
+              <AlertDescription>
+                Vos informations sont prêtes pour les prochains reversements. Modifiez-les uniquement en cas de changement.
+              </AlertDescription>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Vérification requise</AlertTitle>
+              <AlertDescription>
+                Enregistrez vos informations puis demandez leur vérification pour permettre le déclenchement des reversements.
+              </AlertDescription>
+            </>
+          )}
         </Alert>
-      )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Smartphone className="h-5 w-5 text-primary" /> Mobile Money
-                </CardTitle>
-                <CardDescription>
-                  Configurez le compte Mobile Money sur lequel vous souhaitez recevoir vos versements.
-                </CardDescription>
-              </div>
-              {renderStatusBadge(currentMobileInfo)}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isLoading || isFetching ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Chargement des informations…
-              </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <Button
+            variant="outline"
+            onClick={() => handleSave(false)}
+            disabled={mutation.isPending || !hasChanges}
+          >
+            {mutation.isPending && pendingAction === "save" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : null}
-
-            <div className="space-y-2">
-              <Label htmlFor="mobile-account-holder">Titulaire du compte</Label>
-              <Input
-                id="mobile-account-holder"
-                placeholder="Nom complet"
-                value={mobileForm.accountHolderName}
-                onChange={(event) =>
-                  setMobileForm((previous) => ({ ...previous, accountHolderName: event.target.value }))
-                }
-                disabled={mobileMutation.isPending}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Opérateur Mobile Money</Label>
-              <Select
-                value={selectedMobileProvider}
-                onValueChange={(value) => setSelectedMobileProvider(value as MobileProvider)}
-                disabled={mobileMutation.isPending}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez un opérateur" />
-                </SelectTrigger>
-                <SelectContent className="bg-background">
-                  {MOBILE_PROVIDERS.map((provider) => (
-                    <SelectItem key={provider.value} value={provider.value} className="capitalize">
-                      {provider.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="mobile-phone">Numéro Mobile Money</Label>
-              <Input
-                id="mobile-phone"
-                placeholder="Ex: 0700000000"
-                value={mobileForm.phoneNumber}
-                onChange={(event) =>
-                  setMobileForm((previous) => ({ ...previous, phoneNumber: event.target.value }))
-                }
-                disabled={mobileMutation.isPending}
-              />
-            </div>
-
-            <Button
-              className="w-full md:w-auto"
-              onClick={() => mobileMutation.mutate()}
-              disabled={mobileMutation.isPending || isSaving}
-            >
-              {mobileMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sauvegarde…
-                </>
-              ) : (
-                "Sauvegarder"
-              )}
-            </Button>
-
-            {currentMobileInfo?.updated_at && (
-              <p className="text-xs text-muted-foreground">
-                Dernière mise à jour : {new Date(currentMobileInfo.updated_at).toLocaleString("fr-FR")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Building className="h-5 w-5 text-primary" /> Compte bancaire
-                </CardTitle>
-                <CardDescription>
-                  Configurez vos informations bancaires si vous préférez recevoir des virements.
-                </CardDescription>
-              </div>
-              {renderStatusBadge(bankInfo)}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isLoading || isFetching ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Chargement des informations…
-              </div>
+            Enregistrer
+          </Button>
+          <Button
+            onClick={() => handleSave(true)}
+            disabled={mutation.isPending || !showVerifyButton}
+          >
+            {mutation.isPending && pendingAction === "verify" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : null}
-
-            <div className="space-y-2">
-              <Label htmlFor="bank-account-holder">Titulaire du compte</Label>
-              <Input
-                id="bank-account-holder"
-                placeholder="Nom complet"
-                value={bankForm.accountHolderName}
-                onChange={(event) =>
-                  setBankForm((previous) => ({ ...previous, accountHolderName: event.target.value }))
-                }
-                disabled={bankMutation.isPending}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="bank-name">Banque</Label>
-              <Input
-                id="bank-name"
-                placeholder="Ex: Banque Atlantique"
-                value={bankForm.bankName}
-                onChange={(event) =>
-                  setBankForm((previous) => ({ ...previous, bankName: event.target.value }))
-                }
-                disabled={bankMutation.isPending}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="bank-account-number">Numéro de compte</Label>
-              <Input
-                id="bank-account-number"
-                placeholder="Ex: CI1234567890"
-                value={bankForm.bankAccountNumber}
-                onChange={(event) =>
-                  setBankForm((previous) => ({ ...previous, bankAccountNumber: event.target.value }))
-                }
-                disabled={bankMutation.isPending}
-              />
-            </div>
-
-            <Button
-              className="w-full md:w-auto"
-              onClick={() => bankMutation.mutate()}
-              disabled={bankMutation.isPending || isSaving}
-            >
-              {bankMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sauvegarde…
-                </>
-              ) : (
-                "Sauvegarder"
-              )}
-            </Button>
-
-            {bankInfo?.updated_at && (
-              <p className="text-xs text-muted-foreground">
-                Dernière mise à jour : {new Date(bankInfo.updated_at).toLocaleString("fr-FR")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+            Vérifier les informations
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
+
+export default PaymentInfoSection;
