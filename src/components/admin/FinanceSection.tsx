@@ -12,6 +12,7 @@ import { WebhooksSection } from './WebhooksSection';
 import { PaymentEventsSection } from './PaymentEventsSection';
 import { FundsReleaseSection } from './FundsReleaseSection';
 import ReconciliationSection from './ReconciliationSection';
+import { PaymentFlowsDashboard } from './PaymentFlowsDashboard';
 
 export function FinanceSection() {
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
@@ -109,8 +110,9 @@ export function FinanceSection() {
         </Card>
       </div>
 
-      <Tabs defaultValue="payments">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-8">
+      <Tabs defaultValue="realtime">
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9">
+          <TabsTrigger value="realtime">Flux temps réel</TabsTrigger>
           <TabsTrigger value="payments">Paiements</TabsTrigger>
           <TabsTrigger value="payouts">Reversements</TabsTrigger>
           <TabsTrigger value="lots">Lots de Versement</TabsTrigger>
@@ -120,6 +122,10 @@ export function FinanceSection() {
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
           <TabsTrigger value="events">Événements</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="realtime" className="space-y-4">
+          <PaymentFlowsDashboard />
+        </TabsContent>
 
         <TabsContent value="payments" className="space-y-4">
           <Card>
