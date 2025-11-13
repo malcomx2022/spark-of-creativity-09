@@ -143,7 +143,7 @@ serve(async (req) => {
       console.error('❌ Erreur transaction:', error);
       
       // Si un RDV a été créé mais pas le paiement, on le supprime
-      if (appointmentId) {
+      if (appointmentId!) {
         try {
           await supabase
             .from('appointments')

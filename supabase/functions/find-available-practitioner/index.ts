@@ -144,13 +144,15 @@ Deno.serve(async (req) => {
       maxRadius,
     });
 
-    // Récupérer tous les praticiens actifs de la spécialité demandée
+    // Récupérer tous les praticiens actifs, validés KYC et autorisés à accepter des missions
     const { data: practitioners, error: practitionersError } = await supabase
       .from('practitioners')
       .select('*')
       .eq('specialty', specialty)
       .eq('available', true)
       .eq('can_accept_missions', true)
+      .eq('kyc_status', 'validated')
+      .eq('is_online', true)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
     
