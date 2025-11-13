@@ -5,8 +5,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DollarSign, Download, TrendingUp, Wallet, Clock, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import jsPDF from "jspdf";
@@ -20,6 +21,7 @@ interface PayoutsSectionProps {
 
 export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch practitioner balance
   const { data: balance } = useQuery({
@@ -35,6 +37,43 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
       return data;
     },
   });
+
+  // Realtime updates pour la balance praticien
+  useEffect(() => {
+    if (!practitionerId) return;
+
+    console.log('🔄 Configuration realtime balance praticien:', practitionerId);
+
+    const channel = supabase
+      .channel('practitioner-balance-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'practitioner_balances',
+          filter: `practitioner_id=eq.${practitionerId}`,
+        },
+        (payload) => {
+          console.log('💰 Balance mise à jour:', payload);
+          queryClient.invalidateQueries({ queryKey: ['practitioner-balance', practitionerId] });
+          
+          // Afficher notification à l'utilisateur
+          if (payload.eventType === 'UPDATE') {
+            const newBalance = payload.new as any;
+            toast({
+              title: "Balance mise à jour",
+              description: `Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [practitionerId, queryClient, toast]);
 
   // Fetch payments history
   const { data: payments } = useQuery({
