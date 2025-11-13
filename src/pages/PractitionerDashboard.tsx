@@ -27,14 +27,13 @@ import Header from '@/components/Header';
 import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
 import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
 import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
-import PaymentInfoSection from '@/components/dashboard/practitioner/PaymentInfoSection';
+import { PaymentInfoSection } from '@/components/dashboard/practitioner/PaymentInfoSection';
 import CareNotesSection from '@/components/dashboard/practitioner/CareNotesSection';
 import ReviewsSection from '@/components/dashboard/practitioner/ReviewsSection';
 import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
 import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
-import { PaymentInfoSection } from '@/components/dashboard/practitioner/PaymentInfoSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
