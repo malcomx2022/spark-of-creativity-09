@@ -107,6 +107,23 @@ serve(async (req) => {
       throw payoutsError;
     }
 
+    // ✅ CORRECTION ERREUR #8: Déduire les soldes disponibles immédiatement
+    const practitionerIdsArray = balances.map(b => b.practitioner_id);
+    
+    console.log('Deducting available balances for batch:', batch.id);
+    const { error: balanceError } = await supabase
+      .from('practitioner_balances')
+      .update({
+        balance_available: 0,
+        updated_at: new Date().toISOString()
+      })
+      .in('practitioner_id', practitionerIdsArray);
+
+    if (balanceError) {
+      console.error('Warning: Failed to deduct balances:', balanceError);
+      // Non-bloquant mais on log
+    }
+
     // Log audit
     await supabase
       .from('admin_audit_logs')

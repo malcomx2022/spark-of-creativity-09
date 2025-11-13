@@ -49,7 +49,7 @@ serve(async (req) => {
     }
 
     // Transaction atomique via RPC ou séquence contrôlée
-    let appointmentId: string;
+    let appointmentId: string | undefined;
     let paymentResult: any;
 
     try {
@@ -142,8 +142,8 @@ serve(async (req) => {
     } catch (error: any) {
       console.error('❌ Erreur transaction:', error);
       
-      // Si un RDV a été créé mais pas le paiement, on le supprime
-      if (appointmentId!) {
+      // ✅ CORRECTION ERREUR #6: Variable undefined corrigée
+      if (appointmentId) {
         try {
           await supabase
             .from('appointments')
