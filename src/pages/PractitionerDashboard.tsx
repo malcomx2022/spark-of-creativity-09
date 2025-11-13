@@ -26,6 +26,7 @@ import Header from '@/components/Header';
 import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
 import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
 import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
+import PaymentInfoSection from '@/components/dashboard/practitioner/PaymentInfoSection';
 import CareNotesSection from '@/components/dashboard/practitioner/CareNotesSection';
 import ReviewsSection from '@/components/dashboard/practitioner/ReviewsSection';
 import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
@@ -387,7 +388,11 @@ export default function PractitionerDashboard() {
             />
           </TabsContent>
 
-          <TabsContent value="payouts">
+          <TabsContent value="payouts" className="space-y-6">
+            <PaymentInfoSection
+              practitionerId={practitioner.id}
+              practitionerName={practitioner.name}
+            />
             <PayoutsSection practitionerId={practitioner.id} />
           </TabsContent>
 
