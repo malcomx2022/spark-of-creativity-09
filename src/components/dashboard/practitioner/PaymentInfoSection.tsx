@@ -158,6 +158,19 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
         is_verified: payload.verify,
       };
 
+      if (payload.verify) {
+        const { error: resetError } = await supabase
+          .from("practitioner_payment_info")
+          .update({ is_verified: false })
+          .eq("practitioner_id", practitionerId)
+          .neq("payment_method", selectedMethod);
+
+        if (resetError) {
+          console.error("Erreur lors de la réinitialisation des vérifications", resetError);
+          throw resetError;
+        }
+      }
+
       const { data, error } = await supabase
         .from("practitioner_payment_info")
         .upsert(updatePayload, { onConflict: "practitioner_id,payment_method" })
