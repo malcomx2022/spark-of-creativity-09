@@ -479,6 +479,31 @@ serve(async (req) => {
     console.log('Payment stored in database:', payment);
     console.log('Fee breakdown:', feeBreakdown);
 
+    // ✅ CORRECTION ERREUR #1: Initialiser le solde praticien
+    // Récupérer le practitioner_id depuis l'appointment
+    const { data: appointmentData } = await supabase
+      .from('appointments')
+      .select('practitioner_id')
+      .eq('id', appointmentId)
+      .single();
+
+    if (appointmentData?.practitioner_id) {
+      console.log('Initializing practitioner balance:', appointmentData.practitioner_id, feeBreakdown.netAmount);
+      
+      const { error: balanceError } = await supabase.rpc('initialize_payment_balance', {
+        p_payment_id: payment.id,
+        p_practitioner_id: appointmentData.practitioner_id,
+        p_net_amount: feeBreakdown.netAmount
+      });
+
+      if (balanceError) {
+        console.error('Error initializing practitioner balance:', balanceError);
+        // Non-bloquant, on log juste l'erreur
+      } else {
+        console.log('Practitioner balance initialized successfully');
+      }
+    }
+
     // Émettre événement payment.intent.created
     await supabase
       .from('payment_events')

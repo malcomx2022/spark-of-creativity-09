@@ -133,45 +133,23 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Transaction: Mettre à jour le paiement et le solde
-        const { error: updatePaymentError } = await supabase
-          .from('payments')
-          .update({ payout_status: 'ready' })
-          .eq('id', payment.id);
+        // ✅ UTILISER la fonction atomique pour garantir la cohérence
+        const { error: atomicError } = await supabase.rpc('update_payment_with_balance', {
+          p_payment_id: payment.id,
+          p_practitioner_id: practitionerId,
+          p_net_amount: releaseAmount,
+          p_new_status: 'paid', // Le statut reste paid
+          p_new_payout_status: 'ready',
+          p_hold_until: null
+        });
 
-        if (updatePaymentError) {
-          console.error(`Error updating payment ${payment.id}:`, updatePaymentError);
+        if (atomicError) {
+          console.error(`Error releasing funds atomically for payment ${payment.id}:`, atomicError);
           results.failed++;
           results.errors.push({
             payment_id: payment.id,
-            error: 'Failed to update payment',
-            details: updatePaymentError,
-          });
-          continue;
-        }
-
-        const { error: updateBalanceError } = await supabase
-          .from('practitioner_balances')
-          .update({
-            balance_available: balance.balance_available + releaseAmount,
-            balance_on_hold: balance.balance_on_hold - releaseAmount,
-          })
-          .eq('practitioner_id', practitionerId);
-
-        if (updateBalanceError) {
-          console.error(`Error updating balance for practitioner ${practitionerId}:`, updateBalanceError);
-          
-          // Rollback: remettre le paiement en held
-          await supabase
-            .from('payments')
-            .update({ payout_status: 'held' })
-            .eq('id', payment.id);
-
-          results.failed++;
-          results.errors.push({
-            payment_id: payment.id,
-            error: 'Failed to update balance (rolled back)',
-            details: updateBalanceError,
+            error: 'Failed to release funds atomically',
+            details: atomicError,
           });
           continue;
         }

@@ -80,38 +80,77 @@ async function handleTransactionEvent(
   const holdUntil = new Date();
   holdUntil.setDate(holdUntil.getDate() + holdPeriodDays);
 
-  // Mettre à jour le statut du paiement et la date de hold
-  const updateData: any = { 
-    status: paymentStatus,
-    updated_at: new Date().toISOString(),
-  };
-  
-  // Si le paiement est complété, définir le hold et le statut de payout
-  if (paymentStatus === 'paid') {
-    updateData.hold_until = holdUntil.toISOString();
-    updateData.payout_status = 'held';
-  } else if (['failed', 'canceled'].includes(paymentStatus)) {
-    updateData.payout_status = 'failed';
+  // Récupérer le paiement complet pour les mises à jour
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, net_amount, appointments(practitioner_id)')
+    .eq('fedapay_transaction_id', transactionId.toString())
+    .single();
+
+  if (!payment) {
+    throw new Error('Payment not found');
   }
 
-  const { error: updateError } = await supabase
-    .from('payments')
-    .update(updateData)
-    .eq('fedapay_transaction_id', transactionId.toString());
+  const practitionerId = payment.appointments?.practitioner_id;
+  const netAmount = payment.net_amount || 0;
 
-  if (updateError) {
-    console.error('Database update error:', updateError);
-    throw updateError;
+  // ✅ CORRECTION ERREUR #2: Utiliser la fonction atomique pour mettre à jour payment + balance
+  if (practitionerId && paymentStatus === 'paid') {
+    console.log('Updating payment and balance atomically:', payment.id, practitionerId);
+    
+    const { error: atomicError } = await supabase.rpc('update_payment_with_balance', {
+      p_payment_id: payment.id,
+      p_practitioner_id: practitionerId,
+      p_net_amount: netAmount,
+      p_new_status: paymentStatus,
+      p_new_payout_status: 'held',
+      p_hold_until: holdUntil.toISOString()
+    });
+
+    if (atomicError) {
+      console.error('Atomic update error:', atomicError);
+      throw atomicError;
+    }
+  } else {
+    // Pour les statuts non-paid, mise à jour simple
+    const updateData: any = { 
+      status: paymentStatus,
+      updated_at: new Date().toISOString(),
+    };
+    
+    if (['failed', 'canceled'].includes(paymentStatus)) {
+      updateData.payout_status = 'failed';
+    }
+
+    const { error: updateError } = await supabase
+      .from('payments')
+      .update(updateData)
+      .eq('fedapay_transaction_id', transactionId.toString());
+
+    if (updateError) {
+      console.error('Database update error:', updateError);
+      throw updateError;
+    }
   }
 
   console.log(`Payment ${transactionId} updated to status: ${paymentStatus}`);
 
-  // Récupérer le paiement pour émettre les événements et notifications
-  const { data: payment } = await supabase
-    .from('payments')
-    .select('id, patient_id, appointment_id, amount')
-    .eq('fedapay_transaction_id', transactionId.toString())
-    .single();
+  // ✅ CORRECTION ERREUR #3: Appeler apply-ledger-entries pour les écritures comptables
+  if (paymentStatus === 'paid' && payment) {
+    console.log('Applying ledger entries for payment:', payment.id);
+    
+    const { error: ledgerError } = await supabase.functions.invoke('apply-ledger-entries', {
+      body: {
+        paymentId: payment.id,
+        status: 'paid'
+      }
+    });
+
+    if (ledgerError) {
+      console.error('Warning: Failed to apply ledger entries:', ledgerError);
+      // Non-bloquant, on continue
+    }
+  }
 
   if (payment) {
     // Émettre événement selon le statut
