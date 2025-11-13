@@ -12,6 +12,8 @@ import { toast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { getSignedFileUrl } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { Tables } from "@/integrations/supabase/types";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 interface DocumentUrls {
   id_document_url: string | null;
@@ -35,16 +37,44 @@ export function KYCQueue() {
         .select('*')
         .in('kyc_status', ['pending', 'incomplete'])
         .order('created_at', { ascending: true });
-      
+
       if (error) throw error;
       return data;
     },
   });
 
+  useEffect(() => {
+    const handleChange = (
+      payload: RealtimePostgresChangesPayload<Tables<'practitioners'>>
+    ) => {
+      const relevantStatuses = ['pending', 'incomplete'];
+      const newStatus = (payload.new as Tables<'practitioners'> | null)?.kyc_status ?? '';
+      const oldStatus = (payload.old as Tables<'practitioners'> | null)?.kyc_status ?? '';
+
+      const shouldInvalidate =
+        (payload.eventType === 'INSERT' && relevantStatuses.includes(newStatus)) ||
+        (payload.eventType === 'UPDATE' && (relevantStatuses.includes(newStatus) || relevantStatuses.includes(oldStatus))) ||
+        (payload.eventType === 'DELETE' && relevantStatuses.includes(oldStatus));
+
+      if (shouldInvalidate) {
+        queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
+      }
+    };
+
+    const channel = supabase
+      .channel('kyc-queue-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'practitioners' }, handleChange)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   const updateKYCMutation = useMutation({
     mutationFn: async ({ id, status, comment }: { id: string; status: string; comment?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       const { error } = await supabase
         .from('practitioners')
         .update({

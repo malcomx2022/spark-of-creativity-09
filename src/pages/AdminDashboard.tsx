@@ -4,8 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
-import { useEffect, useState } from "react";
-import { User } from "@supabase/supabase-js";
+import { useEffect } from "react";
 import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { AdminManagement } from "@/components/admin/AdminManagement";
@@ -18,21 +17,16 @@ import { ComplianceSection } from "@/components/admin/ComplianceSection";
 import { UsersManagementSection } from "@/components/admin/UsersManagementSection";
 import { OTPManagementSection } from "@/components/admin/OTPManagementSection";
 import { useAdminStats } from "@/hooks/useAdminStats";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useNotifications } from "@/hooks/useNotifications";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
   const { isAdmin, isLoading } = useIsAdmin();
   const { data: stats } = useAdminStats();
+  const { data: user } = useSupabaseUser();
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-
-    fetchUser();
-  }, []);
+  useNotifications(isAdmin ? user?.id : undefined);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
