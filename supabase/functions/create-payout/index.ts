@@ -102,6 +102,25 @@ serve(async (req) => {
       );
     }
 
+    // ✅ CORRECTION ERREUR #7: Vérifier que le praticien a configuré son compte de paiement
+    const { data: paymentInfo, error: paymentInfoError } = await supabase
+      .from('practitioner_payment_info')
+      .select('*')
+      .eq('practitioner_id', practitionerId)
+      .eq('is_verified', true)
+      .maybeSingle();
+
+    if (!paymentInfo) {
+      console.error('Payment info not configured for practitioner:', practitionerId);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Payment information not configured',
+          message: 'Practitioner must configure and verify payment details (Mobile Money or Bank account) before receiving payouts'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Calculate period if not provided
     let periodStart: string;
     let periodEnd: string;

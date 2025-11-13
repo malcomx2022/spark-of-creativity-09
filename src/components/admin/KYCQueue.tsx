@@ -7,7 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, XCircle, AlertCircle, FileText, Calendar, Download, Eye } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  FileText,
+  Calendar,
+  Download,
+  Eye,
+  History,
+} from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { getSignedFileUrl } from "@/lib/file-upload";
@@ -28,6 +37,56 @@ export function KYCQueue() {
   const [documentUrls, setDocumentUrls] = useState<Record<string, DocumentUrls>>({});
   const [loadingUrls, setLoadingUrls] = useState<Record<string, boolean>>({});
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
+  const [historyPractitionerId, setHistoryPractitionerId] = useState<string | null>(null);
+
+  const {
+    data: history,
+    isLoading: isHistoryLoading,
+  } = useQuery({
+    queryKey: ['kyc-history', historyPractitionerId],
+    enabled: !!historyPractitionerId,
+    queryFn: async () => {
+      if (!historyPractitionerId) return [] as KYCHistoryEntry[];
+
+      const { data, error } = await supabase
+        .from('admin_audit_logs')
+        .select('id, created_at, action, admin_id, details')
+        .eq('entity_type', 'practitioner')
+        .eq('entity_id', historyPractitionerId)
+        .ilike('action', 'KYC%')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const adminIds = Array.from(new Set((data || []).map((log) => log.admin_id).filter(Boolean)));
+      let adminMap: Record<string, string | null> = {};
+
+      if (adminIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', adminIds as string[]);
+
+        if (profilesError) {
+          console.error('Error loading admin profiles:', profilesError);
+        } else {
+          adminMap = (profilesData || []).reduce<Record<string, string | null>>((acc, profile) => {
+            acc[profile.id] = profile.full_name;
+            return acc;
+          }, {});
+        }
+      }
+
+      return (data || []).map<KYCHistoryEntry>((entry) => ({
+        ...entry,
+        admin_name: entry.admin_id ? adminMap[entry.admin_id] ?? null : null,
+        details:
+          entry.details && typeof entry.details === 'object' && !Array.isArray(entry.details)
+            ? (entry.details as { comment?: string })
+            : null,
+      }));
+    },
+  });
 
   const { data: practitioners, isLoading } = useQuery({
     queryKey: ['kyc-queue'],
@@ -189,6 +248,59 @@ export function KYCQueue() {
     );
   };
 
+  const getActionMeta = (action: string) => {
+    const normalized = action.toLowerCase();
+
+    if (normalized.includes('approved')) {
+      return {
+        label: 'Approuvé',
+        badgeVariant: 'secondary' as const,
+        icon: CheckCircle,
+        iconClass: 'text-green-500',
+      };
+    }
+
+    if (normalized.includes('rejected')) {
+      return {
+        label: 'Refusé',
+        badgeVariant: 'destructive' as const,
+        icon: XCircle,
+        iconClass: 'text-red-500',
+      };
+    }
+
+    if (normalized.includes('incomplete')) {
+      return {
+        label: 'Incomplet',
+        badgeVariant: 'outline' as const,
+        icon: AlertCircle,
+        iconClass: 'text-orange-500',
+      };
+    }
+
+    return {
+      label: action,
+      badgeVariant: 'outline' as const,
+      icon: FileText,
+      iconClass: 'text-primary',
+    };
+  };
+
+  const formatDateTime = (dateString: string | null) => {
+    if (!dateString) return 'Date inconnue';
+
+    return new Date(dateString).toLocaleString('fr-FR', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  };
+
+  const formatAdminLabel = (entry: KYCHistoryEntry) => {
+    if (entry.admin_name) return entry.admin_name;
+    if (!entry.admin_id) return 'Administrateur inconnu';
+    return `ID ${entry.admin_id.slice(0, 8)}…`;
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -285,6 +397,15 @@ export function KYCQueue() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setHistoryPractitionerId(practitioner.id)}
+                        >
+                          <History className="h-4 w-4 mr-1" />
+                          Historique
+                        </Button>
+
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button size="sm" variant="default" onClick={() => setSelectedPractitioner(practitioner)}>
@@ -435,6 +556,50 @@ export function KYCQueue() {
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!historyPractitionerId} onOpenChange={(open) => !open && setHistoryPractitionerId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Historique KYC</DialogTitle>
+            <DialogDescription>
+              Toutes les décisions prises pour ce praticien
+            </DialogDescription>
+          </DialogHeader>
+          {isHistoryLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Chargement de l'historique...</div>
+          ) : history && history.length > 0 ? (
+            <div className="space-y-4">
+              {history.map((entry) => {
+                const meta = getActionMeta(entry.action);
+                const Icon = meta.icon;
+
+                return (
+                  <div key={entry.id} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`h-5 w-5 ${meta.iconClass}`} />
+                        <Badge variant={meta.badgeVariant}>{meta.label}</Badge>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{formatDateTime(entry.created_at)}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Décision prise par <span className="font-medium text-foreground">{formatAdminLabel(entry)}</span>
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-medium">Commentaire :</span>{' '}
+                      {entry.details?.comment ? entry.details.comment : <span className="text-muted-foreground">Aucun commentaire fourni</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              Aucun historique disponible pour ce praticien
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
