@@ -4,9 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Calendar, 
   Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  TrendingUp, 
+  CheckCircle2,
+  AlertCircle,
+  TrendingUp,
   Loader2,
   User,
   DollarSign,
@@ -15,7 +15,8 @@ import {
   MessageSquare,
   HelpCircle,
   Shield,
-  ClipboardCheck
+  ClipboardCheck,
+  Wallet
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -33,6 +34,7 @@ import { NotificationsSection } from '@/components/dashboard/NotificationsSectio
 import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
+import { PaymentInfoSection } from '@/components/dashboard/practitioner/PaymentInfoSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -261,9 +263,13 @@ export default function PractitionerDashboard() {
               <Clock className="h-4 w-4" />
               <span className="hidden sm:inline">Disponibilités</span>
             </TabsTrigger>
+            <TabsTrigger value="payment-info" className="gap-2">
+              <Wallet className="h-4 w-4" />
+              <span className="hidden sm:inline">Coordonnées paiement</span>
+            </TabsTrigger>
             <TabsTrigger value="payouts" className="gap-2">
               <DollarSign className="h-4 w-4" />
-              <span className="hidden sm:inline">Paiements</span>
+              <span className="hidden sm:inline">Revenus</span>
             </TabsTrigger>
             <TabsTrigger value="notes" className="gap-2">
               <FileText className="h-4 w-4" />
