@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,6 +39,7 @@ import { ConsultationReportSection } from '@/components/dashboard/practitioner/C
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
+  const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
   const practitionerId = user?.id;
   const practitionerName =
     (user?.user_metadata?.full_name as string | undefined) ||
@@ -70,12 +72,28 @@ export default function PractitionerDashboard() {
   const mutateAppointment = useMutateAppointment();
 
   const handleAccept = async (appointmentId: string) => {
+    if (processingAppointment === appointmentId) return;
+    
+    setProcessingAppointment(appointmentId);
     try {
-      const { error } = await supabase.functions.invoke('handle-appointment-response', {
+      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
         body: { appointmentId, action: 'accept' }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMessage = error.message || '';
+        
+        // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
+        if (errorMessage.includes('déjà été traité')) {
+          toast({
+            title: 'Rendez-vous déjà traité',
+            description: 'Ce rendez-vous a déjà été accepté ou refusé.',
+          });
+          return;
+        }
+        
+        throw error;
+      }
 
       toast({
         title: 'Rendez-vous accepté',
@@ -88,16 +106,34 @@ export default function PractitionerDashboard() {
         description: 'Impossible d\'accepter le rendez-vous.',
         variant: 'destructive'
       });
+    } finally {
+      setProcessingAppointment(null);
     }
   };
 
   const handleReject = async (appointmentId: string) => {
+    if (processingAppointment === appointmentId) return;
+    
+    setProcessingAppointment(appointmentId);
     try {
-      const { error } = await supabase.functions.invoke('handle-appointment-response', {
+      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
         body: { appointmentId, action: 'reject' }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMessage = error.message || '';
+        
+        // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
+        if (errorMessage.includes('déjà été traité')) {
+          toast({
+            title: 'Rendez-vous déjà traité',
+            description: 'Ce rendez-vous a déjà été accepté ou refusé.',
+          });
+          return;
+        }
+        
+        throw error;
+      }
 
       toast({
         title: 'Rendez-vous refusé',
@@ -110,6 +146,8 @@ export default function PractitionerDashboard() {
         description: 'Impossible de refuser le rendez-vous.',
         variant: 'destructive'
       });
+    } finally {
+      setProcessingAppointment(null);
     }
   };
 
@@ -326,13 +364,22 @@ export default function PractitionerDashboard() {
                   </Card>
                 ) : (
                   awaitingAppointments.map(appointment => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={appointment}
-                      userRole="practitioner"
-                      onConfirm={() => handleAccept(appointment.id)}
-                      onReject={() => handleReject(appointment.id)}
-                    />
+                    <div key={appointment.id} className="relative">
+                      {processingAppointment === appointment.id && (
+                        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Traitement en cours...</span>
+                          </div>
+                        </div>
+                      )}
+                      <AppointmentCard
+                        appointment={appointment}
+                        userRole="practitioner"
+                        onConfirm={() => handleAccept(appointment.id)}
+                        onReject={() => handleReject(appointment.id)}
+                      />
+                    </div>
                   ))
                 )}
               </TabsContent>
