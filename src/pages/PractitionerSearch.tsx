@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import PractitionerMap from '@/components/PractitionerMap';
+import LazyPractitionerMap from '@/components/LazyPractitionerMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -284,7 +284,7 @@ export default function PractitionerSearch() {
               </CardHeader>
               <CardContent>
                 <div className="h-[500px]">
-                  <PractitionerMap
+                  <LazyPractitionerMap
                     practitioners={filteredPractitioners}
                     userLocation={userLocation}
                     mapboxToken={mapboxToken}
