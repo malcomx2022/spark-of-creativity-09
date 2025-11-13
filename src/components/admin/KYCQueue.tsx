@@ -30,6 +30,15 @@ interface DocumentUrls {
   insurance_document_url: string | null;
 }
 
+interface KYCHistoryEntry {
+  id: string;
+  created_at: string;
+  action: string;
+  admin_id: string | null;
+  admin_name: string | null;
+  details: { comment?: string } | null;
+}
+
 export function KYCQueue() {
   const queryClient = useQueryClient();
   const [selectedPractitioner, setSelectedPractitioner] = useState<any>(null);
