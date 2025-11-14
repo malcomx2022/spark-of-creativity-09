@@ -142,6 +142,24 @@ serve(async (req) => {
         console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
       }
 
+      // 5. Envoyer une notification de confirmation au patient
+      try {
+        await dispatchNotification({
+          supabase,
+          supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
+          serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          userId: body.patientId,
+          title: '✅ Demande de rendez-vous envoyée',
+          message: `Votre demande de rendez-vous avec ${body.practitionerName} pour le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time} a été envoyée. Le praticien répondra généralement sous 30 minutes.`,
+          type: 'appointment',
+          link: '/dashboard/patient',
+          channels: ['email', 'push'],
+        });
+        console.log('✅ Notification de confirmation envoyée au patient');
+      } catch (notifError) {
+        console.error('⚠️ Erreur notification patient (non bloquant):', notifError);
+      }
+
       return new Response(
         JSON.stringify({
           success: true,

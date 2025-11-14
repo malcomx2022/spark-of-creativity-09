@@ -102,8 +102,9 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
 
         if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
           toast({
-            title: 'Demande enregistrée',
-            description: 'Notre équipe vous contactera pour affecter un praticien disponible.',
+            title: '✅ Demande enregistrée avec succès',
+            description: 'Votre demande a été envoyée. Notre équipe vous contactera sous 30 minutes pour affecter un praticien disponible et confirmer votre rendez-vous.',
+            duration: 6000,
           });
           setOpen(false);
           setIsSearchingPractitioner(false);
@@ -201,8 +202,9 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
         form.reset();
         
         toast({
-          title: 'Demande envoyée',
-          description: 'Le praticien a été notifié. Vous serez informé dès qu\'il acceptera.',
+          title: '✅ Demande envoyée avec succès',
+          description: `Votre demande a été envoyée à ${practitioner.name}. Le praticien répondra généralement sous 30 minutes. Vous recevrez une notification dès qu'il acceptera.`,
+          duration: 6000,
         });
       } else {
         throw new Error('L\'ID du rendez-vous n\'a pas été retourné');
