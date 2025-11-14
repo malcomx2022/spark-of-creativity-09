@@ -149,29 +149,61 @@ serve(async (req) => {
         }
       }
 
+      // ✅ Créer le paiement FedaPay
+      console.log('💳 Création du paiement FedaPay pour', paymentAmount, 'XOF');
+      
+      const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
+        'create-payment',
+        {
+          body: {
+            appointmentId: appointmentId,
+            amount: paymentAmount,
+            paymentMethod: 'mobile_money',
+            phoneNumber: appointment.patient_id, // Le patient devra renseigner son numéro sur FedaPay
+          }
+        }
+      );
+
+      if (paymentError || !paymentData?.success) {
+        console.error('❌ Erreur création paiement:', paymentError);
+        throw new Error('Impossible de créer le lien de paiement');
+      }
+
+      console.log('✅ Paiement créé:', paymentData.paymentId);
+
+      // Mettre à jour le rendez-vous avec le montant et le statut
       const { error: updateError } = await supabase
         .from('appointments')
-        .update({ status: 'confirmed', payment_amount: paymentAmount })
+        .update({ 
+          status: 'pending_payment', 
+          payment_amount: paymentAmount,
+          payment_expires_at: paymentData.expiresAt 
+        })
         .eq('id', appointmentId)
         .eq('status', 'awaiting_practitioner'); // Lock optimiste
 
       if (updateError) throw updateError;
 
-      // Créer une notification pour le patient
+      // Créer une notification avec le lien de paiement pour le patient
       await supabase
         .from('notifications')
         .insert({
           user_id: appointment.patient_id,
-          title: 'Rendez-vous confirmé - Paiement requis',
-          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Veuillez régler ${paymentAmount} XOF pour finaliser la réservation.`,
+          title: '💳 Paiement requis - Rendez-vous confirmé',
+          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Cliquez pour payer ${paymentAmount} XOF et finaliser la réservation.`,
           type: 'payment_required',
-          link: `/patient/dashboard?tab=appointments`,
+          link: paymentData.paymentUrl, // Lien direct vers FedaPay
         });
 
-      console.log('✅ Rendez-vous confirmé, notification de paiement envoyée au patient');
+      console.log('✅ Rendez-vous confirmé, paiement créé et notification envoyée');
 
       return new Response(
-        JSON.stringify({ success: true, message: 'Rendez-vous confirmé, paiement requis' }),
+        JSON.stringify({ 
+          success: true, 
+          message: 'Rendez-vous confirmé, paiement créé',
+          paymentUrl: paymentData.paymentUrl,
+          paymentId: paymentData.paymentId
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
