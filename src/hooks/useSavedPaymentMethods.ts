@@ -204,7 +204,7 @@ export function useSavedPaymentMethods() {
   return {
     paymentMethods,
     isLoading,
-    addPaymentMethod: addPaymentMethod.mutate,
+    addPaymentMethod: addPaymentMethod.mutateAsync,
     deletePaymentMethod: deletePaymentMethod.mutate,
     setDefaultPaymentMethod: setDefaultPaymentMethod.mutate,
     getDecryptedPhone,

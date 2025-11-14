@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock } from 'lucide-react';
+import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock, Trash2, CheckCircle2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -35,6 +35,37 @@ import {
   formatAmount,
   isPaymentFinal,
 } from '@/lib/payment-config';
+import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
+
+function normalizePhoneNumber(input: string): string | null {
+  const trimmed = input.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  let normalized = trimmed.replace(/[^0-9+]/g, '');
+
+  if ((normalized.match(/\+/g) ?? []).length > 1) {
+    return null;
+  }
+
+  if (normalized.startsWith('00')) {
+    normalized = `+${normalized.slice(2)}`;
+  }
+
+  if (!normalized.startsWith('+')) {
+    normalized = `+${normalized.replace(/\+/g, '')}`;
+  }
+
+  const digits = normalized.slice(1);
+
+  if (!/^\d{8,15}$/.test(digits)) {
+    return null;
+  }
+
+  return `+${digits}`;
+}
 
 export function PaymentsSection() {
   const { data: user } = useSupabaseUser();
@@ -43,6 +74,13 @@ export function PaymentsSection() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false);
+  const {
+    paymentMethods,
+    isLoading: isLoadingPaymentMethods,
+    addPaymentMethod,
+    deletePaymentMethod,
+    setDefaultPaymentMethod,
+  } = useSavedPaymentMethods();
 
   const { data: payments = [], isLoading } = useQuery<Payment[]>({
     queryKey: ['payments', user?.id],
@@ -94,23 +132,35 @@ export function PaymentsSection() {
     window.open(url, '_blank', features);
   };
 
-  const handleSavePaymentMethod = () => {
-    if (!phoneNumber || phoneNumber.length < 8) {
+  const handleSavePaymentMethod = async () => {
+    const normalized = normalizePhoneNumber(phoneNumber);
+
+    if (!normalized) {
       toast({
         title: 'Erreur',
-        description: 'Veuillez entrer un numéro de téléphone valide',
+        description: 'Veuillez entrer un numéro au format international (ex. +22912345678)',
         variant: 'destructive',
       });
       return;
     }
 
-    // TODO: Enregistrer le moyen de paiement dans la base de données
-    toast({
-      title: 'Moyen de paiement enregistré',
-      description: `${paymentProvider.toUpperCase()} - ${phoneNumber}`,
-    });
-    setIsPaymentMethodDialogOpen(false);
-    setPhoneNumber('');
+    try {
+      await addPaymentMethod({
+        provider: paymentProvider as 'mtn' | 'orange' | 'moov',
+        phoneNumber: normalized,
+        setAsDefault: (paymentMethods?.length ?? 0) === 0,
+      });
+      setIsPaymentMethodDialogOpen(false);
+      setPhoneNumber('');
+      setPaymentProvider('mtn');
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde du moyen de paiement', error);
+      toast({
+        title: 'Erreur',
+        description: error instanceof Error ? error.message : 'Impossible d’enregistrer ce numéro pour le moment.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleExportPayments = () => {
@@ -261,19 +311,70 @@ export function PaymentsSection() {
          </CardContent>
        </Card>
 
-       <Card>
-         <CardHeader>
-           <CardTitle>Moyens de paiement</CardTitle>
-         </CardHeader>
-         <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle>Moyens de paiement</CardTitle>
+        </CardHeader>
+        <CardContent>
           <p className="text-muted-foreground mb-4">
             Modes de paiement acceptés via FedaPay : MTN Mobile Money, Orange Money, Moov Money
           </p>
-           <Button variant="outline" onClick={() => setIsPaymentMethodDialogOpen(true)}>
-             <Edit className="h-4 w-4 mr-2" />
-             Ajouter un moyen de paiement
-           </Button>
-         </CardContent>
+          {isLoadingPaymentMethods ? (
+            <p className="text-muted-foreground text-sm mb-4">Chargement des méthodes enregistrées...</p>
+          ) : paymentMethods.length === 0 ? (
+            <p className="text-sm text-muted-foreground mb-4">
+              Aucun numéro enregistré pour le moment. Ajoutez votre ligne mobile money pour accélérer les paiements.
+            </p>
+          ) : (
+            <div className="space-y-3 mb-4">
+              {paymentMethods.map((method) => (
+                <div
+                  key={method.id}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border rounded-lg p-3"
+                >
+                  <div>
+                    <p className="font-medium flex items-center gap-2">
+                      {method.provider.toUpperCase()}
+                      {method.is_default && (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Par défaut
+                        </Badge>
+                      )}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{method.phone_number_masked}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Consentement donné le {new Date(method.consent_given_at).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {!method.is_default && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDefaultPaymentMethod(method.id)}
+                      >
+                        Définir par défaut
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive border-destructive/40"
+                      onClick={() => deletePaymentMethod(method.id)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Supprimer
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button variant="outline" onClick={() => setIsPaymentMethodDialogOpen(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Ajouter un moyen de paiement
+          </Button>
+        </CardContent>
        </Card>
 
        <Dialog open={isPaymentMethodDialogOpen} onOpenChange={setIsPaymentMethodDialogOpen}>

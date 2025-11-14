@@ -19,6 +19,7 @@ function toAppointment(row: Tables<'appointments'>): Appointment {
     reason: row.reason ?? 'Motif non renseigné',
     notes: row.notes ?? undefined,
     urgencyLevel: row.urgency_level ?? undefined,
+    paymentAmount: row.payment_amount ?? null,
   };
 }
 
@@ -121,7 +122,7 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
         reason: data.reason,
         urgency_level: data.urgencyLevel,
         status: 'awaiting_practitioner',
-        address: addresses.data?.address || 'Adresse à préciser',
+        address: data.addressOverride || addresses.data?.address || 'Adresse à préciser',
         duration: 60,
       });
     },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
@@ -23,12 +23,16 @@ import { PatientConsultationReportsSection } from '@/components/dashboard/Patien
 import { PaymentDialog } from '@/components/PaymentDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { completePatientOnboardingFromMetadata } from '@/lib/patient-onboarding';
+import { formatAmount } from '@/lib/payment-config';
 
 export default function PatientDashboard() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  const queryClient = useQueryClient();
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const patientId = user?.id;
   const patientName =
@@ -59,6 +63,38 @@ export default function PatientDashboard() {
     enabled: !!patientId,
   });
 
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await completePatientOnboardingFromMetadata(user);
+        if (!cancelled && result.completed) {
+          toast({
+            title: 'Profil patient mis à jour',
+            description: 'Vos informations ont été synchronisées avec succès.',
+          });
+          queryClient.invalidateQueries({ queryKey: ['supabase', 'auth', 'user'] });
+        }
+      } catch (error) {
+        console.error('Erreur lors de la finalisation du profil patient', error);
+        if (!cancelled) {
+          toast({
+            title: 'Synchronisation du profil impossible',
+            description: 'Réessayez après avoir actualisé la page.',
+            variant: 'destructive',
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, queryClient]);
+
   const handleNewAppointment = async (data: CreateAppointmentData) => {
     console.log('🟢 handleNewAppointment appelé avec:', data);
     console.log('🟢 Patient ID:', patientId);
@@ -84,16 +120,84 @@ export default function PatientDashboard() {
     }
   };
 
-  const handlePaymentRequired = (appointmentId: string) => {
-    console.log('💳 Ouverture du dialogue de paiement pour:', appointmentId);
-    setAppointmentIdForPayment(appointmentId);
-    setPaymentDialogOpen(true);
+  const handlePaymentRequired = async (appointmentId: string) => {
+    try {
+      console.log('💳 Ouverture du dialogue de paiement pour:', appointmentId);
+      const appointment = appointments.find((apt) => apt.id === appointmentId);
+
+      if (!appointment) {
+        throw new Error('Rendez-vous introuvable');
+      }
+
+      let amount = appointment.paymentAmount ?? null;
+
+      if (amount === null) {
+        const { data: refreshed, error: refreshError } = await supabase
+          .from('appointments')
+          .select('payment_amount, practitioner_id, specialty')
+          .eq('id', appointmentId)
+          .maybeSingle();
+
+        if (refreshError) throw refreshError;
+
+        amount = refreshed?.payment_amount ?? null;
+
+        if (amount === null && refreshed?.practitioner_id) {
+          const { data: rate, error: rateError } = await supabase
+            .from('practitioner_rates')
+            .select('base_price')
+            .eq('practitioner_id', refreshed.practitioner_id)
+            .eq('service_type', refreshed.specialty)
+            .maybeSingle();
+
+          if (rateError) throw rateError;
+
+          amount = rate?.base_price ?? null;
+
+          if (amount === null) {
+            const { data: service, error: serviceError } = await supabase
+              .from('services')
+              .select('base_price')
+              .eq('name', refreshed.specialty)
+              .maybeSingle();
+
+            if (serviceError) throw serviceError;
+
+            amount = service?.base_price ?? null;
+          }
+        }
+      }
+
+      if (amount === null) {
+        throw new Error('Impossible de déterminer le montant à payer pour ce rendez-vous');
+      }
+
+      setPaymentAmount(amount);
+      setAppointmentIdForPayment(appointmentId);
+      setPaymentDialogOpen(true);
+    } catch (error) {
+      console.error('Erreur lors de la préparation du paiement', error);
+      toast({
+        title: 'Montant indisponible',
+        description: error instanceof Error ? error.message : 'Veuillez réessayer ultérieurement.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handlePaymentSuccess = () => {
     console.log('✅ Paiement réussi');
     setPaymentDialogOpen(false);
     setAppointmentIdForPayment(null);
+    setPaymentAmount(null);
+  };
+
+  const handlePaymentDialogOpenChange = (open: boolean) => {
+    setPaymentDialogOpen(open);
+    if (!open) {
+      setAppointmentIdForPayment(null);
+      setPaymentAmount(null);
+    }
   };
 
   const handleCancel = async (id: string) => {
@@ -165,16 +269,16 @@ export default function PatientDashboard() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">En attente</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {appointments.filter(apt => apt.status === 'pending').length}
-              </div>
-            </CardContent>
-          </Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">En attente</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length}
+                </div>
+              </CardContent>
+            </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -265,7 +369,7 @@ export default function PatientDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {appointments.filter(apt => apt.status === 'pending').length}
+                    {appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length}
                   </div>
                 </CardContent>
               </Card>
@@ -341,6 +445,9 @@ export default function PatientDashboard() {
                         </div>
                         <Badge variant="destructive">Paiement requis</Badge>
                       </div>
+                      {typeof appointment.paymentAmount === 'number' && (
+                        <p className="text-sm font-semibold">{formatAmount(appointment.paymentAmount)}</p>
+                      )}
                       <div className="flex items-center gap-2 text-sm">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         <span>{new Date(appointment.date).toLocaleDateString('fr-FR')} à {appointment.time}</span>
@@ -474,12 +581,12 @@ export default function PatientDashboard() {
       </main>
 
       {/* Payment Dialog - géré au niveau du dashboard */}
-      {appointmentIdForPayment && (
+      {appointmentIdForPayment && paymentAmount !== null && (
         <PaymentDialog
           open={paymentDialogOpen}
-          onOpenChange={setPaymentDialogOpen}
+          onOpenChange={handlePaymentDialogOpenChange}
           appointmentId={appointmentIdForPayment}
-          amount={10000}
+          amount={paymentAmount}
           onSuccess={handlePaymentSuccess}
         />
       )}
