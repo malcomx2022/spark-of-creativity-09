@@ -114,28 +114,12 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get authenticated user
+    // Get authenticated user (ou vérifier si c'est un appel service role avec bypassAuth)
     const authHeader = req.headers.get('Authorization');
+    let user = null;
+    let bypassAuth = false;
 
-    if (!authHeader) {
-      console.error('Missing Authorization header');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
+    // Vérifier d'abord si le body contient bypassAuth (appel depuis handle-appointment-response)
     let payload: unknown;
     try {
       payload = await req.json();
@@ -147,8 +131,13 @@ serve(async (req) => {
       );
     }
 
-    // Validation Zod stricte
-    const validationResult = PaymentRequestSchema.safeParse(payload);
+    // Validation Zod étendue pour inclure bypassAuth et patientId
+    const PaymentRequestSchemaExtended = PaymentRequestSchema.extend({
+      bypassAuth: z.boolean().optional(),
+      patientId: z.string().uuid().optional()
+    });
+
+    const validationResult = PaymentRequestSchemaExtended.safeParse(payload);
     
     if (!validationResult.success) {
       const errors = validationResult.error.errors.map(err => ({
@@ -162,8 +151,35 @@ serve(async (req) => {
       );
     }
 
-    const { appointmentId, paymentMethod, phoneNumber } = validationResult.data;
+    const { appointmentId, paymentMethod, phoneNumber, bypassAuth: requestBypassAuth, patientId: requestPatientId } = validationResult.data;
     const requestedAmount = validationResult.data.amount ?? null;
+
+    // Si bypassAuth est true et qu'on a un patientId, on utilise le service role
+    if (requestBypassAuth && requestPatientId) {
+      bypassAuth = true;
+      console.log('Service role payment creation for patient:', requestPatientId);
+    } else {
+      // Sinon, authentification normale
+      if (!authHeader) {
+        console.error('Missing Authorization header');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+
+      if (authError || !authUser) {
+        console.error('Auth error:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      user = authUser;
+    }
 
     // Vérifier que l'appointment existe et appartient à l'utilisateur
     const { data: appointment, error: appointmentError } = await supabase
@@ -181,20 +197,26 @@ serve(async (req) => {
     }
 
     // Vérifier si l'utilisateur est autorisé (patient ou praticien du rendez-vous)
-    let isAuthorized = false;
+    // Bypass cette vérification si c'est un appel service role
+    let isAuthorized = bypassAuth;
+    let paymentUserId = requestPatientId || appointment.patient_id;
     
-    if (appointment.patient_id === user.id) {
-      isAuthorized = true;
-    } else {
-      // Vérifier si l'utilisateur est le praticien du rendez-vous
-      const { data: practitioner } = await supabase
-        .from('practitioners')
-        .select('user_id')
-        .eq('id', appointment.practitioner_id)
-        .single();
-      
-      if (practitioner && practitioner.user_id === user.id) {
+    if (!bypassAuth && user) {
+      if (appointment.patient_id === user.id) {
         isAuthorized = true;
+        paymentUserId = user.id;
+      } else {
+        // Vérifier si l'utilisateur est le praticien du rendez-vous
+        const { data: practitioner } = await supabase
+          .from('practitioners')
+          .select('user_id')
+          .eq('id', appointment.practitioner_id)
+          .single();
+        
+        if (practitioner && practitioner.user_id === user.id) {
+          isAuthorized = true;
+          paymentUserId = appointment.patient_id; // Le paiement est toujours pour le patient
+        }
       }
     }
 
@@ -205,9 +227,6 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // Determine which user ID to use for the payment record (always the patient)
-    const paymentUserId = appointment.patient_id;
 
     // Générer une clé d'idempotence
     const idempotencyKey = `${paymentUserId}-${appointmentId}-${Date.now()}`;
@@ -336,8 +355,8 @@ serve(async (req) => {
     const fedapayData: any = await createTransactionResponse.json();
     console.log('FedaPay transaction created successfully:', fedapayData);
 
-    // Extract transaction from response (FedaPay wraps in v1_transaction)
-    const transaction = fedapayData.v1_transaction || fedapayData.transaction || fedapayData;
+    // Extract transaction from response (FedaPay peut utiliser v1_transaction OU v1/transaction)
+    const transaction = fedapayData.v1_transaction || fedapayData['v1/transaction'] || fedapayData.transaction || fedapayData;
     if (!transaction || !transaction.id) {
       console.error('Invalid transaction response structure:', fedapayData);
       return new Response(
@@ -345,42 +364,19 @@ serve(async (req) => {
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // ÉTAPE 2: Générer le token de paiement (ÉTAPE CRITIQUE SELON LA DOC FEDAPAY)
-    console.log('Step 2: Generating payment token for transaction', transaction.id);
-    const tokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/token`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json();
-      console.error('FedaPay token generation failed:', errorData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors de la génération du lien de paiement',
-          details: errorData
-        }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const tokenData: any = await tokenResponse.json();
-    console.log('Payment token generated successfully:', tokenData);
-
-    const paymentUrl = tokenData.url;
+    
+    // Extraire l'URL de paiement directement depuis la transaction
+    const paymentUrl = transaction.payment_url;
     if (!paymentUrl) {
-      console.error('Payment URL not found in token response:', tokenData);
+      console.error('Payment URL not found in transaction:', transaction);
       return new Response(
-        JSON.stringify({ error: 'URL de paiement non disponible' }),
+        JSON.stringify({ error: 'URL de paiement non disponible dans la transaction' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('Payment URL extracted from transaction:', paymentUrl);
 
-    console.log('Payment URL generated:', paymentUrl);
 
     // Récupérer la configuration des frais
     const { data: configData } = await supabase
@@ -432,7 +428,6 @@ serve(async (req) => {
         provider_ref: transaction.id.toString(),
         payment_session_data: {
           transaction: fedapayData,
-          token: tokenData,
           mode: selectedMode
         }
       })

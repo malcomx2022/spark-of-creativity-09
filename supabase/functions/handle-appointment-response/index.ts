@@ -160,20 +160,32 @@ serve(async (req) => {
         throw new Error('Le patient n\'a pas de numéro de téléphone enregistré');
       }
 
-      // ✅ Créer le paiement FedaPay
+      // ✅ Créer le paiement FedaPay avec service role
       console.log('💳 Création du paiement FedaPay pour', paymentAmount, 'XOF');
       
-      const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
+      // Créer un client Supabase avec service role pour appeler create-payment
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        }
+      );
+      
+      const { data: paymentData, error: paymentError } = await supabaseAdmin.functions.invoke(
         'create-payment',
         {
           body: {
             appointmentId: appointmentId,
             amount: paymentAmount,
-            paymentMethod: 'mtn', // Par défaut MTN, le patient pourra choisir sur FedaPay
+            paymentMethod: 'mtn',
             phoneNumber: patientProfile.phone,
-          },
-          headers: {
-            Authorization: authHeader,
+            // Indiquer qu'on crée le paiement pour le patient via service role
+            bypassAuth: true,
+            patientId: appointment.patient_id
           }
         }
       );
