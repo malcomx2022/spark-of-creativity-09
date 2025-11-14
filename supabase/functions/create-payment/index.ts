@@ -365,7 +365,7 @@ serve(async (req) => {
 
     console.log('FedaPay transaction created successfully:', fedapayData);
 
-    // Extraire l'ID de la transaction
+    // Extraire l'ID et l'URL de paiement de la transaction
     const transactionData = parseFedaPayResponse(fedapayData);
     if (!transactionData) {
       console.error('Unexpected FedaPay payload structure:', fedapayData);
@@ -375,70 +375,17 @@ serve(async (req) => {
       );
     }
 
-    // Étape 2: Générer le token pour obtenir l'URL de paiement
-    console.log(`Generating payment token for transaction ${transactionData.id}`);
-    
-    let tokenResponse: Response;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
-      tokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transactionData.id}/token`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${fedapaySecretKey}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-    } catch (error) {
-      console.error('Error generating token:', error);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Impossible de générer le lien de paiement',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    let tokenData: unknown;
-    try {
-      tokenData = await tokenResponse.json();
-    } catch (parseError) {
-      console.error('Unable to parse token response:', parseError);
-      return new Response(
-        JSON.stringify({ error: 'Réponse invalide lors de la génération du lien de paiement' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!tokenResponse.ok) {
-      console.error('FedaPay token generation error:', tokenData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors de la génération du lien de paiement',
-          details: tokenData
-        }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Token generated successfully:', tokenData);
-
-    // Parser la réponse du token
-    const tokenInfo = parseFedaPayResponse(tokenData);
-    if (!tokenInfo || !tokenInfo.url) {
-      console.error('Invalid token response structure:', tokenData);
+    // FedaPay retourne directement le payment_url dans la réponse de création
+    const paymentUrl = transactionData.payment_url || transactionData.url;
+    if (!paymentUrl) {
+      console.error('Payment URL not found in FedaPay response:', fedapayData);
       return new Response(
         JSON.stringify({ error: 'URL de paiement non disponible' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const paymentUrl = tokenInfo.url;
+    console.log('Payment URL extracted:', paymentUrl);
     const ussdTriggerResult = await triggerFedapayUssdValidation({
       transactionId: transactionData.id,
       phoneNumber,
@@ -501,7 +448,6 @@ serve(async (req) => {
         provider_ref: transactionData.id.toString(),
         payment_session_data: {
           transaction: fedapayData,
-          token: tokenData,
           mode: selectedMode,
           ussd: ussdTriggerResult
         }

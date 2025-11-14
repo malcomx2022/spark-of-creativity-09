@@ -25,6 +25,7 @@ export interface ValidationResult {
 export interface FedaPayTransaction {
   id: string;
   url: string;
+  payment_url?: string;
   status?: string;
 }
 
@@ -151,7 +152,7 @@ export function parseFedaPayResponse(payload: unknown): FedaPayTransaction | nul
   const txData = transaction as Record<string, unknown>;
   const { id, payment_url, url, status } = txData;
 
-  // FedaPay retourne 'payment_url' et non 'url'
+  // FedaPay retourne 'payment_url' dans la transaction
   const paymentUrl = payment_url || url;
 
   const hasValidId = typeof id === 'string' || typeof id === 'number';
@@ -165,6 +166,7 @@ export function parseFedaPayResponse(payload: unknown): FedaPayTransaction | nul
   return {
     id: String(id),
     url: paymentUrl as string,
+    payment_url: typeof payment_url === 'string' ? payment_url : undefined,
     status: typeof status === 'string' ? status : undefined,
   };
 }
