@@ -180,7 +180,25 @@ serve(async (req) => {
       );
     }
 
-    if (appointment.patient_id !== user.id && appointment.practitioner_id !== user.id) {
+    // Vérifier si l'utilisateur est autorisé (patient ou praticien du rendez-vous)
+    let isAuthorized = false;
+    
+    if (appointment.patient_id === user.id) {
+      isAuthorized = true;
+    } else {
+      // Vérifier si l'utilisateur est le praticien du rendez-vous
+      const { data: practitioner } = await supabase
+        .from('practitioners')
+        .select('user_id')
+        .eq('id', appointment.practitioner_id)
+        .single();
+      
+      if (practitioner && practitioner.user_id === user.id) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
       console.error('Appointment does not belong to user');
       return new Response(
         JSON.stringify({ error: 'Unauthorized: Appointment does not belong to you' }),
