@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { isValidPhoneNumber, normalizePhoneNumber } from "@/lib/phone-utils";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
@@ -114,42 +115,15 @@ const methodIcons: Record<PaymentMethod, ReactNode> = {
   bank: <Building className="h-4 w-4" />,
 };
 
-const sanitizePhoneNumber = (value: string) => value.replace(/\s+/g, "");
 const sanitizeAccountNumber = (value: string) => value.replace(/\s+/g, "").toUpperCase();
+const PHONE_NORMALIZATION_OPTIONS = { defaultCountryCode: "+229", localNumberLengths: [8] } as const;
 
-const normalizePhoneNumber = (value: string) => {
-  if (!value) return "";
-
-  let normalized = value.replace(/\s+/g, "");
-
-  if (normalized.startsWith("00")) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-
-  if (!normalized.startsWith("+")) {
-    if (/^[0-9]{8}$/.test(normalized)) {
-      normalized = `+229${normalized}`;
-    } else {
-      normalized = `+${normalized}`;
-    }
-  }
-
-  return normalized;
-};
-
-const isValidPhoneNumber = (value: string, method: PaymentMethod) => {
-  const normalized = normalizePhoneNumber(value);
+const isMethodPhoneValid = (value: string, method: PaymentMethod) => {
   const { phoneRegex } = paymentMethodMetadata[method];
-
-  if (!/^[+][1-9][0-9]{7,14}$/.test(normalized)) {
-    return false;
-  }
-
-  if (phoneRegex) {
-    return phoneRegex.test(normalized);
-  }
-
-  return true;
+  return isValidPhoneNumber(value, {
+    ...PHONE_NORMALIZATION_OPTIONS,
+    pattern: phoneRegex,
+  });
 };
 
 const isValidBankAccountNumber = (value: string) => {
@@ -223,7 +197,10 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
   const mutation = useMutation({
     mutationFn: async (payload: { verify: boolean }) => {
-      const sanitizedPhone = selectedMethod === "bank" ? null : normalizePhoneNumber(formState.phoneNumber);
+      const sanitizedPhone =
+        selectedMethod === "bank"
+          ? null
+          : normalizePhoneNumber(formState.phoneNumber, PHONE_NORMALIZATION_OPTIONS);
       const sanitizedAccount = selectedMethod === "bank" ? sanitizeAccountNumber(formState.bankAccountNumber) : null;
 
       const updatePayload = {
@@ -302,7 +279,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     } else {
       if (!formState.phoneNumber.trim()) {
         errors.phoneNumber = "Le numéro Mobile Money est obligatoire.";
-      } else if (!isValidPhoneNumber(formState.phoneNumber, selectedMethod)) {
+      } else if (!isMethodPhoneValid(formState.phoneNumber, selectedMethod)) {
         const metadata = paymentMethodMetadata[selectedMethod];
         errors.phoneNumber = metadata.phoneExample
           ? `Format invalide. Exemple attendu : ${metadata.phoneExample}`
@@ -355,7 +332,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
       return Boolean(formState.bankAccountNumber && isValidBankAccountNumber(formState.bankAccountNumber));
     }
 
-    return Boolean(formState.phoneNumber && isValidPhoneNumber(formState.phoneNumber, selectedMethod));
+    return Boolean(formState.phoneNumber && isMethodPhoneValid(formState.phoneNumber, selectedMethod));
   }, [formState.bankAccountNumber, formState.phoneNumber, selectedMethod]);
 
   const methodMetadata = paymentMethodMetadata[selectedMethod];

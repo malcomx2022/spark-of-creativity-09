@@ -36,36 +36,7 @@ import {
   isPaymentFinal,
 } from '@/lib/payment-config';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
-
-function normalizePhoneNumber(input: string): string | null {
-  const trimmed = input.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  let normalized = trimmed.replace(/[^0-9+]/g, '');
-
-  if ((normalized.match(/\+/g) ?? []).length > 1) {
-    return null;
-  }
-
-  if (normalized.startsWith('00')) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-
-  if (!normalized.startsWith('+')) {
-    normalized = `+${normalized.replace(/\+/g, '')}`;
-  }
-
-  const digits = normalized.slice(1);
-
-  if (!/^\d{8,15}$/.test(digits)) {
-    return null;
-  }
-
-  return `+${digits}`;
-}
+import { normalizePhoneNumber } from '@/lib/phone-utils';
 
 export function PaymentsSection() {
   const { data: user } = useSupabaseUser();
