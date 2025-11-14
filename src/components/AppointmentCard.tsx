@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, MapPin, User, FileText, Phone } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, FileText, Phone, Info } from 'lucide-react';
 import type { Appointment } from '@/types/appointment';
 import { ContactDialog } from '@/components/ContactDialog';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -106,6 +107,15 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
           <div className="p-3 bg-muted/50 rounded-lg">
             <p className="text-sm text-muted-foreground">{appointment.notes}</p>
           </div>
+        )}
+
+        {userRole === 'patient' && appointment.status === 'awaiting_practitioner' && (
+          <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-sm text-blue-700 dark:text-blue-300">
+              Votre demande a été envoyée à {appointment.practitionerName}. Le praticien répondra généralement sous 30 minutes. Vous recevrez une notification dès qu'il acceptera.
+            </AlertDescription>
+          </Alert>
         )}
 
         <div className="flex gap-2 pt-2">
