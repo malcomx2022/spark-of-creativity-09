@@ -129,8 +129,7 @@ export default function LoginWithOTP() {
             <Button
               variant="ghost"
               onClick={() => {
-                console.log('Retour button clicked');
-                navigate("/", { replace: true });
+                window.location.href = "/";
               }}
               className="mb-4"
             >
