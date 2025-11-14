@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { AdminManagement } from "@/components/admin/AdminManagement";
@@ -18,15 +18,38 @@ import { UsersManagementSection } from "@/components/admin/UsersManagementSectio
 import { OTPManagementSection } from "@/components/admin/OTPManagementSection";
 import { useAdminStats } from "@/hooks/useAdminStats";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
-import { useNotifications } from "@/hooks/useNotifications";
+import { useNotifications, useMarkNotificationAsRead } from "@/hooks/useNotifications";
+import { Badge } from "@/components/ui/badge";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { isAdmin, isLoading } = useIsAdmin();
   const { data: stats } = useAdminStats();
   const { data: user } = useSupabaseUser();
+  const { data: notifications = [] } = useNotifications(isAdmin ? user?.id : undefined);
+  const markNotificationAsRead = useMarkNotificationAsRead();
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const processedKycNotifications = useRef(new Set<string>());
 
-  useNotifications(isAdmin ? user?.id : undefined);
+  const unreadKycNotifications = notifications.filter((notification) =>
+    notification.type === 'kyc_pending' && !notification.is_read
+  );
+  const pendingKycNotifications = unreadKycNotifications.length;
+
+  useEffect(() => {
+    if (activeTab !== "kyc" || unreadKycNotifications.length === 0) {
+      return;
+    }
+
+    unreadKycNotifications.forEach((notification) => {
+      if (processedKycNotifications.current.has(notification.id)) {
+        return;
+      }
+
+      processedKycNotifications.current.add(notification.id);
+      markNotificationAsRead.mutate(notification.id);
+    });
+  }, [activeTab, unreadKycNotifications, markNotificationAsRead]);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -106,7 +129,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Main Admin Interface */}
-        <Tabs defaultValue="dashboard" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9 gap-1">
             <TabsTrigger value="dashboard">
               <Activity className="h-4 w-4 mr-2" />
@@ -116,9 +139,14 @@ export default function AdminDashboard() {
               <Shield className="h-4 w-4 mr-2" />
               Admins
             </TabsTrigger>
-            <TabsTrigger value="kyc">
-              <FileCheck className="h-4 w-4 mr-2" />
-              KYC
+            <TabsTrigger value="kyc" className="flex items-center gap-2">
+              <FileCheck className="h-4 w-4" />
+              <span>KYC</span>
+              {pendingKycNotifications > 0 && (
+                <Badge variant="destructive" className="ml-1">
+                  {pendingKycNotifications > 99 ? '99+' : pendingKycNotifications}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="operations">
               <Calendar className="h-4 w-4 mr-2" />

@@ -136,15 +136,20 @@ serve(async (req) => {
 
       console.log('🔔 Préparation des notifications admin pour le nouveau dossier KYC...');
 
+      const ADMIN_ROLES = ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst'];
+
       const { data: adminUsers, error: adminRolesError } = await supabase
         .from('user_roles')
-        .select('user_id, role');
+        .select('user_id, role')
+        .in('role', ADMIN_ROLES);
 
       if (adminRolesError) {
         console.error('❌ Erreur récupération admins pour notification KYC:', adminRolesError);
       } else if (adminUsers && adminUsers.length > 0) {
-        const notificationsPayload = adminUsers.map((admin: { user_id: string }) => ({
-          user_id: admin.user_id,
+        const uniqueAdminIds = Array.from(new Set(adminUsers.map((admin: { user_id: string }) => admin.user_id)));
+
+        const notificationsPayload = uniqueAdminIds.map((adminId) => ({
+          user_id: adminId,
           title: 'Nouveau dossier KYC à valider',
           message: `Le praticien ${practitionerPayload.name} vient de s'inscrire et nécessite une validation KYC.`,
           type: 'kyc_pending',
