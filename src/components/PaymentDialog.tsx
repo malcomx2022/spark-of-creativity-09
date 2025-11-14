@@ -466,6 +466,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
+    console.log('🔄 Réhydratation du paiement:', persisted);
+    
     setPaymentMethod(persisted.paymentMethod);
     setPhoneNumber(persisted.phoneNumber);
     setPaymentStatus(persisted.paymentStatus);
@@ -478,6 +480,15 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setPollCount(0);
     setIsProcessing(persisted.paymentStatus === 'pending');
     hasRehydratedRef.current = true;
+
+    // Informer l'utilisateur de la réhydratation
+    if (persisted.paymentStatus === 'pending') {
+      toast({
+        title: 'Reprise du paiement',
+        description: 'Votre paiement en cours a été restauré. Vous pouvez compléter la transaction.',
+        duration: 6000,
+      });
+    }
   }, [open, appointmentId]);
 
   const handleReopenPaymentWindow = () => {
