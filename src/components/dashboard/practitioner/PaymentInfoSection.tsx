@@ -334,7 +334,23 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
   // Conditional returns after all hooks
   if (!practitionerId) {
-    return null;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration des reversements</CardTitle>
+          <CardDescription>Informations de paiement non disponibles</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Profil incomplet</AlertTitle>
+            <AlertDescription>
+              Votre profil praticien doit être complété avant de configurer vos coordonnées de reversement.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
   }
 
   if (isLoading) {
