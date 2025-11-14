@@ -89,17 +89,24 @@ export type Database = {
       appointments: {
         Row: {
           address: string
+          confirmation_requested_at: string | null
           created_at: string | null
           date: string
           duration: number
           id: string
           internal_notes: string | null
           notes: string | null
+          patient_confirmed_at: string | null
           patient_id: string
           patient_name: string
           payment_amount: number | null
+          payment_expires_at: string | null
           practitioner_id: string
+          practitioner_last_location_update: string | null
+          practitioner_latitude: number | null
+          practitioner_longitude: number | null
           practitioner_name: string
+          practitioner_status: string | null
           pre_visit_checklist: Json | null
           reason: string
           specialty: string
@@ -111,17 +118,24 @@ export type Database = {
         }
         Insert: {
           address: string
+          confirmation_requested_at?: string | null
           created_at?: string | null
           date: string
           duration?: number
           id?: string
           internal_notes?: string | null
           notes?: string | null
+          patient_confirmed_at?: string | null
           patient_id: string
           patient_name: string
           payment_amount?: number | null
+          payment_expires_at?: string | null
           practitioner_id: string
+          practitioner_last_location_update?: string | null
+          practitioner_latitude?: number | null
+          practitioner_longitude?: number | null
           practitioner_name: string
+          practitioner_status?: string | null
           pre_visit_checklist?: Json | null
           reason: string
           specialty: string
@@ -133,17 +147,24 @@ export type Database = {
         }
         Update: {
           address?: string
+          confirmation_requested_at?: string | null
           created_at?: string | null
           date?: string
           duration?: number
           id?: string
           internal_notes?: string | null
           notes?: string | null
+          patient_confirmed_at?: string | null
           patient_id?: string
           patient_name?: string
           payment_amount?: number | null
+          payment_expires_at?: string | null
           practitioner_id?: string
+          practitioner_last_location_update?: string | null
+          practitioner_latitude?: number | null
+          practitioner_longitude?: number | null
           practitioner_name?: string
+          practitioner_status?: string | null
           pre_visit_checklist?: Json | null
           reason?: string
           specialty?: string
@@ -1983,6 +2004,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_confirm_consultations: { Args: never; Returns: undefined }
+      cleanup_expired_payment_slots: { Args: never; Returns: undefined }
       cleanup_old_file_access_logs: { Args: never; Returns: undefined }
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
@@ -2002,6 +2025,7 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      request_consultation_confirmation: { Args: never; Returns: undefined }
       update_payment_with_balance: {
         Args: {
           p_hold_until?: string
