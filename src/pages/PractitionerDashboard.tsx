@@ -443,11 +443,14 @@ export default function PractitionerDashboard() {
             />
           </TabsContent>
 
-          <TabsContent value="payouts" className="space-y-6">
+          <TabsContent value="payment-info">
             <PaymentInfoSection
               practitionerId={practitioner.id}
               practitionerName={practitioner.name}
             />
+          </TabsContent>
+
+          <TabsContent value="payouts" className="space-y-6">
             <PayoutsSection practitionerId={practitioner.id} />
           </TabsContent>
 
