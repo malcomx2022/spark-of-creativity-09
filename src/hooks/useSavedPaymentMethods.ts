@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSupabaseUser } from './useSupabaseUser';
 import { toast } from './use-toast';
 
@@ -29,7 +30,7 @@ export function useSavedPaymentMethods() {
   const queryClient = useQueryClient();
 
   const encryptPhone = useCallback(async (phone: string): Promise<string> => {
-    const { data, error } = await supabase.functions.invoke<{ encrypted: string }>('secure-phone', {
+    const { data, error } = await invokeEdgeFunctionWithRetry<{ encrypted: string }>('secure-phone', {
       body: {
         action: 'encrypt',
         phone,
@@ -48,7 +49,7 @@ export function useSavedPaymentMethods() {
   }, []);
 
   const decryptPhone = useCallback(async (methodId: string): Promise<string> => {
-    const { data, error } = await supabase.functions.invoke<{ phone: string }>('secure-phone', {
+    const { data, error } = await invokeEdgeFunctionWithRetry<{ phone: string }>('secure-phone', {
       body: {
         action: 'decrypt',
         methodId,

@@ -16,7 +16,7 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -82,7 +82,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       // 1. Rechercher un praticien disponible
       console.log('🔍 Recherche d\'un praticien disponible...');
       
-      const { data: practitionerData, error: practitionerError } = await supabase.functions.invoke(
+      const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry(
         'find-available-practitioner',
         {
           body: {

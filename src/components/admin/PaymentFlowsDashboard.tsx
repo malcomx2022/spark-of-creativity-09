@@ -218,6 +218,13 @@ export function PaymentFlowsDashboard() {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
+  const fedapayStatusSummary = useMemo(() => {
+    return fedapayTransactions.reduce<Record<string, number>>((acc, transaction) => {
+      acc[transaction.status] = (acc[transaction.status] || 0) + 1;
+      return acc;
+    }, {});
+  }, [fedapayTransactions]);
+
   return (
     <div className="space-y-6">
       <Card className="shadow-medical">
@@ -409,39 +416,55 @@ export function PaymentFlowsDashboard() {
                 </AlertDescription>
               </Alert>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Transaction</TableHead>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Montant</TableHead>
-                      <TableHead>Statut</TableHead>
-                      <TableHead>Payout</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fedapayTransactions.map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell className="font-mono text-xs">
-                          {transaction.fedapay_transaction_id?.slice(0, 10) || "N/A"}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{transaction.patient_id.slice(0, 8)}...</TableCell>
-                        <TableCell className="font-semibold">
-                          {formatCurrency(transaction.amount, transaction.currency)}
-                        </TableCell>
-                        <TableCell>{renderPaymentStatus(transaction.status)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{transaction.payout_status || "-"}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {format(new Date(transaction.created_at), "dd MMM yyyy HH:mm", { locale: fr })}
-                        </TableCell>
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(fedapayStatusSummary).map(([status, count]) => {
+                    const config = FEDAPAY_STATUSES[status] || { label: status, variant: "outline" as const };
+
+                    return (
+                      <Badge key={status} variant={config.variant} className="flex items-center gap-2">
+                        <span>{config.label}</span>
+                        <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold">
+                          {count}
+                        </span>
+                      </Badge>
+                    );
+                  })}
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Transaction</TableHead>
+                        <TableHead>Patient</TableHead>
+                        <TableHead>Montant</TableHead>
+                        <TableHead>Statut</TableHead>
+                        <TableHead>Payout</TableHead>
+                        <TableHead>Date</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {fedapayTransactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell className="font-mono text-xs">
+                            {transaction.fedapay_transaction_id?.slice(0, 10) || "N/A"}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{transaction.patient_id.slice(0, 8)}...</TableCell>
+                          <TableCell className="font-semibold">
+                            {formatCurrency(transaction.amount, transaction.currency)}
+                          </TableCell>
+                          <TableCell>{renderPaymentStatus(transaction.status)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{transaction.payout_status || "-"}</Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(transaction.created_at), "dd MMM yyyy HH:mm", { locale: fr })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
           </CardContent>

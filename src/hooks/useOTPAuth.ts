@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useToast } from '@/hooks/use-toast';
 import { Session } from '@supabase/supabase-js';
 
@@ -63,10 +64,10 @@ export function useOTPAuth() {
   // Mutation pour envoyer l'OTP
   const sendOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, channel = 'sms' }: SendOTPParams) => {
-      const { data, error } = await supabase.functions.invoke<SendOTPResponse>('send-otp', {
-        body: { 
-          phoneNumber, 
-          channel 
+      const { data, error } = await invokeEdgeFunctionWithRetry<SendOTPResponse>('send-otp', {
+        body: {
+          phoneNumber,
+          channel
         },
       });
 
@@ -106,10 +107,10 @@ export function useOTPAuth() {
   // Mutation pour vérifier l'OTP
   const verifyOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, code }: VerifyOTPParams) => {
-      const { data, error } = await supabase.functions.invoke<VerifyOTPResponse>('verify-otp', {
-        body: { 
-          phoneNumber, 
-          code 
+      const { data, error } = await invokeEdgeFunctionWithRetry<VerifyOTPResponse>('verify-otp', {
+        body: {
+          phoneNumber,
+          code
         },
       });
 

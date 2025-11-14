@@ -24,6 +24,7 @@ import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import Header from '@/components/Header';
 import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
 import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
@@ -76,7 +77,7 @@ export default function PractitionerDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
         body: { appointmentId, action: 'accept' }
       });
 
@@ -116,7 +117,7 @@ export default function PractitionerDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
         body: { appointmentId, action: 'reject' }
       });
 

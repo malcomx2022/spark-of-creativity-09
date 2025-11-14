@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +54,7 @@ export function RefundsSection() {
     mutationFn: async () => {
       if (!selectedPayment) throw new Error('No payment selected');
       
-      const { data, error } = await supabase.functions.invoke('process-refund', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('process-refund', {
         body: {
           paymentId: selectedPayment.id,
           refundAmount: refundAmount ? parseInt(refundAmount) : null,

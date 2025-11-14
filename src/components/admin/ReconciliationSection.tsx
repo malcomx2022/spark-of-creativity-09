@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, Calendar, Download, TrendingUp } from "lucide-react";
@@ -74,7 +75,7 @@ export default function ReconciliationSection() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      const response = await supabase.functions.invoke('reconcile-fedapay', {
+      const response = await invokeEdgeFunctionWithRetry('reconcile-fedapay', {
         body: { period_start, period_end },
       });
 

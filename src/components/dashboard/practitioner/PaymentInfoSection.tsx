@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +22,10 @@ import {
   AlertTriangle,
   Building,
   CheckCircle2,
+  Clock,
   Loader2,
   Phone,
+  Radio,
   ShieldCheck,
   Smartphone,
   Wallet,
@@ -43,6 +47,8 @@ interface PractitionerPaymentInfo {
   bank_name: string | null;
   account_holder_name: string;
   is_verified: boolean | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface FormState {
@@ -101,6 +107,14 @@ const paymentMethodMetadata: Record<PaymentMethod, PaymentMethodMetadata> = {
   },
 };
 
+const methodIcons: Record<PaymentMethod, ReactNode> = {
+  mtn: <Smartphone className="h-4 w-4" />,
+  orange: <Smartphone className="h-4 w-4" />,
+  moov: <Smartphone className="h-4 w-4" />,
+  bank: <Building className="h-4 w-4" />,
+};
+
+const sanitizePhoneNumber = (value: string) => value.replace(/\s+/g, "");
 const sanitizeAccountNumber = (value: string) => value.replace(/\s+/g, "").toUpperCase();
 
 const normalizePhoneNumber = (value: string) => {
@@ -522,6 +536,16 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
               </span>
             </div>
           </div>
+        )}
+
+        {paymentInfos && paymentInfos.length === 0 && (
+          <Alert className="border-dashed">
+            <Clock className="h-4 w-4" />
+            <AlertTitle>Aucune méthode enregistrée</AlertTitle>
+            <AlertDescription>
+              Renseignez vos informations Mobile Money ou bancaires puis enregistrez-les pour activer vos reversements.
+            </AlertDescription>
+          </Alert>
         )}
 
         <Alert variant={isVerified ? "default" : "destructive"}>

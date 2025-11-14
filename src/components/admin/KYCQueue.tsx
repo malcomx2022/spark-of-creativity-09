@@ -12,7 +12,6 @@ import {
   XCircle,
   AlertCircle,
   FileText,
-  Calendar,
   Download,
   Eye,
   History,
@@ -49,7 +48,7 @@ export function KYCQueue() {
   const [historyPractitionerId, setHistoryPractitionerId] = useState<string | null>(null);
 
   const {
-    data: history,
+    data: practitionerHistoryEntries,
     isLoading: isHistoryLoading,
   } = useQuery({
     queryKey: ['kyc-history', historyPractitionerId],
@@ -97,7 +96,29 @@ export function KYCQueue() {
     },
   });
 
-  const { data: practitioners, isLoading } = useQuery({
+  const {
+    data: kycHistoryPractitioners = [],
+    isLoading: isKycHistoryPractitionersLoading,
+  } = useQuery<Tables<'practitioners'>[]>({
+    queryKey: ['kyc-history-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('practitioners')
+        .select(
+          'id, name, phone, specialty, kyc_status, kyc_comment, kyc_reviewed_at, kyc_validated_at, created_at'
+        )
+        .order('kyc_reviewed_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as Tables<'practitioners'>[];
+    },
+  });
+
+  const {
+    data: practitioners = [],
+    isLoading,
+  } = useQuery<Tables<'practitioners'>[]>({
     queryKey: ['kyc-queue'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -107,7 +128,7 @@ export function KYCQueue() {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      return data;
+      return (data || []) as Tables<'practitioners'>[];
     },
   });
 
@@ -126,6 +147,7 @@ export function KYCQueue() {
 
       if (shouldInvalidate) {
         queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
+        queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
       }
     };
 
@@ -167,6 +189,7 @@ export function KYCQueue() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
       toast({ title: "Statut KYC mis à jour" });
       setSelectedPractitioner(null);
       setComment("");
@@ -308,6 +331,20 @@ export function KYCQueue() {
     if (entry.admin_name) return entry.admin_name;
     if (!entry.admin_id) return 'Administrateur inconnu';
     return `ID ${entry.admin_id.slice(0, 8)}…`;
+  };
+
+  const getStatusMeta = (status: string | null) => {
+    switch (status) {
+      case 'approved':
+        return { label: 'Approuvé', variant: 'secondary' as const };
+      case 'rejected':
+        return { label: 'Refusé', variant: 'destructive' as const };
+      case 'incomplete':
+        return { label: 'Incomplet', variant: 'outline' as const };
+      case 'pending':
+      default:
+        return { label: 'En attente', variant: 'outline' as const };
+    }
   };
 
   return (
@@ -548,6 +585,77 @@ export function KYCQueue() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Historique des validations</CardTitle>
+          <CardDescription>
+            Consultez l'ensemble des décisions KYC prises pour les praticiens
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isKycHistoryPractitionersLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+          ) : kycHistoryPractitioners && kycHistoryPractitioners.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Praticien</TableHead>
+                  <TableHead>Statut KYC</TableHead>
+                  <TableHead>Dernière action</TableHead>
+                  <TableHead>Dernier commentaire</TableHead>
+                  <TableHead className="w-[140px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {kycHistoryPractitioners.map((practitioner) => {
+                  const statusMeta = getStatusMeta(practitioner.kyc_status);
+
+                  return (
+                    <TableRow key={practitioner.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{practitioner.name}</div>
+                          <div className="text-sm text-muted-foreground">{practitioner.phone}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {practitioner.kyc_reviewed_at || practitioner.kyc_validated_at
+                          ? formatDateTime(practitioner.kyc_reviewed_at || practitioner.kyc_validated_at)
+                          : 'Aucune action enregistrée'}
+                      </TableCell>
+                      <TableCell>
+                        {practitioner.kyc_comment ? (
+                          <span className="text-sm">{practitioner.kyc_comment}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Aucun commentaire</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHistoryPractitionerId(practitioner.id)}
+                        >
+                          <History className="h-4 w-4 mr-1" />
+                          Historique
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Aucun historique de validation disponible
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Document Viewer Dialog */}
       <Dialog open={!!viewingDocument} onOpenChange={(open) => !open && setViewingDocument(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh]">
@@ -578,9 +686,9 @@ export function KYCQueue() {
           </DialogHeader>
           {isHistoryLoading ? (
             <div className="py-8 text-center text-muted-foreground">Chargement de l'historique...</div>
-          ) : history && history.length > 0 ? (
+          ) : practitionerHistoryEntries && practitionerHistoryEntries.length > 0 ? (
             <div className="space-y-4">
-              {history.map((entry) => {
+              {practitionerHistoryEntries.map((entry) => {
                 const meta = getActionMeta(entry.action);
                 const Icon = meta.icon;
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -60,7 +61,7 @@ export function AdminManagement() {
 
   const createAdminMutation = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: AdminRole }) => {
-      const { data, error } = await supabase.functions.invoke('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('admin-management', {
         body: { action: 'create', email, role, fullName: email.split('@')[0] }
       });
 
@@ -87,7 +88,7 @@ export function AdminManagement() {
 
   const deleteAdminMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await supabase.functions.invoke('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('admin-management', {
         body: { action: 'disable', userId }
       });
 
@@ -109,7 +110,7 @@ export function AdminManagement() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await supabase.functions.invoke('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('admin-management', {
         body: { action: 'reset_password', userId }
       });
 
