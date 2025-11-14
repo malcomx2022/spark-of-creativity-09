@@ -22,6 +22,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
+import { useNotifications } from '@/hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
@@ -42,6 +43,9 @@ export default function PractitionerDashboard() {
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
   const practitionerUserId = user?.id;
+  
+  // 🔔 Activer les notifications en temps réel
+  useNotifications(practitionerUserId);
   const practitionerName =
     (user?.user_metadata?.full_name as string | undefined) ||
     user?.email ||
