@@ -108,22 +108,8 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Authentification
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Authorization header manquant');
-    }
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
-
-    if (authError || !user) {
-      throw new Error('Utilisateur non authentifié');
-    }
 
     const requestData: FindPractitionerRequest = await req.json();
     const {

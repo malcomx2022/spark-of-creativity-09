@@ -41,3 +41,12 @@ verify_jwt = true
 
 [functions.create-test-users]
 verify_jwt = false
+
+[functions.find-available-practitioner]
+verify_jwt = false
+
+[functions.handle-appointment-response]
+verify_jwt = true
+
+[functions.create-appointment-with-payment]
+verify_jwt = true
