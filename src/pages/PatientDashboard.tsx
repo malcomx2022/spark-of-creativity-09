@@ -6,6 +6,7 @@ import GPSTracking from '@/components/GPSTracking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
@@ -48,9 +49,27 @@ export default function PatientDashboard() {
       return;
     }
 
+    // Vérifier si le paiement n'est pas expiré (5 minutes)
+    const elapsed = Date.now() - persisted.lastUpdated;
+    const MAX_AGE = 5 * 60 * 1000; // 5 minutes
+
+    if (elapsed > MAX_AGE) {
+      console.log('⚠️ Paiement en attente expiré, abandon de la réhydratation');
+      return;
+    }
+
+    console.log('🔄 Réhydratation d\'un paiement en cours:', persisted.appointmentId);
+    
     setAppointmentIdForPayment(persisted.appointmentId);
     setPaymentAmount(persisted.amount);
     setPaymentDialogOpen(true);
+
+    // Informer l'utilisateur avec un toast
+    toast({
+      title: '💳 Paiement en attente',
+      description: 'Vous avez un paiement en cours. Veuillez le compléter pour confirmer votre rendez-vous.',
+      duration: 8000,
+    });
   }, []);
 
   const {
@@ -308,6 +327,31 @@ export default function PatientDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Bannière de paiement en attente */}
+        {confirmedAwaitingPayment.length > 0 && (
+          <Alert className="mb-6 border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+            <AlertCircle className="h-5 w-5 text-orange-600" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-2">
+              <div>
+                <h3 className="font-semibold text-orange-900 dark:text-orange-100">
+                  Paiement en attente
+                </h3>
+                <p className="text-sm text-orange-800 dark:text-orange-200 mt-1">
+                  Vous avez {confirmedAwaitingPayment.length} rendez-vous confirmé(s) en attente de paiement. 
+                  Complétez le paiement pour finaliser votre réservation.
+                </p>
+              </div>
+              <Button 
+                onClick={() => handlePaymentRequired(confirmedAwaitingPayment[0].id)}
+                className="shrink-0"
+                variant="default"
+              >
+                Payer maintenant
+              </Button>
+            </div>
+          </Alert>
+        )}
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Mes rendez-vous</h2>
