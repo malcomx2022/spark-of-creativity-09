@@ -102,6 +102,12 @@ export default function PractitionerDashboard() {
         throw error;
       }
 
+      // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
+      await mutateAppointment.mutateAsync({
+        id: appointmentId,
+        data: { status: 'confirmed' }
+      });
+
       toast({
         title: 'Rendez-vous accepté',
         description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
@@ -141,6 +147,12 @@ export default function PractitionerDashboard() {
         
         throw error;
       }
+
+      // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
+      await mutateAppointment.mutateAsync({
+        id: appointmentId,
+        data: { status: 'rejected' }
+      });
 
       toast({
         title: 'Rendez-vous refusé',
