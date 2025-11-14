@@ -444,7 +444,7 @@ serve(async (req) => {
         fedapay_transaction_id: transactionData.id.toString(),
         fedapay_payment_url: paymentUrl,
         idempotency_key: idempotencyKey,
-        channel: 'mobile_money',
+        channel: 'momo',
         provider_ref: transactionData.id.toString(),
         payment_session_data: {
           transaction: fedapayData,
