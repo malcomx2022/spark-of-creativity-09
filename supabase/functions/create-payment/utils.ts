@@ -132,16 +132,30 @@ export function parseFedaPayResponse(payload: unknown): FedaPayTransaction | nul
     return null;
   }
 
-  const container = payload as { v1?: unknown };
-  if (typeof container.v1 !== 'object' || container.v1 === null) {
+  const container = payload as Record<string, unknown>;
+  
+  // FedaPay peut retourner soit { v1: {...} } soit { "v1/transaction": {...} }
+  let transaction: unknown;
+  if ('v1/transaction' in container) {
+    transaction = container['v1/transaction'];
+  } else if ('v1' in container) {
+    transaction = container.v1;
+  } else {
     return null;
   }
 
-  const transaction = container.v1 as Record<string, unknown>;
-  const { id, url, status } = transaction;
+  if (typeof transaction !== 'object' || transaction === null) {
+    return null;
+  }
+
+  const txData = transaction as Record<string, unknown>;
+  const { id, payment_url, url, status } = txData;
+
+  // FedaPay retourne 'payment_url' et non 'url'
+  const paymentUrl = payment_url || url;
 
   const hasValidId = typeof id === 'string' || typeof id === 'number';
-  const hasValidUrl = typeof url === 'string' && url.length > 0;
+  const hasValidUrl = typeof paymentUrl === 'string' && paymentUrl.length > 0;
   const hasValidStatus = status === undefined || typeof status === 'string';
 
   if (!hasValidId || !hasValidUrl || !hasValidStatus) {
@@ -150,7 +164,7 @@ export function parseFedaPayResponse(payload: unknown): FedaPayTransaction | nul
 
   return {
     id: String(id),
-    url,
+    url: paymentUrl as string,
     status: typeof status === 'string' ? status : undefined,
   };
 }
