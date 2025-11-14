@@ -13,6 +13,57 @@ interface CreatePractitionerRequest {
   documents: Record<string, string>; // base64 encoded files
 }
 
+// Validation des données
+function validatePractitionerData(practitionerData: any): string[] {
+  const errors: string[] = [];
+
+  if (!practitionerData.name || practitionerData.name.trim().length < 2) {
+    errors.push('Nom invalide (minimum 2 caractères)');
+  }
+
+  if (!practitionerData.phone || !/^\+?[0-9]{8,15}$/.test(practitionerData.phone.replace(/\s/g, ''))) {
+    errors.push('Numéro de téléphone invalide');
+  }
+
+  if (!practitionerData.specialty || practitionerData.specialty.trim().length < 2) {
+    errors.push('Spécialité requise');
+  }
+
+  if (practitionerData.years_experience !== null && (practitionerData.years_experience < 0 || practitionerData.years_experience > 70)) {
+    errors.push('Années d\'expérience invalides (0-70)');
+  }
+
+  if (practitionerData.intervention_radius && (practitionerData.intervention_radius < 1 || practitionerData.intervention_radius > 100)) {
+    errors.push('Rayon d\'intervention invalide (1-100 km)');
+  }
+
+  return errors;
+}
+
+function validateDocument(base64Data: string, documentType: string): { valid: boolean; error?: string } {
+  const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) {
+    return { valid: false, error: `${documentType}: Format base64 invalide` };
+  }
+
+  const contentType = matches[1];
+  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+  
+  if (!allowedTypes.includes(contentType)) {
+    return { valid: false, error: `${documentType}: Type non supporté (PDF, JPG, PNG uniquement)` };
+  }
+
+  const base64Content = matches[2];
+  const sizeInBytes = (base64Content.length * 3) / 4;
+  const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+  if (sizeInBytes > MAX_SIZE) {
+    return { valid: false, error: `${documentType}: Fichier trop volumineux (max 5MB)` };
+  }
+
+  return { valid: true };
+}
+
 async function uploadDocument(
   supabase: any,
   base64Data: string,
@@ -60,6 +111,17 @@ async function uploadDocument(
   };
 }
 
+async function deleteWasabiDocument(supabase: any, filePath: string): Promise<void> {
+  try {
+    // Appeler l'edge function pour supprimer de Wasabi
+    // NOTE: Nécessite une fonction dédiée ou extension de upload-to-wasabi
+    console.log(`🗑️ Suppression document Wasabi: ${filePath}`);
+    // TODO: Implémenter fonction de suppression Wasabi quand disponible
+  } catch (error) {
+    console.error(`❌ Erreur suppression Wasabi ${filePath}:`, error);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -75,11 +137,49 @@ serve(async (req) => {
     const body: CreatePractitionerRequest = await req.json();
     const { userId, profileData, practitionerData, documents } = body;
 
-    console.log('🚀 Création compte praticien transactionnelle:', userId);
+    console.log('🚀 Création compte praticien atomique:', userId);
+
+    // Validation stricte des données praticien
+    const validationErrors = validatePractitionerData(practitionerData);
+    if (validationErrors.length > 0) {
+      console.error('❌ Erreurs validation:', validationErrors);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Données invalides',
+          details: validationErrors,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+
+    // Validation des documents
+    for (const [key, base64Data] of Object.entries(documents)) {
+      if (base64Data) {
+        const validation = validateDocument(base64Data, key);
+        if (!validation.valid) {
+          console.error('❌ Document invalide:', validation.error);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: validation.error,
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 400,
+            }
+          );
+        }
+      }
+    }
 
     // Variables pour rollback
     let profileCreated = false;
-    let uploadedDocuments: string[] = [];
+    let practitionerCreated = false;
+    let uploadedDocuments: Array<{ key: string; path: string }> = [];
 
     try {
       // 1. Créer le profil
@@ -95,7 +195,7 @@ serve(async (req) => {
       profileCreated = true;
       console.log('✅ Profil créé');
 
-      // 2. Upload des documents
+      // 2. Upload des documents avec validation
       console.log('📤 Upload documents...');
       const uploadedDocs: Record<string, any> = {};
       
@@ -106,8 +206,8 @@ serve(async (req) => {
             const fileName = `${key}_${Date.now()}.${ext}`;
             const result = await uploadDocument(supabase, base64Data, fileName, userId);
             uploadedDocs[key] = result;
-            uploadedDocuments.push(result.path);
-            console.log(`✅ ${key} uploadé`);
+            uploadedDocuments.push({ key, path: result.path });
+            console.log(`✅ ${key} uploadé: ${result.path}`);
           } catch (uploadError: any) {
             console.error(`❌ Erreur upload ${key}:`, uploadError);
             throw new Error(`Échec upload ${key}: ${uploadError?.message || 'Erreur inconnue'}`);
@@ -122,12 +222,16 @@ serve(async (req) => {
         image: uploadedDocs.profilePhoto?.url || null,
         id_document_url: uploadedDocs.idDocument?.path || null,
         license_document_url: uploadedDocs.licenseDocument?.path || null,
-        diplomas: uploadedDocs.diploma ? [uploadedDocs.diploma.path] : null,
+        insurance_document_url: uploadedDocs.diploma?.path || null,
+        kyc_status: 'pending',
+        can_accept_missions: false,
       };
 
-      const { error: practitionerError } = await supabase
+      const { data: practitionerResult, error: practitionerError } = await supabase
         .from('practitioners')
-        .insert([practitionerPayload]);
+        .insert([practitionerPayload])
+        .select()
+        .single();
 
       if (practitionerError) {
         console.error('❌ Erreur praticien:', practitionerError);
