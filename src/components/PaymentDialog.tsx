@@ -30,6 +30,7 @@ interface PaymentResponse {
 
 const POLL_INTERVAL = 3000; // 3 seconds
 const MAX_POLL_TIME = 5 * 60 * 1000; // 5 minutes
+const PROCESSING_TIMEOUT = 10000; // 10 seconds
 
 function normalizePhoneNumber(input: string): string | null {
   const trimmed = input.trim();
@@ -87,6 +88,24 @@ function isPaymentResponse(payload: unknown): payload is PaymentResponse {
   }
 
   return true;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeout: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeout);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 interface PaymentDialogProps {

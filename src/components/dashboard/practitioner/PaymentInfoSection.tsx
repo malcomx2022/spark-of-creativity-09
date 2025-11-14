@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -15,12 +17,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   Building,
   CheckCircle2,
+  Clock,
   Loader2,
   Phone,
+  Radio,
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
@@ -41,6 +46,8 @@ interface PractitionerPaymentInfo {
   bank_name: string | null;
   account_holder_name: string;
   is_verified: boolean | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface FormState {
@@ -69,6 +76,13 @@ const methodDescriptions: Record<PaymentMethod, string> = {
   orange: "Recevez vos versements sur votre numéro Orange Money.",
   moov: "Recevez vos versements sur votre numéro Moov Money.",
   bank: "Recevez vos versements directement sur votre compte bancaire.",
+};
+
+const methodIcons: Record<PaymentMethod, ReactNode> = {
+  mtn: <Smartphone className="h-4 w-4" />,
+  orange: <Smartphone className="h-4 w-4" />,
+  moov: <Smartphone className="h-4 w-4" />,
+  bank: <Building className="h-4 w-4" />,
 };
 
 const sanitizePhoneNumber = (value: string) => value.replace(/\s+/g, "");
@@ -295,6 +309,66 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {paymentInfos && paymentInfos.length > 0 && (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Méthodes enregistrées
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Sélectionnez une méthode pour la modifier ou en enregistrer une nouvelle.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              {paymentInfos.map((info) => {
+                const isActive = info.payment_method === selectedMethod;
+                const lastUpdate = info.updated_at
+                  ? formatDistanceToNow(new Date(info.updated_at), { locale: fr, addSuffix: true })
+                  : "Jamais mise à jour";
+
+                return (
+                  <button
+                    type="button"
+                    key={info.payment_method}
+                    onClick={() => setSelectedMethod(info.payment_method)}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg border p-3 text-left transition-colors",
+                      "hover:border-primary/40 hover:bg-muted/50",
+                      isActive ? "border-primary bg-primary/5" : "border-border"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full border bg-background">
+                        {methodIcons[info.payment_method]}
+                      </div>
+                      <div>
+                        <p className="flex items-center gap-2 font-medium">
+                          {methodLabels[info.payment_method]}
+                          {isActive && <Radio className="h-3.5 w-3.5 text-primary" />}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Mis à jour {lastUpdate}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      {info.is_verified ? (
+                        <Badge className="bg-emerald-500 hover:bg-emerald-500">
+                          <CheckCircle2 className="mr-1 h-3 w-3" /> Vérifiée
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1">
+                          <AlertTriangle className="h-3 w-3" /> À vérifier
+                        </Badge>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Méthode de reversement</Label>
@@ -394,6 +468,16 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
               Utilisez un numéro actif au format international (+229, +225, ...). Les espaces ne sont pas nécessaires.
             </div>
           </div>
+        )}
+
+        {paymentInfos && paymentInfos.length === 0 && (
+          <Alert className="border-dashed">
+            <Clock className="h-4 w-4" />
+            <AlertTitle>Aucune méthode enregistrée</AlertTitle>
+            <AlertDescription>
+              Renseignez vos informations Mobile Money ou bancaires puis enregistrez-les pour activer vos reversements.
+            </AlertDescription>
+          </Alert>
         )}
 
         <Alert variant={isVerified ? "default" : "destructive"}>
