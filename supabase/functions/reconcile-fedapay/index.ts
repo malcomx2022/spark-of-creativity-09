@@ -92,18 +92,24 @@ serve(async (req) => {
 
     if (reportError) throw reportError;
 
-    // Fetch FedaPay transactions
+    // Fetch FedaPay transactions using the new search endpoint
     const fedapayApiUrl = fedapayMode === 'live' 
-      ? 'https://api.fedapay.com/v1/transactions'
-      : 'https://sandbox-api.fedapay.com/v1/transactions';
+      ? 'https://api.fedapay.com/v1/transactions/search'
+      : 'https://sandbox-api.fedapay.com/v1/transactions/search';
     
     console.log('Fetching FedaPay transactions from:', fedapayApiUrl);
     const fedapayResponse = await fetch(fedapayApiUrl, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${fedapaySecretKey}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        created_at: {
+          gte: startDate.toISOString(),
+          lte: endDate.toISOString()
+        }
+      })
     });
 
     if (!fedapayResponse.ok) {
@@ -117,15 +123,16 @@ serve(async (req) => {
     }
 
     const fedapayData = await fedapayResponse.json();
-    const fedapayTransactions: FedaPayTransaction[] = fedapayData.v1?.transactions || [];
+    console.log('FedaPay response structure:', Object.keys(fedapayData));
     
-    // Filter transactions by period
-    const filteredFedapay = fedapayTransactions.filter((tx: FedaPayTransaction) => {
-      const txDate = new Date(tx.created_at);
-      return txDate >= startDate && txDate <= endDate;
-    });
-
-    console.log(`Found ${filteredFedapay.length} FedaPay transactions in period`);
+    // Handle both old and new API response formats
+    const fedapayTransactions: FedaPayTransaction[] = 
+      fedapayData.data || 
+      fedapayData.v1?.transactions || 
+      fedapayData.transactions || 
+      [];
+    
+    console.log(`Found ${fedapayTransactions.length} FedaPay transactions in period`);
 
     // Fetch database payments
     const { data: dbPayments, error: paymentsError } = await supabase
@@ -145,14 +152,14 @@ serve(async (req) => {
 
     // Create maps for faster lookups
     const fedapayMap = new Map(
-      filteredFedapay.map(tx => [tx.id.toString(), tx])
+      fedapayTransactions.map(tx => [tx.id.toString(), tx])
     );
     const dbPaymentsMap = new Map(
       (dbPayments || []).map(p => [p.fedapay_transaction_id, p])
     );
 
     // Check for missing transactions in DB
-    for (const fedapayTx of filteredFedapay) {
+    for (const fedapayTx of fedapayTransactions) {
       const dbPayment = dbPaymentsMap.get(fedapayTx.id.toString());
 
       if (!dbPayment) {
@@ -231,7 +238,7 @@ serve(async (req) => {
       .from('reconciliation_reports')
       .update({
         status: 'completed',
-        total_fedapay_transactions: filteredFedapay.length,
+        total_fedapay_transactions: fedapayTransactions.length,
         total_db_payments: dbPayments?.length || 0,
         matched_count: matched.size,
         missing_in_db_count: anomalies.filter(a => a.type === 'missing_in_db').length,
@@ -282,7 +289,7 @@ serve(async (req) => {
         success: true,
         report_id: report.id,
         summary: {
-          total_fedapay_transactions: filteredFedapay.length,
+          total_fedapay_transactions: fedapayTransactions.length,
           total_db_payments: dbPayments?.length || 0,
           matched_count: matched.size,
           anomalies_count: anomalies.length,
