@@ -96,18 +96,18 @@ export async function invokeEdgeFunctionWithRetry<T>(
 
       if (!result.error) {
         return {
-          ...(result as Record<string, unknown>),
           data: result.data as T | null,
           error: null,
-        } as EdgeFunctionInvokeResult<T>;
+          status: 200,
+          statusText: 'OK',
+        };
       }
 
       if (!isTransientNetworkError(result.error) || attempt === attempts) {
         return {
-          ...(result as Record<string, unknown>),
           data: result.data as T | null,
           error: toError(result.error),
-        } as EdgeFunctionInvokeResult<T>;
+        };
       }
 
       lastError = result.error;

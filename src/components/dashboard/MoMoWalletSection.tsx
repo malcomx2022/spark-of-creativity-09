@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import type { MoMoWalletResponse } from "@/types/edge-function-responses";
 import { toast } from "sonner";
 import { Wallet, Plus, Trash2 } from "lucide-react";
 
@@ -22,11 +23,11 @@ export default function MoMoWalletSection() {
   const { data: wallets, isLoading } = useQuery({
     queryKey: ['momo-wallets'],
     queryFn: async () => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('manage-momo-wallet', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<MoMoWalletResponse>('manage-momo-wallet', {
         body: { action: 'list' }
       });
       if (error) throw error;
-      return data.wallets || [];
+      return data?.wallets || [];
     },
   });
 

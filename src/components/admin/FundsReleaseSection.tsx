@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import type { ReleaseHeldFundsResponse } from '@/types/edge-function-responses';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +38,7 @@ export function FundsReleaseSection() {
 
   const releaseMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('release-held-funds', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<ReleaseHeldFundsResponse>('release-held-funds', {
         body: { manual_trigger: true },
       });
 
@@ -47,7 +48,7 @@ export function FundsReleaseSection() {
     onSuccess: (data) => {
       setLastRunResult(data);
       toast.success(
-        `Release terminé: ${data.results?.released || 0} paiements libérés, ${data.results?.failed || 0} échecs`
+        `Release terminé: ${data?.results?.released || data?.released_count || 0} paiements libérés, ${data?.results?.failed || 0} échecs`
       );
       refetch();
     },

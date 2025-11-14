@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
 import { uploadUserDocument } from "@/lib/file-upload";
 
 interface SignupFormData {
@@ -273,7 +274,7 @@ export default function PractitionerSignup() {
       }
 
       // Appeler l'edge function transactionnelle
-      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry(
+      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
         'create-practitioner-account',
         {
           body: {
