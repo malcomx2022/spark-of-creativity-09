@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
   Building,
@@ -28,6 +28,7 @@ import {
   Radio,
   ShieldCheck,
   Smartphone,
+  Wallet,
 } from "lucide-react";
 
 interface PaymentInfoSectionProps {
@@ -40,7 +41,7 @@ type PaymentMethod = "mtn" | "orange" | "moov" | "bank";
 interface PractitionerPaymentInfo {
   id: string;
   practitioner_id: string;
-  payment_method: PaymentMethod;
+  payment_method: PaymentMethod | string;
   phone_number: string | null;
   bank_account_number: string | null;
   bank_name: string | null;
@@ -64,18 +65,46 @@ interface FormErrors {
   bankAccountNumber?: string;
 }
 
-const methodLabels: Record<PaymentMethod, string> = {
-  mtn: "MTN Mobile Money",
-  orange: "Orange Money",
-  moov: "Moov Money",
-  bank: "Compte bancaire",
-};
+interface PaymentMethodMetadata {
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  helper?: string;
+  phoneExample?: string;
+  phoneRegex?: RegExp;
+}
 
-const methodDescriptions: Record<PaymentMethod, string> = {
-  mtn: "Recevez vos versements sur votre numéro MTN Mobile Money.",
-  orange: "Recevez vos versements sur votre numéro Orange Money.",
-  moov: "Recevez vos versements sur votre numéro Moov Money.",
-  bank: "Recevez vos versements directement sur votre compte bancaire.",
+const paymentMethodMetadata: Record<PaymentMethod, PaymentMethodMetadata> = {
+  mtn: {
+    label: "MTN Mobile Money",
+    description: "Recevez vos reversements sur votre numéro MTN Mobile Money.",
+    icon: Smartphone,
+    helper: "Utilisez votre numéro Mobile Money actif au format international.",
+    phoneExample: "+22960000000",
+    phoneRegex: /^\+[1-9][0-9]{7,14}$/,
+  },
+  orange: {
+    label: "Orange Money",
+    description: "Recevez vos reversements sur votre numéro Orange Money.",
+    icon: Smartphone,
+    helper: "Le numéro doit être accessible pour recevoir vos reversements.",
+    phoneExample: "+2250700000000",
+    phoneRegex: /^\+[1-9][0-9]{7,14}$/,
+  },
+  moov: {
+    label: "Moov Money",
+    description: "Recevez vos reversements sur votre numéro Moov Money.",
+    icon: Smartphone,
+    helper: "Saisissez un numéro Moov Money valide sans espaces.",
+    phoneExample: "+22995000000",
+    phoneRegex: /^\+[1-9][0-9]{7,14}$/,
+  },
+  bank: {
+    label: "Compte bancaire",
+    description: "Recevez vos reversements directement sur votre compte bancaire.",
+    icon: Building,
+    helper: "Le nom du titulaire doit correspondre à celui enregistré par votre banque.",
+  },
 };
 
 const methodIcons: Record<PaymentMethod, ReactNode> = {
@@ -88,15 +117,48 @@ const methodIcons: Record<PaymentMethod, ReactNode> = {
 const sanitizePhoneNumber = (value: string) => value.replace(/\s+/g, "");
 const sanitizeAccountNumber = (value: string) => value.replace(/\s+/g, "").toUpperCase();
 
-const isValidPhoneNumber = (value: string) => {
-  const normalized = sanitizePhoneNumber(value);
-  return /^\+?[0-9]{8,15}$/.test(normalized);
+const normalizePhoneNumber = (value: string) => {
+  if (!value) return "";
+
+  let normalized = value.replace(/\s+/g, "");
+
+  if (normalized.startsWith("00")) {
+    normalized = `+${normalized.slice(2)}`;
+  }
+
+  if (!normalized.startsWith("+")) {
+    if (/^[0-9]{8}$/.test(normalized)) {
+      normalized = `+229${normalized}`;
+    } else {
+      normalized = `+${normalized}`;
+    }
+  }
+
+  return normalized;
+};
+
+const isValidPhoneNumber = (value: string, method: PaymentMethod) => {
+  const normalized = normalizePhoneNumber(value);
+  const { phoneRegex } = paymentMethodMetadata[method];
+
+  if (!/^[+][1-9][0-9]{7,14}$/.test(normalized)) {
+    return false;
+  }
+
+  if (phoneRegex) {
+    return phoneRegex.test(normalized);
+  }
+
+  return true;
 };
 
 const isValidBankAccountNumber = (value: string) => {
   const normalized = sanitizeAccountNumber(value);
   return /^[0-9A-Za-z]{8,34}$/.test(normalized);
 };
+
+const isPaymentMethod = (method: string): method is PaymentMethod =>
+  method === "mtn" || method === "orange" || method === "moov" || method === "bank";
 
 export function PaymentInfoSection({ practitionerId, practitionerName }: PaymentInfoSectionProps) {
   const { toast } = useToast();
@@ -137,7 +199,9 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     const methodExists = paymentInfos.some((info) => info.payment_method === selectedMethod);
     if (!methodExists) {
       const preferred = paymentInfos.find((info) => info.is_verified) || paymentInfos[0];
-      setSelectedMethod(preferred.payment_method);
+      if (preferred && isPaymentMethod(preferred.payment_method)) {
+        setSelectedMethod(preferred.payment_method);
+      }
     }
   }, [paymentInfos, selectedMethod]);
 
@@ -159,7 +223,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
   const mutation = useMutation({
     mutationFn: async (payload: { verify: boolean }) => {
-      const sanitizedPhone = selectedMethod === "bank" ? null : sanitizePhoneNumber(formState.phoneNumber);
+      const sanitizedPhone = selectedMethod === "bank" ? null : normalizePhoneNumber(formState.phoneNumber);
       const sanitizedAccount = selectedMethod === "bank" ? sanitizeAccountNumber(formState.bankAccountNumber) : null;
 
       const updatePayload = {
@@ -238,8 +302,11 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     } else {
       if (!formState.phoneNumber.trim()) {
         errors.phoneNumber = "Le numéro Mobile Money est obligatoire.";
-      } else if (!isValidPhoneNumber(formState.phoneNumber)) {
-        errors.phoneNumber = "Numéro de téléphone invalide (8 à 15 chiffres, + optionnel).";
+      } else if (!isValidPhoneNumber(formState.phoneNumber, selectedMethod)) {
+        const metadata = paymentMethodMetadata[selectedMethod];
+        errors.phoneNumber = metadata.phoneExample
+          ? `Format invalide. Exemple attendu : ${metadata.phoneExample}`
+          : "Numéro de téléphone invalide.";
       }
     }
 
@@ -283,7 +350,27 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     );
   }
 
-  const showVerifyButton = selectedMethod === "bank" ? !!formState.bankAccountNumber : !!formState.phoneNumber;
+  const showVerifyButton = useMemo(() => {
+    if (selectedMethod === "bank") {
+      return Boolean(formState.bankAccountNumber && isValidBankAccountNumber(formState.bankAccountNumber));
+    }
+
+    return Boolean(formState.phoneNumber && isValidPhoneNumber(formState.phoneNumber, selectedMethod));
+  }, [formState.bankAccountNumber, formState.phoneNumber, selectedMethod]);
+
+  const methodMetadata = paymentMethodMetadata[selectedMethod];
+
+  const existingMethods = useMemo(() => {
+    if (!paymentInfos?.length) return [];
+
+    return paymentInfos
+      .filter((info) => isPaymentMethod(info.payment_method))
+      .map((info) => ({
+        method: info.payment_method as PaymentMethod,
+        metadata: paymentMethodMetadata[info.payment_method as PaymentMethod],
+        info,
+      }));
+  }, [paymentInfos]);
 
   return (
     <Card>
@@ -295,7 +382,10 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
               Configurez la méthode de paiement utilisée pour recevoir vos reversements.
             </CardDescription>
           </div>
-          <Badge variant={isVerified ? "default" : "secondary"} className={isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}>
+          <Badge
+            variant={isVerified ? "default" : "secondary"}
+            className={isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}
+          >
             {isVerified ? (
               <span className="flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5" /> Vérifié
@@ -309,63 +399,34 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {paymentInfos && paymentInfos.length > 0 && (
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Méthodes enregistrées
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Sélectionnez une méthode pour la modifier ou en enregistrer une nouvelle.
-              </p>
-            </div>
-            <div className="grid gap-2">
-              {paymentInfos.map((info) => {
-                const isActive = info.payment_method === selectedMethod;
-                const lastUpdate = info.updated_at
-                  ? formatDistanceToNow(new Date(info.updated_at), { locale: fr, addSuffix: true })
-                  : "Jamais mise à jour";
-
-                return (
-                  <button
-                    type="button"
-                    key={info.payment_method}
-                    onClick={() => setSelectedMethod(info.payment_method)}
-                    className={cn(
-                      "flex items-center justify-between rounded-lg border p-3 text-left transition-colors",
-                      "hover:border-primary/40 hover:bg-muted/50",
-                      isActive ? "border-primary bg-primary/5" : "border-border"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full border bg-background">
-                        {methodIcons[info.payment_method]}
-                      </div>
-                      <div>
-                        <p className="flex items-center gap-2 font-medium">
-                          {methodLabels[info.payment_method]}
-                          {isActive && <Radio className="h-3.5 w-3.5 text-primary" />}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Mis à jour {lastUpdate}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      {info.is_verified ? (
-                        <Badge className="bg-emerald-500 hover:bg-emerald-500">
-                          <CheckCircle2 className="mr-1 h-3 w-3" /> Vérifiée
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="gap-1">
-                          <AlertTriangle className="h-3 w-3" /> À vérifier
-                        </Badge>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+        {existingMethods.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {existingMethods.map(({ method, metadata, info }) => {
+              const Icon = metadata.icon;
+              return (
+                <div key={method} className="rounded-lg border bg-background p-3 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 font-medium">
+                      <Icon className="h-4 w-4" />
+                      {metadata.label}
+                    </span>
+                    <Badge variant={info.is_verified ? "default" : "secondary"}>
+                      {info.is_verified ? "Vérifié" : "Non vérifié"}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    {info.phone_number && <p>Téléphone : {info.phone_number}</p>}
+                    {info.bank_name && <p>Banque : {info.bank_name}</p>}
+                    {info.bank_account_number && <p>Compte : {info.bank_account_number}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            <Wallet className="h-5 w-5" />
+            <span>Aucune coordonnée de reversement enregistrée pour le moment.</span>
           </div>
         )}
 
@@ -377,28 +438,36 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
                 <SelectValue placeholder="Sélectionnez une méthode" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mtn">MTN Mobile Money</SelectItem>
-                <SelectItem value="orange">Orange Money</SelectItem>
-                <SelectItem value="moov">Moov Money</SelectItem>
-                <SelectItem value="bank">Compte bancaire</SelectItem>
+                {(Object.entries(paymentMethodMetadata) as [PaymentMethod, PaymentMethodMetadata][]).map(
+                  ([key, metadata]) => {
+                    const Icon = metadata.icon;
+                    return (
+                      <SelectItem key={key} value={key}>
+                        <span className="flex items-center gap-2">
+                          <Icon className="h-4 w-4" />
+                          {metadata.label}
+                        </span>
+                      </SelectItem>
+                    );
+                  }
+                )}
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground">
-              {methodDescriptions[selectedMethod]}
-            </p>
+            <p className="text-sm text-muted-foreground">{methodMetadata.description}</p>
           </div>
           <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground space-y-2">
             <div className="flex items-center gap-2 font-medium text-foreground">
-              {selectedMethod === "bank" ? (
-                <Building className="h-4 w-4" />
-              ) : (
-                <Smartphone className="h-4 w-4" />
-              )}
-              {methodLabels[selectedMethod]}
+              {selectedMethod === "bank" ? <Building className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
+              {methodMetadata.label}
             </div>
             <p>
-              Assurez-vous que les informations saisies correspondent exactement à celles détenues par votre opérateur ou votre banque.
+              Assurez-vous que les informations saisies correspondent exactement à celles détenues par votre opérateur ou votre
+              banque.
             </p>
+            {methodMetadata.helper && <p>{methodMetadata.helper}</p>}
+            {methodMetadata.phoneExample && selectedMethod !== "bank" && (
+              <p className="text-xs">Exemple : {methodMetadata.phoneExample}</p>
+            )}
           </div>
         </div>
 
@@ -425,9 +494,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
                 onChange={(event) => handleFieldChange("bankName", event.target.value)}
                 placeholder="Nom de la banque"
               />
-              {formErrors.bankName && (
-                <p className="text-sm text-destructive">{formErrors.bankName}</p>
-              )}
+              {formErrors.bankName && <p className="text-sm text-destructive">{formErrors.bankName}</p>}
             </div>
           ) : (
             <div className="space-y-2">
@@ -439,9 +506,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
                 placeholder="Ex: +22960000000"
                 inputMode="tel"
               />
-              {formErrors.phoneNumber && (
-                <p className="text-sm text-destructive">{formErrors.phoneNumber}</p>
-              )}
+              {formErrors.phoneNumber && <p className="text-sm text-destructive">{formErrors.phoneNumber}</p>}
             </div>
           )}
         </div>
@@ -465,7 +530,10 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
           <div className="rounded-lg border border-dashed p-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Phone className="h-4 w-4" />
-              Utilisez un numéro actif au format international (+229, +225, ...). Les espaces ne sont pas nécessaires.
+              <span>
+                Utilisez un numéro actif au format international. Les espaces et préfixes "00" seront automatiquement adaptés au
+                format +. Exemple : {methodMetadata.phoneExample || "+22960000000"}
+              </span>
             </div>
           </div>
         )}
