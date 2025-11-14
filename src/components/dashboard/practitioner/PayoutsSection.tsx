@@ -58,13 +58,15 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
           console.log('💰 Balance mise à jour:', payload);
           queryClient.invalidateQueries({ queryKey: ['practitioner-balance', practitionerId] });
           
-          // Afficher notification à l'utilisateur
+          // Afficher notification à l'utilisateur - utilise setTimeout pour éviter l'erreur React #310
           if (payload.eventType === 'UPDATE') {
             const newBalance = payload.new as any;
-            toast({
-              title: "Balance mise à jour",
-              description: `Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`,
-            });
+            setTimeout(() => {
+              toast({
+                title: "Balance mise à jour",
+                description: `Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`,
+              });
+            }, 0);
           }
         }
       )
@@ -73,7 +75,7 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [practitionerId, queryClient, toast]);
+  }, [practitionerId, queryClient]);
 
   // Fetch payments history
   const { data: payments } = useQuery({
