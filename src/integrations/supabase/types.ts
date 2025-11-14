@@ -949,6 +949,68 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_attempts: {
+        Row: {
+          amount: number
+          appointment_id: string | null
+          attempt_number: number
+          completed_at: string | null
+          created_at: string | null
+          error_details: Json | null
+          error_message: string | null
+          error_type: string | null
+          id: string
+          payment_id: string | null
+          payment_method: string
+          phone_number_encrypted: string | null
+          retry_after: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          appointment_id?: string | null
+          attempt_number?: number
+          completed_at?: string | null
+          created_at?: string | null
+          error_details?: Json | null
+          error_message?: string | null
+          error_type?: string | null
+          id?: string
+          payment_id?: string | null
+          payment_method: string
+          phone_number_encrypted?: string | null
+          retry_after?: string | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          appointment_id?: string | null
+          attempt_number?: number
+          completed_at?: string | null
+          created_at?: string | null
+          error_details?: Json | null
+          error_message?: string | null
+          error_type?: string | null
+          id?: string
+          payment_id?: string | null
+          payment_method?: string
+          phone_number_encrypted?: string | null
+          retry_after?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_attempts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_events: {
         Row: {
           created_at: string | null
@@ -2008,6 +2070,7 @@ export type Database = {
       cleanup_expired_payment_slots: { Args: never; Returns: undefined }
       cleanup_old_file_access_logs: { Args: never; Returns: undefined }
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
+      cleanup_old_payment_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
       has_role: {
         Args: {

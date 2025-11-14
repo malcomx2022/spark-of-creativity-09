@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
@@ -20,6 +20,7 @@ import {
   setPersistedPaymentState,
 } from '@/lib/payment-storage';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
+import { PaymentAttemptsHistory } from '@/components/PaymentAttemptsHistory';
 
 type PaymentMethod = 'mtn' | 'orange' | 'moov';
 
@@ -86,9 +87,40 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [useSavedMethod, setUseSavedMethod] = useState(false);
   const [selectedSavedMethod, setSelectedSavedMethod] = useState<string>('');
   const [autoPrefilled, setAutoPrefilled] = useState(false);
+  const [attemptNumber, setAttemptNumber] = useState(0);
   const hasRehydratedRef = useRef(false);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
+
+  // Enregistrer une tentative de paiement
+  const recordPaymentAttempt = async (
+    status: 'pending' | 'success' | 'failed' | 'timeout',
+    errorMessage?: string,
+    errorType?: string,
+    errorDetails?: Record<string, any>
+  ) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      await supabase.from('payment_attempts').insert({
+        appointment_id: appointmentId,
+        user_id: session.user.id,
+        attempt_number: attemptNumber + 1,
+        status,
+        error_type: errorType || null,
+        error_message: errorMessage || null,
+        error_details: errorDetails || null,
+        payment_method: paymentMethod,
+        amount,
+        payment_id: paymentId || null,
+      });
+
+      setAttemptNumber(prev => prev + 1);
+    } catch (error) {
+      console.error('Error recording payment attempt:', error);
+    }
+  };
 
   // Pré-sélectionner la méthode par défaut lorsqu'aucun numéro n'est fourni
   useEffect(() => {
@@ -196,6 +228,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     setIsProcessing(true);
     setPaymentStatus('pending');
+    await recordPaymentAttempt('pending');
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -206,17 +239,37 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
-      const { data: result, error } = await invokeEdgeFunctionWithRetry('create-payment', {
-        body: {
-          appointmentId,
-          amount,
-          paymentMethod,
-          phoneNumber: sanitizedPhoneNumber,
+      // Appel avec retry et notification à chaque tentative
+      const { data: result, error } = await invokeEdgeFunctionWithRetry(
+        'create-payment',
+        {
+          body: {
+            appointmentId,
+            amount,
+            paymentMethod,
+            phoneNumber: sanitizedPhoneNumber,
+          },
         },
-      });
+        3, // 3 tentatives max
+        (attempt, retryError) => {
+          // Toast d'information lors des retries
+          toast({
+            title: `Tentative ${attempt + 1}...`,
+            description: 'Nouvelle tentative de connexion au service de paiement.',
+            duration: 2000,
+          });
+          
+          // Enregistrer la tentative échouée
+          recordPaymentAttempt('failed', retryError.message, 'network_error', {
+            attempt: attempt + 1,
+            error: retryError.message,
+          });
+        }
+      );
 
       if (error) {
         console.error('Supabase function error:', error);
+        await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
         throw error;
       }
 
@@ -299,10 +352,17 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       
+      // Enregistrer l'échec définitif
+      await recordPaymentAttempt('failed', errorMessage, 'payment_error', {
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+      });
+      
       toast({
         title: 'Erreur de paiement',
         description: errorMessage,
         variant: 'destructive',
+        duration: 5000,
       });
     }
   };
@@ -320,6 +380,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setUseSavedMethod(false);
     setSelectedSavedMethod('');
     setAutoPrefilled(false);
+    setAttemptNumber(0);
     hasRehydratedRef.current = false;
     clearPersistedPaymentState();
   }, []);
@@ -367,6 +428,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           clearInterval(pollInterval);
           setPaymentStatus('success');
           setIsProcessing(false);
+          
+          // Enregistrer le succès
+          await recordPaymentAttempt('success');
+          
           toast({
             title: "Paiement réussi !",
             description: "Votre rendez-vous a été confirmé.",
@@ -384,6 +449,12 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           clearInterval(pollInterval);
           setPaymentStatus('error');
           setIsProcessing(false);
+          
+          // Enregistrer l'échec
+          await recordPaymentAttempt('failed', `Paiement ${payment.status}`, 'payment_status_error', {
+            status: payment.status,
+          });
+          
           toast({
             variant: "destructive",
             title: "Paiement échoué",
@@ -579,13 +650,19 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         );
       case 'error':
         return (
-          <div className="flex flex-col items-center justify-center py-8 space-y-4">
-            <XCircle className="h-16 w-16 text-destructive" />
-            <p className="text-lg font-semibold">Erreur de paiement</p>
-            <p className="text-sm text-muted-foreground text-center">
-              Une erreur s'est produite. Veuillez réessayer.
-            </p>
-            <Button onClick={() => setPaymentStatus('idle')} variant="outline">
+          <div className="space-y-4">
+            <div className="flex flex-col items-center justify-center py-8 space-y-4">
+              <XCircle className="h-16 w-16 text-destructive" />
+              <p className="text-lg font-semibold">Erreur de paiement</p>
+              <p className="text-sm text-muted-foreground text-center">
+                Une erreur s'est produite. Veuillez réessayer.
+              </p>
+            </div>
+            
+            {/* Afficher l'historique des tentatives en cas d'erreur */}
+            <PaymentAttemptsHistory appointmentId={appointmentId} />
+            
+            <Button onClick={() => setPaymentStatus('idle')} variant="outline" className="w-full">
               Réessayer
             </Button>
           </div>
@@ -733,6 +810,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 <ReceiptText className="h-3 w-3" /> Une trace du paiement sera disponible dans vos reçus une fois l&apos;opération confirmée.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Historique des tentatives */}
+        {paymentStatus === 'idle' && (
+          <div className="mt-4">
+            <PaymentAttemptsHistory appointmentId={appointmentId} />
           </div>
         )}
 

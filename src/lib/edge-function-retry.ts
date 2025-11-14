@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
-const MAX_ATTEMPTS = 2;
-const BASE_DELAY_MS = 300;
+const MAX_ATTEMPTS = 3; // Plus de tentatives pour les erreurs réseau
+const BASE_DELAY_MS = 1000; // Délai plus long pour laisser le temps au réseau de récupérer
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   "failed to fetch",
@@ -85,16 +85,20 @@ export type EdgeFunctionInvokeResult<T> = {
 export async function invokeEdgeFunctionWithRetry<T>(
   functionName: string,
   options?: EdgeFunctionInvokeOptions,
-  maxAttempts: number = MAX_ATTEMPTS
+  maxAttempts: number = MAX_ATTEMPTS,
+  onRetry?: (attempt: number, error: Error) => void
 ): Promise<EdgeFunctionInvokeResult<T>> {
   const attempts = Math.max(1, maxAttempts);
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
+      console.log(`[Retry] Tentative ${attempt}/${attempts} pour ${functionName}`);
+      
       const result = await supabase.functions.invoke<T>(functionName, options as any);
 
       if (!result.error) {
+        console.log(`[Retry] Succès à la tentative ${attempt}`);
         return {
           data: result.data as T | null,
           error: null,
@@ -104,6 +108,7 @@ export async function invokeEdgeFunctionWithRetry<T>(
       }
 
       if (!isTransientNetworkError(result.error) || attempt === attempts) {
+        console.error(`[Retry] Échec définitif à la tentative ${attempt}:`, result.error);
         return {
           data: result.data as T | null,
           error: toError(result.error),
@@ -111,22 +116,37 @@ export async function invokeEdgeFunctionWithRetry<T>(
       }
 
       lastError = result.error;
+      console.warn(`[Retry] Tentative ${attempt} échouée, retry dans ${BASE_DELAY_MS * Math.pow(2, attempt - 1)}ms`);
+      
+      // Notifier le callback de retry si fourni
+      if (onRetry) {
+        onRetry(attempt, toError(lastError));
+      }
     } catch (error) {
       if (!isTransientNetworkError(error)) {
+        console.error(`[Retry] Erreur non retryable:`, error);
         throw error;
       }
 
       lastError = error;
+      console.warn(`[Retry] Erreur réseau à la tentative ${attempt}:`, error);
 
       if (attempt === attempts) {
+        console.error(`[Retry] Échec après ${attempts} tentatives`);
         return {
           data: null,
           error: toError(lastError),
         };
       }
+      
+      // Notifier le callback de retry si fourni
+      if (onRetry) {
+        onRetry(attempt, toError(lastError));
+      }
     }
 
-    const backoffDelay = BASE_DELAY_MS * attempt;
+    // Backoff exponentiel: 1s, 2s, 4s, 8s...
+    const backoffDelay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
     await delay(backoffDelay);
   }
 
