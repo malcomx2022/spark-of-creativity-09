@@ -380,11 +380,11 @@ export default function PatientSignup() {
                   />
                   <Label htmlFor="terms" className="text-sm">
                     J'accepte les{" "}
-                    <a href="#" className="text-primary hover:underline">
+                    <a href="/terms-of-service" className="text-primary hover:underline">
                       Conditions Générales d'Utilisation
                     </a>{" "}
                     et la{" "}
-                    <a href="#" className="text-primary hover:underline">
+                    <a href="/privacy-policy" className="text-primary hover:underline">
                       Politique de Confidentialité
                     </a>
                   </Label>

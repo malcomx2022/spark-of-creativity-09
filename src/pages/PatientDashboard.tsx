@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
@@ -185,12 +185,15 @@ export default function PatientDashboard() {
     }
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = useCallback(() => {
     console.log('✅ Paiement réussi');
     setPaymentDialogOpen(false);
     setAppointmentIdForPayment(null);
     setPaymentAmount(null);
-  };
+
+    queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
+    queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
+  }, [patientId, queryClient]);
 
   const handlePaymentDialogOpenChange = (open: boolean) => {
     setPaymentDialogOpen(open);

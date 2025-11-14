@@ -106,13 +106,13 @@ export default function Footer() {
             </p>
             <div className="flex gap-4">
               <button
-                onClick={() => navigate("/terms")}
+                onClick={() => navigate("/terms-of-service")}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Conditions d'utilisation
               </button>
               <button
-                onClick={() => navigate("/privacy")}
+                onClick={() => navigate("/privacy-policy")}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Politique de confidentialité

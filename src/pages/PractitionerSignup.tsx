@@ -721,11 +721,11 @@ export default function PractitionerSignup() {
                   />
                   <Label htmlFor="terms" className="text-sm">
                     J'accepte la{" "}
-                    <a href="#" className="text-secondary hover:underline">
+                    <a href="/terms-of-service#charte-praticiens" className="text-secondary hover:underline">
                       Charte d'engagement des praticiens DomiCares
                     </a>{" "}
                     et les{" "}
-                    <a href="#" className="text-secondary hover:underline">
+                    <a href="/terms-of-service" className="text-secondary hover:underline">
                       CGU
                     </a>
                   </Label>
