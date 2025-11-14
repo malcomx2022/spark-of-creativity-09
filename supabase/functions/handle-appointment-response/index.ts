@@ -159,7 +159,10 @@ serve(async (req) => {
             appointmentId: appointmentId,
             amount: paymentAmount,
             paymentMethod: 'mobile_money',
-            phoneNumber: appointment.patient_id, // Le patient devra renseigner son numéro sur FedaPay
+            phoneNumber: appointment.patient_id,
+          },
+          headers: {
+            Authorization: authHeader,
           }
         }
       );
