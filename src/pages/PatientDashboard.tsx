@@ -27,6 +27,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { completePatientOnboardingFromMetadata } from '@/lib/patient-onboarding';
 import { formatAmount } from '@/lib/payment-config';
+import { getPersistedPaymentState } from '@/lib/payment-storage';
 
 export default function PatientDashboard() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -39,6 +40,18 @@ export default function PatientDashboard() {
     (user?.user_metadata?.full_name as string | undefined) ||
     user?.email ||
     'Patient';
+
+  useEffect(() => {
+    const persisted = getPersistedPaymentState();
+
+    if (persisted?.paymentStatus !== 'pending') {
+      return;
+    }
+
+    setAppointmentIdForPayment(persisted.appointmentId);
+    setPaymentAmount(persisted.amount);
+    setPaymentDialogOpen(true);
+  }, []);
 
   const {
     data: appointments = [],
