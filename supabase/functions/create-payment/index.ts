@@ -180,7 +180,7 @@ serve(async (req) => {
       );
     }
 
-    if (appointment.patient_id !== user.id) {
+    if (appointment.patient_id !== user.id && appointment.practitioner_id !== user.id) {
       console.error('Appointment does not belong to user');
       return new Response(
         JSON.stringify({ error: 'Unauthorized: Appointment does not belong to you' }),
@@ -188,8 +188,11 @@ serve(async (req) => {
       );
     }
 
+    // Determine which user ID to use for the payment record (always the patient)
+    const paymentUserId = appointment.patient_id;
+
     // Générer une clé d'idempotence
-    const idempotencyKey = `${user.id}-${appointmentId}-${Date.now()}`;
+    const idempotencyKey = `${paymentUserId}-${appointmentId}-${Date.now()}`;
 
     // Vérifier si l'appointment a déjà été payé
     const { data: existingPayment } = await supabase
@@ -291,7 +294,7 @@ serve(async (req) => {
         customer: {
           firstname: 'Patient',
           lastname: 'User',
-          email: `patient-${user.id}@domicares.app`,
+          email: `patient-${paymentUserId}@domicares.app`,
           phone_number: {
             number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
             country: 'bj'
@@ -393,7 +396,7 @@ serve(async (req) => {
       .from('payments')
       .insert({
         appointment_id: appointmentId,
-        patient_id: user.id,
+        patient_id: paymentUserId,
         amount: feeBreakdown.amount,
         currency: feeBreakdown.currency,
         payment_method: paymentMethod,
@@ -470,7 +473,7 @@ serve(async (req) => {
       supabase,
       supabaseUrl,
       serviceRoleKey: supabaseKey,
-      userId: user.id,
+      userId: paymentUserId,
       title: 'Paiement initialisé',
         message: `Votre paiement de ${amountToCharge} XOF pour le rendez-vous a été créé. Confirmez sur votre mobile en entrant votre code PIN USSD ou cliquez pour ouvrir FedaPay.`,
       type: 'payment',
