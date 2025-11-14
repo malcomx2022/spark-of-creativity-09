@@ -309,25 +309,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     mutation.mutate({ verify });
   };
 
-  if (!practitionerId) {
-    return null;
-  }
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuration des reversements</CardTitle>
-          <CardDescription>Chargement des informations de paiement...</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Chargement...</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
+  // All hooks must be called before any early returns
   const showVerifyButton = useMemo(() => {
     if (selectedMethod === "bank") {
       return Boolean(formState.bankAccountNumber && isValidBankAccountNumber(formState.bankAccountNumber));
@@ -349,6 +331,26 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
         info,
       }));
   }, [paymentInfos]);
+
+  // Conditional returns after all hooks
+  if (!practitionerId) {
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration des reversements</CardTitle>
+          <CardDescription>Chargement des informations de paiement...</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Chargement...</span>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
