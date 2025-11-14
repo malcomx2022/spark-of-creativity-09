@@ -29,6 +29,7 @@ interface PaymentResponse {
 
 const POLL_INTERVAL = 3000; // 3 seconds
 const MAX_POLL_TIME = 5 * 60 * 1000; // 5 minutes
+const PROCESSING_TIMEOUT = 10000; // 10 seconds
 
 function normalizePhoneNumber(input: string): string | null {
   const trimmed = input.trim();
@@ -86,6 +87,24 @@ function isPaymentResponse(payload: unknown): payload is PaymentResponse {
   }
 
   return true;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeout: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeout);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 interface PaymentDialogProps {
@@ -229,14 +248,18 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
-      const { data: result, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          appointmentId,
-          amount,
-          paymentMethod,
-          phoneNumber: sanitizedPhoneNumber,
-        },
-      });
+      const { data: result, error } = await withTimeout(
+        supabase.functions.invoke('create-payment', {
+          body: {
+            appointmentId,
+            amount,
+            paymentMethod,
+            phoneNumber: sanitizedPhoneNumber,
+          },
+        }),
+        PROCESSING_TIMEOUT,
+        'La connexion au serveur prend trop de temps. Veuillez vérifier votre réseau.'
+      );
 
       if (error) {
         console.error('Supabase function error:', error);
