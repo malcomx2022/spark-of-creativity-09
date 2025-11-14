@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { toast } from "sonner";
 import { Wallet, Plus, Trash2 } from "lucide-react";
 
@@ -21,7 +22,7 @@ export default function MoMoWalletSection() {
   const { data: wallets, isLoading } = useQuery({
     queryKey: ['momo-wallets'],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('manage-momo-wallet', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('manage-momo-wallet', {
         body: { action: 'list' }
       });
       if (error) throw error;
@@ -32,7 +33,7 @@ export default function MoMoWalletSection() {
   // Link wallet mutation
   const linkWallet = useMutation({
     mutationFn: async (walletData: any) => {
-      const { data, error } = await supabase.functions.invoke('manage-momo-wallet', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('manage-momo-wallet', {
         body: { action: 'link', ...walletData }
       });
       if (error) throw error;
@@ -54,7 +55,7 @@ export default function MoMoWalletSection() {
   // Unlink wallet mutation
   const unlinkWallet = useMutation({
     mutationFn: async (walletId: string) => {
-      const { data, error } = await supabase.functions.invoke('manage-momo-wallet', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('manage-momo-wallet', {
         body: { action: 'unlink', walletId }
       });
       if (error) throw error;

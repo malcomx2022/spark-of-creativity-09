@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +49,7 @@ export function PayoutsManagementSection() {
   // Create payout batch mutation
   const createBatchMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('create-payout-batch', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('create-payout-batch', {
         body: {
           practitionerIds: selectedPractitioners,
           paymentMethod
