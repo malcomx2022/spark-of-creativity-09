@@ -184,7 +184,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
         time: data.time,
         reason: data.reason,
         urgencyLevel: data.urgencyLevel,
-        practitionerId: practitioner.user_id,
+        practitionerId: practitioner.id,
         practitionerName: practitioner.name,
       };
       

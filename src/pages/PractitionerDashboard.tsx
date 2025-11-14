@@ -41,7 +41,7 @@ export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
-  const practitionerId = user?.id;
+  const practitionerUserId = user?.id;
   const practitionerName =
     (user?.user_metadata?.full_name as string | undefined) ||
     user?.email ||
@@ -49,26 +49,28 @@ export default function PractitionerDashboard() {
 
   // Récupérer les données du praticien
   const { data: practitioner, isLoading: practitionerLoading } = useQuery({
-    queryKey: ["practitioner", user?.id],
+    queryKey: ["practitioner", practitionerUserId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!practitionerUserId) return null;
       const { data, error } = await supabase
         .from("practitioners")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", practitionerUserId)
         .single();
-      
+
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id,
+    enabled: !!practitionerUserId,
   });
+
+  const practitionerId = practitioner?.id;
 
   const {
     data: appointments = [],
     isLoading: isLoadingAppointments,
     isError,
-  } = usePractitionerAppointments(user?.id);
+  } = usePractitionerAppointments(practitionerId);
 
   const mutateAppointment = useMutateAppointment();
 
