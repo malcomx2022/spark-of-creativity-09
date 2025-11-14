@@ -74,14 +74,13 @@ export default function LoginPage() {
       <main className="pt-24 pb-12">
         <div className="container mx-auto px-4 max-w-md">
           <div className="mb-6">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                console.log('Retour button clicked');
-                navigate("/", { replace: true });
-              }}
-              className="mb-4"
-            >
+          <Button
+            variant="ghost"
+            onClick={() => {
+              window.location.href = "/";
+            }}
+            className="mb-4"
+          >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
             </Button>
