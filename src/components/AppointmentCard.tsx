@@ -24,6 +24,8 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
+        return 'bg-green-500/10 text-green-600 border-green-500/20';
+      case 'pending_payment':
         return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
       case 'awaiting_practitioner':
         return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
@@ -45,11 +47,13 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'Paiement requis';
+        return 'Confirmé';
+      case 'pending_payment':
+        return '💳 Paiement requis';
       case 'awaiting_practitioner':
         return 'En attente praticien';
       case 'pending':
-        return 'En attente paiement';
+        return 'En attente';
       case 'in-progress':
         return 'En cours';
       case 'completed':
@@ -109,6 +113,15 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
           </div>
         )}
 
+        {userRole === 'patient' && appointment.status === 'pending_payment' && (
+          <Alert className="bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800">
+            <Info className="h-4 w-4 text-green-600 dark:text-green-400" />
+            <AlertDescription className="text-sm text-green-700 dark:text-green-300">
+              ✅ {appointment.practitionerName} a accepté votre demande ! Veuillez effectuer le paiement pour confirmer définitivement votre rendez-vous.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {userRole === 'patient' && appointment.status === 'awaiting_practitioner' && (
           <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
             <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -129,9 +142,9 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
               </Button>
             </>
           )}
-          {userRole === 'patient' && appointment.status === 'confirmed' && onPaymentRequired && (
+          {userRole === 'patient' && (appointment.status === 'confirmed' || appointment.status === 'pending_payment') && onPaymentRequired && (
             <Button onClick={() => onPaymentRequired(appointment.id)} size="sm" className="flex-1">
-              Payer
+              💳 Payer maintenant
             </Button>
           )}
           {userRole === 'practitioner' && appointment.status === 'confirmed' && onComplete && (
