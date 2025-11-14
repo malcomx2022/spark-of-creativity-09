@@ -328,7 +328,7 @@ export default function PractitionerSignup() {
       });
 
       await supabase.auth.signOut();
-      navigate("/login");
+      navigate("/");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({
