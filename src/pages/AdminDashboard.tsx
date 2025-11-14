@@ -23,13 +23,15 @@ import { Badge } from "@/components/ui/badge";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { isAdmin, isLoading } = useIsAdmin();
+  const { isAdmin, isLoading, role } = useIsAdmin();
   const { data: stats } = useAdminStats();
   const { data: user } = useSupabaseUser();
-  const { data: notifications = [] } = useNotifications(isAdmin ? user?.id : undefined);
+  const userId = user?.id;
+  const { data: notifications = [] } = useNotifications(isAdmin ? userId : undefined);
   const markNotificationAsRead = useMarkNotificationAsRead();
   const [activeTab, setActiveTab] = useState("dashboard");
   const processedKycNotifications = useRef(new Set<string>());
+  const canManageAdmins = role === "super_admin";
 
   const unreadKycNotifications = notifications.filter((notification) =>
     notification.type === 'kyc_pending' && !notification.is_read
@@ -37,7 +39,7 @@ export default function AdminDashboard() {
   const pendingKycNotifications = unreadKycNotifications.length;
 
   useEffect(() => {
-    if (activeTab !== "kyc" || unreadKycNotifications.length === 0) {
+    if (activeTab !== "kyc" || unreadKycNotifications.length === 0 || !userId) {
       return;
     }
 
@@ -47,9 +49,15 @@ export default function AdminDashboard() {
       }
 
       processedKycNotifications.current.add(notification.id);
-      markNotificationAsRead.mutate(notification.id);
+      markNotificationAsRead.mutate({ notificationId: notification.id, userId });
     });
-  }, [activeTab, unreadKycNotifications, markNotificationAsRead]);
+  }, [activeTab, unreadKycNotifications, markNotificationAsRead, userId]);
+
+  useEffect(() => {
+    if (!canManageAdmins && activeTab === "admins") {
+      setActiveTab("dashboard");
+    }
+  }, [canManageAdmins, activeTab]);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -77,11 +85,13 @@ export default function AdminDashboard() {
     return null;
   }
 
+  const totalRevenueValue = stats?.totalRevenue ?? 0;
+
   const statsCards = [
     { title: "Patients", value: stats?.patientsCount || 0, icon: Users, color: "text-primary" },
     { title: "Praticiens", value: stats?.practitionersCount || 0, icon: Stethoscope, color: "text-secondary" },
     { title: "Rendez-vous", value: stats?.appointmentsCount || 0, icon: Calendar, color: "text-primary" },
-    { title: "Revenus", value: `${stats?.totalRevenue.toLocaleString() || 0} XOF`, icon: DollarSign, color: "text-secondary" },
+    { title: "Revenus", value: `${totalRevenueValue.toLocaleString("fr-FR")} XOF`, icon: DollarSign, color: "text-secondary" },
   ];
 
   return (
@@ -135,10 +145,12 @@ export default function AdminDashboard() {
               <Activity className="h-4 w-4 mr-2" />
               Vue d'ensemble
             </TabsTrigger>
-            <TabsTrigger value="admins">
-              <Shield className="h-4 w-4 mr-2" />
-              Admins
-            </TabsTrigger>
+            {canManageAdmins && (
+              <TabsTrigger value="admins">
+                <Shield className="h-4 w-4 mr-2" />
+                Admins
+              </TabsTrigger>
+            )}
             <TabsTrigger value="kyc" className="flex items-center gap-2">
               <FileCheck className="h-4 w-4" />
               <span>KYC</span>
@@ -178,9 +190,11 @@ export default function AdminDashboard() {
             <UsersManagementSection />
           </TabsContent>
 
-          <TabsContent value="admins">
-            <AdminManagement />
-          </TabsContent>
+          {canManageAdmins && (
+            <TabsContent value="admins">
+              <AdminManagement />
+            </TabsContent>
+          )}
 
           <TabsContent value="kyc">
             <KYCQueue />

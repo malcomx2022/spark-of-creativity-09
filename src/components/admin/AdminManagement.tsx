@@ -43,18 +43,23 @@ export function AdminManagement() {
       if (!roles) return [];
 
       // Récupérer les profils séparément
-      const userIds = roles.map(r => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name, phone')
-        .in('id', userIds);
+      const userIds = roles.map(r => r.user_id).filter(Boolean);
+      let profiles: { id: string; full_name: string | null; phone: string | null }[] = [];
 
-      if (profilesError) throw profilesError;
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, phone')
+          .in('id', userIds);
+
+        if (profilesError) throw profilesError;
+        profiles = profilesData ?? [];
+      }
 
       // Combiner les données
       return roles.map(role => ({
         ...role,
-        profile: profiles?.find(p => p.id === role.user_id)
+        profile: profiles.find(p => p.id === role.user_id)
       }));
     },
   });

@@ -99,7 +99,7 @@ export function OperationsSection() {
     todayAppointments: appointments.length,
     pendingReviews: reviews.filter(r => !r.is_hidden && !r.moderated_at).length,
     openDisputes: disputes.filter(d => d.status === 'open').length,
-    inProgressDisputes: disputes.filter(d => d.status === 'in_progress').length,
+    inProgressDisputes: disputes.filter(d => d.status === 'investigating').length,
   };
 
   const renderStars = (rating: number) => {
@@ -352,7 +352,7 @@ export function OperationsSection() {
                                   <Label htmlFor="dispute-status">Changer le statut</Label>
                                   <Select
                                     defaultValue={dispute.status}
-                                    onValueChange={(value: 'open' | 'in_progress' | 'resolved' | 'closed') =>
+                                    onValueChange={(value: 'open' | 'investigating' | 'resolved' | 'closed') =>
                                       updateDisputeMutation.mutate({
                                         id: dispute.id,
                                         status: value,
@@ -364,7 +364,7 @@ export function OperationsSection() {
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="open">Ouvert</SelectItem>
-                                      <SelectItem value="in_progress">En cours</SelectItem>
+                                      <SelectItem value="investigating">En cours</SelectItem>
                                       <SelectItem value="resolved">Résolu</SelectItem>
                                       <SelectItem value="closed">Fermé</SelectItem>
                                     </SelectContent>

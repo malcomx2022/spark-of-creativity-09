@@ -112,7 +112,13 @@ export function useMarkNotificationAsRead() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (notificationId: string) => {
+    mutationFn: async ({
+      notificationId,
+      userId,
+    }: {
+      notificationId: string;
+      userId?: string;
+    }) => {
       const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
@@ -120,8 +126,12 @@ export function useMarkNotificationAsRead() {
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    onSuccess: (_data, variables) => {
+      if (variables?.userId) {
+        queryClient.invalidateQueries({ queryKey: ['notifications', variables.userId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      }
     },
   });
 }
