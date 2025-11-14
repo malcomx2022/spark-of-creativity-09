@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
+import {
+  clearPersistedPaymentState,
+  getPersistedPaymentState,
+  setPersistedPaymentState,
+} from '@/lib/payment-storage';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 
 type PaymentMethod = 'mtn' | 'orange' | 'moov';
@@ -81,6 +86,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [useSavedMethod, setUseSavedMethod] = useState(false);
   const [selectedSavedMethod, setSelectedSavedMethod] = useState<string>('');
   const [autoPrefilled, setAutoPrefilled] = useState(false);
+  const hasRehydratedRef = useRef(false);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
 
@@ -314,6 +320,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setUseSavedMethod(false);
     setSelectedSavedMethod('');
     setAutoPrefilled(false);
+    hasRehydratedRef.current = false;
+    clearPersistedPaymentState();
   }, []);
 
   const closeDialog = useCallback(() => {
@@ -400,6 +408,77 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     }
     onOpenChange(isOpen);
   }, [onOpenChange, resetPaymentState]);
+
+  // Persist payment state to allow hydration after reload
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (!paymentId || paymentStatus !== 'pending') {
+      clearPersistedPaymentState();
+      return;
+    }
+
+    setPersistedPaymentState({
+      appointmentId,
+      amount,
+      paymentMethod,
+      phoneNumber,
+      paymentStatus,
+      paymentUrl,
+      paymentId,
+      transactionId,
+      expiresAt,
+      useSavedMethod,
+      selectedSavedMethod,
+      lastUpdated: Date.now(),
+    });
+  }, [
+    open,
+    appointmentId,
+    amount,
+    paymentMethod,
+    phoneNumber,
+    paymentStatus,
+    paymentUrl,
+    paymentId,
+    transactionId,
+    expiresAt,
+    useSavedMethod,
+    selectedSavedMethod,
+  ]);
+
+  // Rehydrate state from localStorage when dialog opens
+  useEffect(() => {
+    if (!open || hasRehydratedRef.current) {
+      return;
+    }
+
+    const persisted = getPersistedPaymentState();
+    if (!persisted) {
+      hasRehydratedRef.current = true;
+      return;
+    }
+
+    if (persisted.appointmentId !== appointmentId) {
+      hasRehydratedRef.current = true;
+      return;
+    }
+
+    setPaymentMethod(persisted.paymentMethod);
+    setPhoneNumber(persisted.phoneNumber);
+    setPaymentStatus(persisted.paymentStatus);
+    setPaymentUrl(persisted.paymentUrl);
+    setPaymentId(persisted.paymentId);
+    setTransactionId(persisted.transactionId);
+    setExpiresAt(persisted.expiresAt);
+    setUseSavedMethod(persisted.useSavedMethod);
+    setSelectedSavedMethod(persisted.selectedSavedMethod);
+    setPollCount(0);
+    setIsProcessing(persisted.paymentStatus === 'pending');
+    hasRehydratedRef.current = true;
+  }, [open, appointmentId]);
 
   const handleReopenPaymentWindow = () => {
     if (!paymentUrl) return;
