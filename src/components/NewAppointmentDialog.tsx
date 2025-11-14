@@ -248,6 +248,33 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
     '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
   ];
 
+  // Filtrer les créneaux horaires si la date sélectionnée est aujourd'hui
+  const getAvailableTimeSlots = () => {
+    const selectedDate = form.watch('date');
+    if (!selectedDate) return timeSlots;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+
+    // Si la date sélectionnée n'est pas aujourd'hui, retourner tous les créneaux
+    if (selected.getTime() !== today.getTime()) {
+      return timeSlots;
+    }
+
+    // Si c'est aujourd'hui, filtrer les heures passées
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinutes = now.getMinutes();
+
+    return timeSlots.filter((time) => {
+      const [hours, minutes] = time.split(':').map(Number);
+      // Garder le créneau si l'heure est future ou si c'est l'heure actuelle mais les minutes sont futures
+      return hours > currentHour || (hours === currentHour && minutes > currentMinutes);
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -382,8 +409,14 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                           selected={field.value}
                           onSelect={field.onChange}
                           disabled={(date) => {
-                            // Désactiver les dates passées
-                            if (date < new Date()) return true;
+                            // Comparer uniquement les dates (sans l'heure)
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const compareDate = new Date(date);
+                            compareDate.setHours(0, 0, 0, 0);
+                            
+                            // Désactiver les dates strictement passées (avant aujourd'hui)
+                            if (compareDate < today) return true;
                             // Désactiver les dimanches (jour 0)
                             if (date.getDay() === 0) return true;
                             return false;
@@ -411,7 +444,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {timeSlots.map((time) => (
+                        {getAvailableTimeSlots().map((time) => (
                           <SelectItem key={time} value={time}>
                             {time}
                           </SelectItem>
