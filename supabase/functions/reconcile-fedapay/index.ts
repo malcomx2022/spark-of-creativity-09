@@ -42,6 +42,13 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const fedapaySecretKey = Deno.env.get('FEDAPAY_SECRET_KEY')!;
+    const fedapayMode = Deno.env.get('FEDAPAY_MODE') || 'sandbox';
+    
+    console.log('FedaPay configuration:', {
+      mode: fedapayMode,
+      hasSecretKey: !!fedapaySecretKey,
+      secretKeyPrefix: fedapaySecretKey?.substring(0, 10) + '...'
+    });
 
     // Authenticate user
     const authHeader = req.headers.get('Authorization');
@@ -86,8 +93,12 @@ serve(async (req) => {
     if (reportError) throw reportError;
 
     // Fetch FedaPay transactions
-    console.log('Fetching FedaPay transactions...');
-    const fedapayResponse = await fetch('https://api.fedapay.com/v1/transactions', {
+    const fedapayApiUrl = fedapayMode === 'live' 
+      ? 'https://api.fedapay.com/v1/transactions'
+      : 'https://sandbox-api.fedapay.com/v1/transactions';
+    
+    console.log('Fetching FedaPay transactions from:', fedapayApiUrl);
+    const fedapayResponse = await fetch(fedapayApiUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${fedapaySecretKey}`,
@@ -96,7 +107,13 @@ serve(async (req) => {
     });
 
     if (!fedapayResponse.ok) {
-      throw new Error(`FedaPay API error: ${fedapayResponse.statusText}`);
+      const errorBody = await fedapayResponse.text();
+      console.error('FedaPay API error:', {
+        status: fedapayResponse.status,
+        statusText: fedapayResponse.statusText,
+        body: errorBody
+      });
+      throw new Error(`FedaPay API error: ${fedapayResponse.statusText} - ${errorBody}`);
     }
 
     const fedapayData = await fedapayResponse.json();
