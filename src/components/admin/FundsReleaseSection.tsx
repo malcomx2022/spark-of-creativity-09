@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +37,7 @@ export function FundsReleaseSection() {
 
   const releaseMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('release-held-funds', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('release-held-funds', {
         body: { manual_trigger: true },
       });
 

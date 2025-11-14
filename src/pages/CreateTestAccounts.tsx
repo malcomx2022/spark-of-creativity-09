@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
@@ -18,7 +19,7 @@ export default function CreateTestAccounts() {
     setIsCreating(true);
     setError(null);
     try {
-      const { data, error } = await supabase.functions.invoke('create-test-users');
+      const { data, error } = await invokeEdgeFunctionWithRetry('create-test-users');
       
       if (error) {
         setError(error.message);

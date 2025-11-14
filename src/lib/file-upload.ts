@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 
 interface UploadResult {
   url: string;
@@ -26,7 +27,7 @@ export async function uploadUserDocument({
   const content = await file.arrayBuffer();
   const fileContent = arrayBufferToBase64(content);
 
-  const { data, error } = await supabase.functions.invoke("upload-to-wasabi", {
+  const { data, error } = await invokeEdgeFunctionWithRetry("upload-to-wasabi", {
     body: {
       fileName: file.name,
       fileContent,
@@ -75,7 +76,7 @@ export async function getSignedFileUrl(filePath?: string | null): Promise<string
     return filePath;
   }
 
-  const { data, error } = await supabase.functions.invoke("get-presigned-url", {
+  const { data, error } = await invokeEdgeFunctionWithRetry("get-presigned-url", {
     body: {
       filePath,
       expiresIn: 3600,

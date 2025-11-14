@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS } from '@/lib/payment-config';
 
@@ -229,7 +230,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
-      const { data: result, error } = await supabase.functions.invoke('create-payment', {
+      const { data: result, error } = await invokeEdgeFunctionWithRetry('create-payment', {
         body: {
           appointmentId,
           amount,
