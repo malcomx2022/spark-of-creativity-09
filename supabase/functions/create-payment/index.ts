@@ -6,13 +6,16 @@ import { calculateFees, parseFeeConfig, calculateHoldUntil } from "./fee-calcula
 import { normalizeStatus } from "./payment-status.ts";
 import { dispatchNotification } from "../_shared/notifications.ts";
 
+const DEFAULT_APPOINTMENT_AMOUNT = 10000;
+
 // Validation schema avec Zod
 const PaymentRequestSchema = z.object({
   appointmentId: z.string().uuid({ message: "Invalid appointment ID format" }),
   amount: z.number()
     .min(100, { message: "Amount must be at least 100 XOF" })
-    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" }),
-  paymentMethod: z.enum(['mtn', 'orange', 'moov'], { 
+    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" })
+    .optional(),
+  paymentMethod: z.enum(['mtn', 'orange', 'moov'], {
     errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
   }),
   phoneNumber: z.string()
@@ -159,12 +162,13 @@ serve(async (req) => {
       );
     }
 
-    const { appointmentId, amount, paymentMethod, phoneNumber } = validationResult.data;
+    const { appointmentId, paymentMethod, phoneNumber } = validationResult.data;
+    const requestedAmount = validationResult.data.amount ?? null;
 
     // Vérifier que l'appointment existe et appartient à l'utilisateur
     const { data: appointment, error: appointmentError } = await supabase
       .from('appointments')
-      .select('id, patient_id, status')
+      .select('id, patient_id, status, payment_amount, practitioner_id, specialty')
       .eq('id', appointmentId)
       .single();
 
@@ -210,7 +214,41 @@ serve(async (req) => {
       );
     }
 
-    console.log('Creating payment:', { appointmentId, amount, paymentMethod, phoneNumber, idempotencyKey });
+    let amountToCharge = requestedAmount ?? appointment.payment_amount ?? null;
+
+    if (amountToCharge === null) {
+      const { data: rate } = await supabase
+        .from('practitioner_rates')
+        .select('base_price')
+        .eq('practitioner_id', appointment.practitioner_id)
+        .eq('service_type', appointment.specialty)
+        .maybeSingle();
+
+      amountToCharge = rate?.base_price ?? null;
+
+      if (amountToCharge === null) {
+        const { data: service } = await supabase
+          .from('services')
+          .select('base_price')
+          .eq('name', appointment.specialty)
+          .maybeSingle();
+
+        amountToCharge = service?.base_price ?? DEFAULT_APPOINTMENT_AMOUNT;
+      }
+    }
+
+    if (requestedAmount !== null && requestedAmount !== amountToCharge) {
+      console.log('Requested amount differs from computed amount, using computed value', { requestedAmount, amountToCharge });
+    }
+
+    if (appointment.payment_amount !== amountToCharge) {
+      await supabase
+        .from('appointments')
+        .update({ payment_amount: amountToCharge })
+        .eq('id', appointmentId);
+    }
+
+    console.log('Creating payment:', { appointmentId, amount: amountToCharge, paymentMethod, phoneNumber, idempotencyKey });
 
     // Map payment methods to FedaPay mode
     const modeMap = {
@@ -254,7 +292,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             description: `Paiement rendez-vous médical #${appointmentId}`,
-            amount: amount,
+            amount: amountToCharge,
             currency: {
               iso: 'XOF'
             },
@@ -431,7 +469,7 @@ serve(async (req) => {
     
     // Calculer les frais
     const feeConfig = parseFeeConfig(systemConfig);
-    const feeBreakdown = calculateFees(amount, 'XOF', feeConfig);
+    const feeBreakdown = calculateFees(amountToCharge, 'XOF', feeConfig);
     
     // Calculer la date de hold
     const holdPeriodDays = systemConfig.payment_hold_period_days?.days || 2;
@@ -525,7 +563,7 @@ serve(async (req) => {
       serviceRoleKey: supabaseKey,
       userId: user.id,
       title: 'Paiement initialisé',
-      message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Confirmez sur votre mobile en entrant votre code PIN USSD ou cliquez pour ouvrir FedaPay.`,
+        message: `Votre paiement de ${amountToCharge} XOF pour le rendez-vous a été créé. Confirmez sur votre mobile en entrant votre code PIN USSD ou cliquez pour ouvrir FedaPay.`,
       type: 'payment',
       link: paymentUrl,
     });

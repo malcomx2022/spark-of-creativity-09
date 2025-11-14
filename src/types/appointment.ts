@@ -15,6 +15,7 @@ export interface Appointment {
   reason: string;
   notes?: string;
   urgencyLevel?: string;
+  paymentAmount?: number | null;
 }
 
 export interface CreateAppointmentData {
@@ -25,4 +26,5 @@ export interface CreateAppointmentData {
   urgencyLevel?: string;
   practitionerId?: string;
   practitionerName?: string;
+  addressOverride?: string;
 }

@@ -100,6 +100,7 @@ export type Database = {
           practitioner_id: string
           practitioner_name: string
           pre_visit_checklist: Json | null
+          payment_amount: number | null
           reason: string
           specialty: string
           status: string
@@ -121,6 +122,7 @@ export type Database = {
           practitioner_id: string
           practitioner_name: string
           pre_visit_checklist?: Json | null
+          payment_amount?: number | null
           reason: string
           specialty: string
           status?: string
@@ -142,6 +144,7 @@ export type Database = {
           practitioner_id?: string
           practitioner_name?: string
           pre_visit_checklist?: Json | null
+          payment_amount?: number | null
           reason?: string
           specialty?: string
           status?: string
@@ -1771,6 +1774,33 @@ export type Database = {
           phone_number_masked?: string
           provider?: string
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_consents: {
+        Row: {
+          accepted_at: string | null
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at: string | null
+          id: string
+          is_accepted: boolean
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at?: string | null
+          id?: string
+          is_accepted?: boolean
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          consent_type?: Database["public"]["Enums"]["consent_type"]
+          created_at?: string | null
+          id?: string
+          is_accepted?: boolean
           user_id?: string
         }
         Relationships: []

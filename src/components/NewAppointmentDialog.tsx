@@ -19,6 +19,7 @@ import { toast } from '@/hooks/use-toast';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
@@ -37,8 +38,10 @@ interface NewAppointmentDialogProps {
 export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
-  
-  const { position, requestPosition, loading: geoLoading } = useGeolocation();
+  const [locationMode, setLocationMode] = useState<'auto' | 'manual'>('auto');
+  const [manualAddress, setManualAddress] = useState('');
+
+  const { position, requestPosition, loading: geoLoading, error: geoError } = useGeolocation();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -53,7 +56,14 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   // Demander la localisation dès l'ouverture du dialogue
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-    if (newOpen && !position && !geoLoading) {
+
+    if (!newOpen) {
+      setLocationMode('auto');
+      setManualAddress('');
+      return;
+    }
+
+    if (locationMode === 'auto' && !position && !geoLoading) {
       requestPosition();
       toast({
         title: 'Localisation requise',
@@ -64,7 +74,56 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
 
   const handleSubmit = async (data: FormValues) => {
     console.log('🔵 Formulaire soumis avec les données:', data);
-    
+
+    if (locationMode === 'manual') {
+      if (!manualAddress.trim()) {
+        toast({
+          title: 'Adresse requise',
+          description: 'Veuillez indiquer l’adresse de l’intervention.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setIsSearchingPractitioner(true);
+
+      try {
+        const appointmentPayload = {
+          specialty: data.specialty,
+          date: data.date.toISOString(),
+          time: data.time,
+          reason: data.reason,
+          urgencyLevel: data.urgencyLevel,
+          addressOverride: manualAddress,
+        };
+
+        const createdAppointment = await onSubmit(appointmentPayload);
+
+        if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
+          toast({
+            title: 'Demande enregistrée',
+            description: 'Notre équipe vous contactera pour affecter un praticien disponible.',
+          });
+          setOpen(false);
+          setIsSearchingPractitioner(false);
+          setLocationMode('auto');
+          setManualAddress('');
+          form.reset();
+        } else {
+          throw new Error("Le rendez-vous n'a pas pu être créé");
+        }
+      } catch (error) {
+        console.error('❌ Erreur:', error);
+        setIsSearchingPractitioner(false);
+        toast({
+          title: 'Erreur',
+          description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous. Veuillez réessayer.',
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
     // Vérifier la géolocalisation
     if (!position) {
       toast({
@@ -75,7 +134,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       requestPosition();
       return;
     }
-    
+
     setIsSearchingPractitioner(true);
     
     try {
@@ -136,6 +195,8 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
         setOpen(false);
         setIsSearchingPractitioner(false);
+        setLocationMode('auto');
+        setManualAddress('');
         form.reset();
         
         toast({
@@ -200,7 +261,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {position && (
+        {locationMode === 'auto' && position && (
           <Alert className="mb-4 bg-primary/5 border-primary/20">
             <MapPin className="h-4 w-4" />
             <AlertDescription>
@@ -209,8 +270,58 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
           </Alert>
         )}
 
+        {locationMode === 'auto' && geoError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertDescription>
+              {geoError} Vous pouvez passer en mode manuel si vous préférez renseigner une adresse.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit, handleFormError)} className="space-y-4">
+            <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+              <p className="text-sm font-medium">Comment souhaitez-vous préciser le lieu d’intervention ?</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={locationMode === 'auto' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setLocationMode('auto');
+                    if (!position && !geoLoading) {
+                      requestPosition();
+                    }
+                  }}
+                  size="sm"
+                >
+                  Géolocalisation automatique
+                </Button>
+                <Button
+                  type="button"
+                  variant={locationMode === 'manual' ? 'default' : 'outline'}
+                  onClick={() => setLocationMode('manual')}
+                  size="sm"
+                >
+                  Saisir l’adresse manuellement
+                </Button>
+              </div>
+              {locationMode === 'manual' && (
+                <div className="space-y-2">
+                  <Label htmlFor="manual-address">Adresse complète</Label>
+                  <Textarea
+                    id="manual-address"
+                    placeholder="Quartier, rue, repères…"
+                    value={manualAddress}
+                    onChange={(event) => setManualAddress(event.target.value)}
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Nous partagerons ces informations avec le praticien pour organiser sa venue.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <FormField
               control={form.control}
               name="specialty"

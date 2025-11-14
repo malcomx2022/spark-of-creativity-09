@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
+import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/patient-onboarding";
 
 export default function PatientSignup() {
   const navigate = useNavigate();
@@ -67,6 +68,33 @@ export default function PatientSignup() {
       return;
     }
 
+    const acceptedAt = new Date().toISOString();
+
+    const onboardingPayload: PatientOnboardingPayload = {
+      profile: {
+        fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone,
+        gender: formData.gender,
+        dateOfBirth: formData.dateOfBirth,
+      },
+      address: formData.address
+        ? {
+            label: "Domicile",
+            address: formData.address,
+          }
+        : null,
+      emergencyContact:
+        formData.emergencyContactName && formData.emergencyContactPhone
+          ? {
+              name: formData.emergencyContactName,
+              phone: formData.emergencyContactPhone,
+              relationship: "Contact d'urgence",
+            }
+          : null,
+      medicalHistory: formData.medicalHistory,
+      acceptTermsAt: acceptedAt,
+    };
+
     // Inscription avec Supabase
     try {
       // 1. Créer le compte utilisateur Supabase
@@ -77,6 +105,8 @@ export default function PatientSignup() {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`,
+            pending_onboarding: onboardingPayload,
+            patient_onboarding_completed: false,
           }
         }
       });
@@ -85,53 +115,34 @@ export default function PatientSignup() {
       if (!authData.user) throw new Error("Échec de création du compte");
 
       const userId = authData.user.id;
+      const { data: { session } } = await supabase.auth.getSession();
 
-      // 2. Créer le profil utilisateur
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: userId,
-          full_name: `${formData.firstName} ${formData.lastName}`,
-          phone: formData.phone,
-          gender: formData.gender as any,
-          date_of_birth: formData.dateOfBirth,
+      if (session) {
+        await completePatientOnboarding(userId, onboardingPayload);
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: {
+            patient_onboarding_completed: true,
+            pending_onboarding: null,
+          },
         });
 
-      if (profileError) throw profileError;
+        if (updateError) {
+          throw updateError;
+        }
 
-      // 3. Créer l'adresse par défaut
-      const { error: addressError } = await supabase
-        .from('addresses')
-        .insert({
-          user_id: userId,
-          label: 'Domicile',
-          address: formData.address,
-          is_default: true,
+        toast({
+          title: "Inscription réussie !",
+          description: "Votre compte a été créé avec succès.",
         });
 
-      if (addressError) throw addressError;
-
-      // 4. Créer le contact d'urgence
-      if (formData.emergencyContactName && formData.emergencyContactPhone) {
-        const { error: emergencyError } = await supabase
-          .from('emergency_contacts')
-          .insert({
-            user_id: userId,
-            name: formData.emergencyContactName,
-            phone: formData.emergencyContactPhone,
-            relationship: 'Contact d\'urgence',
-          });
-
-        if (emergencyError) throw emergencyError;
+        navigate("/dashboard/patient");
+      } else {
+        toast({
+          title: "Confirmez votre adresse e-mail",
+          description: "Vérifiez votre boîte de réception pour finaliser l'inscription. Votre profil sera créé après la confirmation.",
+        });
+        navigate("/login");
       }
-
-      toast({
-        title: "Inscription réussie !",
-        description: "Votre compte a été créé avec succès.",
-      });
-
-      // Redirection vers le dashboard
-      navigate("/dashboard/patient");
     } catch (error: any) {
       console.error('Erreur inscription:', error);
       toast({

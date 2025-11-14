@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
 
+const DEFAULT_APPOINTMENT_AMOUNT = 10000;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -124,9 +126,32 @@ serve(async (req) => {
 
       // Le praticien accepte → passer en statut "confirmed" (en attente de paiement)
       // Utiliser le statut actuel comme condition pour éviter race condition
+      let paymentAmount = appointment.payment_amount ?? null;
+
+      if (paymentAmount === null) {
+        const { data: rate } = await supabase
+          .from('practitioner_rates')
+          .select('base_price')
+          .eq('practitioner_id', appointment.practitioner_id)
+          .eq('service_type', appointment.specialty)
+          .maybeSingle();
+
+        paymentAmount = rate?.base_price ?? null;
+
+        if (paymentAmount === null) {
+          const { data: service } = await supabase
+            .from('services')
+            .select('base_price')
+            .eq('name', appointment.specialty)
+            .maybeSingle();
+
+          paymentAmount = service?.base_price ?? DEFAULT_APPOINTMENT_AMOUNT;
+        }
+      }
+
       const { error: updateError } = await supabase
         .from('appointments')
-        .update({ status: 'confirmed' })
+        .update({ status: 'confirmed', payment_amount: paymentAmount })
         .eq('id', appointmentId)
         .eq('status', 'awaiting_practitioner'); // Lock optimiste
 
@@ -138,7 +163,7 @@ serve(async (req) => {
         .insert({
           user_id: appointment.patient_id,
           title: 'Rendez-vous confirmé - Paiement requis',
-          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Veuillez procéder au paiement pour finaliser la réservation.`,
+          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Veuillez régler ${paymentAmount} XOF pour finaliser la réservation.`,
           type: 'payment_required',
           link: `/patient/dashboard?tab=appointments`,
         });

@@ -23,7 +23,7 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'bg-green-500/10 text-green-500 border-green-500/20';
+        return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
       case 'awaiting_practitioner':
         return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
       case 'pending':
@@ -44,7 +44,7 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'Confirmé';
+        return 'Paiement requis';
       case 'awaiting_practitioner':
         return 'En attente praticien';
       case 'pending':
@@ -119,7 +119,7 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
               </Button>
             </>
           )}
-          {userRole === 'patient' && appointment.status === 'pending' && onPaymentRequired && (
+          {userRole === 'patient' && appointment.status === 'confirmed' && onPaymentRequired && (
             <Button onClick={() => onPaymentRequired(appointment.id)} size="sm" className="flex-1">
               Payer
             </Button>

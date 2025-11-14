@@ -13,7 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
-import { MOBILE_MONEY_PROVIDERS } from '@/lib/payment-config';
+import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 
 type PaymentMethod = 'mtn' | 'orange' | 'moov';
 
