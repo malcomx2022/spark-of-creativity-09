@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
+import { normalizePhoneNumber } from '@/lib/phone-utils';
 
 type PaymentMethod = 'mtn' | 'orange' | 'moov';
 
@@ -30,38 +31,6 @@ interface PaymentResponse {
 
 const POLL_INTERVAL = 3000; // 3 seconds
 const MAX_POLL_TIME = 5 * 60 * 1000; // 5 minutes
-const PROCESSING_TIMEOUT = 10000; // 10 seconds
-
-function normalizePhoneNumber(input: string): string | null {
-  const trimmed = input.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  let normalized = trimmed.replace(/[^0-9+]/g, '');
-
-  if ((normalized.match(/\+/g) ?? []).length > 1) {
-    return null;
-  }
-
-  if (normalized.startsWith('00')) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-
-  if (!normalized.startsWith('+')) {
-    normalized = `+${normalized.replace(/\+/g, '')}`;
-  }
-
-  const digits = normalized.slice(1);
-
-  if (!/^\d{8,15}$/.test(digits)) {
-    return null;
-  }
-
-  return `+${digits}`;
-}
-
 function isPaymentResponse(payload: unknown): payload is PaymentResponse {
   if (typeof payload !== 'object' || payload === null) {
     return false;
@@ -88,24 +57,6 @@ function isPaymentResponse(payload: unknown): payload is PaymentResponse {
   }
 
   return true;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeout: number, timeoutMessage: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(timeoutMessage));
-    }, timeout);
-
-    promise
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-  });
 }
 
 interface PaymentDialogProps {
@@ -351,6 +302,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   };
 
   const resetPaymentState = useCallback(() => {
+    setIsProcessing(false);
     setPaymentStatus('idle');
     setPaymentUrl(null);
     setPaymentId(null);
@@ -474,14 +426,6 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   };
 
   const selectedProvider = MOBILE_MONEY_PROVIDERS[paymentMethod];
-
-  const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const renderPaymentStatus = () => {
     switch (paymentStatus) {
