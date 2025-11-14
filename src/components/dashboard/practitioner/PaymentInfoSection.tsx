@@ -19,6 +19,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { isValidPhoneNumber, normalizePhoneNumber } from "@/lib/phone-utils";
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import {
   AlertTriangle,
   Building,
@@ -116,7 +117,7 @@ const methodIcons: Record<PaymentMethod, ReactNode> = {
 };
 
 const sanitizeAccountNumber = (value: string) => value.replace(/\s+/g, "").toUpperCase();
-const PHONE_NORMALIZATION_OPTIONS = { defaultCountryCode: "+229", localNumberLengths: [8] } as const;
+const PHONE_NORMALIZATION_OPTIONS = { defaultCountryCode: "+229", localNumberLengths: [8] };
 
 const isMethodPhoneValid = (value: string, method: PaymentMethod) => {
   const { phoneRegex } = paymentMethodMetadata[method];

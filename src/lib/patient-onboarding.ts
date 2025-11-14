@@ -30,6 +30,15 @@ async function upsertProfile(userId: string, payload: PatientOnboardingPayload['
 
   if (profileSelectError) throw profileSelectError;
 
+  const genderMap: Record<string, 'homme' | 'femme' | 'autre' | 'non_specifie'> = {
+    'homme': 'homme',
+    'femme': 'femme',
+    'autre': 'autre',
+    'non_specifie': 'non_specifie',
+  };
+  
+  const normalizedGender = payload.gender ? (genderMap[payload.gender] || 'non_specifie') : 'non_specifie';
+
   if (!existingProfile) {
     const { error } = await supabase
       .from('profiles')
@@ -37,7 +46,7 @@ async function upsertProfile(userId: string, payload: PatientOnboardingPayload['
         id: userId,
         full_name: payload.fullName,
         phone: payload.phone,
-        gender: payload.gender || null,
+        gender: normalizedGender,
         date_of_birth: payload.dateOfBirth || null,
       });
 
@@ -48,7 +57,7 @@ async function upsertProfile(userId: string, payload: PatientOnboardingPayload['
       .update({
         full_name: payload.fullName,
         phone: payload.phone,
-        gender: payload.gender || null,
+        gender: normalizedGender,
         date_of_birth: payload.dateOfBirth || null,
       })
       .eq('id', userId);

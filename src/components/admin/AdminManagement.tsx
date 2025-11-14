@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import type { AdminManagementResponse } from "@/types/edge-function-responses";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -66,18 +67,18 @@ export function AdminManagement() {
 
   const createAdminMutation = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: AdminRole }) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
         body: { action: 'create', email, role, fullName: email.split('@')[0] }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
       
       return data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
-      setTempPassword(data.tempPassword);
+      setTempPassword(data?.tempPassword || '');
       setShowPasswordDialog(true);
       setEmail("");
       toast({ title: "Admin créé avec succès" });
@@ -93,12 +94,12 @@ export function AdminManagement() {
 
   const deleteAdminMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
         body: { action: 'disable', userId }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
@@ -115,16 +116,16 @@ export function AdminManagement() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
         body: { action: 'reset_password', userId }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
       return data;
     },
     onSuccess: (data) => {
-      setTempPassword(data.newPassword);
+      setTempPassword(data?.newPassword || '');
       setShowPasswordDialog(true);
       toast({ title: "Mot de passe réinitialisé" });
     },

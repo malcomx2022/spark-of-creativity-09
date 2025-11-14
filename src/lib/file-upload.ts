@@ -6,6 +6,15 @@ interface UploadResult {
   path: string;
 }
 
+interface WasabiUploadResponse {
+  filePath: string;
+  url: string;
+}
+
+interface PresignedUrlResponse {
+  url: string;
+}
+
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   let binary = "";
   const bytes = new Uint8Array(buffer);
@@ -27,7 +36,7 @@ export async function uploadUserDocument({
   const content = await file.arrayBuffer();
   const fileContent = arrayBufferToBase64(content);
 
-  const { data, error } = await invokeEdgeFunctionWithRetry("upload-to-wasabi", {
+  const { data, error } = await invokeEdgeFunctionWithRetry<WasabiUploadResponse>("upload-to-wasabi", {
     body: {
       fileName: file.name,
       fileContent,
@@ -76,7 +85,7 @@ export async function getSignedFileUrl(filePath?: string | null): Promise<string
     return filePath;
   }
 
-  const { data, error } = await invokeEdgeFunctionWithRetry("get-presigned-url", {
+  const { data, error } = await invokeEdgeFunctionWithRetry<PresignedUrlResponse>("get-presigned-url", {
     body: {
       filePath,
       expiresIn: 3600,

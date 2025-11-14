@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { toast } from '@/hooks/use-toast';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import type { FindPractitionerResponse } from '@/types/edge-function-responses';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
@@ -141,7 +142,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       // 1. Rechercher un praticien disponible
       console.log('🔍 Recherche d\'un praticien disponible...');
       
-      const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry(
+      const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry<FindPractitionerResponse>(
         'find-available-practitioner',
         {
           body: {
