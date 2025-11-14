@@ -75,9 +75,13 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     }
   }, [navigate, allowedRoles]);
 
-  if (loading) {
-    return <div>Chargement...</div>;
+  if (status === 'loading') {
+    return <ProtectedRouteSkeleton />;
   }
 
-  return user ? <>{children}</> : null;
+  if (status === 'unauthenticated') {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  return <>{children}</>;
 }

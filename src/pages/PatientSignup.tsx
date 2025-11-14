@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PatientFormData {
   firstName: string;
@@ -82,15 +83,81 @@ export default function PatientSignup() {
       return;
     }
 
-    // Simulation d'inscription
-    setTimeout(() => {
+    // Inscription avec Supabase
+    try {
+      // 1. Créer le compte utilisateur Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            full_name: `${formData.firstName} ${formData.lastName}`,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Échec de création du compte");
+
+      const userId = authData.user.id;
+
+      // 2. Créer le profil utilisateur
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          full_name: `${formData.firstName} ${formData.lastName}`,
+          phone: formData.phone,
+          gender: formData.gender as any,
+          date_of_birth: formData.dateOfBirth,
+        });
+
+      if (profileError) throw profileError;
+
+      // 3. Créer l'adresse par défaut
+      const { error: addressError } = await supabase
+        .from('addresses')
+        .insert({
+          user_id: userId,
+          label: 'Domicile',
+          address: formData.address,
+          is_default: true,
+        });
+
+      if (addressError) throw addressError;
+
+      // 4. Créer le contact d'urgence
+      if (formData.emergencyContactName && formData.emergencyContactPhone) {
+        const { error: emergencyError } = await supabase
+          .from('emergency_contacts')
+          .insert({
+            user_id: userId,
+            name: formData.emergencyContactName,
+            phone: formData.emergencyContactPhone,
+            relationship: 'Contact d\'urgence',
+          });
+
+        if (emergencyError) throw emergencyError;
+      }
+
       toast({
         title: "Inscription réussie !",
-        description: "Un code de vérification a été envoyé par SMS",
+        description: "Votre compte a été créé avec succès.",
       });
-      setIsSubmitting(false);
+
+      // Redirection vers le dashboard
       navigate("/dashboard/patient");
-    }, 2000);
+    } catch (error: any) {
+      console.error('Erreur inscription:', error);
+      toast({
+        title: "Erreur lors de l'inscription",
+        description: error.message || "Une erreur est survenue",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleMedicalHistoryChange = (condition: string, checked: boolean) => {

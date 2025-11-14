@@ -15,4 +15,11 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: "./src/setupTests.ts",
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["supabase/**/*.test.ts"],
+  },
 }));

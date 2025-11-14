@@ -1,115 +1,252 @@
 import { useState } from 'react';
-import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
-import type { Appointment } from '@/types/appointment';
+import { 
+  Calendar, 
+  Clock, 
+  CheckCircle2,
+  AlertCircle,
+  TrendingUp,
+  Loader2,
+  User,
+  DollarSign,
+  FileText,
+  Star,
+  MessageSquare,
+  HelpCircle,
+  Shield,
+  ClipboardCheck,
+  Wallet
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import Header from '@/components/Header';
+import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
+import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
+import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
+import { PaymentInfoSection } from '@/components/dashboard/practitioner/PaymentInfoSection';
+import CareNotesSection from '@/components/dashboard/practitioner/CareNotesSection';
+import ReviewsSection from '@/components/dashboard/practitioner/ReviewsSection';
+import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
+import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
+import { SupportSection } from '@/components/dashboard/SupportSection';
+import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
 
 export default function PractitionerDashboard() {
-  const [appointments, setAppointments] = useState<Appointment[]>([
-    {
-      id: '1',
-      patientName: 'Marie Dubois',
-      patientId: 'patient-1',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-10',
-      time: '14:00',
-      duration: 60,
-      status: 'confirmed',
-      address: '15 Rue de la Paix, 75001 Paris',
-      reason: 'Consultation de suivi',
-      notes: 'Patient diabétique, contrôle trimestriel',
-      urgencyLevel: 'non-urgent'
+  const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
+  const { toast } = useToast();
+  const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
+  const practitionerId = user?.id;
+  const practitionerName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    user?.email ||
+    'Praticien';
+
+  // Récupérer les données du praticien
+  const { data: practitioner, isLoading: practitionerLoading } = useQuery({
+    queryKey: ["practitioner", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("practitioners")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (error) throw error;
+      return data;
     },
-    {
-      id: '2',
-      patientName: 'Jean Dupont',
-      patientId: 'patient-2',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-08',
-      time: '10:00',
-      duration: 45,
-      status: 'pending',
-      address: '28 Avenue des Champs, 75008 Paris',
-      reason: 'Douleurs abdominales',
-      urgencyLevel: 'urgent'
-    },
-    {
-      id: '3',
-      patientName: 'Sophie Bernard',
-      patientId: 'patient-3',
-      practitionerId: 'prac-1',
-      practitionerName: 'Dr. Jean Martin',
-      specialty: 'Médecin généraliste',
-      date: '2025-10-10',
-      time: '16:00',
-      duration: 30,
-      status: 'pending',
-      address: '42 Boulevard Saint-Germain, 75005 Paris',
-      reason: 'Renouvellement ordonnance',
-      urgencyLevel: 'non-urgent'
+    enabled: !!user?.id,
+  });
+
+  const {
+    data: appointments = [],
+    isLoading: isLoadingAppointments,
+    isError,
+  } = usePractitionerAppointments(user?.id);
+
+  const mutateAppointment = useMutateAppointment();
+
+  const handleAccept = async (appointmentId: string) => {
+    if (processingAppointment === appointmentId) return;
+    
+    setProcessingAppointment(appointmentId);
+    try {
+      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
+        body: { appointmentId, action: 'accept' }
+      });
+
+      if (error) {
+        const errorMessage = error.message || '';
+        
+        // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
+        if (errorMessage.includes('déjà été traité')) {
+          toast({
+            title: 'Rendez-vous déjà traité',
+            description: 'Ce rendez-vous a déjà été accepté ou refusé.',
+          });
+          return;
+        }
+        
+        throw error;
+      }
+
+      toast({
+        title: 'Rendez-vous accepté',
+        description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'acceptation', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'accepter le rendez-vous.',
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingAppointment(null);
     }
-  ]);
-
-  const handleConfirm = (id: string) => {
-    setAppointments(appointments.map(apt =>
-      apt.id === id ? { ...apt, status: 'confirmed' as const } : apt
-    ));
-    toast({
-      title: 'Rendez-vous confirmé',
-      description: 'Le patient a été notifié de la confirmation.'
-    });
   };
 
-  const handleComplete = (id: string) => {
-    setAppointments(appointments.map(apt =>
-      apt.id === id ? { ...apt, status: 'completed' as const } : apt
-    ));
-    toast({
-      title: 'Consultation terminée',
-      description: 'Le rendez-vous a été marqué comme terminé.'
-    });
+  const handleReject = async (appointmentId: string) => {
+    if (processingAppointment === appointmentId) return;
+    
+    setProcessingAppointment(appointmentId);
+    try {
+      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
+        body: { appointmentId, action: 'reject' }
+      });
+
+      if (error) {
+        const errorMessage = error.message || '';
+        
+        // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
+        if (errorMessage.includes('déjà été traité')) {
+          toast({
+            title: 'Rendez-vous déjà traité',
+            description: 'Ce rendez-vous a déjà été accepté ou refusé.',
+          });
+          return;
+        }
+        
+        throw error;
+      }
+
+      toast({
+        title: 'Rendez-vous refusé',
+        description: 'Le système recherche un praticien alternatif pour le patient.'
+      });
+    } catch (error) {
+      console.error('Erreur lors du refus', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de refuser le rendez-vous.',
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingAppointment(null);
+    }
   };
 
-  const handleCancel = (id: string) => {
-    setAppointments(appointments.map(apt =>
-      apt.id === id ? { ...apt, status: 'cancelled' as const } : apt
-    ));
-    toast({
-      title: 'Rendez-vous annulé',
-      description: 'Le patient a été notifié de l\'annulation.',
-      variant: 'destructive'
-    });
+  const handleStatusUpdate = async (id: string, status: 'completed' | 'cancelled') => {
+    if (!practitionerId) {
+      toast({
+        title: 'Action impossible',
+        description: 'Vous devez être connecté pour modifier un rendez-vous.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await mutateAppointment.mutateAsync({
+        id,
+        data: {
+          status,
+          practitioner_id: practitionerId,
+          practitioner_name: practitionerName,
+        }
+      });
+
+      const messages = {
+        completed: {
+          title: 'Consultation terminée',
+          description: 'Le rendez-vous a été marqué comme terminé.'
+        },
+        cancelled: {
+          title: 'Rendez-vous annulé',
+          description: 'Le patient a été notifié de l\'annulation.',
+          variant: 'destructive' as const
+        }
+      } as const;
+
+      toast(messages[status]);
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du rendez-vous', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de mettre à jour le rendez-vous.',
+        variant: 'destructive'
+      });
+    }
   };
 
+  const awaitingAppointments = appointments.filter(apt => apt.status === 'awaiting_practitioner');
   const pendingAppointments = appointments.filter(apt => apt.status === 'pending');
   const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmed');
   const completedAppointments = appointments.filter(apt => apt.status === 'completed');
+  const isLoading = isLoadingUser || isLoadingAppointments || practitionerLoading;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20 flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Chargement...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!practitioner) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20 p-6">
+        <div className="container mx-auto">
+          <Card>
+            <CardHeader>
+              <CardTitle>Profil praticien introuvable</CardTitle>
+              <CardDescription>
+                Veuillez compléter votre inscription en tant que praticien.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       <Header />
-      <main className="container mx-auto px-4 py-8 pt-24">
+      <main className="container mx-auto px-4 py-8 mt-20">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Espace praticien</h1>
-          <p className="text-muted-foreground">Gérez vos consultations à domicile</p>
+          <h1 className="text-4xl font-bold mb-2">Tableau de bord Praticien</h1>
+          <p className="text-muted-foreground">Bienvenue, {practitioner.name}</p>
         </div>
 
+        {/* Cartes de résumé */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">En attente</CardTitle>
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
+              <CardTitle className="text-sm font-medium">À traiter</CardTitle>
+              <AlertCircle className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{pendingAppointments.length}</div>
-              <p className="text-xs text-muted-foreground">À confirmer</p>
+              <div className="text-2xl font-bold">{awaitingAppointments.length}</div>
+              <p className="text-xs text-muted-foreground">Demandes</p>
             </CardContent>
           </Card>
 
@@ -149,78 +286,190 @@ export default function PractitionerDashboard() {
           </Card>
         </div>
 
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold">Mes consultations</h2>
-        </div>
-
-        <Tabs defaultValue="pending" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="pending">
-              En attente ({pendingAppointments.length})
+        <Tabs defaultValue="appointments" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
+            <TabsTrigger value="appointments" className="gap-2">
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">RDV</span>
             </TabsTrigger>
-            <TabsTrigger value="confirmed">
-              Confirmés ({confirmedAppointments.length})
+            <TabsTrigger value="profile" className="gap-2">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">Profil</span>
             </TabsTrigger>
-            <TabsTrigger value="all">Tous</TabsTrigger>
+            <TabsTrigger value="availability" className="gap-2">
+              <Clock className="h-4 w-4" />
+              <span className="hidden sm:inline">Disponibilités</span>
+            </TabsTrigger>
+            <TabsTrigger value="payment-info" className="gap-2">
+              <Wallet className="h-4 w-4" />
+              <span className="hidden sm:inline">Coordonnées paiement</span>
+            </TabsTrigger>
+            <TabsTrigger value="payouts" className="gap-2">
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Revenus</span>
+            </TabsTrigger>
+            <TabsTrigger value="notes" className="gap-2">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Notes</span>
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="gap-2">
+              <ClipboardCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Rapports</span>
+            </TabsTrigger>
+            <TabsTrigger value="reviews" className="gap-2">
+              <Star className="h-4 w-4" />
+              <span className="hidden sm:inline">Avis</span>
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span className="hidden sm:inline">Messages</span>
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="gap-2">
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Notifications</span>
+            </TabsTrigger>
+            <TabsTrigger value="support" className="gap-2">
+              <HelpCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Support</span>
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="pending" className="space-y-4">
-            {pendingAppointments.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Aucune demande en attente</p>
-                </CardContent>
-              </Card>
-            ) : (
-              pendingAppointments.map(appointment => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  userRole="practitioner"
-                  onConfirm={handleConfirm}
-                  onCancel={handleCancel}
-                />
-              ))
-            )}
+          {/* Onglet Rendez-vous */}
+          <TabsContent value="appointments" className="space-y-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold">Mes consultations</h2>
+              <CardDescription>Confirmez, terminez ou annulez vos rendez-vous en un clic.</CardDescription>
+            </div>
+
+            <Tabs defaultValue="awaiting">
+              <TabsList>
+                <TabsTrigger value="awaiting">
+                  À traiter ({awaitingAppointments.length})
+                </TabsTrigger>
+                <TabsTrigger value="confirmed">
+                  Confirmés ({confirmedAppointments.length})
+                </TabsTrigger>
+                <TabsTrigger value="completed">
+                  Terminés ({completedAppointments.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="awaiting" className="space-y-4 mt-4">
+                {awaitingAppointments.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Aucune demande en attente</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  awaitingAppointments.map(appointment => (
+                    <div key={appointment.id} className="relative">
+                      {processingAppointment === appointment.id && (
+                        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Traitement en cours...</span>
+                          </div>
+                        </div>
+                      )}
+                      <AppointmentCard
+                        appointment={appointment}
+                        userRole="practitioner"
+                        onConfirm={() => handleAccept(appointment.id)}
+                        onReject={() => handleReject(appointment.id)}
+                      />
+                    </div>
+                  ))
+                )}
+              </TabsContent>
+
+              <TabsContent value="confirmed" className="space-y-4 mt-4">
+                {confirmedAppointments.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Aucun rendez-vous confirmé</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  confirmedAppointments.map(appointment => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={appointment}
+                      userRole="practitioner"
+                      onComplete={() => handleStatusUpdate(appointment.id, 'completed')}
+                      onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
+                    />
+                  ))
+                )}
+              </TabsContent>
+
+              <TabsContent value="completed" className="space-y-4 mt-4">
+                {completedAppointments.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Aucune consultation terminée</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  completedAppointments.map(appointment => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={appointment}
+                      userRole="practitioner"
+                    />
+                  ))
+                )}
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
-          <TabsContent value="confirmed" className="space-y-4">
-            {confirmedAppointments.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Aucun rendez-vous confirmé</p>
-                </CardContent>
-              </Card>
-            ) : (
-              confirmedAppointments.map(appointment => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  userRole="practitioner"
-                  onComplete={handleComplete}
-                  onCancel={handleCancel}
-                />
-              ))
-            )}
+          <TabsContent value="profile">
+            <ProfessionalProfileSection
+              practitionerId={practitioner.id}
+              practitionerData={practitioner}
+            />
           </TabsContent>
 
-          <TabsContent value="all" className="space-y-4">
-            {appointments.map(appointment => (
-              <AppointmentCard
-                key={appointment.id}
-                appointment={appointment}
-                userRole="practitioner"
-                onConfirm={appointment.status === 'pending' ? handleConfirm : undefined}
-                onComplete={appointment.status === 'confirmed' ? handleComplete : undefined}
-                onCancel={
-                  appointment.status !== 'completed' && appointment.status !== 'cancelled'
-                    ? handleCancel
-                    : undefined
-                }
-              />
-            ))}
+          <TabsContent value="availability">
+            <AvailabilitySection
+              practitionerId={practitioner.id}
+              practitionerData={practitioner}
+            />
+          </TabsContent>
+
+          <TabsContent value="payouts" className="space-y-6">
+            <PaymentInfoSection
+              practitionerId={practitioner.id}
+              practitionerName={practitioner.name}
+            />
+            <PayoutsSection practitionerId={practitioner.id} />
+          </TabsContent>
+
+          <TabsContent value="notes">
+            <CareNotesSection />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <ConsultationReportSection />
+          </TabsContent>
+
+          <TabsContent value="reviews">
+            <ReviewsSection practitionerId={practitioner.id} />
+          </TabsContent>
+
+          <TabsContent value="messages">
+            <PractitionerMessagesSection />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationsSection />
+          </TabsContent>
+
+          <TabsContent value="support">
+            <SupportSection />
           </TabsContent>
         </Tabs>
       </main>

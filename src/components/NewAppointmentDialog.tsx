@@ -9,16 +9,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Plus } from 'lucide-react';
+import { CalendarIcon, Plus, Loader2, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
-import { PaymentDialog } from '@/components/PaymentDialog';
+import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
-  date: z.date({ required_error: 'Veuillez sélectionner une date' }),
+  date: z.date({ message: 'Veuillez sélectionner une date' }),
   time: z.string().min(1, 'Veuillez sélectionner une heure'),
   reason: z.string().min(10, 'Veuillez décrire la raison (minimum 10 caractères)').max(500),
   urgencyLevel: z.string().optional()
@@ -27,13 +30,14 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface NewAppointmentDialogProps {
-  onSubmit: (data: CreateAppointmentData) => void;
+  onSubmit: (data: CreateAppointmentData) => Promise<any>;
 }
 
 export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   const [open, setOpen] = useState(false);
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [appointmentData, setAppointmentData] = useState<CreateAppointmentData | null>(null);
+  const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
+  
+  const { position, requestPosition, loading: geoLoading } = useGeolocation();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -44,35 +48,133 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       urgencyLevel: 'non-urgent'
     }
   });
-
-  const handleSubmit = (data: FormValues) => {
-    const appointmentPayload = {
-      specialty: data.specialty,
-      date: data.date.toISOString(),
-      time: data.time,
-      reason: data.reason,
-      urgencyLevel: data.urgencyLevel
-    };
-    setAppointmentData(appointmentPayload);
-    setOpen(false);
-    setPaymentDialogOpen(true);
-  };
-
-  const handlePaymentSuccess = () => {
-    if (appointmentData) {
-      onSubmit(appointmentData);
-      form.reset();
-      setAppointmentData(null);
+  
+  // Demander la localisation dès l'ouverture du dialogue
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (newOpen && !position && !geoLoading) {
+      requestPosition();
+      toast({
+        title: 'Localisation requise',
+        description: 'Nous avons besoin de votre localisation pour trouver un praticien près de vous.',
+      });
     }
   };
 
+  const handleSubmit = async (data: FormValues) => {
+    console.log('🔵 Formulaire soumis avec les données:', data);
+    
+    // Vérifier la géolocalisation
+    if (!position) {
+      toast({
+        title: 'Localisation requise',
+        description: 'Nous avons besoin de votre localisation pour trouver un praticien près de vous.',
+        variant: 'destructive'
+      });
+      requestPosition();
+      return;
+    }
+    
+    setIsSearchingPractitioner(true);
+    
+    try {
+      // 1. Rechercher un praticien disponible
+      console.log('🔍 Recherche d\'un praticien disponible...');
+      
+      const { data: practitionerData, error: practitionerError } = await supabase.functions.invoke(
+        'find-available-practitioner',
+        {
+          body: {
+            patientLat: position.latitude,
+            patientLon: position.longitude,
+            specialty: data.specialty,
+            appointmentDate: data.date.toISOString().split('T')[0],
+            appointmentTime: data.time,
+            maxRadius: 15,
+          },
+        }
+      );
+
+      if (practitionerError) {
+        throw new Error(practitionerError.message);
+      }
+
+      if (!practitionerData?.success || !practitionerData?.practitioner) {
+        setIsSearchingPractitioner(false);
+        toast({
+          title: 'Aucun praticien disponible',
+          description: practitionerData?.message || 'Veuillez choisir une autre date ou heure',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const practitioner = practitionerData.practitioner;
+      console.log('✅ Praticien trouvé:', practitioner);
+
+      toast({
+        title: 'Praticien trouvé !',
+        description: `${practitioner.name} (${practitioner.distance.toFixed(1)} km). En attente de confirmation...`,
+      });
+
+      // 2. Créer le rendez-vous avec statut "awaiting_practitioner"
+      const appointmentPayload = {
+        specialty: data.specialty,
+        date: data.date.toISOString(),
+        time: data.time,
+        reason: data.reason,
+        urgencyLevel: data.urgencyLevel,
+        practitionerId: practitioner.user_id,
+        practitionerName: practitioner.name,
+      };
+      
+      console.log('🔵 Création du rendez-vous en attente de confirmation du praticien...');
+      const createdAppointment = await onSubmit(appointmentPayload);
+      console.log('✅ Rendez-vous créé avec succès', createdAppointment);
+      
+      if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
+        setOpen(false);
+        setIsSearchingPractitioner(false);
+        form.reset();
+        
+        toast({
+          title: 'Demande envoyée',
+          description: 'Le praticien a été notifié. Vous serez informé dès qu\'il acceptera.',
+        });
+      } else {
+        throw new Error('L\'ID du rendez-vous n\'a pas été retourné');
+      }
+      
+    } catch (error) {
+      console.error('❌ Erreur:', error);
+      setIsSearchingPractitioner(false);
+      toast({
+        title: 'Erreur',
+        description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous. Veuillez réessayer.',
+        variant: 'destructive'
+      });
+    }
+  };
+  
+  const handleFormError = () => {
+    const errors = form.formState.errors;
+    const errorMessages = [];
+    
+    if (errors.specialty) errorMessages.push('Veuillez sélectionner une spécialité');
+    if (errors.date) errorMessages.push('Veuillez sélectionner une date');
+    if (errors.time) errorMessages.push('Veuillez sélectionner une heure');
+    if (errors.reason) errorMessages.push('Veuillez décrire la raison (minimum 10 caractères)');
+    
+    toast({
+      title: 'Formulaire incomplet',
+      description: errorMessages.join('\n'),
+      variant: 'destructive'
+    });
+  };
+
   const specialties = [
-    'Médecin généraliste',
-    'Infirmier(ère)',
-    'Kinésithérapeute',
-    'Aide-soignant(e)',
-    'Psychologue',
-    'Diététicien(ne)'
+    'Médecine Générale',
+    'Coaching Sportif',
   ];
 
   const timeSlots = [
@@ -82,8 +184,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   ];
 
   return (
-    <>
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
@@ -98,8 +199,17 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
+        {position && (
+          <Alert className="mb-4 bg-primary/5 border-primary/20">
+            <MapPin className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>15 km</strong> autour de votre position actuelle ({position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}°).
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit, handleFormError)} className="space-y-4">
             <FormField
               control={form.control}
               name="specialty"
@@ -156,7 +266,13 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          disabled={(date) => date < new Date()}
+                          disabled={(date) => {
+                            // Désactiver les dates passées
+                            if (date < new Date()) return true;
+                            // Désactiver les dimanches (jour 0)
+                            if (date.getDay() === 0) return true;
+                            return false;
+                          }}
                           initialFocus
                           className="pointer-events-auto"
                         />
@@ -225,12 +341,15 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                   <FormLabel>Motif de la consultation</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Décrivez brièvement la raison de votre demande..."
+                      placeholder="Décrivez brièvement la raison de votre demande... (minimum 10 caractères)"
                       className="min-h-[100px]"
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <div className="text-xs text-muted-foreground">
+                    {field.value?.length || 0} / 10 caractères minimum
+                  </div>
+                  <FormMessage className="text-destructive font-medium" />
                 </FormItem>
               )}
             />
@@ -239,24 +358,29 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
               <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
                 Annuler
               </Button>
-              <Button type="submit" className="flex-1">
-                Envoyer la demande
+              <Button 
+                type="submit" 
+                className="flex-1" 
+                disabled={isSearchingPractitioner || geoLoading}
+              >
+                {isSearchingPractitioner ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Recherche...
+                  </>
+                ) : geoLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Localisation...
+                  </>
+                ) : (
+                  'Envoyer la demande'
+                )}
               </Button>
             </div>
           </form>
         </Form>
       </DialogContent>
     </Dialog>
-
-    {appointmentData && (
-      <PaymentDialog
-        open={paymentDialogOpen}
-        onOpenChange={setPaymentDialogOpen}
-        appointmentId={"temp-" + Date.now()}
-        amount={10000}
-        onSuccess={handlePaymentSuccess}
-      />
-    )}
-    </>
   );
 }

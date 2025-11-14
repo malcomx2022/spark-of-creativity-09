@@ -1,0 +1,315 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import Header from '@/components/Header';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { useOTPAuth } from '@/hooks/useOTPAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
+import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
+
+type OTPChannel = 'sms' | 'whatsapp' | 'call';
+
+export default function LoginWithOTP() {
+  const navigate = useNavigate();
+  const { sendOTP, verifyOTP, sendingOTP, verifyingOTP, phoneStored } = useOTPAuth();
+  
+  const [step, setStep] = useState<'phone' | 'code'>('phone');
+  const [phoneNumber, setPhoneNumber] = useState(phoneStored || '');
+  const [code, setCode] = useState('');
+  const [channel, setChannel] = useState<OTPChannel>('sms');
+  const [countdown, setCountdown] = useState(0);
+
+  const redirectToDashboard = useCallback(async () => {
+    const destination = await getDashboardPathFromAuth();
+    navigate(destination, { replace: true });
+  }, [navigate]);
+
+  // Vérifier si l'utilisateur est déjà connecté
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await redirectToDashboard();
+      }
+    };
+    void checkSession();
+  }, [redirectToDashboard]);
+
+  // Countdown pour le renvoi du code
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // Format du numéro de téléphone pour l'affichage
+  const formatPhoneDisplay = (value: string) => {
+    // Remove all non-numeric characters
+    const numbers = value.replace(/\D/g, '');
+    
+    // Add + if not present and has digits
+    if (numbers && !value.startsWith('+')) {
+      return '+' + numbers;
+    }
+    return value;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneDisplay(e.target.value);
+    setPhoneNumber(formatted);
+  };
+
+  const handleSendOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!phoneNumber || phoneNumber.length < 8) {
+      return;
+    }
+
+    try {
+      await sendOTP(phoneNumber, channel);
+      setStep('code');
+      setCountdown(60); // 60 seconds countdown
+    } catch (error) {
+      console.error('Error sending OTP:', error);
+    }
+  };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (code.length !== 6) {
+      return;
+    }
+
+    try {
+      await verifyOTP(phoneNumber, code);
+      
+      // Rediriger vers le dashboard approprié
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const destination = await getDashboardPathForUser(user.id);
+        navigate(destination);
+      } else {
+        const destination = await getDashboardPathFromAuth();
+        navigate(destination);
+      }
+    } catch (error) {
+      console.error('Error verifying OTP:', error);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (countdown > 0) return;
+    
+    try {
+      await sendOTP(phoneNumber, channel);
+      setCountdown(60);
+    } catch (error) {
+      console.error('Error resending OTP:', error);
+    }
+  };
+
+  const handleBackToPhone = () => {
+    setStep('phone');
+    setCode('');
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10">
+      <Header />
+      <main className="pt-24 pb-12">
+        <div className="container max-w-md mx-auto px-4">
+          <div className="mb-6">
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/")}
+              className="mb-4"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Retour
+            </Button>
+          </div>
+
+          <Card className="shadow-medical">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl font-bold">Connexion par SMS</CardTitle>
+              <CardDescription>
+                {step === 'phone' 
+                  ? "Entrez votre numéro de téléphone pour recevoir un code de vérification"
+                  : "Entrez le code à 6 chiffres envoyé par SMS"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {step === 'phone' ? (
+                <form onSubmit={handleSendOTP} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Numéro de téléphone</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+229 XX XX XX XX"
+                      value={phoneNumber}
+                      onChange={handlePhoneChange}
+                      required
+                      autoFocus
+                      autoComplete="tel"
+                      aria-label="Numéro de téléphone au format international"
+                      disabled={sendingOTP}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Format international (ex: +229 90 12 34 56)
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Canal d'envoi</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={channel === 'sms' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => setChannel('sms')}
+                        disabled={sendingOTP}
+                        aria-label="Envoyer par SMS"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        SMS
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={channel === 'whatsapp' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => setChannel('whatsapp')}
+                        disabled={sendingOTP}
+                        aria-label="Envoyer par WhatsApp"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        WhatsApp
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={channel === 'call' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => setChannel('call')}
+                        disabled={sendingOTP}
+                        aria-label="Recevoir par appel vocal"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        Appel
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    variant="patient"
+                    size="xl"
+                    className="w-full"
+                    disabled={sendingOTP || !phoneNumber || phoneNumber.length < 8}
+                  >
+                    {sendingOTP ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      'Envoyer le code'
+                    )}
+                  </Button>
+
+                  <div className="text-center">
+                    <Link
+                      to="/login"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Se connecter avec email/mot de passe
+                    </Link>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOTP} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="code">Code de vérification</Label>
+                    <Input
+                      id="code"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]{6}"
+                      placeholder="000000"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      maxLength={6}
+                      required
+                      autoFocus
+                      autoComplete="one-time-code"
+                      aria-label="Code de vérification à 6 chiffres"
+                      disabled={verifyingOTP}
+                      className="text-center text-2xl tracking-widest"
+                    />
+                    <p className="text-xs text-muted-foreground text-center">
+                      Code envoyé au {phoneNumber}
+                    </p>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    variant="patient"
+                    size="xl"
+                    className="w-full"
+                    disabled={verifyingOTP || code.length !== 6}
+                  >
+                    {verifyingOTP ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Vérification...
+                      </>
+                    ) : (
+                      'Vérifier le code'
+                    )}
+                  </Button>
+
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full"
+                      onClick={handleResendOTP}
+                      disabled={countdown > 0 || sendingOTP}
+                    >
+                      {countdown > 0 ? (
+                        `Renvoyer le code dans ${countdown}s`
+                      ) : sendingOTP ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Envoi...
+                        </>
+                      ) : (
+                        'Renvoyer le code'
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleBackToPhone}
+                      disabled={verifyingOTP || sendingOTP}
+                    >
+                      Modifier le numéro
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+}

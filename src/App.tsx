@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import PatientSignup from "./pages/PatientSignup";
 import PractitionerSignup from "./pages/PractitionerSignup";
+import CoachDashboard from "./pages/CoachDashboard";
 import Triage from "./pages/Triage";
 import PatientDashboard from "./pages/PatientDashboard";
 import PractitionerDashboard from "./pages/PractitionerDashboard";
@@ -13,8 +14,16 @@ import PractitionerSearch from "./pages/PractitionerSearch";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import LoginWithOTP from "./pages/LoginWithOTP";
+import VerifyOTP from "./pages/VerifyOTP";
+import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Services from "./pages/Services";
+import TermsOfService from "./pages/TermsOfService";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Contact from "./pages/Contact";
+import CreateTestAccounts from "./pages/CreateTestAccounts";
 
 const queryClient = new QueryClient();
 

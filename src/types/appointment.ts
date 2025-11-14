@@ -1,4 +1,4 @@
-export type AppointmentStatus = 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled';
+export type AppointmentStatus = 'pending' | 'awaiting_practitioner' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'rejected';
 
 export interface Appointment {
   id: string;
@@ -14,7 +14,7 @@ export interface Appointment {
   address: string;
   reason: string;
   notes?: string;
-  urgencyLevel?: 'immediate' | 'urgent' | 'semi-urgent' | 'non-urgent';
+  urgencyLevel?: string;
 }
 
 export interface CreateAppointmentData {
@@ -23,4 +23,6 @@ export interface CreateAppointmentData {
   time: string;
   reason: string;
   urgencyLevel?: string;
+  practitionerId?: string;
+  practitionerName?: string;
 }

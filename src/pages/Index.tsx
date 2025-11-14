@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Heart, User, Stethoscope, Clock, Shield, CheckCircle, Star, Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
 
@@ -276,57 +277,7 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 bg-foreground text-white">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-                  <Heart className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-xl font-bold">DomiCares</span>
-              </div>
-              <p className="text-white/70">
-                Votre plateforme de confiance pour les soins de santé à domicile en Afrique.
-              </p>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Services</h4>
-              <ul className="space-y-2 text-white/70">
-                <li>Médecins à domicile</li>
-                <li>Soins infirmiers</li>
-                <li>Kinésithérapie</li>
-                <li>Consultations d'urgence</li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Légal</h4>
-              <ul className="space-y-2 text-white/70">
-                <li>Conditions d'utilisation</li>
-                <li>Politique de confidentialité</li>
-                <li>Charte praticiens</li>
-                <li>Mentions légales</li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Contact</h4>
-              <ul className="space-y-2 text-white/70">
-                <li>Support: +221 77 xxx xx xx</li>
-                <li>Urgences: 112</li>
-                <li>Email: contact@domicares.com</li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="border-t border-white/20 mt-8 pt-8 text-center text-white/70">
-            <p>&copy; 2024 DomiCares. Tous droits réservés.</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

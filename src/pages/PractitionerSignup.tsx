@@ -6,16 +6,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Stethoscope, Shield, Upload, FileText } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
+import { supabase } from "@/integrations/supabase/client";
+import { uploadUserDocument } from "@/lib/file-upload";
+
+interface SignupFormData {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  address: string;
+  phone: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  profession: string;
+  specialty: string;
+  registrationNumber: string;
+  experience: string;
+  currentWorkplace: string;
+  profilePhoto: File | null;
+  idDocument: File | null;
+  diploma: File | null;
+  licenseDocument: File | null;
+  acceptTerms: boolean;
+  sessionTypes: string[];
+  interventionZone: string;
+  interventionRadius: string;
+  certifications: string;
+}
 
 export default function PractitionerSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
     lastName: "",
     dateOfBirth: "",
@@ -35,7 +63,29 @@ export default function PractitionerSignup() {
     diploma: null,
     licenseDocument: null,
     acceptTerms: false,
+    // Coach sportif specific fields
+    sessionTypes: [] as string[],
+    interventionZone: "",
+    interventionRadius: "",
+    certifications: "",
   });
+  const [documentUploads, setDocumentUploads] = useState({
+    profilePhoto: null as File | null,
+    idDocument: null as File | null,
+    diploma: null as File | null,
+    licenseDocument: null as File | null,
+  });
+
+  const professionToType = useMemo<Record<string, string>>(() => ({
+    "Médecin généraliste": "medecin",
+    "Infirmier(ère)": "infirmier",
+    "Kinésithérapeute": "kinesitherapeute",
+    "Nutritionniste": "nutritionniste",
+    "Sage-femme": "sage_femme",
+    "Psychologue": "psychologue",
+    "Coach sportif": "coach_sportif",
+    "Autre": "autre",
+  }), []);
 
   const professions = [
     "Médecin généraliste",
@@ -44,8 +94,11 @@ export default function PractitionerSignup() {
     "Nutritionniste",
     "Sage-femme",
     "Psychologue",
+    "Coach sportif",
     "Autre"
   ];
+
+  const sessionTypes = ["individuelle", "duo", "groupe"];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,19 +125,223 @@ export default function PractitionerSignup() {
       return;
     }
 
-    // Simulation d'inscription
-    setTimeout(() => {
+    try {
+      // Validation des documents obligatoires
+      if (!documentUploads.idDocument) {
+        toast({
+          title: "Document manquant",
+          description: "La pièce d'identité est obligatoire",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!documentUploads.licenseDocument) {
+        toast({
+          title: "Document manquant",
+          description: "Le document d'autorisation d'exercice est obligatoire",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validation taille et type des fichiers
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+      for (const [key, file] of Object.entries(documentUploads)) {
+        if (file) {
+          if (file.size > MAX_FILE_SIZE) {
+            toast({
+              title: "Fichier trop volumineux",
+              description: `${key}: Maximum 5MB autorisé`,
+              variant: "destructive"
+            });
+            setIsSubmitting(false);
+            return;
+          }
+
+          if (!ALLOWED_TYPES.includes(file.type)) {
+            toast({
+              title: "Type de fichier non supporté",
+              description: `${key}: Seuls PDF, JPG et PNG sont autorisés`,
+              variant: "destructive"
+            });
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard/practitioner`,
+          data: {
+            full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+            role: "practitioner",
+            phone: formData.phone,
+          },
+        },
+      });
+
+      if (error) {
+        // Gestion erreurs spécifiques
+        if (error.message.includes('already registered') || error.message.includes('already been registered')) {
+          toast({
+            title: "Email déjà utilisé",
+            description: "Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.",
+            variant: "destructive"
+          });
+        } else if (error.message.includes('password') || error.message.includes('Password')) {
+          toast({
+            title: "Mot de passe trop faible",
+            description: "Le mot de passe doit contenir au moins 8 caractères.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Erreur d'inscription",
+            description: error.message,
+            variant: "destructive"
+          });
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!data.user) {
+        toast({
+          title: "Confirmez votre adresse email",
+          description: "Un lien de confirmation vous a été envoyé. Veuillez confirmer avant de finaliser votre inscription.",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const userId = data.user.id;
+
+      // Utiliser l'edge function transactionnelle pour créer le profil complet
+      const practitionerType = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
+      const yearsExperience = Number.parseInt(formData.experience, 10) || null;
+      const interventionRadius = formData.interventionRadius ? Number.parseInt(formData.interventionRadius, 10) : null;
+
+      // Préparer les données pour l'edge function
+      const profileData = {
+        id: userId,
+        full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone,
+        gender: (formData.gender as "homme" | "femme" | "autre" | "non_specifie") || null,
+        date_of_birth: formData.dateOfBirth || null,
+      };
+
+      const practitionerData = {
+        user_id: userId,
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone,
+        address: formData.address,
+        specialty: formData.specialty || formData.profession,
+        practitioner_type: practitionerType,
+        years_experience: yearsExperience,
+        kyc_status: "pending",
+        can_accept_missions: false,
+        bio: `Profession: ${formData.profession}\nStructure: ${formData.currentWorkplace}`,
+        license_number: formData.registrationNumber,
+        session_types: formData.profession === "Coach sportif" ? formData.sessionTypes : null,
+        intervention_zone: formData.profession === "Coach sportif" ? formData.interventionZone : null,
+        intervention_radius: formData.profession === "Coach sportif" ? interventionRadius : null,
+        certifications: formData.profession === "Coach sportif" && formData.certifications
+          ? formData.certifications.split(",").map(cert => cert.trim()).filter(Boolean)
+          : null,
+      };
+
+      // Convertir les fichiers en base64 pour l'edge function
+      const documentsBase64: Record<string, string> = {};
+      for (const [key, file] of Object.entries(documentUploads)) {
+        if (file) {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          documentsBase64[key] = base64;
+        }
+      }
+
+      // Appeler l'edge function transactionnelle
+      const { data: createResult, error: createError } = await supabase.functions.invoke(
+        'create-practitioner-account',
+        {
+          body: {
+            userId,
+            profileData,
+            practitionerData,
+            documents: documentsBase64,
+          }
+        }
+      );
+
+      if (createError || !createResult?.success) {
+        throw new Error(createError?.message || createResult?.error || "Échec de création du compte");
+      }
+
       toast({
         title: "Demande d'inscription soumise !",
         description: "Votre dossier est en cours de validation par notre équipe",
       });
+
+      setFormData({
+        firstName: "",
+        lastName: "",
+        dateOfBirth: "",
+        gender: "",
+        address: "",
+        phone: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+        profession: "",
+        specialty: "",
+        registrationNumber: "",
+        experience: "",
+        currentWorkplace: "",
+        profilePhoto: null,
+        idDocument: null,
+        diploma: null,
+        licenseDocument: null,
+        acceptTerms: false,
+        sessionTypes: [],
+        interventionZone: "",
+        interventionRadius: "",
+        certifications: "",
+      });
+      setDocumentUploads({
+        profilePhoto: null,
+        idDocument: null,
+        diploma: null,
+        licenseDocument: null,
+      });
+
+      await supabase.auth.signOut();
+      navigate("/login");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
+      toast({
+        title: "Impossible de finaliser l'inscription",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
       setIsSubmitting(false);
-      navigate("/");
-    }, 2000);
+    }
   };
 
   const handleFileUpload = (field: string, file: File | null) => {
     setFormData(prev => ({ ...prev, [field]: file }));
+    setDocumentUploads(prev => ({ ...prev, [field]: file }));
   };
 
   return (
@@ -282,6 +539,82 @@ export default function PractitionerSignup() {
                     />
                   </div>
                 </div>
+
+                {/* Coach Sportif Specific Fields */}
+                {formData.profession === "Coach sportif" && (
+                  <div className="space-y-4 mt-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                    <h4 className="font-semibold text-primary">Informations spécifiques Coach Sportif</h4>
+                    
+                    <div className="space-y-2">
+                      <Label>Types de séances proposées *</Label>
+                      <div className="flex gap-4">
+                        {sessionTypes.map((type) => (
+                          <div key={type} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`session-${type}`}
+                              checked={formData.sessionTypes.includes(type)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    sessionTypes: [...prev.sessionTypes, type] 
+                                  }));
+                                } else {
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    sessionTypes: prev.sessionTypes.filter(t => t !== type) 
+                                  }));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`session-${type}`} className="capitalize cursor-pointer">
+                              {type}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="interventionZone">Zone d'intervention *</Label>
+                        <Input
+                          id="interventionZone"
+                          placeholder="Ex: Dakar, Thiès..."
+                          value={formData.interventionZone}
+                          onChange={(e) => setFormData(prev => ({ ...prev, interventionZone: e.target.value }))}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="interventionRadius">Rayon d'intervention (km) *</Label>
+                        <Input
+                          id="interventionRadius"
+                          type="number"
+                          min="1"
+                          max="50"
+                          placeholder="Ex: 15"
+                          value={formData.interventionRadius}
+                          onChange={(e) => setFormData(prev => ({ ...prev, interventionRadius: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="certifications">Certifications / Diplômes en coaching sportif *</Label>
+                      <Textarea
+                        id="certifications"
+                        placeholder="Listez vos certifications (fitness, kinésithérapie sportive, etc.)"
+                        value={formData.certifications}
+                        onChange={(e) => setFormData(prev => ({ ...prev, certifications: e.target.value }))}
+                        required
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Documents */}
                 <div className="space-y-4">
