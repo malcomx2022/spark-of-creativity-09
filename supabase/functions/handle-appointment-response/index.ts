@@ -149,6 +149,17 @@ serve(async (req) => {
         }
       }
 
+      // ✅ Récupérer le numéro de téléphone du patient
+      const { data: patientProfile } = await supabase
+        .from('profiles')
+        .select('phone')
+        .eq('id', appointment.patient_id)
+        .single();
+
+      if (!patientProfile?.phone) {
+        throw new Error('Le patient n\'a pas de numéro de téléphone enregistré');
+      }
+
       // ✅ Créer le paiement FedaPay
       console.log('💳 Création du paiement FedaPay pour', paymentAmount, 'XOF');
       
@@ -158,8 +169,8 @@ serve(async (req) => {
           body: {
             appointmentId: appointmentId,
             amount: paymentAmount,
-            paymentMethod: 'mobile_money',
-            phoneNumber: appointment.patient_id,
+            paymentMethod: 'mtn', // Par défaut MTN, le patient pourra choisir sur FedaPay
+            phoneNumber: patientProfile.phone,
           },
           headers: {
             Authorization: authHeader,
