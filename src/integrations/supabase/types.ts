@@ -97,10 +97,10 @@ export type Database = {
           notes: string | null
           patient_id: string
           patient_name: string
+          payment_amount: number | null
           practitioner_id: string
           practitioner_name: string
           pre_visit_checklist: Json | null
-          payment_amount: number | null
           reason: string
           specialty: string
           status: string
@@ -119,10 +119,10 @@ export type Database = {
           notes?: string | null
           patient_id: string
           patient_name: string
+          payment_amount?: number | null
           practitioner_id: string
           practitioner_name: string
           pre_visit_checklist?: Json | null
-          payment_amount?: number | null
           reason: string
           specialty: string
           status?: string
@@ -141,10 +141,10 @@ export type Database = {
           notes?: string | null
           patient_id?: string
           patient_name?: string
+          payment_amount?: number | null
           practitioner_id?: string
           practitioner_name?: string
           pre_visit_checklist?: Json | null
-          payment_amount?: number | null
           reason?: string
           specialty?: string
           status?: string
@@ -1778,33 +1778,6 @@ export type Database = {
         }
         Relationships: []
       }
-      user_consents: {
-        Row: {
-          accepted_at: string | null
-          consent_type: Database["public"]["Enums"]["consent_type"]
-          created_at: string | null
-          id: string
-          is_accepted: boolean
-          user_id: string
-        }
-        Insert: {
-          accepted_at?: string | null
-          consent_type: Database["public"]["Enums"]["consent_type"]
-          created_at?: string | null
-          id?: string
-          is_accepted?: boolean
-          user_id: string
-        }
-        Update: {
-          accepted_at?: string | null
-          consent_type?: Database["public"]["Enums"]["consent_type"]
-          created_at?: string | null
-          id?: string
-          is_accepted?: boolean
-          user_id?: string
-        }
-        Relationships: []
-      }
       services: {
         Row: {
           base_price: number | null
@@ -2020,7 +1993,26 @@ export type Database = {
         }
         Returns: boolean
       }
+      initialize_payment_balance: {
+        Args: {
+          p_net_amount: number
+          p_payment_id: string
+          p_practitioner_id: string
+        }
+        Returns: Json
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      update_payment_with_balance: {
+        Args: {
+          p_hold_until?: string
+          p_net_amount: number
+          p_new_payout_status: string
+          p_new_status: string
+          p_payment_id: string
+          p_practitioner_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role:

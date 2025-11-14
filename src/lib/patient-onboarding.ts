@@ -158,7 +158,7 @@ async function upsertMedicalProfile(userId: string, medicalHistory: string[]) {
 
 async function recordTermsConsent(userId: string, acceptedAt: string) {
   const { data: existingConsent, error: consentSelectError } = await supabase
-    .from('user_consents')
+    .from('consents')
     .select('id, is_accepted, accepted_at')
     .eq('user_id', userId)
     .eq('consent_type', 'cgu')
@@ -168,7 +168,7 @@ async function recordTermsConsent(userId: string, acceptedAt: string) {
 
   if (!existingConsent) {
     const { error } = await supabase
-      .from('user_consents')
+      .from('consents')
       .insert({
         user_id: userId,
         consent_type: 'cgu',
@@ -182,7 +182,7 @@ async function recordTermsConsent(userId: string, acceptedAt: string) {
 
   if (!existingConsent.is_accepted || !existingConsent.accepted_at) {
     const { error } = await supabase
-      .from('user_consents')
+      .from('consents')
       .update({
         is_accepted: true,
         accepted_at: acceptedAt,
