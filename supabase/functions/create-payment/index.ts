@@ -111,6 +111,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const fedapaySecretKey = Deno.env.get('FEDAPAY_SECRET_KEY')!;
+    const platformWalletId = Deno.env.get('PLATFORM_WALLET_ID')!;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -314,7 +315,7 @@ serve(async (req) => {
     console.log(`Using FedaPay endpoint: ${fedapayBaseUrl}`);
 
     // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
-    console.log('Step 1: Creating FedaPay transaction');
+    console.log('Step 1: Creating FedaPay transaction', { platformWalletId });
     const createTransactionResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
       method: 'POST',
       headers: {
@@ -328,6 +329,7 @@ serve(async (req) => {
           iso: 'XOF'
         },
         callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+        account_id: platformWalletId,
         customer: {
           firstname: 'Patient',
           lastname: 'User',
