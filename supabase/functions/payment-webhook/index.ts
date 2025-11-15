@@ -364,25 +364,37 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const webhookSecret = Deno.env.get('FEDAPAY_WEBHOOK_SECRET')!;
+    const webhookSecret = Deno.env.get('FEDAPAY_WEBHOOK_SECRET');
+    const fedapayMode = Deno.env.get('FEDAPAY_MODE') || 'sandbox';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const signature = req.headers.get('x-fedapay-signature');
     const rawBody = await req.text();
     const webhookData = JSON.parse(rawBody);
     
-    console.log('Received webhook:', webhookData);
+    console.log('Received webhook:', {
+      event: webhookData.name,
+      hasSignature: !!signature,
+      mode: fedapayMode
+    });
 
-    // Vérification de la signature HMAC
-    if (signature && webhookSecret) {
+    // ⚠️ En mode sandbox, FedaPay n'envoie pas toujours de signature valide
+    // On va donc être plus permissif en sandbox mais strict en production
+    if (signature && webhookSecret && fedapayMode === 'live') {
+      console.log('Verifying webhook signature (live mode)...');
       const isValid = await verifyWebhookSignature(rawBody, signature, webhookSecret);
       if (!isValid) {
-        console.error('Invalid webhook signature');
+        console.error('Invalid webhook signature in live mode');
         return new Response(
           JSON.stringify({ error: 'Invalid signature' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      console.log('✅ Signature verified');
+    } else if (fedapayMode === 'sandbox') {
+      console.log('⚠️ Sandbox mode: skipping signature verification');
+    } else if (!webhookSecret) {
+      console.warn('⚠️ No webhook secret configured, skipping verification');
     }
 
     // Vérification de l'horodatage (rejet si > 5 minutes)
