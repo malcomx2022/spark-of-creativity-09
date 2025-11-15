@@ -160,6 +160,22 @@ serve(async (req) => {
         throw new Error('Le patient n\'a pas de numéro de téléphone enregistré');
       }
 
+      // ✅ Mettre à jour le statut du rendez-vous en 'confirmed' AVANT de créer le paiement
+      console.log('📝 Mise à jour du rendez-vous en statut confirmed');
+      const { error: preUpdateError } = await supabase
+        .from('appointments')
+        .update({ 
+          status: 'confirmed', 
+          payment_amount: paymentAmount
+        })
+        .eq('id', appointmentId)
+        .eq('status', 'awaiting_practitioner'); // Lock optimiste
+
+      if (preUpdateError) {
+        console.error('❌ Erreur mise à jour pré-paiement:', preUpdateError);
+        throw new Error('Impossible de mettre à jour le rendez-vous');
+      }
+
       // ✅ Créer le paiement FedaPay avec service role
       console.log('💳 Création du paiement FedaPay pour', paymentAmount, 'XOF');
       
@@ -192,23 +208,29 @@ serve(async (req) => {
 
       if (paymentError || !paymentData?.success) {
         console.error('❌ Erreur création paiement:', paymentError);
+        // Remettre le statut à awaiting_practitioner en cas d'erreur
+        await supabase
+          .from('appointments')
+          .update({ status: 'awaiting_practitioner' })
+          .eq('id', appointmentId);
         throw new Error('Impossible de créer le lien de paiement');
       }
 
       console.log('✅ Paiement créé:', paymentData.paymentId);
 
-      // Mettre à jour le rendez-vous avec le montant et le statut
+      // Mettre à jour le rendez-vous avec le statut pending_payment et la date d'expiration
       const { error: updateError } = await supabase
         .from('appointments')
         .update({ 
-          status: 'pending_payment', 
-          payment_amount: paymentAmount,
+          status: 'pending_payment',
           payment_expires_at: paymentData.expiresAt 
         })
         .eq('id', appointmentId)
-        .eq('status', 'awaiting_practitioner'); // Lock optimiste
+        .eq('status', 'confirmed'); // Lock optimiste
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('❌ Erreur mise à jour post-paiement:', updateError);
+      }
 
       // Créer une notification avec le lien de paiement pour le patient
       await supabase
