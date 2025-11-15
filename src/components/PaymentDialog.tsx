@@ -88,9 +88,60 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [selectedSavedMethod, setSelectedSavedMethod] = useState<string>('');
   const [autoPrefilled, setAutoPrefilled] = useState(false);
   const [attemptNumber, setAttemptNumber] = useState(0);
+  const [existingPaymentChecked, setExistingPaymentChecked] = useState(false);
   const hasRehydratedRef = useRef(false);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
+
+  // ✅ Vérifier immédiatement à l'ouverture s'il existe un paiement en cours
+  useEffect(() => {
+    if (!open || existingPaymentChecked) return;
+
+    const checkExistingPayment = async () => {
+      console.log('🔍 Vérification d\'un paiement existant pour le rendez-vous:', appointmentId);
+      
+      const { data: existingPayment } = await supabase
+        .from('payments')
+        .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
+        .eq('appointment_id', appointmentId)
+        .in('status', ['initiated', 'pending'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingPayment?.fedapay_payment_url) {
+        console.log('✅ Paiement existant trouvé:', existingPayment.id);
+        
+        // Utiliser directement le paiement existant
+        setPaymentId(existingPayment.id);
+        setPaymentUrl(existingPayment.fedapay_payment_url);
+        setTransactionId(existingPayment.fedapay_transaction_id || null);
+        setPaymentStatus('pending');
+        setPollCount(0);
+
+        toast({
+          title: 'Paiement en attente',
+          description: 'Un paiement est déjà en cours pour ce rendez-vous. Vous pouvez compléter le paiement en cliquant sur le lien ci-dessous.',
+        });
+
+        // Ouvrir automatiquement l'URL de paiement
+        window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+      } else {
+        console.log('ℹ️ Aucun paiement en cours trouvé, création possible');
+      }
+
+      setExistingPaymentChecked(true);
+    };
+
+    checkExistingPayment();
+  }, [open, appointmentId, existingPaymentChecked]);
+
+  // Réinitialiser l'état lors de la fermeture
+  useEffect(() => {
+    if (!open) {
+      setExistingPaymentChecked(false);
+    }
+  }, [open]);
 
   // Enregistrer une tentative de paiement
   const recordPaymentAttempt = async (
@@ -239,7 +290,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
-      // ✅ Vérifier d'abord s'il existe déjà un paiement pour ce rendez-vous
+      // ✅ Vérifier une dernière fois qu'aucun paiement n'existe
       const { data: existingPayment } = await supabase
         .from('payments')
         .select('id, fedapay_payment_url, fedapay_transaction_id, status')
@@ -249,9 +300,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         .limit(1)
         .maybeSingle();
 
-      // Si un paiement existe déjà et qu'il a une URL, l'utiliser directement
+      // Si un paiement existe, l'utiliser au lieu d'en créer un nouveau
       if (existingPayment?.fedapay_payment_url) {
-        console.log('✅ Paiement existant trouvé, utilisation de l\'URL existante');
+        console.log('✅ Paiement existant trouvé, réutilisation');
         
         setPaymentUrl(existingPayment.fedapay_payment_url);
         setPaymentId(existingPayment.id);
@@ -260,14 +311,11 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         setPollCount(0);
 
         toast({
-          title: 'Paiement en attente',
+          title: 'Paiement en cours',
           description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
         });
 
-        // Ouvrir l'URL de paiement
         window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
-        
-        // Continuer avec le polling
         return;
       }
 
@@ -729,13 +777,23 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           renderPaymentStatus()
         ) : (
           <div className="space-y-4 py-4">
-            <Alert>
-              <ShieldCheck className="h-4 w-4" />
-              <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
-              <AlertDescription>
-                Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
-              </AlertDescription>
-            </Alert>
+            {paymentUrl ? (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Paiement en cours</AlertTitle>
+                <AlertDescription>
+                  Un paiement est déjà en attente pour ce rendez-vous. Cliquez sur "Ouvrir le paiement" pour le compléter.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert>
+                <ShieldCheck className="h-4 w-4" />
+                <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
+                <AlertDescription>
+                  Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Méthodes sauvegardées */}
             {paymentMethods.length > 0 && (
@@ -868,11 +926,26 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             <Button variant="outline" onClick={closeDialog} className="flex-1">
               Annuler
             </Button>
-            <Button onClick={handlePayment} disabled={isProcessing} className="flex-1">
+            <Button 
+              onClick={() => {
+                if (paymentUrl) {
+                  window.open(paymentUrl, '_blank', 'noopener,noreferrer');
+                } else {
+                  handlePayment();
+                }
+              }} 
+              disabled={isProcessing} 
+              className="flex-1"
+            >
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Traitement...
+                </>
+              ) : paymentUrl ? (
+                <>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Ouvrir le paiement
                 </>
               ) : (
                 'Payer'
