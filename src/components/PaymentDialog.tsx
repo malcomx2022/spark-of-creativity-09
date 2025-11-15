@@ -239,6 +239,41 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
+      // ✅ Vérifier d'abord s'il existe déjà un paiement pour ce rendez-vous
+      const { data: existingPayment } = await supabase
+        .from('payments')
+        .select('id, fedapay_payment_url, fedapay_transaction_id, status')
+        .eq('appointment_id', appointmentId)
+        .in('status', ['initiated', 'pending'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Si un paiement existe déjà et qu'il a une URL, l'utiliser directement
+      if (existingPayment?.fedapay_payment_url) {
+        console.log('✅ Paiement existant trouvé, utilisation de l\'URL existante');
+        
+        setPaymentUrl(existingPayment.fedapay_payment_url);
+        setPaymentId(existingPayment.id);
+        setTransactionId(existingPayment.fedapay_transaction_id || null);
+        setPaymentStatus('pending');
+        setPollCount(0);
+
+        toast({
+          title: 'Paiement en attente',
+          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+        });
+
+        // Ouvrir l'URL de paiement
+        window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+        
+        // Continuer avec le polling
+        return;
+      }
+
+      // Sinon, créer un nouveau paiement
+      console.log('💳 Création d\'un nouveau paiement');
+
       // Appel avec retry et notification à chaque tentative
       const { data: result, error } = await invokeEdgeFunctionWithRetry(
         'create-payment',
