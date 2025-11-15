@@ -61,6 +61,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
     if (!newOpen) {
       setLocationMode('auto');
       setManualAddress('');
+      form.reset();
       return;
     }
 
