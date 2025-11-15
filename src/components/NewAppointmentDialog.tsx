@@ -143,6 +143,14 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       // 1. Rechercher un praticien disponible
       console.log('🔍 Recherche d\'un praticien disponible...');
       
+      // Formater la date en YYYY-MM-DD en utilisant le fuseau horaire local
+      const year = data.date.getFullYear();
+      const month = String(data.date.getMonth() + 1).padStart(2, '0');
+      const day = String(data.date.getDate()).padStart(2, '0');
+      const appointmentDate = `${year}-${month}-${day}`;
+      
+      console.log('📅 Date formatée pour la recherche:', appointmentDate);
+      
       const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry<FindPractitionerResponse>(
         'find-available-practitioner',
         {
@@ -150,7 +158,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
             patientLat: position.latitude,
             patientLon: position.longitude,
             specialty: data.specialty,
-            appointmentDate: data.date.toISOString().split('T')[0],
+            appointmentDate: appointmentDate,
             appointmentTime: data.time,
             maxRadius: 15,
           },
@@ -163,9 +171,13 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
 
       if (!practitionerData?.success || !practitionerData?.practitioner) {
         setIsSearchingPractitioner(false);
+        
+        // Formater la date pour l'affichage en français
+        const formattedDate = format(data.date, 'dd/MM/yyyy', { locale: fr });
+        
         toast({
           title: 'Aucun praticien disponible',
-          description: practitionerData?.message || 'Veuillez choisir une autre date ou heure',
+          description: `Aucun praticien disponible le ${formattedDate} à ${data.time}. Veuillez choisir une autre date ou heure.`,
           variant: 'destructive',
         });
         return;
