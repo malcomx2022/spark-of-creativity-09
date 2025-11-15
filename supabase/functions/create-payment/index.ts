@@ -303,14 +303,17 @@ serve(async (req) => {
     const tokenData: any = await generateTokenResponse.json();
     console.log('FedaPay token generated successfully:', tokenData);
     
-    // Extraire le token et l'URL de paiement
-    const tokenInfo = tokenData.v1_transaction_token || tokenData['v1/transaction/token'] || tokenData.token || tokenData;
-    const paymentUrl = tokenInfo.url || `https://process.fedapay.com/${tokenInfo.token}`;
+    // FedaPay retourne directement { token: "...", url: "..." }
+    const paymentToken = tokenData.token;
+    const paymentUrl = tokenData.url;
     
-    if (!paymentUrl) {
-      console.error('Payment URL not found in token response:', tokenData);
+    if (!paymentToken || !paymentUrl) {
+      console.error('Payment token or URL not found in response:', tokenData);
       return new Response(
-        JSON.stringify({ error: 'URL de paiement non disponible' }),
+        JSON.stringify({ 
+          error: 'Token ou URL de paiement non disponible',
+          details: { hasToken: !!paymentToken, hasUrl: !!paymentUrl }
+        }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -335,11 +338,16 @@ serve(async (req) => {
       });
 
       if (!sendPaymentResponse.ok) {
-        const sendError = await sendPaymentResponse.json();
+        const sendError = await sendPaymentResponse.text();
         console.warn('Mobile money payment request failed:', sendError);
       } else {
-        const sendData = await sendPaymentResponse.json();
-        console.log('Mobile money payment request sent successfully:', sendData);
+        try {
+          const sendData = await sendPaymentResponse.json();
+          console.log('Mobile money payment request sent successfully:', sendData);
+        } catch (e) {
+          // FedaPay peut retourner une réponse vide ou non-JSON
+          console.log('Mobile money payment request sent (no JSON response)');
+        }
       }
     }
 
