@@ -140,51 +140,53 @@ export default function AdminDashboard() {
 
         {/* Main Admin Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9 gap-1">
-            <TabsTrigger value="dashboard">
-              <Activity className="h-4 w-4 mr-2" />
-              Vue d'ensemble
-            </TabsTrigger>
-            {canManageAdmins && (
-              <TabsTrigger value="admins">
-                <Shield className="h-4 w-4 mr-2" />
-                Admins
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-9 gap-1">
+              <TabsTrigger value="dashboard" className="whitespace-nowrap">
+                <Activity className="h-4 w-4 mr-2" />
+                Vue d'ensemble
               </TabsTrigger>
-            )}
-            <TabsTrigger value="kyc" className="flex items-center gap-2">
-              <FileCheck className="h-4 w-4" />
-              <span>KYC</span>
-              {pendingKycNotifications > 0 && (
-                <Badge variant="destructive" className="ml-1">
-                  {pendingKycNotifications > 99 ? '99+' : pendingKycNotifications}
-                </Badge>
+              {canManageAdmins && (
+                <TabsTrigger value="admins" className="whitespace-nowrap">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Admins
+                </TabsTrigger>
               )}
-            </TabsTrigger>
-            <TabsTrigger value="operations">
-              <Calendar className="h-4 w-4 mr-2" />
-              Opérations
-            </TabsTrigger>
-            <TabsTrigger value="finance">
-              <DollarSign className="h-4 w-4 mr-2" />
-              Finance
-            </TabsTrigger>
-            <TabsTrigger value="support">
-              <MessageSquare className="h-4 w-4 mr-2" />
-              Support
-            </TabsTrigger>
-            <TabsTrigger value="otp">
-              <Phone className="h-4 w-4 mr-2" />
-              OTP
-            </TabsTrigger>
-            <TabsTrigger value="compliance">
-              <BookOpen className="h-4 w-4 mr-2" />
-              Conformité
-            </TabsTrigger>
-            <TabsTrigger value="audit">
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Audit
-            </TabsTrigger>
-          </TabsList>
+              <TabsTrigger value="kyc" className="flex items-center gap-2 whitespace-nowrap">
+                <FileCheck className="h-4 w-4" />
+                <span>KYC</span>
+                {pendingKycNotifications > 0 && (
+                  <Badge variant="destructive" className="ml-1">
+                    {pendingKycNotifications > 99 ? '99+' : pendingKycNotifications}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="operations" className="whitespace-nowrap">
+                <Calendar className="h-4 w-4 mr-2" />
+                Opérations
+              </TabsTrigger>
+              <TabsTrigger value="finance" className="whitespace-nowrap">
+                <DollarSign className="h-4 w-4 mr-2" />
+                Finance
+              </TabsTrigger>
+              <TabsTrigger value="support" className="whitespace-nowrap">
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Support
+              </TabsTrigger>
+              <TabsTrigger value="otp" className="whitespace-nowrap">
+                <Phone className="h-4 w-4 mr-2" />
+                OTP
+              </TabsTrigger>
+              <TabsTrigger value="compliance" className="whitespace-nowrap">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Conformité
+              </TabsTrigger>
+              <TabsTrigger value="audit" className="whitespace-nowrap">
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                Audit
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="dashboard" className="space-y-4">
             <UsersManagementSection />

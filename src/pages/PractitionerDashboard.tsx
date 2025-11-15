@@ -306,52 +306,54 @@ export default function PractitionerDashboard() {
         </div>
 
         <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
-            <TabsTrigger value="appointments" className="gap-2">
-              <Calendar className="h-4 w-4" />
-              <span className="hidden sm:inline">RDV</span>
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="gap-2">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">Profil</span>
-            </TabsTrigger>
-            <TabsTrigger value="availability" className="gap-2">
-              <Clock className="h-4 w-4" />
-              <span className="hidden sm:inline">Disponibilités</span>
-            </TabsTrigger>
-            <TabsTrigger value="payment-info" className="gap-2">
-              <Wallet className="h-4 w-4" />
-              <span className="hidden sm:inline">Coordonnées paiement</span>
-            </TabsTrigger>
-            <TabsTrigger value="payouts" className="gap-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="hidden sm:inline">Revenus</span>
-            </TabsTrigger>
-            <TabsTrigger value="notes" className="gap-2">
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Notes</span>
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              <span className="hidden sm:inline">Rapports</span>
-            </TabsTrigger>
-            <TabsTrigger value="reviews" className="gap-2">
-              <Star className="h-4 w-4" />
-              <span className="hidden sm:inline">Avis</span>
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Messages</span>
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Notifications</span>
-            </TabsTrigger>
-            <TabsTrigger value="support" className="gap-2">
-              <HelpCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Support</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-10 gap-1 sm:gap-2">
+              <TabsTrigger value="appointments" className="gap-2 whitespace-nowrap">
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline">RDV</span>
+              </TabsTrigger>
+              <TabsTrigger value="profile" className="gap-2 whitespace-nowrap">
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">Profil</span>
+              </TabsTrigger>
+              <TabsTrigger value="availability" className="gap-2 whitespace-nowrap">
+                <Clock className="h-4 w-4" />
+                <span className="hidden sm:inline">Disponibilités</span>
+              </TabsTrigger>
+              <TabsTrigger value="payment-info" className="gap-2 whitespace-nowrap">
+                <Wallet className="h-4 w-4" />
+                <span className="hidden sm:inline">Coordonnées paiement</span>
+              </TabsTrigger>
+              <TabsTrigger value="payouts" className="gap-2 whitespace-nowrap">
+                <DollarSign className="h-4 w-4" />
+                <span className="hidden sm:inline">Revenus</span>
+              </TabsTrigger>
+              <TabsTrigger value="notes" className="gap-2 whitespace-nowrap">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Notes</span>
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="gap-2 whitespace-nowrap">
+                <ClipboardCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">Rapports</span>
+              </TabsTrigger>
+              <TabsTrigger value="reviews" className="gap-2 whitespace-nowrap">
+                <Star className="h-4 w-4" />
+                <span className="hidden sm:inline">Avis</span>
+              </TabsTrigger>
+              <TabsTrigger value="messages" className="gap-2 whitespace-nowrap">
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">Messages</span>
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="gap-2 whitespace-nowrap">
+                <Shield className="h-4 w-4" />
+                <span className="hidden sm:inline">Notifications</span>
+              </TabsTrigger>
+              <TabsTrigger value="support" className="gap-2 whitespace-nowrap">
+                <HelpCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Support</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Onglet Rendez-vous */}
           <TabsContent value="appointments" className="space-y-6">
