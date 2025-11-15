@@ -16,6 +16,8 @@ export interface PersistedPaymentState {
   expiresAt: string | null;
   useSavedMethod: boolean;
   selectedSavedMethod: string;
+  payerName?: string;
+  payerEmail?: string;
   lastUpdated: number;
 }
 
@@ -46,6 +48,8 @@ function isPersistedPaymentState(value: unknown): value is PersistedPaymentState
     ('expiresAt' in candidate ? candidate.expiresAt === null || typeof candidate.expiresAt === 'string' : true) &&
     ('useSavedMethod' in candidate ? typeof candidate.useSavedMethod === 'boolean' : true) &&
     ('selectedSavedMethod' in candidate ? typeof candidate.selectedSavedMethod === 'string' : true) &&
+    ('payerName' in candidate ? typeof candidate.payerName === 'string' : true) &&
+    ('payerEmail' in candidate ? typeof candidate.payerEmail === 'string' : true) &&
     typeof candidate.lastUpdated === 'number'
   );
 }

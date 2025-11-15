@@ -1105,6 +1105,9 @@ export type Database = {
           invoice_number: string | null
           net_amount: number | null
           patient_id: string
+          payer_email: string | null
+          payer_name: string | null
+          payer_phone: string | null
           payment_method: string
           payment_session_data: Json | null
           payout_status: string | null
@@ -1130,6 +1133,9 @@ export type Database = {
           invoice_number?: string | null
           net_amount?: number | null
           patient_id: string
+          payer_email?: string | null
+          payer_name?: string | null
+          payer_phone?: string | null
           payment_method: string
           payment_session_data?: Json | null
           payout_status?: string | null
@@ -1155,6 +1161,9 @@ export type Database = {
           invoice_number?: string | null
           net_amount?: number | null
           patient_id?: string
+          payer_email?: string | null
+          payer_name?: string | null
+          payer_phone?: string | null
           payment_method?: string
           payment_session_data?: Json | null
           payout_status?: string | null
