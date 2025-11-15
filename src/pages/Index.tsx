@@ -128,8 +128,8 @@ const Index = () => {
       </section>
 
       {/* User Type Selection */}
-      <section id="services" className="py-16 bg-white/50">
-        <div className="container mx-auto px-4">
+      <section id="services" className="py-12 md:py-16 bg-white/50 px-4 sm:px-6">
+        <div className="container mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
               Choisissez votre profil
@@ -272,13 +272,13 @@ const Index = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-16 gradient-hero">
-        <div className="container mx-auto px-4 text-center">
-          <div className="max-w-3xl mx-auto space-y-8">
-            <h2 className="text-3xl lg:text-4xl font-bold text-white">
+      <section className="py-12 md:py-16 gradient-hero px-4 sm:px-6">
+        <div className="container mx-auto text-center">
+          <div className="max-w-3xl mx-auto space-y-6 md:space-y-8">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
               Prêt à commencer ?
             </h2>
-            <p className="text-xl text-white/90">
+            <p className="text-base sm:text-lg lg:text-xl text-white/90">
               Rejoignez des milliers d'utilisateurs qui font confiance à DomiCares 
               pour leurs soins de santé à domicile.
             </p>

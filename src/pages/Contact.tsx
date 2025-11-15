@@ -37,12 +37,12 @@ export default function Contact() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20 overflow-hidden">
       <Header />
       
-      <main className="container mx-auto px-4 pt-24 pb-16">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+      <main className="container mx-auto px-4 sm:px-6 pt-24 pb-12 md:pb-16">
+        <div className="text-center mb-8 md:mb-12">
+          <h1 className="text-3xl sm:text-4xl font-bold mb-3 md:mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             Contactez-nous
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">

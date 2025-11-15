@@ -96,13 +96,13 @@ export default function Services() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20 overflow-hidden">
       <Header />
       
-      <main className="container mx-auto px-4 pt-24 pb-16">
+      <main className="container mx-auto px-4 sm:px-6 pt-24 pb-12 md:pb-16">
         {/* Hero Section */}
-        <section className="text-center mb-16">
-          <h1 className="text-4xl lg:text-5xl font-bold mb-6 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+        <section className="text-center mb-12 md:mb-16">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 md:mb-6 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             Nos Services de Santé à Domicile
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8">
