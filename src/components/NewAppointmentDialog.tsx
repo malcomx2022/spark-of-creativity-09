@@ -61,7 +61,12 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
     if (!newOpen) {
       setLocationMode('auto');
       setManualAddress('');
-      form.reset();
+      form.reset({
+        specialty: '',
+        time: '',
+        reason: '',
+        urgencyLevel: 'non-urgent'
+      });
       return;
     }
 
@@ -111,7 +116,12 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
           setIsSearchingPractitioner(false);
           setLocationMode('auto');
           setManualAddress('');
-          form.reset();
+          form.reset({
+            specialty: '',
+            time: '',
+            reason: '',
+            urgencyLevel: 'non-urgent'
+          });
         } else {
           throw new Error("Le rendez-vous n'a pas pu être créé");
         }
@@ -212,7 +222,12 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
         setIsSearchingPractitioner(false);
         setLocationMode('auto');
         setManualAddress('');
-        form.reset();
+        form.reset({
+          specialty: '',
+          time: '',
+          reason: '',
+          urgencyLevel: 'non-urgent'
+        });
         
         toast({
           title: '✅ Demande envoyée avec succès',
