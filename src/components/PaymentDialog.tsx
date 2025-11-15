@@ -352,17 +352,25 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       
+      // Détecter l'erreur de paiement en cours (409)
+      const isPaymentInProgress = errorMessage.includes('paiement est déjà en cours');
+      const retryMatch = errorMessage.match(/réessayer dans (\d+) minute/);
+      const retryMinutes = retryMatch ? parseInt(retryMatch[1]) : null;
+      
       // Enregistrer l'échec définitif
-      await recordPaymentAttempt('failed', errorMessage, 'payment_error', {
+      await recordPaymentAttempt('failed', errorMessage, isPaymentInProgress ? 'duplicate_payment' : 'payment_error', {
         error: errorMessage,
         timestamp: new Date().toISOString(),
+        isPaymentInProgress,
       });
       
       toast({
-        title: 'Erreur de paiement',
-        description: errorMessage,
+        title: isPaymentInProgress ? 'Paiement en cours' : 'Erreur de paiement',
+        description: isPaymentInProgress && retryMinutes 
+          ? `Un paiement est déjà en cours. Veuillez patienter ${retryMinutes} minute(s) ou vérifiez votre statut de paiement.`
+          : errorMessage,
         variant: 'destructive',
-        duration: 5000,
+        duration: isPaymentInProgress ? 8000 : 5000,
       });
     }
   };
