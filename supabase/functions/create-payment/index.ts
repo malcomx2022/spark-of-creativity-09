@@ -10,6 +10,24 @@ const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
 // Validation schema avec Zod
 const PaymentRequestSchema = z.object({
+  appointmentId: z.string().uuid({ message: "Invalid appointment ID format" }),
+  amount: z.number()
+    .min(100, { message: "Amount must be at least 100 XOF" })
+    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" })
+    .optional(),
+  paymentMethod: z.enum(['mtn', 'orange', 'moov'], {
+    errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
+  }),
+  phoneNumber: z.string()
+    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" })
+});
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -98,110 +116,62 @@ const PaymentRequestSchema = z.object({
     if (appointmentError || !appointment) {
       console.error('Appointment not found:', appointmentError);
       return new Response(
-        JSON.stringify({ error: 'Appointment not found' }),
+        JSON.stringify({ error: 'Rendez-vous non trouvé' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Vérifier si l'utilisateur est autorisé (patient ou praticien du rendez-vous)
-    // Bypass cette vérification si c'est un appel service role
-    let isAuthorized = bypassAuth;
-    let paymentUserId = requestPatientId || appointment.patient_id;
-    
-    if (!bypassAuth && user) {
-      if (appointment.patient_id === user.id) {
-        isAuthorized = true;
-        paymentUserId = user.id;
-      } else {
-        // Vérifier si l'utilisateur est le praticien du rendez-vous
-        const { data: practitioner } = await supabase
-          .from('practitioners')
-          .select('user_id')
-          .eq('id', appointment.practitioner_id)
-          .single();
-        
-        if (practitioner && practitioner.user_id === user.id) {
-          isAuthorized = true;
-          paymentUserId = appointment.patient_id; // Le paiement est toujours pour le patient
-        }
-      }
-    }
-
-    if (!isAuthorized) {
-      console.error('Appointment does not belong to user');
+    // Vérifier les droits (sauf si bypassAuth)
+    const paymentUserId = requestBypassAuth && requestPatientId ? requestPatientId : user!.id;
+    if (!bypassAuth && appointment.patient_id !== paymentUserId) {
+      console.error('Unauthorized access to appointment');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized: Appointment does not belong to you' }),
+        JSON.stringify({ error: 'Vous n\'êtes pas autorisé à payer pour ce rendez-vous' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Générer une clé d'idempotence
-    const idempotencyKey = `${paymentUserId}-${appointmentId}-${Date.now()}`;
-
-    // Vérifier si l'appointment a déjà été payé
-    const { data: existingPayment } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('appointment_id', appointmentId)
-      .in('status', ['pending', 'paid', 'initiated'])
-      .maybeSingle();
-
-    if (existingPayment) {
-      console.log('Payment already exists for this appointment:', existingPayment);
+    // Vérifier le statut de l'appointment
+    if (!['confirmed', 'pending_payment'].includes(appointment.status)) {
+      console.error('Appointment not in a payable state:', appointment.status);
       return new Response(
-        JSON.stringify({
-          paymentId: existingPayment.id,
-          transactionId: existingPayment.fedapay_transaction_id,
-          paymentUrl: existingPayment.fedapay_payment_url,
-          status: existingPayment.status,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          message: 'Payment already initiated'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Ce rendez-vous n\'est pas dans un état payable' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let amountToCharge = requestedAmount ?? appointment.payment_amount ?? null;
+    // Déterminer le montant à facturer
+    const amountToCharge = requestedAmount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
+    console.log('Payment initiated:', { appointmentId, amountToCharge, paymentMethod, phoneNumber });
 
-    if (amountToCharge === null) {
-      const { data: rate } = await supabase
-        .from('practitioner_rates')
-        .select('base_price')
-        .eq('practitioner_id', appointment.practitioner_id)
-        .eq('service_type', appointment.specialty)
-        .maybeSingle();
+    // Créer l'idempotency key
+    const idempotencyKey = `${appointmentId}-${Date.now()}`;
 
-      amountToCharge = rate?.base_price ?? null;
+    // Vérifier si un paiement pending existe déjà pour ce rendez-vous
+    const { data: existingPayments } = await supabase
+      .from('payments')
+      .select('id, status')
+      .eq('appointment_id', appointmentId)
+      .in('status', ['initiated', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-      if (amountToCharge === null) {
-        const { data: service } = await supabase
-          .from('services')
-          .select('base_price')
-          .eq('name', appointment.specialty)
-          .maybeSingle();
-
-        amountToCharge = service?.base_price ?? DEFAULT_APPOINTMENT_AMOUNT;
-      }
+    if (existingPayments && existingPayments.length > 0) {
+      console.log('Existing pending payment found:', existingPayments[0]);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Un paiement est déjà en cours pour ce rendez-vous',
+          paymentId: existingPayments[0].id
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    if (requestedAmount !== null && requestedAmount !== amountToCharge) {
-      console.log('Requested amount differs from computed amount, using computed value', { requestedAmount, amountToCharge });
-    }
-
-    if (appointment.payment_amount !== amountToCharge) {
-      await supabase
-        .from('appointments')
-        .update({ payment_amount: amountToCharge })
-        .eq('id', appointmentId);
-    }
-
-    console.log('Creating payment:', { appointmentId, amount: amountToCharge, paymentMethod, phoneNumber, idempotencyKey });
-
-    // Map payment methods to FedaPay mode
+    // Map payment methods to FedaPay modes
     const modeMap: Record<string, string> = {
-      'mtn': 'mtn_bj',
-      'orange': 'orange_bj',
-      'moov': 'moov_bj'
+      'mtn': 'mtn_benin',
+      'moov': 'moov_benin',
+      'orange': 'orange_money_benin',
     };
 
     const selectedMode = modeMap[paymentMethod];
@@ -342,8 +312,6 @@ const PaymentRequestSchema = z.object({
       }
     }
 
-
-
     // Récupérer la configuration des frais
     const { data: configData } = await supabase
       .from('system_config')
@@ -363,15 +331,12 @@ const PaymentRequestSchema = z.object({
     // Calculer les frais
     const feeConfig = parseFeeConfig(systemConfig);
     const feeBreakdown = calculateFees(amountToCharge, 'XOF', feeConfig);
-    
-    // Calculer la date de hold
     const holdPeriodDays = systemConfig.payment_hold_period_days?.days || 2;
     const holdUntil = calculateHoldUntil(holdPeriodDays);
-    
-    // Normaliser le statut initial
-    const initialStatus = normalizeStatus(transaction.status || 'pending');
 
-    // Store payment in database avec détails des frais
+    console.log('Fee breakdown:', feeBreakdown);
+
+    // Enregistrer le paiement dans la base de données
     const { data: payment, error: dbError } = await supabase
       .from('payments')
       .insert({
@@ -380,22 +345,16 @@ const PaymentRequestSchema = z.object({
         amount: feeBreakdown.amount,
         currency: feeBreakdown.currency,
         payment_method: paymentMethod,
-        status: initialStatus,
-        commission_amount: feeBreakdown.commissionAmount,
-        gateway_fees_amount: feeBreakdown.gatewayFeesAmount,
-        fees_amount: feeBreakdown.feesAmount,
-        net_amount: feeBreakdown.netAmount,
-        hold_until: holdUntil.toISOString(),
+        status: 'initiated',
         payout_status: 'pending',
         fedapay_transaction_id: transaction.id.toString(),
         fedapay_payment_url: paymentUrl,
         idempotency_key: idempotencyKey,
-        channel: 'momo',
-        provider_ref: transaction.id.toString(),
-        payment_session_data: {
-          transaction: fedapayData,
-          mode: selectedMode
-        }
+        commission_amount: feeBreakdown.commissionAmount,
+        gateway_fees_amount: feeBreakdown.gatewayFeesAmount,
+        fees_amount: feeBreakdown.feesAmount,
+        net_amount: feeBreakdown.netAmount,
+        hold_until: holdUntil
       })
       .select()
       .single();
@@ -452,47 +411,45 @@ const PaymentRequestSchema = z.object({
       supabase,
       supabaseUrl,
       serviceRoleKey: supabaseKey,
+      title: 'Paiement initié',
+      message: 'Votre paiement a été initié. Veuillez suivre les instructions pour compléter la transaction.',
       userId: paymentUserId,
-      title: 'Paiement initialisé',
-        message: `Votre paiement de ${amountToCharge} XOF pour le rendez-vous a été créé. Confirmez sur votre mobile en entrant votre code PIN USSD ou cliquez pour ouvrir FedaPay.`,
       type: 'payment',
-      link: paymentUrl,
+      link: null
     });
 
-    // Calculer l'expiration (30 minutes pour FedaPay)
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
-    console.log('Payment created successfully:', {
-      paymentId: payment.id,
-      transactionId: transaction.id,
-      paymentUrl: paymentUrl
-    });
+    // Mettre à jour le statut de l'appointment
+    await supabase
+      .from('appointments')
+      .update({ 
+        status: 'pending_payment',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', appointmentId);
 
     return new Response(
-      JSON.stringify({
+      JSON.stringify({ 
         success: true,
         paymentId: payment.id,
         transactionId: transaction.id,
-        paymentUrl: paymentUrl,
-        status: initialStatus,
-        expiresAt: expiresAt,
-        message: 'Paiement initialisé avec succès'
+        paymentUrl,
+        amount: feeBreakdown.amount,
+        currency: feeBreakdown.currency
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
 
   } catch (error) {
-    console.error('Error in create-payment function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Unexpected error in create-payment:', error);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ 
+        error: 'Une erreur inattendue est survenue',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
