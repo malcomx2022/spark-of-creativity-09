@@ -150,21 +150,52 @@ serve(async (req) => {
     // Vérifier si un paiement pending existe déjà pour ce rendez-vous
     const { data: existingPayments } = await supabase
       .from('payments')
-      .select('id, status')
+      .select('id, status, created_at')
       .eq('appointment_id', appointmentId)
       .in('status', ['initiated', 'pending'])
       .order('created_at', { ascending: false })
       .limit(1);
 
     if (existingPayments && existingPayments.length > 0) {
-      console.log('Existing pending payment found:', existingPayments[0]);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Un paiement est déjà en cours pour ce rendez-vous',
-          paymentId: existingPayments[0].id
-        }),
-        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const existingPayment = existingPayments[0];
+      const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
+      const PAYMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+      
+      // Si le paiement a plus de 15 minutes, le marquer comme expiré
+      if (paymentAge > PAYMENT_TIMEOUT_MS) {
+        console.log('Existing payment expired, marking as failed:', existingPayment.id);
+        await supabase
+          .from('payments')
+          .update({ 
+            status: 'failed',
+            payout_status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPayment.id);
+        
+        // Mettre à jour l'appointment
+        await supabase
+          .from('appointments')
+          .update({ 
+            status: 'confirmed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', appointmentId);
+          
+        console.log('Expired payment cleaned up, proceeding with new payment');
+      } else {
+        // Paiement récent, bloquer la création
+        const remainingMinutes = Math.ceil((PAYMENT_TIMEOUT_MS - paymentAge) / 60000);
+        console.log('Existing pending payment found:', existingPayment);
+        return new Response(
+          JSON.stringify({ 
+            error: `Un paiement est déjà en cours pour ce rendez-vous. Veuillez réessayer dans ${remainingMinutes} minute(s).`,
+            paymentId: existingPayment.id,
+            retryAfter: remainingMinutes
+          }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Map payment methods to FedaPay modes
