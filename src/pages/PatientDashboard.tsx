@@ -363,52 +363,54 @@ export default function PatientDashboard() {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid grid-cols-3 lg:grid-cols-11 gap-2">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              <span className="hidden sm:inline">Accueil</span>
-            </TabsTrigger>
-            <TabsTrigger value="appointments" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              <span className="hidden sm:inline">RDV</span>
-            </TabsTrigger>
-            <TabsTrigger value="triage" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Triage</span>
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              <span className="hidden sm:inline">Rapports</span>
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">Profil</span>
-            </TabsTrigger>
-            <TabsTrigger value="medical" className="flex items-center gap-2">
-              <Heart className="h-4 w-4" />
-              <span className="hidden sm:inline">Médical</span>
-            </TabsTrigger>
-            <TabsTrigger value="payments" className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              <span className="hidden sm:inline">Paiements</span>
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
-              <Bell className="h-4 w-4" />
-              <span className="hidden sm:inline">Notifs</span>
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Messages</span>
-            </TabsTrigger>
-            <TabsTrigger value="reviews" className="flex items-center gap-2">
-              <Star className="h-4 w-4" />
-              <span className="hidden sm:inline">Avis</span>
-            </TabsTrigger>
-            <TabsTrigger value="support" className="flex items-center gap-2">
-              <HelpCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Aide</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:grid-cols-11 gap-1 sm:gap-2">
+              <TabsTrigger value="overview" className="flex items-center gap-2 whitespace-nowrap">
+                <Activity className="h-4 w-4" />
+                <span className="hidden sm:inline">Accueil</span>
+              </TabsTrigger>
+              <TabsTrigger value="appointments" className="flex items-center gap-2 whitespace-nowrap">
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline">RDV</span>
+              </TabsTrigger>
+              <TabsTrigger value="triage" className="flex items-center gap-2 whitespace-nowrap">
+                <Shield className="h-4 w-4" />
+                <span className="hidden sm:inline">Triage</span>
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="flex items-center gap-2 whitespace-nowrap">
+                <ClipboardCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">Rapports</span>
+              </TabsTrigger>
+              <TabsTrigger value="profile" className="flex items-center gap-2 whitespace-nowrap">
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">Profil</span>
+              </TabsTrigger>
+              <TabsTrigger value="medical" className="flex items-center gap-2 whitespace-nowrap">
+                <Heart className="h-4 w-4" />
+                <span className="hidden sm:inline">Médical</span>
+              </TabsTrigger>
+              <TabsTrigger value="payments" className="flex items-center gap-2 whitespace-nowrap">
+                <CreditCard className="h-4 w-4" />
+                <span className="hidden sm:inline">Paiements</span>
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="flex items-center gap-2 whitespace-nowrap">
+                <Bell className="h-4 w-4" />
+                <span className="hidden sm:inline">Notifs</span>
+              </TabsTrigger>
+              <TabsTrigger value="messages" className="flex items-center gap-2 whitespace-nowrap">
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">Messages</span>
+              </TabsTrigger>
+              <TabsTrigger value="reviews" className="flex items-center gap-2 whitespace-nowrap">
+                <Star className="h-4 w-4" />
+                <span className="hidden sm:inline">Avis</span>
+              </TabsTrigger>
+              <TabsTrigger value="support" className="flex items-center gap-2 whitespace-nowrap">
+                <HelpCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Aide</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
