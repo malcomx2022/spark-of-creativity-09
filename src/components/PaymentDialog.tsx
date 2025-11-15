@@ -76,6 +76,8 @@ interface PaymentDialogProps {
 export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuccess }: PaymentDialogProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [payerName, setPayerName] = useState('');
+  const [payerEmail, setPayerEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
@@ -92,6 +94,38 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const hasRehydratedRef = useRef(false);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
+
+  // Charger le profil utilisateur pour pré-remplir les informations
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        if (profile.full_name && !payerName) {
+          setPayerName(profile.full_name);
+        }
+        if (profile.phone && !phoneNumber) {
+          setPhoneNumber(profile.phone);
+        }
+      }
+
+      // Essayer de récupérer l'email depuis auth
+      if (user.email && !payerEmail) {
+        setPayerEmail(user.email);
+      }
+    };
+
+    if (open) {
+      loadUserProfile();
+    }
+  }, [open]);
 
   // ✅ Vérifier immédiatement à l'ouverture s'il existe un paiement en cours
   useEffect(() => {
@@ -277,6 +311,26 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
+    // Valider le nom du payeur
+    if (!payerName.trim()) {
+      toast({
+        title: 'Erreur',
+        description: 'Veuillez saisir le nom du payeur',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Valider l'email si fourni
+    if (payerEmail && !payerEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      toast({
+        title: 'Erreur',
+        description: 'Adresse email invalide',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setPaymentStatus('pending');
     await recordPaymentAttempt('pending');
@@ -331,6 +385,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             amount,
             paymentMethod,
             phoneNumber: sanitizedPhoneNumber,
+            payerName: payerName.trim(),
+            payerEmail: payerEmail.trim() || undefined,
           },
         },
         3, // 3 tentatives max
@@ -467,6 +523,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setExpiresAt(null);
     setPollCount(0);
     setPhoneNumber('');
+    setPayerName('');
+    setPayerEmail('');
     setSaveMethod(false);
     setUseSavedMethod(false);
     setSelectedSavedMethod('');
@@ -594,6 +652,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       expiresAt,
       useSavedMethod,
       selectedSavedMethod,
+      payerName,
+      payerEmail,
       lastUpdated: Date.now(),
     });
   }, [
@@ -609,6 +669,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     expiresAt,
     useSavedMethod,
     selectedSavedMethod,
+    payerName,
+    payerEmail,
   ]);
 
   // Rehydrate state from localStorage when dialog opens
@@ -639,6 +701,15 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setExpiresAt(persisted.expiresAt);
     setUseSavedMethod(persisted.useSavedMethod);
     setSelectedSavedMethod(persisted.selectedSavedMethod);
+    
+    // Restaurer les infos du payeur si disponibles
+    if (persisted.payerName) {
+      setPayerName(persisted.payerName);
+    }
+    if (persisted.payerEmail) {
+      setPayerEmail(persisted.payerEmail);
+    }
+    
     setPollCount(0);
     setIsProcessing(persisted.paymentStatus === 'pending');
     hasRehydratedRef.current = true;
@@ -860,13 +931,43 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Numéro de téléphone</Label>
+                  <Label htmlFor="payer-name">Nom complet du payeur *</Label>
+                  <Input
+                    id="payer-name"
+                    type="text"
+                    placeholder="Ex: Jean Dupont"
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Le nom du payeur sera enregistré dans FedaPay
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="payer-email">Email du payeur (optionnel)</Label>
+                  <Input
+                    id="payer-email"
+                    type="email"
+                    placeholder="Ex: jean@example.com"
+                    value={payerEmail}
+                    onChange={(e) => setPayerEmail(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    L'email permettra de recevoir les confirmations de paiement
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Numéro de téléphone *</Label>
                   <Input
                     id="phone"
                     type="tel"
                     placeholder="Ex: +229 12345678"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
+                    required
                   />
                 </div>
 

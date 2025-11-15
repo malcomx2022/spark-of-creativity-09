@@ -19,7 +19,9 @@ const PaymentRequestSchema = z.object({
     errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
   }),
   phoneNumber: z.string()
-    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" })
+    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" }),
+  payerName: z.string().min(2, { message: "Payer name must be at least 2 characters" }),
+  payerEmail: z.string().email({ message: "Invalid email format" }).optional(),
 });
 
 const corsHeaders = {
@@ -76,7 +78,15 @@ serve(async (req) => {
       );
     }
 
-    const { appointmentId, paymentMethod, phoneNumber, bypassAuth: requestBypassAuth, patientId: requestPatientId } = validationResult.data;
+    const { 
+      appointmentId, 
+      paymentMethod, 
+      phoneNumber, 
+      payerName,
+      payerEmail,
+      bypassAuth: requestBypassAuth, 
+      patientId: requestPatientId 
+    } = validationResult.data;
     const requestedAmount = validationResult.data.amount ?? null;
 
     // Si bypassAuth est true et qu'on a un patientId, on utilise le service role
@@ -221,8 +231,14 @@ serve(async (req) => {
 
     console.log(`Using FedaPay endpoint: ${fedapayBaseUrl}`);
 
+    // Préparer les informations du client pour FedaPay
+    const nameParts = payerName.trim().split(/\s+/);
+    const firstname = nameParts[0] || 'Patient';
+    const lastname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Domicares';
+    const customerEmail = payerEmail || `patient-${paymentUserId}@domicares.app`;
+
     // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
-    console.log('Step 1: Creating FedaPay transaction');
+    console.log('Step 1: Creating FedaPay transaction with payer info:', { firstname, lastname, email: customerEmail });
     const createTransactionResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
       method: 'POST',
       headers: {
@@ -237,15 +253,17 @@ serve(async (req) => {
         },
         callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
         customer: {
-          firstname: 'Patient',
-          lastname: 'User',
-          email: `patient-${paymentUserId}@domicares.app`,
+          firstname,
+          lastname,
+          email: customerEmail,
           phone: phoneNumber
         },
         custom_metadata: {
           appointment_id: appointmentId,
           user_id: paymentUserId,
-          payment_method: paymentMethod
+          payment_method: paymentMethod,
+          payer_name: payerName,
+          payer_email: payerEmail || null
         }
       }),
     });
@@ -393,7 +411,10 @@ serve(async (req) => {
         gateway_fees_amount: feeBreakdown.gatewayFeesAmount,
         fees_amount: feeBreakdown.feesAmount,
         net_amount: feeBreakdown.netAmount,
-        hold_until: holdUntil
+        hold_until: holdUntil,
+        payer_name: payerName,
+        payer_email: payerEmail || null,
+        payer_phone: phoneNumber
       })
       .select()
       .single();
