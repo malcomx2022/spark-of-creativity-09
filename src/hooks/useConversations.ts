@@ -29,17 +29,28 @@ export interface Message {
   attachment_size?: number | null;
 }
 
-// Get all conversations for a user
+// Get all conversations for a user (optimized with single query)
 export function useConversations(userId?: string, userType?: 'patient' | 'practitioner') {
-  return useQuery<Conversation[]>({
+  const queryClient = useQueryClient();
+
+  const query = useQuery<Conversation[]>({
     queryKey: ['conversations', userId, userType],
     queryFn: async () => {
       if (!userId) return [];
       
-      // Get appointments for this user
+      // Get appointments with their last message (optimized query)
       const { data: appointments, error: aptError } = await supabase
         .from('appointments')
-        .select('*')
+        .select(`
+          *,
+          messages (
+            id,
+            content,
+            created_at,
+            sender_id,
+            is_read
+          )
+        `)
         .or(
           userType === 'patient' 
             ? `patient_id.eq.${userId}`
@@ -50,22 +61,19 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
       if (aptError) throw aptError;
       if (!appointments || appointments.length === 0) return [];
 
-      // Get messages for each appointment
-      const conversations: Conversation[] = [];
-      
-      for (const apt of appointments) {
-        const { data: messages } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('appointment_id', apt.id)
-          .order('created_at', { ascending: false });
+      // Process conversations from appointments
+      const conversations: Conversation[] = appointments.map((apt: any) => {
+        const messages = apt.messages || [];
+        const sortedMessages = messages.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        
+        const lastMessage = sortedMessages[0];
+        const unreadCount = messages.filter(
+          (m: any) => !m.is_read && m.sender_id !== userId
+        ).length;
 
-        const lastMessage = messages?.[0];
-        const unreadCount = messages?.filter(
-          m => !m.is_read && m.sender_id !== userId
-        ).length || 0;
-
-        conversations.push({
+        return {
           appointment_id: apt.id,
           patient_id: apt.patient_id,
           patient_name: apt.patient_name,
@@ -76,15 +84,44 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
           unread_count: unreadCount,
           appointment_date: apt.date,
           appointment_status: apt.status,
-        });
-      }
+        };
+      });
 
       return conversations.sort((a, b) => 
         new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
       );
     },
     enabled: !!userId,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
+
+  // Set up realtime subscription for new messages to update conversations list
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel('conversations-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+        },
+        () => {
+          // Invalidate conversations when any message changes
+          queryClient.invalidateQueries({ queryKey: ['conversations', userId, userType] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, userType, queryClient]);
+
+  return query;
 }
 
 // Get messages for a specific conversation
