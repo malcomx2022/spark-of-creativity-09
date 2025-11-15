@@ -10,99 +10,6 @@ const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
 // Validation schema avec Zod
 const PaymentRequestSchema = z.object({
-  appointmentId: z.string().uuid({ message: "Invalid appointment ID format" }),
-  amount: z.number()
-    .min(100, { message: "Amount must be at least 100 XOF" })
-    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" })
-    .optional(),
-  paymentMethod: z.enum(['mtn', 'orange', 'moov'], {
-    errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
-  }),
-  phoneNumber: z.string()
-    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" })
-});
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-interface FedaPayUssdResult {
-  attempted: boolean;
-  success: boolean;
-  payload?: unknown;
-  error?: string;
-}
-
-async function triggerFedapayUssdValidation({
-  transactionId,
-  phoneNumber,
-  mode,
-  fedapaySecretKey,
-  fedapayBaseUrl,
-}: {
-  transactionId: string;
-  phoneNumber: string;
-  mode: string;
-  fedapaySecretKey: string;
-  fedapayBaseUrl: string;
-}): Promise<FedaPayUssdResult> {
-  const normalizedPhone = phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber;
-
-  try {
-    console.log('Triggering FedaPay USSD validation request', { transactionId, mode });
-    const response = await fetch(`${fedapayBaseUrl}/v1/transactions/${transactionId}/send_otp`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        channel: 'ussd',
-        mode,
-        customer: {
-          phone_number: {
-            number: normalizedPhone,
-            country: 'bj',
-          },
-        },
-      }),
-    });
-
-    let data: unknown = null;
-    try {
-      data = await response.json();
-    } catch (error) {
-      console.warn('Unable to parse USSD trigger response', error);
-    }
-
-    if (!response.ok) {
-      console.error('FedaPay USSD trigger returned an error', data);
-      return {
-        attempted: true,
-        success: false,
-        error: `HTTP ${response.status}`,
-        payload: data,
-      };
-    }
-
-    console.log('FedaPay USSD validation successfully triggered');
-    return {
-      attempted: true,
-      success: true,
-      payload: data,
-    };
-  } catch (error) {
-    console.error('Unable to trigger FedaPay USSD validation', error);
-    return {
-      attempted: true,
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -111,7 +18,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const fedapaySecretKey = Deno.env.get('FEDAPAY_SECRET_KEY')!;
-    const platformWalletId = Deno.env.get('PLATFORM_WALLET_ID')!;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -315,7 +221,7 @@ serve(async (req) => {
     console.log(`Using FedaPay endpoint: ${fedapayBaseUrl}`);
 
     // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
-    console.log('Step 1: Creating FedaPay transaction', { platformWalletId });
+    console.log('Step 1: Creating FedaPay transaction');
     const createTransactionResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
       method: 'POST',
       headers: {
@@ -329,15 +235,16 @@ serve(async (req) => {
           iso: 'XOF'
         },
         callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-        account_id: platformWalletId,
         customer: {
           firstname: 'Patient',
           lastname: 'User',
           email: `patient-${paymentUserId}@domicares.app`,
-          phone_number: {
-            number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
-            country: 'bj'
-          }
+          phone: phoneNumber
+        },
+        custom_metadata: {
+          appointment_id: appointmentId,
+          user_id: paymentUserId,
+          payment_method: paymentMethod
         }
       }),
     });
@@ -367,17 +274,74 @@ serve(async (req) => {
       );
     }
     
-    // Extraire l'URL de paiement directement depuis la transaction
-    const paymentUrl = transaction.payment_url;
-    if (!paymentUrl) {
-      console.error('Payment URL not found in transaction:', transaction);
+    // ÉTAPE 2: Générer le token de paiement
+    console.log('Step 2: Generating payment token for transaction:', transaction.id);
+    const generateTokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/token`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${fedapaySecretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mode: selectedMode
+      })
+    });
+
+    if (!generateTokenResponse.ok) {
+      const tokenError = await generateTokenResponse.json();
+      console.error('FedaPay token generation failed:', tokenError);
       return new Response(
-        JSON.stringify({ error: 'URL de paiement non disponible dans la transaction' }),
+        JSON.stringify({ 
+          error: 'Erreur lors de la génération du token de paiement',
+          details: tokenError
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tokenData: any = await generateTokenResponse.json();
+    console.log('FedaPay token generated successfully:', tokenData);
+    
+    // Extraire le token et l'URL de paiement
+    const tokenInfo = tokenData.v1_transaction_token || tokenData['v1/transaction/token'] || tokenData.token || tokenData;
+    const paymentUrl = tokenInfo.url || `https://process.fedapay.com/${tokenInfo.token}`;
+    
+    if (!paymentUrl) {
+      console.error('Payment URL not found in token response:', tokenData);
+      return new Response(
+        JSON.stringify({ error: 'URL de paiement non disponible' }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    console.log('Payment URL extracted from transaction:', paymentUrl);
+    console.log('Payment URL extracted:', paymentUrl);
+
+    // Pour mobile money, envoyer une demande de paiement directe au numéro
+    if (['mtn_benin', 'moov_benin'].includes(selectedMode)) {
+      console.log('Sending mobile money payment request for transaction:', transaction.id);
+      const sendPaymentResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: selectedMode,
+          customer: {
+            phone: phoneNumber
+          }
+        })
+      });
+
+      if (!sendPaymentResponse.ok) {
+        const sendError = await sendPaymentResponse.json();
+        console.warn('Mobile money payment request failed:', sendError);
+      } else {
+        const sendData = await sendPaymentResponse.json();
+        console.log('Mobile money payment request sent successfully:', sendData);
+      }
+    }
+
 
 
     // Récupérer la configuration des frais
