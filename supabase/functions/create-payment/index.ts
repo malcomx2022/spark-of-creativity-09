@@ -211,8 +211,7 @@ serve(async (req) => {
     // Map payment methods to FedaPay modes
     const modeMap: Record<string, string> = {
       'mtn': 'mtn_benin',
-      'moov': 'moov_benin',
-      'orange': 'orange_money_benin',
+      'moov': 'moov_benin'
     };
 
     const selectedMode = modeMap[paymentMethod];
