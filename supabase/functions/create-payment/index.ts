@@ -10,18 +10,20 @@ const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
 // Validation schema avec Zod
 const PaymentRequestSchema = z.object({
-  appointmentId: z.string().uuid({ message: "Invalid appointment ID format" }),
+  appointmentId: z.string().uuid({ message: "Format d'identifiant de rendez-vous invalide" }),
   amount: z.number()
-    .min(100, { message: "Amount must be at least 100 XOF" })
-    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" })
+    .min(100, { message: "Le montant doit être d'au moins 100 XOF" })
+    .max(1000000, { message: "Le montant ne doit pas dépasser 1 000 000 XOF" })
     .optional(),
   paymentMethod: z.enum(['mtn', 'moov'], {
-    errorMap: () => ({ message: "Payment method must be 'mtn' or 'moov'" })
+    errorMap: () => ({ message: "La méthode de paiement doit être 'mtn' ou 'moov'" })
   }),
   phoneNumber: z.string()
-    .regex(/^\+229\d{8}$/, { message: "Phone number must be in Benin format: +229XXXXXXXX" }),
-  payerName: z.string().min(2, { message: "Payer name must be at least 2 characters" }),
-  payerEmail: z.string().email({ message: "Invalid email format" }).optional(),
+    .regex(/^\+229(01)?\d{8}$/, { 
+      message: "Le numéro doit être au format béninois : +229XXXXXXXX ou +2290101XXXXXXXX" 
+    }),
+  payerName: z.string().min(2, { message: "Le nom du payeur doit contenir au moins 2 caractères" }),
+  payerEmail: z.string().email({ message: "Format d'email invalide" }).optional(),
 });
 
 const corsHeaders = {
