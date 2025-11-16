@@ -964,11 +964,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="Ex: +229 12345678"
+                    placeholder="+229 XX XX XX XX ou +229 01 XX XX XX XX"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     required
                   />
+                  <p className="text-sm text-muted-foreground">
+                    Les deux formats sont acceptés : avec ou sans le préfixe 01
+                  </p>
                 </div>
 
                 {/* Consentement pour sauvegarder */}

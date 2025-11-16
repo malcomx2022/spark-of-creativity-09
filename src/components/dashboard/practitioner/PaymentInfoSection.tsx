@@ -38,7 +38,7 @@ interface PaymentInfoSectionProps {
   practitionerName?: string | null;
 }
 
-type PaymentMethod = "mtn" | "orange" | "moov" | "bank";
+type PaymentMethod = "mtn" | "moov" | "bank";
 
 interface PractitionerPaymentInfo {
   id: string;
@@ -85,14 +85,6 @@ const paymentMethodMetadata: Record<PaymentMethod, PaymentMethodMetadata> = {
     phoneExample: "+22960000000",
     phoneRegex: /^\+[1-9][0-9]{7,14}$/,
   },
-  orange: {
-    label: "Orange Money",
-    description: "Recevez vos reversements sur votre numéro Orange Money.",
-    icon: Smartphone,
-    helper: "Le numéro doit être accessible pour recevoir vos reversements.",
-    phoneExample: "+2250700000000",
-    phoneRegex: /^\+[1-9][0-9]{7,14}$/,
-  },
   moov: {
     label: "Moov Money",
     description: "Recevez vos reversements sur votre numéro Moov Money.",
@@ -111,7 +103,6 @@ const paymentMethodMetadata: Record<PaymentMethod, PaymentMethodMetadata> = {
 
 const methodIcons: Record<PaymentMethod, ReactNode> = {
   mtn: <Smartphone className="h-4 w-4" />,
-  orange: <Smartphone className="h-4 w-4" />,
   moov: <Smartphone className="h-4 w-4" />,
   bank: <Building className="h-4 w-4" />,
 };
@@ -133,7 +124,7 @@ const isValidBankAccountNumber = (value: string) => {
 };
 
 const isPaymentMethod = (method: string): method is PaymentMethod =>
-  method === "mtn" || method === "orange" || method === "moov" || method === "bank";
+  method === "mtn" || method === "moov" || method === "bank";
 
 export function PaymentInfoSection({ practitionerId, practitionerName }: PaymentInfoSectionProps) {
   const { toast } = useToast();

@@ -21,7 +21,7 @@ import {
   type FedaPayCheckoutWidget 
 } from '@/lib/fedapay-widget';
 
-type PaymentMethod = 'mtn' | 'orange' | 'moov';
+type PaymentMethod = 'mtn' | 'moov';
 
 interface FedaPayWidgetProps {
   open: boolean;
@@ -308,14 +308,14 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="+229 XX XX XX XX"
+                  placeholder="+229 XX XX XX XX ou +229 01 XX XX XX XX"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   required
                   disabled={isProcessing}
                 />
                 <p className="text-sm text-muted-foreground">
-                  Format: +229 suivi de votre numéro
+                  Les deux formats sont acceptés : avec ou sans le préfixe 01
                 </p>
               </div>
 

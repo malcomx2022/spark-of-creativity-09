@@ -159,7 +159,6 @@ export default function MoMoWalletSection() {
                       <SelectContent>
                         <SelectItem value="mtn">MTN Mobile Money</SelectItem>
                         <SelectItem value="moov">Moov Money</SelectItem>
-                        <SelectItem value="orange">Orange Money</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
