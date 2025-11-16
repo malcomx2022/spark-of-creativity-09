@@ -250,8 +250,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        message: `Aucun praticien disponible le ${new Date(appointmentDate).toLocaleDateString('fr-FR')} à ${appointmentTime}. Veuillez choisir une autre date ou heure.`,
+        message: `${nearbyPractitioners.length} praticien(s) trouvé(s) à proximité, mais aucun n'est disponible le ${new Date(appointmentDate).toLocaleDateString('fr-FR')} à ${appointmentTime}. Les praticiens doivent configurer leurs créneaux de disponibilité. Veuillez choisir une autre date/heure ou contacter directement un praticien.`,
         nearbyCount: nearbyPractitioners.length,
+        practitionersFound: nearbyPractitioners.map(p => ({
+          name: p.name,
+          distance: p.distance.toFixed(2)
+        }))
       }),
       { 
         status: 200,
