@@ -34,6 +34,8 @@ interface FedaPayWidgetProps {
 export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuccess }: FedaPayWidgetProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [payerName, setPayerName] = useState('');
+  const [payerEmail, setPayerEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [transactionId, setTransactionId] = useState<number | null>(null);
@@ -41,6 +43,34 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const widgetRef = useRef<FedaPayCheckoutWidget | null>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
+
+  // Load user profile data to pre-fill form
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          if (profile.full_name) setPayerName(profile.full_name);
+          if (profile.phone) setPhoneNumber(profile.phone);
+        }
+        
+        // L'email vient de la session auth
+        if (session.user.email) {
+          setPayerEmail(session.user.email);
+        }
+      }
+    };
+    
+    if (open) {
+      loadUserProfile();
+    }
+  }, [open]);
 
   // Cleanup widget on unmount
   useEffect(() => {
@@ -67,12 +97,44 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
+    // Validation du nom du payeur
+    if (!payerName.trim() || payerName.trim().length < 2) {
+      toast({
+        title: 'Erreur',
+        description: 'Veuillez entrer votre nom complet (minimum 2 caractères)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validation et normalisation du numéro de téléphone
     const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
     if (!sanitizedPhoneNumber) {
       toast({
         title: 'Erreur',
-        description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX',
+        description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX ou +229 01 XX XX XX XX',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validation regex côté frontend
+    const phoneRegex = /^\+229(01)?\d{8}$/;
+    if (!phoneRegex.test(sanitizedPhoneNumber)) {
+      toast({
+        title: 'Erreur',
+        description: 'Format de numéro invalide. Utilisez +229XXXXXXXX ou +2290101XXXXXXXX',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validation email si fourni
+    if (payerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
+      toast({
+        title: 'Erreur',
+        description: 'Format d\'email invalide',
         variant: 'destructive',
       });
       return;
@@ -99,6 +161,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             amount,
             paymentMethod,
             phoneNumber: sanitizedPhoneNumber,
+            payerName: payerName.trim(),
+            payerEmail: payerEmail.trim() || undefined,
           },
         },
         3,
@@ -233,6 +297,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPaymentStatus('idle');
     setTransactionId(null);
     setPhoneNumber('');
+    setPayerName('');
+    setPayerEmail('');
     setSaveMethod(false);
     if (widgetRef.current) {
       try {
@@ -304,6 +370,38 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="payerName">Nom complet *</Label>
+                <Input
+                  id="payerName"
+                  type="text"
+                  placeholder="Prénom Nom"
+                  value={payerName}
+                  onChange={(e) => setPayerName(e.target.value)}
+                  required
+                  disabled={isProcessing}
+                  minLength={2}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Votre nom complet tel qu'il apparaît sur votre compte mobile money
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payerEmail">Email (optionnel)</Label>
+                <Input
+                  id="payerEmail"
+                  type="email"
+                  placeholder="votre@email.com"
+                  value={payerEmail}
+                  onChange={(e) => setPayerEmail(e.target.value)}
+                  disabled={isProcessing}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Pour recevoir la confirmation de paiement
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="phone">Numéro de téléphone *</Label>
                 <Input
                   id="phone"
@@ -343,7 +441,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               <Button type="button" variant="outline" onClick={handleClose} disabled={isProcessing} className="flex-1">
                 Annuler
               </Button>
-              <Button type="submit" disabled={isProcessing || !phoneNumber} className="flex-1">
+              <Button type="submit" disabled={isProcessing || !phoneNumber || !payerName} className="flex-1">
                 {isProcessing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
