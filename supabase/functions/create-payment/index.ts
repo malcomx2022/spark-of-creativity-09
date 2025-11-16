@@ -225,6 +225,13 @@ serve(async (req) => {
       );
     }
 
+    console.log('💳 Méthode de paiement sélectionnée:', {
+      demandée: paymentMethod,
+      modeFedaPay: selectedMode,
+      montant: amountToCharge,
+      téléphone: phoneNumber
+    });
+
     // FedaPay base URL
     const fedapayBaseUrl = Deno.env.get('FEDAPAY_MODE') === 'live' 
       ? 'https://api.fedapay.com' 
@@ -239,7 +246,12 @@ serve(async (req) => {
     const customerEmail = payerEmail || `patient-${paymentUserId}@domicares.app`;
 
     // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
-    console.log('Step 1: Creating FedaPay transaction with payer info:', { firstname, lastname, email: customerEmail });
+    console.log('📝 Étape 1 : Création de la transaction FedaPay');
+    console.log('Détails transaction:', { 
+      montant: amountToCharge, 
+      mode: selectedMode,
+      client: { prenom: firstname, nom: lastname, téléphone: phoneNumber }
+    });
     const createTransactionResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
       method: 'POST',
       headers: {
@@ -257,7 +269,10 @@ serve(async (req) => {
           firstname,
           lastname,
           email: customerEmail,
-          phone: phoneNumber
+          phone_number: {
+            number: phoneNumber,
+            country: 'BJ'
+          }
         },
         custom_metadata: {
           appointment_id: appointmentId,
@@ -283,6 +298,7 @@ serve(async (req) => {
 
     const fedapayData: any = await createTransactionResponse.json();
     console.log('FedaPay transaction created successfully:', fedapayData);
+    console.log('✅ Étape 1 Terminée : Transaction créée');
 
     // Extract transaction from response (FedaPay peut utiliser v1_transaction OU v1/transaction)
     const transaction = fedapayData.v1_transaction || fedapayData['v1/transaction'] || fedapayData.transaction || fedapayData;
@@ -295,6 +311,7 @@ serve(async (req) => {
     }
     
     // ÉTAPE 2: Générer le token de paiement
+    console.log('🔑 Étape 2 : Génération du token de paiement');
     console.log('Step 2: Generating payment token for transaction:', transaction.id);
     const generateTokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/token`, {
       method: 'POST',
@@ -321,6 +338,7 @@ serve(async (req) => {
 
     const tokenData: any = await generateTokenResponse.json();
     console.log('FedaPay token generated successfully:', tokenData);
+    console.log('✅ Étape 2 Terminée : Token généré avec succès');
     
     // FedaPay retourne directement { token: "...", url: "..." }
     const paymentToken = tokenData.token;
@@ -339,35 +357,60 @@ serve(async (req) => {
     
     console.log('Payment URL extracted:', paymentUrl);
 
-    // Pour mobile money, envoyer une demande de paiement directe au numéro
-    if (['mtn_benin', 'moov_benin'].includes(selectedMode)) {
-      console.log('Sending mobile money payment request for transaction:', transaction.id);
-      const sendPaymentResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/send`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${fedapaySecretKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mode: selectedMode,
-          customer: {
-            phone: phoneNumber
-          }
-        })
-      });
+    // ÉTAPE 3: Envoyer la demande de paiement au téléphone (CRITIQUE)
+    console.log('📱 Étape 3 : Envoi de la demande de paiement mobile money');
+    console.log('Détails envoi:', {
+      transactionId: transaction.id,
+      mode: selectedMode,
+      téléphone: phoneNumber,
+      montant: amountToCharge
+    });
 
-      if (!sendPaymentResponse.ok) {
-        const sendError = await sendPaymentResponse.text();
-        console.warn('Mobile money payment request failed:', sendError);
-      } else {
-        try {
-          const sendData = await sendPaymentResponse.json();
-          console.log('Mobile money payment request sent successfully:', sendData);
-        } catch (e) {
-          // FedaPay peut retourner une réponse vide ou non-JSON
-          console.log('Mobile money payment request sent (no JSON response)');
+    const sendPaymentResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/send`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${fedapaySecretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mode: selectedMode,
+        customer: {
+          phone: phoneNumber
         }
-      }
+      })
+    });
+
+    console.log('Statut réponse /send:', sendPaymentResponse.status);
+
+    if (!sendPaymentResponse.ok) {
+      const sendError = await sendPaymentResponse.text();
+      console.error('❌ CRITIQUE : Échec de l\'envoi de la demande mobile money');
+      console.error('Statut:', sendPaymentResponse.status);
+      console.error('Erreur:', sendError);
+      
+      // Marquer le paiement comme échoué
+      await supabase
+        .from('payments')
+        .update({ 
+          status: 'failed',
+          payout_status: 'failed',
+          error_message: `Échec de l'envoi (${sendPaymentResponse.status}): ${sendError}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('fedapay_transaction_id', transaction.id.toString());
+      
+      throw new Error(`Échec de l'envoi de la demande de paiement : HTTP ${sendPaymentResponse.status} - ${sendError}`);
+    }
+
+    const responseText = await sendPaymentResponse.text();
+    console.log('Corps de la réponse /send:', responseText);
+
+    let sendData;
+    try {
+      sendData = JSON.parse(responseText);
+      console.log('✅ Étape 3 Terminée : Demande de paiement envoyée avec succès:', sendData);
+    } catch (e) {
+      console.log('✅ Étape 3 Terminée : Demande envoyée (pas de JSON mais statut OK)');
     }
 
     // Récupérer la configuration des frais
