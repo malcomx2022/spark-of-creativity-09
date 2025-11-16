@@ -37,6 +37,7 @@ import { NotificationsSection } from '@/components/dashboard/NotificationsSectio
 import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
+import { LocationSection } from '@/components/dashboard/practitioner/LocationSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -448,10 +449,16 @@ export default function PractitionerDashboard() {
           </TabsContent>
 
           <TabsContent value="profile">
-            <ProfessionalProfileSection
-              practitionerId={practitioner.id}
-              practitionerData={practitioner}
-            />
+            <div className="space-y-6">
+              <ProfessionalProfileSection
+                practitionerId={practitioner.id}
+                practitionerData={practitioner}
+              />
+              <LocationSection
+                practitionerId={practitioner.id}
+                practitionerData={practitioner}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="availability">
