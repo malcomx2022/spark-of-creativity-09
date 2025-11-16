@@ -117,7 +117,7 @@ export function PaymentsSection() {
 
     try {
       await addPaymentMethod({
-        provider: paymentProvider as 'mtn' | 'orange' | 'moov',
+        provider: paymentProvider as 'mtn' | 'moov',
         phoneNumber: normalized,
         setAsDefault: (paymentMethods?.length ?? 0) === 0,
       });
@@ -288,7 +288,7 @@ export function PaymentsSection() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground mb-4">
-            Modes de paiement acceptés via FedaPay : MTN Mobile Money, Orange Money, Moov Money
+            Modes de paiement acceptés via FedaPay : MTN Mobile Money, Moov Money
           </p>
           {isLoadingPaymentMethods ? (
             <p className="text-muted-foreground text-sm mb-4">Chargement des méthodes enregistrées...</p>
@@ -363,11 +363,10 @@ export function PaymentsSection() {
                  <SelectTrigger id="provider">
                    <SelectValue placeholder="Sélectionnez un opérateur" />
                  </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="mtn">MTN Mobile Money</SelectItem>
-                   <SelectItem value="orange">Orange Money</SelectItem>
-                   <SelectItem value="moov">Moov Money</SelectItem>
-                 </SelectContent>
+                  <SelectContent>
+                    <SelectItem value="mtn">MTN Mobile Money</SelectItem>
+                    <SelectItem value="moov">Moov Money</SelectItem>
+                  </SelectContent>
                </Select>
              </div>
              <div className="space-y-2">
