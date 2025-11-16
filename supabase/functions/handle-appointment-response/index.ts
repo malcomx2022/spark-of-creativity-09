@@ -149,16 +149,19 @@ serve(async (req) => {
         }
       }
 
-      // ✅ Récupérer le numéro de téléphone du patient
+      // ✅ Récupérer le numéro de téléphone et le nom du patient
       const { data: patientProfile } = await supabase
         .from('profiles')
-        .select('phone')
+        .select('phone, full_name')
         .eq('id', appointment.patient_id)
         .single();
 
       if (!patientProfile?.phone) {
         throw new Error('Le patient n\'a pas de numéro de téléphone enregistré');
       }
+      
+      // Utiliser le nom du profile si disponible, sinon celui du rendez-vous
+      const patientName = patientProfile.full_name || appointment.patient_name || 'Patient';
 
       // ✅ Mettre à jour le statut du rendez-vous en 'confirmed' AVANT de créer le paiement
       console.log('📝 Mise à jour du rendez-vous en statut confirmed');
@@ -199,6 +202,7 @@ serve(async (req) => {
             amount: paymentAmount,
             paymentMethod: 'mtn',
             phoneNumber: patientProfile.phone,
+            payerName: patientName,
             // Indiquer qu'on crée le paiement pour le patient via service role
             bypassAuth: true,
             patientId: appointment.patient_id
