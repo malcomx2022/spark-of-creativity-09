@@ -357,61 +357,8 @@ serve(async (req) => {
     
     console.log('Payment URL extracted:', paymentUrl);
 
-    // ÉTAPE 3: Envoyer la demande de paiement au téléphone (CRITIQUE)
-    console.log('📱 Étape 3 : Envoi de la demande de paiement mobile money');
-    console.log('Détails envoi:', {
-      transactionId: transaction.id,
-      mode: selectedMode,
-      téléphone: phoneNumber,
-      montant: amountToCharge
-    });
-
-    const sendPaymentResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/send`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        mode: selectedMode,
-        customer: {
-          phone: phoneNumber
-        }
-      })
-    });
-
-    console.log('Statut réponse /send:', sendPaymentResponse.status);
-
-    if (!sendPaymentResponse.ok) {
-      const sendError = await sendPaymentResponse.text();
-      console.error('❌ CRITIQUE : Échec de l\'envoi de la demande mobile money');
-      console.error('Statut:', sendPaymentResponse.status);
-      console.error('Erreur:', sendError);
-      
-      // Marquer le paiement comme échoué
-      await supabase
-        .from('payments')
-        .update({ 
-          status: 'failed',
-          payout_status: 'failed',
-          error_message: `Échec de l'envoi (${sendPaymentResponse.status}): ${sendError}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('fedapay_transaction_id', transaction.id.toString());
-      
-      throw new Error(`Échec de l'envoi de la demande de paiement : HTTP ${sendPaymentResponse.status} - ${sendError}`);
-    }
-
-    const responseText = await sendPaymentResponse.text();
-    console.log('Corps de la réponse /send:', responseText);
-
-    let sendData;
-    try {
-      sendData = JSON.parse(responseText);
-      console.log('✅ Étape 3 Terminée : Demande de paiement envoyée avec succès:', sendData);
-    } catch (e) {
-      console.log('✅ Étape 3 Terminée : Demande envoyée (pas de JSON mais statut OK)');
-    }
+    // ÉTAPE 3: Le paiement est prêt, le patient recevra le lien par notification
+    console.log('✅ Étape 3 : Transaction et token créés, paiement prêt pour le patient');
 
     // Récupérer la configuration des frais
     const { data: configData } = await supabase
