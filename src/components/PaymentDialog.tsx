@@ -22,7 +22,7 @@ import {
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 import { PaymentAttemptsHistory } from '@/components/PaymentAttemptsHistory';
 
-type PaymentMethod = 'mtn' | 'orange' | 'moov';
+type PaymentMethod = 'mtn' | 'moov';
 
 interface PaymentResponse {
   success?: boolean;
@@ -235,7 +235,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
-    setPaymentMethod(method.provider);
+    // Valider que le provider est supporté (mtn ou moov)
+    const validProvider = method.provider === 'mtn' || method.provider === 'moov' ? method.provider : 'mtn';
+    setPaymentMethod(validProvider);
 
     let isActive = true;
 
@@ -281,7 +283,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         try {
           const decrypted = await getDecryptedPhone(method.id);
           resolvedPhoneNumber = decrypted;
-          setPaymentMethod(method.provider);
+          // Valider que le provider est supporté (mtn ou moov)
+          const validProvider = method.provider === 'mtn' || method.provider === 'moov' ? method.provider : 'mtn';
+          setPaymentMethod(validProvider);
           setPhoneNumber(decrypted);
         } catch (error) {
           console.error('Erreur lors du déchiffrement de la méthode sélectionnée:', error);
@@ -692,7 +696,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     console.log('🔄 Réhydratation du paiement:', persisted);
     
-    setPaymentMethod(persisted.paymentMethod);
+    // Valider que la méthode de paiement est supportée (mtn ou moov)
+    const validMethod = persisted.paymentMethod === 'mtn' || persisted.paymentMethod === 'moov' ? persisted.paymentMethod : 'mtn';
+    setPaymentMethod(validMethod);
     setPhoneNumber(persisted.phoneNumber);
     setPaymentStatus(persisted.paymentStatus);
     setPaymentUrl(persisted.paymentUrl);
@@ -913,12 +919,6 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                       <RadioGroupItem value="mtn" id="mtn" />
                       <Label htmlFor="mtn" className="font-normal cursor-pointer">
                         {MOBILE_MONEY_PROVIDERS.mtn.icon} {MOBILE_MONEY_PROVIDERS.mtn.name}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="orange" id="orange" />
-                      <Label htmlFor="orange" className="font-normal cursor-pointer">
-                        {MOBILE_MONEY_PROVIDERS.orange.icon} {MOBILE_MONEY_PROVIDERS.orange.name}
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">

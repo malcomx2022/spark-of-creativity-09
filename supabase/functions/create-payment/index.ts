@@ -15,11 +15,11 @@ const PaymentRequestSchema = z.object({
     .min(100, { message: "Amount must be at least 100 XOF" })
     .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" })
     .optional(),
-  paymentMethod: z.enum(['mtn', 'orange', 'moov'], {
-    errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
+  paymentMethod: z.enum(['mtn', 'moov'], {
+    errorMap: () => ({ message: "Payment method must be 'mtn' or 'moov'" })
   }),
   phoneNumber: z.string()
-    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" }),
+    .regex(/^\+229\d{8}$/, { message: "Phone number must be in Benin format: +229XXXXXXXX" }),
   payerName: z.string().min(2, { message: "Payer name must be at least 2 characters" }),
   payerEmail: z.string().email({ message: "Invalid email format" }).optional(),
 });

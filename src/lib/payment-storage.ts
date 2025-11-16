@@ -2,7 +2,7 @@ const STORAGE_KEY = 'patient-payment-progress';
 
 type PaymentStatus = 'idle' | 'pending' | 'success' | 'error';
 
-type PaymentMethod = 'mtn' | 'orange' | 'moov';
+type PaymentMethod = 'mtn' | 'moov';
 
 export interface PersistedPaymentState {
   appointmentId: string;
@@ -22,7 +22,7 @@ export interface PersistedPaymentState {
 }
 
 function isPaymentMethod(value: unknown): value is PaymentMethod {
-  return value === 'mtn' || value === 'orange' || value === 'moov';
+  return value === 'mtn' || value === 'moov';
 }
 
 function isPaymentStatus(value: unknown): value is PaymentStatus {
