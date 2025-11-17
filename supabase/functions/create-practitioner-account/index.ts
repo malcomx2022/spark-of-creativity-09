@@ -25,7 +25,9 @@ function validatePractitionerData(practitionerData: any): string[] {
     errors.push('Numéro de téléphone invalide');
   }
 
-  if (!practitionerData.specialty || practitionerData.specialty.trim().length < 2) {
+  // La spécialité n'est pas requise pour les coachs sportifs
+  const isCoachSportif = practitionerData.practitioner_type === 'coach_sportif';
+  if (!isCoachSportif && (!practitionerData.specialty || practitionerData.specialty.trim().length < 2)) {
     errors.push('Spécialité requise');
   }
 

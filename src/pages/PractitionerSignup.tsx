@@ -102,6 +102,8 @@ export default function PractitionerSignup() {
 
   const sessionTypes = ["individuelle", "duo", "groupe"];
 
+  const isCoachSportif = formData.profession === "Coach sportif";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -139,7 +141,8 @@ export default function PractitionerSignup() {
         return;
       }
 
-      if (!documentUploads.licenseDocument) {
+      // L'attestation d'inscription n'est pas obligatoire pour les coachs sportifs
+      if (!isCoachSportif && !documentUploads.licenseDocument) {
         toast({
           title: "Document manquant",
           description: "Le document d'autorisation d'exercice est obligatoire",
@@ -493,29 +496,61 @@ export default function PractitionerSignup() {
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="specialty">Spécialité</Label>
-                      <Input
-                        id="specialty"
-                        placeholder="Ex: Cardiologie, Pédiatrie..."
-                        value={formData.specialty}
-                        onChange={(e) => setFormData(prev => ({ ...prev, specialty: e.target.value }))}
-                      />
-                    </div>
+                    {!isCoachSportif && (
+                      <div className="space-y-2">
+                        <Label htmlFor="specialty">Spécialité</Label>
+                        <Input
+                          id="specialty"
+                          placeholder="Ex: Cardiologie, Pédiatrie..."
+                          value={formData.specialty}
+                          onChange={(e) => setFormData(prev => ({ ...prev, specialty: e.target.value }))}
+                        />
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="registrationNumber">N° d'inscription Ordre *</Label>
-                      <Input
-                        id="registrationNumber"
-                        placeholder="Numéro d'inscription"
-                        value={formData.registrationNumber}
-                        onChange={(e) => setFormData(prev => ({ ...prev, registrationNumber: e.target.value }))}
-                        required
-                      />
-                    </div>
+                  {!isCoachSportif && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="registrationNumber">N° d'inscription Ordre *</Label>
+                          <Input
+                            id="registrationNumber"
+                            placeholder="Numéro d'inscription"
+                            value={formData.registrationNumber}
+                            onChange={(e) => setFormData(prev => ({ ...prev, registrationNumber: e.target.value }))}
+                            required
+                          />
+                        </div>
 
+                        <div className="space-y-2">
+                          <Label htmlFor="experience">Années d'expérience *</Label>
+                          <Input
+                            id="experience"
+                            type="number"
+                            min="1"
+                            placeholder="Ex: 5"
+                            value={formData.experience}
+                            onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="currentWorkplace">Structure d'exercice actuelle *</Label>
+                        <Input
+                          id="currentWorkplace"
+                          placeholder="Ex: Hôpital Principal, Cabinet Médical..."
+                          value={formData.currentWorkplace}
+                          onChange={(e) => setFormData(prev => ({ ...prev, currentWorkplace: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {isCoachSportif && (
                     <div className="space-y-2">
                       <Label htmlFor="experience">Années d'expérience *</Label>
                       <Input
@@ -528,18 +563,7 @@ export default function PractitionerSignup() {
                         required
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="currentWorkplace">Structure d'exercice actuelle *</Label>
-                    <Input
-                      id="currentWorkplace"
-                      placeholder="Ex: Hôpital Principal, Cabinet Médical..."
-                      value={formData.currentWorkplace}
-                      onChange={(e) => setFormData(prev => ({ ...prev, currentWorkplace: e.target.value }))}
-                      required
-                    />
-                  </div>
+                  )}
                 </div>
 
                 {/* Coach Sportif Specific Fields */}
@@ -659,16 +683,18 @@ export default function PractitionerSignup() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="licenseDocument">Attestation d'inscription *</Label>
-                      <Input
-                        id="licenseDocument"
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileUpload('licenseDocument', e.target.files?.[0] || null)}
-                        required
-                      />
-                    </div>
+                    {!isCoachSportif && (
+                      <div className="space-y-2">
+                        <Label htmlFor="licenseDocument">Attestation d'inscription *</Label>
+                        <Input
+                          id="licenseDocument"
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFileUpload('licenseDocument', e.target.files?.[0] || null)}
+                          required
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-muted/50 p-4 rounded-lg">
