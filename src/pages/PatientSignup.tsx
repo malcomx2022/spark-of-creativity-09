@@ -130,9 +130,23 @@ export default function PatientSignup() {
           throw updateError;
         }
 
+        // Send registration notification
+        try {
+          await supabase.functions.invoke('send-registration-notification', {
+            body: {
+              email: formData.email,
+              phone: formData.phone,
+              fullName: `${formData.firstName} ${formData.lastName}`,
+              userType: 'patient'
+            }
+          });
+        } catch (notifError) {
+          console.error('Error sending notification:', notifError);
+        }
+
         toast({
           title: "Inscription réussie !",
-          description: "Votre compte a été créé avec succès.",
+          description: "Votre compte a été créé avec succès. Un email de confirmation vous a été envoyé.",
         });
 
         navigate("/dashboard/patient");

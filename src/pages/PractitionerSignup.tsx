@@ -293,9 +293,23 @@ export default function PractitionerSignup() {
         throw new Error(createError?.message || createResult?.error || "Échec de création du compte");
       }
 
+      // Send registration notification
+      try {
+        await supabase.functions.invoke('send-registration-notification', {
+          body: {
+            email: formData.email,
+            phone: formData.phone,
+            fullName: `${formData.firstName} ${formData.lastName}`,
+            userType: 'practitioner'
+          }
+        });
+      } catch (notifError) {
+        console.error('Error sending notification:', notifError);
+      }
+
       toast({
         title: "Demande d'inscription soumise !",
-        description: "Votre dossier est en cours de validation par notre équipe",
+        description: "Votre dossier est en cours de validation. Vous recevrez une notification dès la vérification terminée.",
       });
 
       setFormData({
