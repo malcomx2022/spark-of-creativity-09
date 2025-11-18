@@ -115,26 +115,28 @@ export default function PatientSignup() {
 
       const userId = authData.user.id;
 
-      // 2. Créer le profil complet patient
-      await completePatientOnboarding(userId, onboardingPayload);
-
-      // 3. Envoyer la notification de confirmation
-      try {
-        await supabase.functions.invoke('send-registration-notification', {
+      // 2. Finaliser l'inscription via edge function centralisée
+      const { error: registrationError } = await supabase.functions.invoke(
+        'complete-user-registration',
+        {
           body: {
-            email: formData.email,
-            phone: formData.phone,
-            fullName: `${formData.firstName} ${formData.lastName}`,
-            userType: 'patient'
+            userId,
+            data: {
+              userType: 'patient',
+              ...onboardingPayload
+            }
           }
-        });
-      } catch (notifError) {
-        console.error('Error sending notification:', notifError);
+        }
+      );
+
+      if (registrationError) {
+        console.error('Erreur lors de la finalisation:', registrationError);
+        throw new Error('Échec de la finalisation de l\'inscription');
       }
 
       toast({
         title: "Inscription réussie !",
-        description: "Votre compte patient a été créé avec succès.",
+        description: "Bienvenue sur DomiCares. Vous pouvez maintenant prendre rendez-vous.",
       });
 
       navigate("/dashboard/patient");

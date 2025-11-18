@@ -293,23 +293,26 @@ export default function PractitionerSignup() {
         throw new Error(createError?.message || createResult?.error || "Échec de création du compte");
       }
 
-      // Send registration notification
+      // Finaliser l'inscription et envoyer notification via edge function centralisée
       try {
-        await supabase.functions.invoke('send-registration-notification', {
+        await supabase.functions.invoke('complete-user-registration', {
           body: {
-            email: formData.email,
-            phone: formData.phone,
-            fullName: `${formData.firstName} ${formData.lastName}`,
-            userType: 'practitioner'
+            userId: userId,
+            data: {
+              userType: 'practitioner',
+              email: formData.email,
+              phone: formData.phone,
+              fullName: `${formData.firstName} ${formData.lastName}`
+            }
           }
         });
       } catch (notifError) {
-        console.error('Error sending notification:', notifError);
+        console.error('Erreur notification (non bloquante):', notifError);
       }
 
       toast({
-        title: "Demande d'inscription soumise !",
-        description: "Votre dossier est en cours de validation. Vous recevrez une notification dès que votre compte sera activé.",
+        title: "Inscription réussie !",
+        description: "Votre dossier est en cours de vérification. Vous recevrez une notification dès qu'il sera validé.",
       });
 
       // Rediriger vers le dashboard praticien (l'utilisateur reste connecté)
