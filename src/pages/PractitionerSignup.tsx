@@ -309,43 +309,11 @@ export default function PractitionerSignup() {
 
       toast({
         title: "Demande d'inscription soumise !",
-        description: "Votre dossier est en cours de validation. Vous recevrez une notification dès la vérification terminée.",
+        description: "Votre dossier est en cours de validation. Vous recevrez une notification dès que votre compte sera activé.",
       });
 
-      setFormData({
-        firstName: "",
-        lastName: "",
-        dateOfBirth: "",
-        gender: "",
-        address: "",
-        phone: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        profession: "",
-        specialty: "",
-        registrationNumber: "",
-        experience: "",
-        currentWorkplace: "",
-        profilePhoto: null,
-        idDocument: null,
-        diploma: null,
-        licenseDocument: null,
-        acceptTerms: false,
-        sessionTypes: [],
-        interventionZone: "",
-        interventionRadius: "",
-        certifications: "",
-      });
-      setDocumentUploads({
-        profilePhoto: null,
-        idDocument: null,
-        diploma: null,
-        licenseDocument: null,
-      });
-
-      await supabase.auth.signOut();
-      navigate("/");
+      // Rediriger vers le dashboard praticien (l'utilisateur reste connecté)
+      navigate("/dashboard/practitioner");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({

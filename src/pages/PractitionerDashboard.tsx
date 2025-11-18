@@ -257,6 +257,73 @@ export default function PractitionerDashboard() {
           <p className="text-muted-foreground">Bienvenue, {practitioner.name}</p>
         </div>
 
+        {/* Alerte pour les comptes en attente de validation */}
+        {practitioner.kyc_status === 'pending' && (
+          <Card className="mb-8 border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                <Clock className="h-5 w-5" />
+                Compte en attente de validation
+              </CardTitle>
+              <CardDescription className="text-orange-600 dark:text-orange-300">
+                Votre dossier est en cours de vérification par notre équipe. Ce processus prend généralement 24 à 48 heures.
+                Vous recevrez un email et un SMS dès que votre compte sera activé.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                📋 Documents en cours de vérification :
+              </p>
+              <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
+                <li>Pièce d'identité</li>
+                <li>Licence d'exercice</li>
+                <li>Diplômes et certifications</li>
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Alerte pour les comptes refusés */}
+        {practitioner.kyc_status === 'rejected' && (
+          <Card className="mb-8 border-red-500 bg-red-50 dark:bg-red-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                <AlertCircle className="h-5 w-5" />
+                Compte non validé
+              </CardTitle>
+              <CardDescription className="text-red-600 dark:text-red-300">
+                Votre dossier n'a pas été validé. Raison : {practitioner.kyc_comment || "Non spécifiée"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Veuillez contacter le support pour plus d'informations : support@domicares.life
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Alerte pour les comptes incomplets */}
+        {practitioner.kyc_status === 'incomplete' && (
+          <Card className="mb-8 border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                <AlertCircle className="h-5 w-5" />
+                Documents incomplets
+              </CardTitle>
+              <CardDescription className="text-yellow-600 dark:text-yellow-300">
+                Des documents ou informations sont manquants dans votre dossier.
+                {practitioner.kyc_comment && ` Détails : ${practitioner.kyc_comment}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Veuillez compléter votre dossier ou contacter le support : support@domicares.life
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Cartes de résumé */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
