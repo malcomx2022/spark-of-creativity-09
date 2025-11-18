@@ -97,16 +97,15 @@ export default function PatientSignup() {
 
     // Inscription avec Supabase
     try {
-      // 1. Créer le compte utilisateur Supabase
+      // 1. Créer le compte utilisateur Supabase (auto-confirmé)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/dashboard/patient`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`,
-            pending_onboarding: onboardingPayload,
-            patient_onboarding_completed: false,
+            user_type: 'patient'
           }
         }
       });
@@ -115,48 +114,30 @@ export default function PatientSignup() {
       if (!authData.user) throw new Error("Échec de création du compte");
 
       const userId = authData.user.id;
-      const { data: { session } } = await supabase.auth.getSession();
 
-      if (session) {
-        await completePatientOnboarding(userId, onboardingPayload);
-        const { error: updateError } = await supabase.auth.updateUser({
-          data: {
-            patient_onboarding_completed: true,
-            pending_onboarding: null,
-          },
+      // 2. Créer le profil complet patient
+      await completePatientOnboarding(userId, onboardingPayload);
+
+      // 3. Envoyer la notification de confirmation
+      try {
+        await supabase.functions.invoke('send-registration-notification', {
+          body: {
+            email: formData.email,
+            phone: formData.phone,
+            fullName: `${formData.firstName} ${formData.lastName}`,
+            userType: 'patient'
+          }
         });
-
-        if (updateError) {
-          throw updateError;
-        }
-
-        // Send registration notification
-        try {
-          await supabase.functions.invoke('send-registration-notification', {
-            body: {
-              email: formData.email,
-              phone: formData.phone,
-              fullName: `${formData.firstName} ${formData.lastName}`,
-              userType: 'patient'
-            }
-          });
-        } catch (notifError) {
-          console.error('Error sending notification:', notifError);
-        }
-
-        toast({
-          title: "Inscription réussie !",
-          description: "Votre compte a été créé avec succès. Un email de confirmation vous a été envoyé.",
-        });
-
-        navigate("/dashboard/patient");
-      } else {
-        toast({
-          title: "Confirmez votre adresse e-mail",
-          description: "Vérifiez votre boîte de réception pour finaliser l'inscription. Votre profil sera créé après la confirmation.",
-        });
-        navigate("/login");
+      } catch (notifError) {
+        console.error('Error sending notification:', notifError);
       }
+
+      toast({
+        title: "Inscription réussie !",
+        description: "Votre compte patient a été créé avec succès.",
+      });
+
+      navigate("/dashboard/patient");
     } catch (error: any) {
       console.error('Erreur inscription:', error);
       toast({
