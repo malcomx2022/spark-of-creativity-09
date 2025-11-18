@@ -8,7 +8,8 @@ const corsHeaders = {
 interface CreateAdminRequest {
   email: string;
   role: 'super_admin' | 'ops' | 'finance' | 'compliance' | 'support' | 'analyst';
-  fullName?: string;
+  fullName: string;
+  phone?: string;
 }
 
 interface ResetPasswordRequest {
@@ -71,11 +72,11 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'create': {
-        const { email, role, fullName } = body as CreateAdminRequest & { action: string };
+        const { email, role, fullName, phone } = body as CreateAdminRequest & { action: string };
 
-        if (!email || !role) {
+        if (!email || !role || !fullName) {
           return new Response(
-            JSON.stringify({ error: 'Email et rôle requis' }),
+            JSON.stringify({ error: 'Email, nom complet et rôle requis' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -114,6 +115,19 @@ Deno.serve(async (req) => {
           }
 
           userId = existingUser.id;
+          
+          // Mettre à jour le profil existant avec les nouvelles infos
+          const { error: updateProfileError } = await supabaseAdmin
+            .from('profiles')
+            .update({
+              full_name: fullName,
+              phone: phone || null,
+            })
+            .eq('id', userId);
+
+          if (updateProfileError) {
+            console.error('Error updating profile:', updateProfileError);
+          }
         } else {
           // Générer un mot de passe temporaire
           tempPassword = crypto.randomUUID();
@@ -135,18 +149,19 @@ Deno.serve(async (req) => {
           }
 
           userId = newUser.user.id;
-        }
 
-        // Créer ou mettre à jour le profil
-        const { error: profileError } = await supabaseAdmin
-          .from('profiles')
-          .upsert({
-            id: userId,
-            full_name: fullName || email.split('@')[0],
-          }, { onConflict: 'id' });
+          // Créer le profil complet
+          const { error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .insert({
+              id: userId,
+              full_name: fullName,
+              phone: phone || null,
+            });
 
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+          }
         }
 
         // Assigner le rôle admin
