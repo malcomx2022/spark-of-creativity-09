@@ -15,13 +15,26 @@ export function UsersManagementSection() {
   const { data: profiles = [], isLoading: profilesLoading } = useQuery({
     queryKey: ['admin-profiles'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Récupérer tous les profils
+      const { data: allProfiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data || [];
+      if (profilesError) throw profilesError;
+      if (!allProfiles) return [];
+
+      // Récupérer les IDs des utilisateurs avec un rôle admin
+      const { data: adminRoles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id');
+
+      if (rolesError) throw rolesError;
+      
+      const adminUserIds = new Set(adminRoles?.map(r => r.user_id) || []);
+
+      // Filtrer les profils pour exclure les admins
+      return allProfiles.filter(profile => !adminUserIds.has(profile.id));
     },
   });
 

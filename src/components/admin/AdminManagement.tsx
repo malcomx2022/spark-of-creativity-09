@@ -27,6 +27,8 @@ const ROLE_LABELS: Record<AdminRole, string> = {
 export function AdminManagement() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [selectedRole, setSelectedRole] = useState<AdminRole>("support");
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -66,9 +68,9 @@ export function AdminManagement() {
   });
 
   const createAdminMutation = useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: AdminRole }) => {
+    mutationFn: async ({ email, role, fullName, phone }: { email: string; role: AdminRole; fullName: string; phone: string }) => {
       const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
-        body: { action: 'create', email, role, fullName: email.split('@')[0] }
+        body: { action: 'create', email, role, fullName, phone }
       });
 
       if (error) throw error;
@@ -78,9 +80,12 @@ export function AdminManagement() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       setTempPassword(data?.tempPassword || '');
       setShowPasswordDialog(true);
       setEmail("");
+      setFullName("");
+      setPhone("");
       toast({ title: "Admin créé avec succès" });
     },
     onError: (error: Error) => {
@@ -147,6 +152,18 @@ export function AdminManagement() {
     }
   };
 
+  const handleCreateAdmin = () => {
+    if (!email || !selectedRole || !fullName) {
+      toast({ 
+        title: "Erreur", 
+        description: "Email, nom complet et rôle requis",
+        variant: "destructive" 
+      });
+      return;
+    }
+    createAdminMutation.mutate({ email, role: selectedRole, fullName, phone });
+  };
+
   return (
     <div className="space-y-6">
       <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
@@ -186,40 +203,64 @@ export function AdminManagement() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="fullName">Nom complet *</Label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="Jean Dupont"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@example.com"
+                placeholder="admin@domicares.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="role">Rôle</Label>
+              <Label htmlFor="phone">Téléphone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+229 XX XX XX XX"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="role">Rôle *</Label>
               <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as AdminRole)}>
                 <SelectTrigger id="role">
-                  <SelectValue />
+                  <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  {(Object.entries(ROLE_LABELS) as [AdminRole, string][]).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
-              <Button
-                onClick={() => createAdminMutation.mutate({ email, role: selectedRole })}
-                disabled={!email || createAdminMutation.isPending}
-                className="w-full"
-              >
-                <Shield className="h-4 w-4 mr-2" />
-                Créer Admin
-              </Button>
-            </div>
+
+            <Button
+              onClick={handleCreateAdmin}
+              disabled={createAdminMutation.isPending}
+              className="w-full"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              {createAdminMutation.isPending ? "Création..." : "Créer l'administrateur"}
+            </Button>
           </div>
         </CardContent>
       </Card>
