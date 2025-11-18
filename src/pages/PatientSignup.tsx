@@ -113,6 +113,16 @@ export default function PatientSignup() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Échec de création du compte");
 
+      // Vérifier si l'email nécessite une confirmation
+      if (authData.user && !authData.user.confirmed_at && !authData.session) {
+        toast({
+          title: "Confirmation requise",
+          description: "Un email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception.",
+        });
+        navigate(`/confirm-email?email=${encodeURIComponent(formData.email)}&type=patient`);
+        return;
+      }
+
       const userId = authData.user.id;
 
       // 2. Finaliser l'inscription via edge function centralisée
