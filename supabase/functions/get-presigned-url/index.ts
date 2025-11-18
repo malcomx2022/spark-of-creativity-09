@@ -58,8 +58,18 @@ serve(async (req) => {
       );
     }
 
-    // Verify user has access to this file (check if file path starts with their user ID)
-    if (!filePath.includes(user.id)) {
+    // Check if user is admin
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
+
+    const isAdmin = !!roleData;
+
+    // Verify user has access to this file
+    // Admins can access all files, others only their own files
+    if (!isAdmin && !filePath.includes(user.id)) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized access to this file' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
