@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/patient-onboarding";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 
 export default function PatientSignup() {
   const navigate = useNavigate();
@@ -110,16 +112,31 @@ export default function PatientSignup() {
         }
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Échec de création du compte");
+      if (authError) {
+        toast({
+          ...AUTH_MESSAGES.SIGNUP_ERROR,
+          description: authError.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!authData.user) {
+        toast({
+          ...AUTH_MESSAGES.SIGNUP_ERROR,
+          description: "Échec de création du compte",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
 
       // Vérifier si l'email nécessite une confirmation
       if (authData.user && !authData.user.confirmed_at && !authData.session) {
-        toast({
-          title: "Confirmation requise",
-          description: "Un email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception.",
-        });
-        navigate(`/confirm-email?email=${encodeURIComponent(formData.email)}&type=patient`);
+        toast(AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION);
+        navigateToEmailConfirmation(navigate, formData.email, 'patient');
+        setIsSubmitting(false);
         return;
       }
 
@@ -141,20 +158,26 @@ export default function PatientSignup() {
 
       if (registrationError) {
         console.error('Erreur lors de la finalisation:', registrationError);
-        throw new Error('Échec de la finalisation de l\'inscription');
+        toast({
+          ...AUTH_MESSAGES.SIGNUP_ERROR,
+          description: "Échec de la finalisation de l'inscription",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
       }
 
       toast({
-        title: "Inscription réussie !",
+        ...AUTH_MESSAGES.SIGNUP_SUCCESS,
         description: "Bienvenue sur DomiCares. Vous pouvez maintenant prendre rendez-vous.",
       });
 
-      navigate("/dashboard/patient");
+      navigateToDashboard(navigate, 'patient');
     } catch (error: any) {
       console.error('Erreur inscription:', error);
       toast({
-        title: "Erreur lors de l'inscription",
-        description: error.message || "Une erreur est survenue",
+        ...AUTH_MESSAGES.SIGNUP_ERROR,
+        description: error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
         variant: "destructive"
       });
     } finally {
@@ -180,7 +203,7 @@ export default function PatientSignup() {
           <div className="mb-6">
             <Button
               variant="ghost"
-              onClick={() => navigate("/")}
+              onClick={() => navigateToHome(navigate)}
               className="mb-4"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />

@@ -6,6 +6,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToLogin } from "@/lib/auth-navigation";
 
 export default function ConfirmEmail() {
   const navigate = useNavigate();
@@ -38,20 +40,18 @@ export default function ConfirmEmail() {
         }
       });
 
-      if (error) throw error;
-
-      setEmailSent(true);
-      toast({
-        title: "Email renvoyé !",
-        description: "Un nouvel email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception.",
-      });
-    } catch (error: any) {
-      console.error('Erreur renvoi email:', error);
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de renvoyer l'email de confirmation",
-        variant: "destructive"
-      });
+      if (error) {
+        toast({
+          ...AUTH_MESSAGES.EMAIL_CONFIRMATION_ERROR,
+          description: error.message || AUTH_MESSAGES.EMAIL_CONFIRMATION_ERROR.defaultDescription,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          ...AUTH_MESSAGES.OTP_RESENT,
+          description: "Vérifiez votre boîte de réception.",
+        });
+      }
     } finally {
       setIsResending(false);
     }
@@ -119,7 +119,7 @@ export default function ConfirmEmail() {
                 </Button>
 
                 <Button
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigateToLogin(navigate)}
                   variant="ghost"
                   className="w-full"
                 >
@@ -132,7 +132,7 @@ export default function ConfirmEmail() {
               <p className="text-xs text-muted-foreground text-center">
                 Vous avez déjà confirmé votre email ?{" "}
                 <button
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigateToLogin(navigate)}
                   className="text-primary hover:underline font-medium"
                 >
                   Connectez-vous ici
