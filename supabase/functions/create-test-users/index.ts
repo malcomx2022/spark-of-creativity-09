@@ -130,8 +130,11 @@ Deno.serve(async (req) => {
           rating: 4.5,
           years_experience: 10,
           bio: 'Médecin généraliste expérimenté disponible pour consultations à domicile',
-          kyc_status: 'validated',
-          can_accept_missions: true,
+          kyc_status: 'pending',
+          can_accept_missions: false,
+          id_document_url: 'test-documents/id_test.pdf',
+          license_document_url: 'test-documents/license_test.pdf',
+          insurance_document_url: 'test-documents/insurance_test.pdf',
         }, { onConflict: 'user_id' });
         if (practError) console.error('Practitioner entry error:', practError);
       }
