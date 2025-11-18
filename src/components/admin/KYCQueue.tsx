@@ -191,27 +191,32 @@ export function KYCQueue() {
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
       queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
       
-      // Send activation notification if approved
-      if (variables.status === 'approved') {
-        try {
-          await supabase.functions.invoke('send-account-activation', {
-            body: {
-              practitionerId: variables.id
-            }
-          });
-          toast({ 
-            title: "Statut KYC mis à jour", 
-            description: "Le praticien a été notifié de l'activation de son compte" 
-          });
-        } catch (notifError) {
-          console.error('Error sending activation notification:', notifError);
-          toast({ 
-            title: "Statut KYC mis à jour", 
-            description: "Praticien approuvé (erreur d'envoi de notification)" 
-          });
-        }
-      } else {
-        toast({ title: "Statut KYC mis à jour" });
+      // Envoyer la notification appropriée selon le statut
+      try {
+        await supabase.functions.invoke('send-kyc-status-notification', {
+          body: {
+            practitionerId: variables.id,
+            status: variables.status,
+            comment: variables.comment
+          }
+        });
+        
+        const statusMessages = {
+          approved: "Le praticien a été notifié de l'activation de son compte",
+          rejected: "Le praticien a été notifié du refus de son dossier",
+          incomplete: "Le praticien a été notifié des éléments manquants"
+        };
+        
+        toast({ 
+          title: "Statut KYC mis à jour", 
+          description: statusMessages[variables.status as keyof typeof statusMessages] || "Statut mis à jour"
+        });
+      } catch (notifError) {
+        console.error('Error sending KYC status notification:', notifError);
+        toast({ 
+          title: "Statut KYC mis à jour", 
+          description: "Statut modifié (erreur d'envoi de notification)" 
+        });
       }
       
       setSelectedPractitioner(null);
