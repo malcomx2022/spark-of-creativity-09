@@ -2097,6 +2097,7 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      promote_to_super_admin: { Args: { user_email: string }; Returns: Json }
       request_consultation_confirmation: { Args: never; Returns: undefined }
       update_payment_with_balance: {
         Args: {
