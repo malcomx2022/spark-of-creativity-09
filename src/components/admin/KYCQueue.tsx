@@ -187,10 +187,33 @@ export function KYCQueue() {
         details: { comment },
       });
     },
-    onSuccess: () => {
+    onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
       queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
-      toast({ title: "Statut KYC mis à jour" });
+      
+      // Send activation notification if approved
+      if (variables.status === 'approved') {
+        try {
+          await supabase.functions.invoke('send-account-activation', {
+            body: {
+              practitionerId: variables.id
+            }
+          });
+          toast({ 
+            title: "Statut KYC mis à jour", 
+            description: "Le praticien a été notifié de l'activation de son compte" 
+          });
+        } catch (notifError) {
+          console.error('Error sending activation notification:', notifError);
+          toast({ 
+            title: "Statut KYC mis à jour", 
+            description: "Praticien approuvé (erreur d'envoi de notification)" 
+          });
+        }
+      } else {
+        toast({ title: "Statut KYC mis à jour" });
+      }
+      
       setSelectedPractitioner(null);
       setComment("");
     },
