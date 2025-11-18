@@ -59,17 +59,24 @@ serve(async (req) => {
     }
 
     // Check if user is admin
-    const { data: roleData } = await supabase
+    const { data: roleData, error: roleError } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', user.id)
-      .single();
+      .eq('user_id', user.id);
 
-    const isAdmin = !!roleData;
+    const isAdmin = !roleError && roleData && roleData.length > 0;
+    
+    console.log('User access check:', {
+      userId: user.id,
+      filePath,
+      isAdmin,
+      roleDataCount: roleData?.length || 0
+    });
 
     // Verify user has access to this file
     // Admins can access all files, others only their own files
     if (!isAdmin && !filePath.includes(user.id)) {
+      console.log('Access denied: User is not admin and file path does not contain user ID');
       return new Response(
         JSON.stringify({ error: 'Unauthorized access to this file' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
