@@ -14,6 +14,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
 import { uploadUserDocument } from "@/lib/file-upload";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 
 interface SignupFormData {
   firstName: string;
@@ -197,20 +199,20 @@ export default function PractitionerSignup() {
         // Gestion erreurs spécifiques
         if (error.message.includes('already registered') || error.message.includes('already been registered')) {
           toast({
-            title: "Email déjà utilisé",
+            ...AUTH_MESSAGES.SIGNUP_ERROR,
             description: "Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.",
             variant: "destructive"
           });
         } else if (error.message.includes('password') || error.message.includes('Password')) {
           toast({
-            title: "Mot de passe trop faible",
+            ...AUTH_MESSAGES.SIGNUP_ERROR,
             description: "Le mot de passe doit contenir au moins 8 caractères.",
             variant: "destructive"
           });
         } else {
           toast({
-            title: "Erreur d'inscription",
-            description: error.message,
+            ...AUTH_MESSAGES.SIGNUP_ERROR,
+            description: error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
             variant: "destructive"
           });
         }
@@ -220,11 +222,8 @@ export default function PractitionerSignup() {
 
       // Vérifier si l'email nécessite une confirmation
       if (data.user && !data.user.confirmed_at && !data.session) {
-        toast({
-          title: "Confirmation requise",
-          description: "Un email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception.",
-        });
-        navigate(`/confirm-email?email=${encodeURIComponent(formData.email)}&type=practitioner`);
+        toast(AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION);
+        navigateToEmailConfirmation(navigate, formData.email, 'practitioner');
         setIsSubmitting(false);
         return;
       }
@@ -317,16 +316,16 @@ export default function PractitionerSignup() {
       }
 
       toast({
-        title: "Inscription réussie !",
+        ...AUTH_MESSAGES.SIGNUP_SUCCESS,
         description: "Votre dossier est en cours de vérification. Vous recevrez une notification dès qu'il sera validé.",
       });
 
       // Rediriger vers le dashboard praticien (l'utilisateur reste connecté)
-      navigate("/dashboard/practitioner");
+      navigateToDashboard(navigate, 'practitioner');
     } catch (err) {
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({
-        title: "Impossible de finaliser l'inscription",
+        ...AUTH_MESSAGES.SIGNUP_ERROR,
         description: message,
         variant: "destructive",
       });
@@ -349,7 +348,7 @@ export default function PractitionerSignup() {
           <div className="mb-6">
             <Button
               variant="ghost"
-              onClick={() => navigate("/")}
+              onClick={() => navigateToHome(navigate)}
               className="mb-4"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />

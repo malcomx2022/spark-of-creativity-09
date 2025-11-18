@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -29,8 +31,8 @@ export default function LoginPage() {
 
     if (error) {
       toast({
-        title: "Erreur lors de la connexion",
-        description: error.message,
+        ...AUTH_MESSAGES.LOGIN_ERROR,
+        description: error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription,
         variant: "destructive"
       });
       setIsSubmitting(false);
@@ -50,18 +52,15 @@ export default function LoginPage() {
       .eq('user_id', data.user.id)
       .maybeSingle();
 
-    toast({
-      title: "Connexion réussie !",
-      description: "Vous allez être redirigé vers le tableau de bord.",
-    });
+    toast(AUTH_MESSAGES.LOGIN_SUCCESS);
 
     // Rediriger selon le rôle
     if (roleData?.role) {
-      navigate('/admin');
+      navigateToDashboard(navigate, 'admin');
     } else if (practitionerData) {
-      navigate('/dashboard/practitioner');
+      navigateToDashboard(navigate, 'practitioner');
     } else {
-      navigate('/dashboard/patient');
+      navigateToDashboard(navigate, 'patient');
     }
 
     setIsSubmitting(false);
@@ -76,9 +75,7 @@ export default function LoginPage() {
           <div className="mb-6">
           <Button
             variant="ghost"
-            onClick={() => {
-              window.location.href = "/";
-            }}
+            onClick={() => navigateToHome(navigate)}
             className="mb-4"
           >
               <ArrowLeft className="h-4 w-4 mr-2" />

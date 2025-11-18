@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { getDashboardPathFromAuth } from "@/lib/dashboardNavigation";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToLogin } from "@/lib/auth-navigation";
 
 export default function VerifyOTP() {
   const navigate = useNavigate();
@@ -21,7 +23,7 @@ export default function VerifyOTP() {
   const type = location.state?.type;
 
   if (!phone && !email) {
-    navigate("/login");
+    navigateToLogin(navigate, true);
     return null;
   }
 
@@ -38,17 +40,14 @@ export default function VerifyOTP() {
 
       if (error) throw error;
 
-      toast({
-        title: "Connexion réussie !",
-        description: "Vous êtes maintenant connecté.",
-      });
+      toast(AUTH_MESSAGES.LOGIN_SUCCESS);
 
       const destination = await getDashboardPathFromAuth();
       navigate(destination, { replace: true });
     } catch (error: any) {
       toast({
-        title: "Erreur de vérification",
-        description: error.message,
+        ...AUTH_MESSAGES.OTP_ERROR,
+        description: error.message || AUTH_MESSAGES.OTP_ERROR.defaultDescription,
         variant: "destructive"
       });
     } finally {
@@ -72,13 +71,13 @@ export default function VerifyOTP() {
       }
 
       toast({
-        title: "Code renvoyé !",
+        ...AUTH_MESSAGES.OTP_RESENT,
         description: `Vérifiez vos ${type === "sms" ? "SMS" : "emails"}.`,
       });
     } catch (error: any) {
       toast({
-        title: "Erreur",
-        description: error.message,
+        ...AUTH_MESSAGES.OTP_ERROR,
+        description: error.message || AUTH_MESSAGES.OTP_ERROR.defaultDescription,
         variant: "destructive"
       });
     }
@@ -93,7 +92,7 @@ export default function VerifyOTP() {
           <div className="mb-6">
             <Button
               variant="ghost"
-              onClick={() => navigate("/login")}
+              onClick={() => navigateToLogin(navigate)}
               className="mb-4"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
