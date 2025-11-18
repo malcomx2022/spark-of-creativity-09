@@ -218,13 +218,19 @@ export default function PractitionerSignup() {
         return;
       }
 
-      if (!data.user) {
+      // Vérifier si l'email nécessite une confirmation
+      if (data.user && !data.user.confirmed_at && !data.session) {
         toast({
-          title: "Confirmez votre adresse email",
-          description: "Un lien de confirmation vous a été envoyé. Veuillez confirmer avant de finaliser votre inscription.",
+          title: "Confirmation requise",
+          description: "Un email de confirmation vous a été envoyé. Veuillez vérifier votre boîte de réception.",
         });
+        navigate(`/confirm-email?email=${encodeURIComponent(formData.email)}&type=practitioner`);
         setIsSubmitting(false);
         return;
+      }
+
+      if (!data.user) {
+        throw new Error("Échec de création du compte");
       }
 
       const userId = data.user.id;

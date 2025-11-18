@@ -24,6 +24,7 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Contact from "./pages/Contact";
 import CreateTestAccounts from "./pages/CreateTestAccounts";
+import ConfirmEmail from "./pages/ConfirmEmail";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ const App = () => (
           <Route path="/login-email" element={<LoginPage />} />
           <Route path="/verify-otp" element={<VerifyOTP />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/confirm-email" element={<ConfirmEmail />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/signup/patient" element={<PatientSignup />} />
           <Route path="/signup/practitioner" element={<PractitionerSignup />} />
