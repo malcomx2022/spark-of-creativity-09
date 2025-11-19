@@ -76,17 +76,9 @@ export default function LoginWithOTP() {
 
     try {
       await verifyOTP(phoneNumber, code);
-      
+      // La session est définie automatiquement par verifyOTP
       // Rediriger vers le dashboard approprié
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        const destination = await getDashboardPathForUser(user.id);
-        navigate(destination);
-      } else {
-        const destination = await getDashboardPathFromAuth();
-        navigate(destination);
-      }
+      await redirectToDashboard();
     } catch (error) {
       console.error('Error verifying OTP:', error);
     }
@@ -116,9 +108,7 @@ export default function LoginWithOTP() {
           <div className="mb-6">
             <Button
               variant="ghost"
-              onClick={() => {
-                window.location.href = "/";
-              }}
+              onClick={() => navigate("/")}
               className="mb-4"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />

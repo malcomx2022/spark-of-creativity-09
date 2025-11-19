@@ -1,27 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Menu, Phone, MapPin, LogIn, UserPlus, Shield } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import logo from "@/assets/logo.png";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const { data: user } = useSupabaseUser();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleLogout = async () => {
     // Nettoyer complètement la session
