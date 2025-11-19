@@ -142,41 +142,43 @@ const Index = () => {
       </section>
 
       {/* User Type Selection */}
-      <section id="services" className="py-12 md:py-16 bg-white/50 px-4 sm:px-6">
-        <div className="container mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
-              Choisissez votre profil
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Que vous soyez patient en quête de soins ou professionnel de santé, 
-              DomiCares vous accompagne.
-            </p>
-          </div>
+      {!user && (
+        <section id="services" className="py-12 md:py-16 bg-white/50 px-4 sm:px-6">
+          <div className="container mx-auto">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
+                Choisissez votre profil
+              </h2>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Que vous soyez patient en quête de soins ou professionnel de santé, 
+                DomiCares vous accompagne.
+              </p>
+            </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <UserTypeCard
-              title="Patient"
-              description="Accédez aux soins de santé à domicile"
-              icon={User}
-              features={patientFeatures}
-              buttonText="Commencer en tant que patient"
-              variant="patient"
-              onSelect={() => navigate("/signup/patient")}
-            />
+            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+              <UserTypeCard
+                title="Patient"
+                description="Accédez aux soins de santé à domicile"
+                icon={User}
+                features={patientFeatures}
+                buttonText="Commencer en tant que patient"
+                variant="patient"
+                onSelect={() => navigate("/signup/patient")}
+              />
 
-            <UserTypeCard
-              title="Praticien"
-              description="Rejoignez notre réseau professionnel"
-              icon={Stethoscope}
-              features={practitionerFeatures}
-              buttonText="Rejoindre comme praticien"
-              variant="practitioner"
-              onSelect={() => navigate("/signup/practitioner")}
-            />
+              <UserTypeCard
+                title="Praticien"
+                description="Rejoignez notre réseau professionnel"
+                icon={Stethoscope}
+                features={practitionerFeatures}
+                buttonText="Rejoindre comme praticien"
+                variant="practitioner"
+                onSelect={() => navigate("/signup/practitioner")}
+              />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* How it Works */}
       <section id="how-it-works" className="py-16">
