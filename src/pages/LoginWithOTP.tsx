@@ -208,7 +208,7 @@ export default function LoginWithOTP() {
 
                   <div className="text-center">
                     <Link
-                      to="/login"
+                      to="/login-email"
                       className="text-sm text-primary hover:underline"
                     >
                       Se connecter avec email/mot de passe

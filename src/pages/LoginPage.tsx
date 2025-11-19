@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, User } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
@@ -129,6 +129,15 @@ export default function LoginPage() {
                 >
                   {isSubmitting ? "Connexion en cours..." : "Se connecter"}
                 </Button>
+
+                <div className="text-center pt-4">
+                  <Link
+                    to="/login"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Se connecter avec numéro de téléphone (OTP)
+                  </Link>
+                </div>
               </form>
             </CardContent>
           </Card>
