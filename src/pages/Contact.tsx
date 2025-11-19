@@ -60,12 +60,12 @@ export default function Contact() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-2">Ligne d'urgence 24h/24</p>
-              <a href="tel:+225XXXXXXXXXX" className="text-primary font-semibold hover:underline">
-                +225 XX XX XX XX XX
+              <a href="tel:+22997123456" className="text-primary font-semibold hover:underline">
+                +229 97 12 34 56
               </a>
               <p className="text-muted-foreground mt-4 mb-2">Service client</p>
-              <a href="tel:+225XXXXXXXXXX" className="text-primary font-semibold hover:underline">
-                +225 XX XX XX XX XX
+              <a href="tel:+22996789012" className="text-primary font-semibold hover:underline">
+                +229 96 78 90 12
               </a>
             </CardContent>
           </Card>
@@ -99,8 +99,8 @@ export default function Contact() {
             <CardContent>
               <p className="text-muted-foreground">
                 DomiCares<br />
-                Cocody, Angré 8ème Tranche<br />
-                Abidjan, Côte d'Ivoire
+                Haie Vive, Avenue Jean-Paul II<br />
+                Cotonou, Bénin
               </p>
             </CardContent>
           </Card>
