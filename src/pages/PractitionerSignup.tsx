@@ -7,9 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Stethoscope, Shield, Upload, FileText } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
@@ -48,6 +50,13 @@ export default function PractitionerSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: user, isLoading } = useSupabaseUser();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      navigate("/dashboard/practitioner", { replace: true });
+    }
+  }, [user, isLoading, navigate]);
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
     lastName: "",

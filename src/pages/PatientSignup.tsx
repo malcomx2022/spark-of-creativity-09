@@ -7,9 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, User, Shield } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/patient-onboarding";
@@ -20,6 +22,13 @@ export default function PatientSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: user, isLoading } = useSupabaseUser();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      navigate("/dashboard/patient", { replace: true });
+    }
+  }, [user, isLoading, navigate]);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
