@@ -114,9 +114,10 @@ const Index = () => {
                     onClick={() => navigate("/login-email")}
                   >
                     Connexion par email
-                  </Button>
-                </div>
+              </Button>
               </div>
+            </div>
+          )}
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-6 pt-8">

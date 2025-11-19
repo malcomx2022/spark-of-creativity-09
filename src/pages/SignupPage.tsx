@@ -7,6 +7,15 @@ import UserTypeCard from "@/components/UserTypeCard";
 
 export default function SignupPage() {
   const navigate = useNavigate();
+  const { data: user, isLoading } = useSupabaseUser();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      getDashboardPathForUser(user.id).then((path) => {
+        navigate(path, { replace: true });
+      });
+    }
+  }, [user, isLoading, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10">
