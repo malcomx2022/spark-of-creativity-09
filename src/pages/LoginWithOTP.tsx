@@ -150,45 +150,6 @@ export default function LoginWithOTP() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Canal d'envoi</Label>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant={channel === 'sms' ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setChannel('sms')}
-                        disabled={sendingOTP}
-                        aria-label="Envoyer par SMS"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        SMS
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={channel === 'whatsapp' ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setChannel('whatsapp')}
-                        disabled={sendingOTP}
-                        aria-label="Envoyer par WhatsApp"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        WhatsApp
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={channel === 'call' ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setChannel('call')}
-                        disabled={sendingOTP}
-                        aria-label="Recevoir par appel vocal"
-                      >
-                        <Phone className="w-4 h-4 mr-2" />
-                        Appel
-                      </Button>
-                    </div>
-                  </div>
-
                   <Button
                     type="submit"
                     variant="patient"
