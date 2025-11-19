@@ -58,18 +58,22 @@ export default function Header() {
             >
               Services
             </button>
-            <button 
-              onClick={() => navigate("/dashboard/patient")}
-              className="text-foreground hover:text-primary transition-colors"
-            >
-              Patient
-            </button>
-            <button 
-              onClick={() => navigate("/dashboard/practitioner")}
-              className="text-foreground hover:text-primary transition-colors"
-            >
-              Praticien
-            </button>
+            {!user && (
+              <>
+                <button 
+                  onClick={() => navigate("/dashboard/patient")}
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  Patient
+                </button>
+                <button 
+                  onClick={() => navigate("/dashboard/practitioner")}
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  Praticien
+                </button>
+              </>
+            )}
             <button 
               onClick={() => navigate("/search-practitioners")}
               className="text-foreground hover:text-primary transition-colors flex items-center gap-1"
@@ -145,18 +149,22 @@ export default function Header() {
               >
                 Services
               </button>
-              <button 
-                onClick={() => navigate("/dashboard/patient")}
-                className="text-foreground hover:text-primary transition-colors text-left"
-              >
-                Espace Patient
-              </button>
-              <button 
-                onClick={() => navigate("/dashboard/practitioner")}
-                className="text-foreground hover:text-primary transition-colors text-left"
-              >
-                Espace Praticien
-              </button>
+              {!user && (
+                <>
+                  <button 
+                    onClick={() => navigate("/dashboard/patient")}
+                    className="text-foreground hover:text-primary transition-colors text-left"
+                  >
+                    Espace Patient
+                  </button>
+                  <button 
+                    onClick={() => navigate("/dashboard/practitioner")}
+                    className="text-foreground hover:text-primary transition-colors text-left"
+                  >
+                    Espace Praticien
+                  </button>
+                </>
+              )}
               <button 
                 onClick={() => navigate("/search-practitioners")}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
