@@ -75,49 +75,64 @@ const Index = () => {
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button
-                  variant="medical"
-                  size="xl"
-                  onClick={() => navigate("/signup/patient")}
-                  className="flex-1"
-                >
-                  <User className="h-5 w-5 mr-2" />
-                  Je suis patient
-                </Button>
-                <Button
-                  variant="practitioner"
-                  size="xl"
-                  onClick={() => navigate("/signup/practitioner")}
-                  className="flex-1"
-                >
-                  <Stethoscope className="h-5 w-5 mr-2" />
-                  Je suis praticien
-                </Button>
-              </div>
-
-              <div className="text-center pt-4">
-                <p className="text-sm text-muted-foreground mb-3">
-                  Vous avez déjà un compte ?
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate("/login")}
-                    className="gap-2"
+              {user ? (
+                <div className="flex justify-center">
+                  <Button 
+                    size="xl" 
+                    onClick={async () => {
+                      const path = await getDashboardPathForUser(user.id);
+                      navigate(path);
+                    }}
                   >
-                    <Phone className="h-4 w-4" />
-                    Connexion par téléphone
+                    Mon tableau de bord
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate("/login-email")}
-                  >
-                    Connexion par email
-              </Button>
-              </div>
-            </div>
-          )}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <Button
+                      variant="medical"
+                      size="xl"
+                      onClick={() => navigate("/signup/patient")}
+                      className="flex-1"
+                    >
+                      <User className="h-5 w-5 mr-2" />
+                      Je suis patient
+                    </Button>
+                    <Button
+                      variant="practitioner"
+                      size="xl"
+                      onClick={() => navigate("/signup/practitioner")}
+                      className="flex-1"
+                    >
+                      <Stethoscope className="h-5 w-5 mr-2" />
+                      Je suis praticien
+                    </Button>
+                  </div>
+
+                  <div className="text-center pt-4">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Vous avez déjà un compte ?
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate("/login")}
+                        className="gap-2"
+                      >
+                        <Phone className="h-4 w-4" />
+                        Connexion par téléphone
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate("/login-email")}
+                      >
+                        Connexion par email
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-6 pt-8">
