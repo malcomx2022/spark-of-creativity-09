@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -961,13 +962,12 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
                 <div className="space-y-2">
                   <Label htmlFor="phone">Numéro de téléphone *</Label>
-                  <Input
+                  <PhoneInput
                     id="phone"
-                    type="tel"
-                    placeholder="+229 XX XX XX XX ou +229 01 XX XX XX XX"
                     value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    required
+                    onChange={(value) => setPhoneNumber(value)}
+                    countryCode="+229"
+                    localNumberLength={8}
                   />
                   <p className="text-sm text-muted-foreground">
                     Les deux formats sont acceptés : avec ou sans le préfixe 01
