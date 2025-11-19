@@ -46,6 +46,9 @@ export function KYCQueue() {
   const [loadingUrls, setLoadingUrls] = useState<Record<string, boolean>>({});
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
   const [historyPractitionerId, setHistoryPractitionerId] = useState<string | null>(null);
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [incompleteDialogOpen, setIncompleteDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
 
   const {
     data: practitionerHistoryEntries,
@@ -163,36 +166,54 @@ export function KYCQueue() {
 
   const updateKYCMutation = useMutation({
     mutationFn: async ({ id, status, comment }: { id: string; status: string; comment?: string }) => {
+      console.log('[KYC Update] Starting mutation:', { id, status, comment });
       const { data: { user } } = await supabase.auth.getUser();
 
+      if (!user) {
+        throw new Error('Utilisateur non authentifié');
+      }
+
+      console.log('[KYC Update] Updating practitioner in database...');
       const { error } = await supabase
         .from('practitioners')
         .update({
           kyc_status: status,
           kyc_comment: comment,
-          kyc_reviewed_by: user?.id,
+          kyc_reviewed_by: user.id,
           kyc_reviewed_at: new Date().toISOString(),
           can_accept_missions: status === 'approved',
         })
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[KYC Update] Database update error:', error);
+        throw error;
+      }
 
-      // Log audit
-      await supabase.from('admin_audit_logs').insert({
-        admin_id: user?.id,
+      console.log('[KYC Update] Inserting audit log...');
+      const { error: auditError } = await supabase.from('admin_audit_logs').insert({
+        admin_id: user.id,
         action: `KYC ${status}`,
         entity_type: 'practitioner',
         entity_id: id,
         details: { comment },
       });
+
+      if (auditError) {
+        console.error('[KYC Update] Audit log error:', auditError);
+        // Ne pas bloquer si le log d'audit échoue
+      }
+
+      console.log('[KYC Update] Mutation completed successfully');
     },
     onSuccess: async (_, variables) => {
+      console.log('[KYC Update] onSuccess triggered');
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
       queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
       
       // Envoyer la notification appropriée selon le statut
       try {
+        console.log('[KYC Update] Sending notification...');
         await supabase.functions.invoke('send-kyc-status-notification', {
           body: {
             practitionerId: variables.id,
@@ -212,7 +233,7 @@ export function KYCQueue() {
           description: statusMessages[variables.status as keyof typeof statusMessages] || "Statut mis à jour"
         });
       } catch (notifError) {
-        console.error('Error sending KYC status notification:', notifError);
+        console.error('[KYC Update] Error sending notification:', notifError);
         toast({ 
           title: "Statut KYC mis à jour", 
           description: "Statut modifié (erreur d'envoi de notification)" 
@@ -221,7 +242,18 @@ export function KYCQueue() {
       
       setSelectedPractitioner(null);
       setComment("");
+      setApproveDialogOpen(false);
+      setIncompleteDialogOpen(false);
+      setRejectDialogOpen(false);
     },
+    onError: (error: Error) => {
+      console.error('[KYC Update] Mutation error:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de mettre à jour le statut KYC",
+        variant: "destructive"
+      });
+    }
   });
 
   // Load signed URLs for documents
@@ -480,9 +512,16 @@ export function KYCQueue() {
                           Historique
                         </Button>
 
-                        <Dialog>
+                        <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
                           <DialogTrigger asChild>
-                            <Button size="sm" variant="default" onClick={() => setSelectedPractitioner(practitioner)}>
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              onClick={() => {
+                                setSelectedPractitioner(practitioner);
+                                setApproveDialogOpen(true);
+                              }}
+                            >
                               <CheckCircle className="h-4 w-4 mr-1" />
                               Approuver
                             </Button>
@@ -506,11 +545,15 @@ export function KYCQueue() {
                               </div>
                               <Button
                                 className="w-full"
-                                onClick={() => updateKYCMutation.mutate({
-                                  id: practitioner.id,
-                                  status: 'approved',
-                                  comment,
-                                })}
+                                onClick={() => {
+                                  if (selectedPractitioner) {
+                                    updateKYCMutation.mutate({
+                                      id: selectedPractitioner.id,
+                                      status: 'approved',
+                                      comment,
+                                    });
+                                  }
+                                }}
                                 disabled={updateKYCMutation.isPending}
                               >
                                 Confirmer l'approbation
@@ -519,9 +562,16 @@ export function KYCQueue() {
                           </DialogContent>
                         </Dialog>
 
-                        <Dialog>
+                        <Dialog open={incompleteDialogOpen} onOpenChange={setIncompleteDialogOpen}>
                           <DialogTrigger asChild>
-                            <Button size="sm" variant="outline" onClick={() => setSelectedPractitioner(practitioner)}>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => {
+                                setSelectedPractitioner(practitioner);
+                                setIncompleteDialogOpen(true);
+                              }}
+                            >
                               <AlertCircle className="h-4 w-4 mr-1" />
                               Incomplet
                             </Button>
@@ -546,11 +596,15 @@ export function KYCQueue() {
                               </div>
                               <Button
                                 className="w-full"
-                                onClick={() => updateKYCMutation.mutate({
-                                  id: practitioner.id,
-                                  status: 'incomplete',
-                                  comment,
-                                })}
+                                onClick={() => {
+                                  if (selectedPractitioner) {
+                                    updateKYCMutation.mutate({
+                                      id: selectedPractitioner.id,
+                                      status: 'incomplete',
+                                      comment,
+                                    });
+                                  }
+                                }}
                                 disabled={!comment || updateKYCMutation.isPending}
                               >
                                 Envoyer la demande
@@ -559,9 +613,16 @@ export function KYCQueue() {
                           </DialogContent>
                         </Dialog>
 
-                        <Dialog>
+                        <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
                           <DialogTrigger asChild>
-                            <Button size="sm" variant="destructive">
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => {
+                                setSelectedPractitioner(practitioner);
+                                setRejectDialogOpen(true);
+                              }}
+                            >
                               <XCircle className="h-4 w-4 mr-1" />
                               Refuser
                             </Button>
@@ -587,11 +648,15 @@ export function KYCQueue() {
                               <Button
                                 className="w-full"
                                 variant="destructive"
-                                onClick={() => updateKYCMutation.mutate({
-                                  id: practitioner.id,
-                                  status: 'rejected',
-                                  comment,
-                                })}
+                                onClick={() => {
+                                  if (selectedPractitioner) {
+                                    updateKYCMutation.mutate({
+                                      id: selectedPractitioner.id,
+                                      status: 'rejected',
+                                      comment,
+                                    });
+                                  }
+                                }}
                                 disabled={!comment || updateKYCMutation.isPending}
                               >
                                 Confirmer le refus
