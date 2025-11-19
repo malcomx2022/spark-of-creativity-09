@@ -1,7 +1,11 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, User, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import Header from "@/components/Header";
 import UserTypeCard from "@/components/UserTypeCard";
 
@@ -16,6 +20,24 @@ export default function SignupPage() {
       });
     }
   }, [user, isLoading, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center min-h-[80vh] p-4">
+          <div className="w-full max-w-4xl space-y-4">
+            <Skeleton className="h-12 w-3/4 mx-auto" />
+            <Skeleton className="h-6 w-2/3 mx-auto" />
+            <div className="grid md:grid-cols-2 gap-6 mt-12">
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10">
