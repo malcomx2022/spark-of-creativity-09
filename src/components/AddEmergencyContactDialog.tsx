@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -81,13 +82,12 @@ export function AddEmergencyContactDialog({ userId }: AddEmergencyContactDialogP
           </div>
           <div>
             <Label htmlFor="phone">Téléphone *</Label>
-            <Input
+            <PhoneInput
               id="phone"
-              type="tel"
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              required
-              placeholder="+229 XX XX XX XX"
+              onChange={(value) => setFormData({ ...formData, phone: value })}
+              countryCode="+229"
+              localNumberLength={8}
             />
           </div>
           <div>

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -486,14 +487,14 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
           ) : (
             <div className="space-y-2">
               <Label htmlFor="phoneNumber">Numéro Mobile Money</Label>
-              <Input
+              <PhoneInput
                 id="phoneNumber"
                 value={formState.phoneNumber}
-                onChange={(event) => handleFieldChange("phoneNumber", event.target.value)}
-                placeholder="Ex: +22960000000"
-                inputMode="tel"
+                onChange={(value) => handleFieldChange("phoneNumber", value)}
+                countryCode="+229"
+                localNumberLength={8}
+                error={formErrors.phoneNumber}
               />
-              {formErrors.phoneNumber && <p className="text-sm text-destructive">{formErrors.phoneNumber}</p>}
             </div>
           )}
         </div>
