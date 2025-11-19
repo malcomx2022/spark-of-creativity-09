@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useOTPAuth } from '@/hooks/useOTPAuth';
@@ -46,27 +47,14 @@ export default function LoginWithOTP() {
     }
   }, [countdown]);
 
-  // Format du numéro de téléphone pour l'affichage
-  const formatPhoneDisplay = (value: string) => {
-    // Remove all non-numeric characters
-    const numbers = value.replace(/\D/g, '');
-    
-    // Add + if not present and has digits
-    if (numbers && !value.startsWith('+')) {
-      return '+' + numbers;
-    }
-    return value;
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhoneDisplay(e.target.value);
-    setPhoneNumber(formatted);
+  const handlePhoneChange = (value: string) => {
+    setPhoneNumber(value);
   };
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!phoneNumber || phoneNumber.length < 8) {
+    if (!phoneNumber || phoneNumber.length !== 12) {
       return;
     }
 
@@ -152,21 +140,14 @@ export default function LoginWithOTP() {
                 <form onSubmit={handleSendOTP} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="phone">Numéro de téléphone</Label>
-                    <Input
+                    <PhoneInput
                       id="phone"
-                      type="tel"
-                      placeholder="+229 XX XX XX XX"
                       value={phoneNumber}
                       onChange={handlePhoneChange}
-                      required
-                      autoFocus
-                      autoComplete="tel"
-                      aria-label="Numéro de téléphone au format international"
+                      countryCode="+229"
+                      localNumberLength={8}
                       disabled={sendingOTP}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Format international (ex: +229 90 12 34 56)
-                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -213,7 +194,7 @@ export default function LoginWithOTP() {
                     variant="patient"
                     size="xl"
                     className="w-full"
-                    disabled={sendingOTP || !phoneNumber || phoneNumber.length < 8}
+                    disabled={sendingOTP || !phoneNumber || phoneNumber.length !== 12}
                   >
                     {sendingOTP ? (
                       <>
