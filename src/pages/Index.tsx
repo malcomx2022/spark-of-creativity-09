@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Heart, User, Stethoscope, Clock, Shield, CheckCircle, Star, Phone } from "lucide-react";
@@ -13,29 +12,6 @@ import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 const Index = () => {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    let isActive = true;
-
-    (async () => {
-      try {
-        const destination = await getDashboardPathForUser(user.id);
-        if (isActive) {
-          navigate(destination, { replace: true });
-        }
-      } catch (error) {
-        console.error("Unable to resolve dashboard destination", error);
-      }
-    })();
-
-    return () => {
-      isActive = false;
-    };
-  }, [user, navigate]);
 
   const patientFeatures = [
     "Consultation à domicile 24/7",
