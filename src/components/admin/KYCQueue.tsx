@@ -49,6 +49,7 @@ export function KYCQueue() {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [incompleteDialogOpen, setIncompleteDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [currentAction, setCurrentAction] = useState<'approve' | 'incomplete' | 'reject' | null>(null);
 
   const {
     data: practitionerHistoryEntries,
@@ -512,13 +513,21 @@ export function KYCQueue() {
                           Historique
                         </Button>
 
-                        <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+                        <Dialog open={approveDialogOpen} onOpenChange={(open) => {
+                          setApproveDialogOpen(open);
+                          if (!open) {
+                            setComment("");
+                            setSelectedPractitioner(null);
+                          }
+                        }}>
                           <DialogTrigger asChild>
                             <Button 
                               size="sm" 
                               variant="default" 
                               onClick={() => {
+                                setComment("");
                                 setSelectedPractitioner(practitioner);
+                                setCurrentAction('approve');
                                 setApproveDialogOpen(true);
                               }}
                             >
@@ -530,7 +539,7 @@ export function KYCQueue() {
                             <DialogHeader>
                               <DialogTitle>Approuver le praticien</DialogTitle>
                               <DialogDescription>
-                                Confirmer la validation du dossier KYC
+                                Confirmer la validation du dossier KYC de {selectedPractitioner?.name}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
@@ -556,19 +565,27 @@ export function KYCQueue() {
                                 }}
                                 disabled={updateKYCMutation.isPending}
                               >
-                                Confirmer l'approbation
+                                {updateKYCMutation.isPending ? "Traitement..." : "Confirmer l'approbation"}
                               </Button>
                             </div>
                           </DialogContent>
                         </Dialog>
 
-                        <Dialog open={incompleteDialogOpen} onOpenChange={setIncompleteDialogOpen}>
+                        <Dialog open={incompleteDialogOpen} onOpenChange={(open) => {
+                          setIncompleteDialogOpen(open);
+                          if (!open) {
+                            setComment("");
+                            setSelectedPractitioner(null);
+                          }
+                        }}>
                           <DialogTrigger asChild>
                             <Button 
                               size="sm" 
                               variant="outline" 
                               onClick={() => {
+                                setComment("");
                                 setSelectedPractitioner(practitioner);
+                                setCurrentAction('incomplete');
                                 setIncompleteDialogOpen(true);
                               }}
                             >
@@ -580,7 +597,7 @@ export function KYCQueue() {
                             <DialogHeader>
                               <DialogTitle>Demander un complément</DialogTitle>
                               <DialogDescription>
-                                Indiquer les documents ou informations manquantes
+                                Indiquer les documents ou informations manquantes pour {selectedPractitioner?.name}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
@@ -607,19 +624,27 @@ export function KYCQueue() {
                                 }}
                                 disabled={!comment || updateKYCMutation.isPending}
                               >
-                                Envoyer la demande
+                                {updateKYCMutation.isPending ? "Traitement..." : "Envoyer la demande"}
                               </Button>
                             </div>
                           </DialogContent>
                         </Dialog>
 
-                        <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+                        <Dialog open={rejectDialogOpen} onOpenChange={(open) => {
+                          setRejectDialogOpen(open);
+                          if (!open) {
+                            setComment("");
+                            setSelectedPractitioner(null);
+                          }
+                        }}>
                           <DialogTrigger asChild>
                             <Button 
                               size="sm" 
                               variant="destructive"
                               onClick={() => {
+                                setComment("");
                                 setSelectedPractitioner(practitioner);
+                                setCurrentAction('reject');
                                 setRejectDialogOpen(true);
                               }}
                             >
@@ -631,7 +656,7 @@ export function KYCQueue() {
                             <DialogHeader>
                               <DialogTitle>Refuser le praticien</DialogTitle>
                               <DialogDescription>
-                                Justifier le refus du dossier KYC
+                                Justifier le refus du dossier KYC de {selectedPractitioner?.name}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
@@ -659,7 +684,7 @@ export function KYCQueue() {
                                 }}
                                 disabled={!comment || updateKYCMutation.isPending}
                               >
-                                Confirmer le refus
+                                {updateKYCMutation.isPending ? "Traitement..." : "Confirmer le refus"}
                               </Button>
                             </div>
                           </DialogContent>

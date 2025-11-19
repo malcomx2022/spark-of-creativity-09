@@ -75,7 +75,7 @@ serve(async (req: Request) => {
             </div>
 
             <p style="margin-top: 30px;">
-              <a href="${supabaseUrl.replace('/functions/v1', '')}/dashboard/practitioner" 
+              <a href="${supabaseUrl.split('/functions')[0]}/dashboard/practitioner" 
                  style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
                 Accéder à mon dashboard
               </a>
@@ -86,7 +86,7 @@ serve(async (req: Request) => {
             </p>
           </div>
         `;
-        smsContent = `✅ DomiCares : Votre compte praticien est activé ! Vous pouvez maintenant recevoir des consultations. Connectez-vous : ${supabaseUrl.replace('/functions/v1', '')}/dashboard/practitioner`;
+        smsContent = `✅ DomiCares : Votre compte praticien est activé ! Vous pouvez maintenant recevoir des consultations. Connectez-vous : ${supabaseUrl.split('/functions')[0]}/dashboard/practitioner`;
         break;
 
       case 'rejected':
