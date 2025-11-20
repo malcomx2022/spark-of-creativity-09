@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock, MapPin, Users } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { RegisterSessionDialog } from "./RegisterSessionDialog";
 
 interface GroupSessionCardProps {
   session: {
@@ -28,6 +30,8 @@ interface GroupSessionCardProps {
 }
 
 export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoachView = false }: GroupSessionCardProps) {
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  
   const statusColors = {
     planifiee: "bg-blue-500",
     confirmee: "bg-green-500",
@@ -139,9 +143,21 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
               )}
             </div>
           ) : (
-            <Button variant="patient" disabled={spotsRemaining === 0 || session.status !== "confirmee"}>
-              {spotsRemaining === 0 ? "Complet" : "Réserver"}
-            </Button>
+            <>
+              <Button 
+                variant="patient" 
+                disabled={spotsRemaining === 0 || (session.status !== "confirmee" && session.status !== "planifiee")}
+                onClick={() => setRegisterDialogOpen(true)}
+              >
+                {spotsRemaining === 0 ? "Complet" : "Réserver ma place"}
+              </Button>
+              
+              <RegisterSessionDialog
+                open={registerDialogOpen}
+                onOpenChange={setRegisterDialogOpen}
+                session={session}
+              />
+            </>
           )}
         </div>
       </CardContent>

@@ -172,17 +172,45 @@ async function handleTransactionEvent(
         }
       });
 
-    // Mettre à jour le statut de l'appointment
+    // Mettre à jour le statut de l'appointment ou de la participation groupe
     if (paymentStatus === 'paid') {
-      await supabase
-        .from('appointments')
-        .update({ status: 'confirmed' })
-        .eq('id', payment.appointment_id);
+      // Vérifier si c'est une séance de groupe
+      if (payment.appointment_id && payment.appointment_id.startsWith('group_session_')) {
+        // Format: group_session_{sessionId}_{participantId}
+        const parts = payment.appointment_id.split('_');
+        const participantId = parts[parts.length - 1];
+        
+        await supabase
+          .from('group_session_participants')
+          .update({ payment_status: 'paid' })
+          .eq('id', participantId);
+          
+        console.log(`Group session participant ${participantId} payment confirmed`);
+      } else {
+        // RDV classique
+        await supabase
+          .from('appointments')
+          .update({ status: 'confirmed' })
+          .eq('id', payment.appointment_id);
+      }
     } else if (['failed', 'canceled'].includes(paymentStatus)) {
-      await supabase
-        .from('appointments')
-        .update({ status: 'canceled' })
-        .eq('id', payment.appointment_id);
+      if (payment.appointment_id && payment.appointment_id.startsWith('group_session_')) {
+        const parts = payment.appointment_id.split('_');
+        const participantId = parts[parts.length - 1];
+        
+        // Supprimer la participation si le paiement échoue
+        await supabase
+          .from('group_session_participants')
+          .delete()
+          .eq('id', participantId);
+          
+        console.log(`Group session participant ${participantId} deleted due to payment failure`);
+      } else {
+        await supabase
+          .from('appointments')
+          .update({ status: 'canceled' })
+          .eq('id', payment.appointment_id);
+      }
     }
 
     // Envoyer notifications
