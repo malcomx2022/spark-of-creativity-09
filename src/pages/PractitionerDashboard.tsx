@@ -38,6 +38,7 @@ import { PractitionerMessagesSection } from '@/components/dashboard/practitioner
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
 import { LocationSection } from '@/components/dashboard/practitioner/LocationSection';
+import { DocumentsSection } from '@/components/dashboard/practitioner/DocumentsSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -525,6 +526,7 @@ export default function PractitionerDashboard() {
                 practitionerId={practitioner.id}
                 practitionerData={practitioner}
               />
+              <DocumentsSection practitionerData={practitioner} />
             </div>
           </TabsContent>
 
