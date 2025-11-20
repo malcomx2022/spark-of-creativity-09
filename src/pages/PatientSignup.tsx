@@ -177,12 +177,8 @@ export default function PatientSignup() {
         return;
       }
 
-      toast({
-        ...AUTH_MESSAGES.SIGNUP_SUCCESS,
-        description: "Bienvenue sur DomiCares. Vous pouvez maintenant prendre rendez-vous.",
-      });
-
-      navigateToDashboard(navigate, 'patient');
+      // Rediriger vers la page de confirmation
+      navigate('/registration-success?type=patient', { replace: true });
     } catch (error: any) {
       console.error('Erreur inscription:', error);
       toast({

@@ -25,6 +25,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Contact from "./pages/Contact";
 import CreateTestAccounts from "./pages/CreateTestAccounts";
 import ConfirmEmail from "./pages/ConfirmEmail";
+import RegistrationSuccess from "./pages/RegistrationSuccess";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/signup/patient" element={<PatientSignup />} />
           <Route path="/signup/practitioner" element={<PractitionerSignup />} />
+          <Route path="/registration-success" element={<RegistrationSuccess />} />
           <Route path="/triage" element={<Triage />} />
           <Route path="/search-practitioners" element={<PractitionerSearch />} />
           <Route path="/create-test-accounts" element={<CreateTestAccounts />} />

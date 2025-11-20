@@ -325,13 +325,8 @@ export default function PractitionerSignup() {
         console.error('Erreur notification (non bloquante):', notifError);
       }
 
-      toast({
-        ...AUTH_MESSAGES.SIGNUP_SUCCESS,
-        description: "Votre dossier est en cours de vérification. Vous recevrez une notification dès qu'il sera validé.",
-      });
-
-      // Rediriger vers le dashboard praticien (l'utilisateur reste connecté)
-      navigateToDashboard(navigate, 'practitioner');
+      // Rediriger vers la page de confirmation
+      navigate('/registration-success?type=practitioner', { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({
