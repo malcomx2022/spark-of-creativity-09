@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffect } from 'react';
 
 export interface PatientGroupSession {
   id: string;
@@ -31,7 +32,7 @@ export interface PatientGroupSession {
 }
 
 export function usePatientGroupSessions(patientId?: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['patient-group-sessions', patientId],
     queryFn: async () => {
       if (!patientId) return [];
@@ -91,4 +92,32 @@ export function usePatientGroupSessions(patientId?: string) {
     },
     enabled: !!patientId
   });
+
+  // Écouter les mises à jour en temps réel
+  useEffect(() => {
+    if (!patientId) return;
+
+    const channel = supabase
+      .channel('patient-group-sessions-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_session_participants',
+          filter: `patient_id=eq.${patientId}`
+        },
+        (payload) => {
+          console.log('Realtime update for group sessions:', payload);
+          query.refetch();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [patientId]);
+
+  return query;
 }
