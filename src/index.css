@@ -149,6 +149,30 @@ All colors MUST be HSL.
       background-attachment: scroll;
     }
   }
+  
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    /* Prevent zoom on input focus iOS */
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+    
+    /* Optimize touch targets */
+    button, a {
+      min-height: 44px;
+    }
+  }
+  
+  /* Improve text rendering on mobile */
+  body, button, input, textarea {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Prevent tap highlight on mobile */
+  * {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  }
 
   /* Animations */
   .animate-float {

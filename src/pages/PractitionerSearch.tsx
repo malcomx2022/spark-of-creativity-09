@@ -138,17 +138,18 @@ export default function PractitionerSearch() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       <Header />
-      <main className="container mx-auto px-4 py-8 pt-24">
-        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <h1 className="text-3xl font-bold">Trouver un praticien</h1>
+      <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 pt-20 sm:pt-24">
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between">
+              <h1 className="text-2xl sm:text-3xl font-bold">Trouver un praticien</h1>
               <div className="flex items-center gap-2">
-                <Button onClick={getUserLocation} disabled={isLoadingLocation}>
+                <Button onClick={getUserLocation} disabled={isLoadingLocation} className="min-h-[44px]">
                   {isLoadingLocation ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Localisation en cours...
+                      <span className="hidden sm:inline">Localisation en cours...</span>
+                      <span className="sm:hidden">Position...</span>
                     </>
                   ) : (
                     <>

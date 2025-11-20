@@ -21,14 +21,14 @@ export default function Header() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
-      <div className="container mx-auto px-4 py-3">
+      <div className="container mx-auto px-3 sm:px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <button onClick={() => navigate("/")} className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-            <img src={logo} alt="DomiCares Logo" className="w-10 h-10" />
+          <button onClick={() => navigate("/")} className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
+            <img src={logo} alt="DomiCares Logo" className="w-8 h-8 sm:w-10 sm:h-10" />
             <div>
-              <h1 className="text-xl font-bold text-foreground">DomiCares</h1>
-              <p className="text-xs text-muted-foreground">Soins à domicile</p>
+              <h1 className="text-base sm:text-xl font-bold text-foreground">DomiCares</h1>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Soins à domicile</p>
             </div>
           </button>
 
@@ -72,10 +72,11 @@ export default function Header() {
           </nav>
 
           {/* Emergency Button & Auth */}
-          <div className="flex items-center space-x-3">
-            <Button variant="urgent" size="sm" className="hidden sm:flex">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <Button variant="urgent" size="sm" className="hidden sm:flex min-h-[40px]">
               <Phone className="h-4 w-4" />
-              Urgence 112
+              <span className="hidden md:inline">Urgence 112</span>
+              <span className="md:hidden">112</span>
             </Button>
             
             {user ? (

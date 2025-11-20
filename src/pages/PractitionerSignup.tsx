@@ -348,13 +348,13 @@ export default function PractitionerSignup() {
     <div className="min-h-screen bg-gradient-to-br from-secondary/20 to-primary-glow/10">
       <Header />
       
-      <main className="pt-24 pb-12">
-        <div className="container mx-auto px-4 max-w-2xl">
-          <div className="mb-6">
+      <main className="pt-20 sm:pt-24 pb-8 sm:pb-12">
+        <div className="container mx-auto px-3 sm:px-4 max-w-2xl">
+          <div className="mb-4 sm:mb-6">
             <Button
               variant="ghost"
               onClick={() => navigateToHome(navigate)}
-              className="mb-4"
+              className="mb-3 sm:mb-4 min-h-[44px]"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
@@ -362,18 +362,18 @@ export default function PractitionerSignup() {
           </div>
 
           <Card className="shadow-medical">
-            <CardHeader className="text-center">
-              <div className="w-16 h-16 mx-auto bg-secondary rounded-full flex items-center justify-center mb-4">
-                <Stethoscope className="h-8 w-8 text-white" />
+            <CardHeader className="text-center px-4 sm:px-6">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto bg-secondary rounded-full flex items-center justify-center mb-3 sm:mb-4">
+                <Stethoscope className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">Inscription Praticien</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-xl sm:text-2xl font-bold">Inscription Praticien</CardTitle>
+              <CardDescription className="text-sm sm:text-base">
                 Rejoignez notre réseau de professionnels de santé certifiés
               </CardDescription>
             </CardHeader>
 
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
+            <CardContent className="px-4 sm:px-6">
+              <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                 {/* Informations personnelles */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold flex items-center">
