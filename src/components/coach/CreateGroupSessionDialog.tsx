@@ -8,14 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface CreateGroupSessionDialogProps {
   coachId: string;
-  onSuccess?: () => void;
 }
 
-export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSessionDialogProps) {
+export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -50,6 +51,8 @@ export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSess
         description: "La séance de groupe a été créée avec succès",
       });
 
+      queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
+      
       setOpen(false);
       setFormData({
         session_name: "",
@@ -63,7 +66,6 @@ export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSess
         location: "",
         description: ""
       });
-      onSuccess?.();
     } catch (error: any) {
       toast({
         title: "Erreur",

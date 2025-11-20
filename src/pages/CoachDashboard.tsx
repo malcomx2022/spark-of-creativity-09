@@ -48,7 +48,7 @@ export default function CoachDashboard() {
     enabled: !!user?.id,
   });
 
-  const { sessions, isLoading: isLoadingSessions, cancelSession } = useGroupSessions(coach?.id);
+  const { sessions, isLoading: isLoadingSessions, cancelSession, confirmSession } = useGroupSessions(coach?.id);
 
   // Calculate stats
   const upcomingSessions = sessions?.filter(s => 
@@ -60,7 +60,26 @@ export default function CoachDashboard() {
   ) || 0;
 
   const totalRevenue = sessions?.filter(s => s.status === 'terminee')
-    .reduce((sum, s) => sum + (s.price_per_person * s.current_participants * 0.63), 0) || 0;
+    .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * 0.63), 0) || 0;
+
+  const handleEditSession = (sessionId: string) => {
+    toast({
+      title: "Modification",
+      description: "La fonctionnalité de modification sera bientôt disponible",
+    });
+  };
+
+  const handleCancelSession = (sessionId: string) => {
+    if (confirm("Êtes-vous sûr de vouloir annuler cette séance ?")) {
+      cancelSession(sessionId);
+    }
+  };
+
+  const handleConfirmSession = (sessionId: string) => {
+    if (confirm("Confirmer cette séance ? Les participants seront notifiés.")) {
+      confirmSession(sessionId);
+    }
+  };
 
   if (isLoadingUser || isLoadingCoach) {
     return (
@@ -185,8 +204,7 @@ export default function CoachDashboard() {
                   <CardDescription>Gérez et créez vos séances de coaching</CardDescription>
                 </div>
                 <CreateGroupSessionDialog 
-                  coachId={coach.id} 
-                  onSuccess={() => window.location.reload()}
+                  coachId={coach.id}
                 />
               </div>
 
@@ -202,7 +220,9 @@ export default function CoachDashboard() {
                       key={session.id}
                       session={session}
                       isCoachView
-                      onCancel={cancelSession}
+                      onEdit={handleEditSession}
+                      onCancel={handleCancelSession}
+                      onConfirm={handleConfirmSession}
                     />
                   ))}
                 </div>
@@ -214,8 +234,7 @@ export default function CoachDashboard() {
                       Aucune séance créée pour le moment
                     </p>
                     <CreateGroupSessionDialog 
-                      coachId={coach.id} 
-                      onSuccess={() => window.location.reload()}
+                      coachId={coach.id}
                     />
                   </CardContent>
                 </Card>

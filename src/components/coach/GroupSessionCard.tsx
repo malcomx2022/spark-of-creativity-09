@@ -23,10 +23,11 @@ interface GroupSessionCardProps {
   };
   onEdit?: (sessionId: string) => void;
   onCancel?: (sessionId: string) => void;
+  onConfirm?: (sessionId: string) => void;
   isCoachView?: boolean;
 }
 
-export function GroupSessionCard({ session, onEdit, onCancel, isCoachView = false }: GroupSessionCardProps) {
+export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoachView = false }: GroupSessionCardProps) {
   const statusColors = {
     planifiee: "bg-blue-500",
     confirmee: "bg-green-500",
@@ -97,9 +98,19 @@ export function GroupSessionCard({ session, onEdit, onCancel, isCoachView = fals
           </div>
 
           {isCoachView ? (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {session.status === "planifiee" && (
                 <>
+                  {canConfirm && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => onConfirm?.(session.id)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      Confirmer
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -119,6 +130,11 @@ export function GroupSessionCard({ session, onEdit, onCancel, isCoachView = fals
               {!canConfirm && session.status === "planifiee" && (
                 <Badge variant="outline" className="text-orange-500">
                   Min {session.min_participants} participants requis
+                </Badge>
+              )}
+              {session.status === "confirmee" && (
+                <Badge className="bg-green-600">
+                  Séance confirmée
                 </Badge>
               )}
             </div>
