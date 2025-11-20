@@ -6,10 +6,19 @@ import { format, isPast, isFuture } from "date-fns";
 import { fr } from "date-fns/locale";
 import { usePatientGroupSessions } from "@/hooks/usePatientGroupSessions";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useState } from "react";
+import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog";
 
 export function PatientGroupSessionsSection() {
   const { data: user } = useSupabaseUser();
   const { data: sessions, isLoading } = usePatientGroupSessions(user?.id);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+
+  const handleRetryPayment = (session: any) => {
+    setSelectedSession(session);
+    setRegisterDialogOpen(true);
+  };
 
   const getPaymentStatusBadge = (status: string) => {
     const config = {
@@ -164,7 +173,11 @@ export function PatientGroupSessionsSection() {
           </div>
 
           {session.payment_status === 'pending' && (
-            <Button variant="default" size="sm">
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={() => handleRetryPayment(session)}
+            >
               Finaliser le paiement
             </Button>
           )}
@@ -250,6 +263,21 @@ export function PatientGroupSessionsSection() {
             ))}
           </CardContent>
         </Card>
+      )}
+      
+      {/* Dialog de paiement pour retry */}
+      {selectedSession && (
+        <RegisterSessionDialog
+          open={registerDialogOpen}
+          onOpenChange={setRegisterDialogOpen}
+          session={{
+            id: selectedSession.session.id,
+            session_name: selectedSession.session.session_name,
+            price_per_person: selectedSession.session.price_per_person,
+            scheduled_date: selectedSession.session.scheduled_date,
+            start_time: selectedSession.session.start_time
+          }}
+        />
       )}
     </div>
   );
