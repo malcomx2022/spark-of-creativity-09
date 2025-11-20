@@ -34,18 +34,18 @@ const Index = () => {
       <Header />
 
       {/* Hero Section */}
-      <section className="pt-24 pb-16">
-        <div className="container mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-8">
-              <div className="space-y-4">
-                <h1 className="text-4xl lg:text-6xl font-bold text-foreground leading-tight">
+      <section className="pt-20 sm:pt-24 pb-12 sm:pb-16">
+        <div className="container mx-auto px-3 sm:px-4">
+          <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center">
+            <div className="space-y-6 sm:space-y-8">
+              <div className="space-y-3 sm:space-y-4">
+                <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold text-foreground leading-tight">
                   Des soins de santé{" "}
                   <span className="gradient-primary bg-clip-text text-transparent">
                     à domicile
                   </span>
                 </h1>
-                <p className="text-xl text-muted-foreground leading-relaxed">
+                <p className="text-base sm:text-lg lg:text-xl text-muted-foreground leading-relaxed">
                   Consultez un professionnel de santé certifié directement chez vous. 
                   Médecins, infirmiers, kinésithérapeutes disponibles 24/7 en Afrique.
                 </p>
@@ -65,12 +65,12 @@ const Index = () => {
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <Button
                       variant="medical"
                       size="xl"
                       onClick={() => navigate("/signup/patient")}
-                      className="flex-1"
+                      className="flex-1 min-h-[52px] text-base sm:text-lg"
                     >
                       <User className="h-5 w-5 mr-2" />
                       Je suis patient
@@ -79,7 +79,7 @@ const Index = () => {
                       variant="practitioner"
                       size="xl"
                       onClick={() => navigate("/signup/practitioner")}
-                      className="flex-1"
+                      className="flex-1 min-h-[52px] text-base sm:text-lg"
                     >
                       <Stethoscope className="h-5 w-5 mr-2" />
                       Je suis praticien
@@ -127,7 +127,7 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="relative">
+            <div className="relative hidden lg:block">
               <div className="relative z-10">
                 <img
                   src={heroImage}
@@ -181,18 +181,18 @@ const Index = () => {
       )}
 
       {/* How it Works */}
-      <section id="how-it-works" className="py-16">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
+      <section id="how-it-works" className="py-12 sm:py-16">
+        <div className="container mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4">
               Comment ça marche ?
             </h2>
-            <p className="text-xl text-muted-foreground">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-4">
               Un processus simple et sécurisé en 4 étapes
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {[
               {
                 icon: User,

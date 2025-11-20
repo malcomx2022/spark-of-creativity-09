@@ -39,25 +39,25 @@ export default function RegistrationSuccess() {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <Header />
       
-      <div className="container mx-auto px-4 py-16 flex items-center justify-center min-h-[calc(100vh-80px)]">
-        <Card className="w-full max-w-2xl border-2 shadow-lg">
-          <CardHeader className="text-center space-y-4 pb-8">
+      <div className="container mx-auto px-3 sm:px-4 py-8 sm:py-12 md:py-16 flex items-center justify-center min-h-[calc(100vh-80px)]">
+        <Card className="w-full max-w-2xl border-2 shadow-lg animate-fade-in">
+          <CardHeader className="text-center space-y-3 sm:space-y-4 pb-6 sm:pb-8 px-4 sm:px-6">
             <div className="flex justify-center">
-              <div className="rounded-full bg-primary/10 p-4">
-                <CheckCircle2 className="w-16 h-16 text-primary" />
+              <div className="rounded-full bg-primary/10 p-3 sm:p-4 animate-scale-in">
+                <CheckCircle2 className="w-12 h-12 sm:w-16 sm:h-16 text-primary" />
               </div>
             </div>
-            <CardTitle className="text-3xl font-bold">
+            <CardTitle className="text-2xl sm:text-3xl font-bold">
               Inscription réussie !
             </CardTitle>
-            <CardDescription className="text-lg">
+            <CardDescription className="text-base sm:text-lg px-2">
               {isPractitioner 
                 ? "Votre demande d'inscription a été soumise avec succès"
                 : "Bienvenue sur DomiCares"}
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
             {isPractitioner ? (
               <>
                 <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 space-y-3">
@@ -134,7 +134,7 @@ export default function RegistrationSuccess() {
 
             <div className="pt-4 border-t space-y-3">
               <Button 
-                className="w-full"
+                className="w-full min-h-[48px] text-base"
                 size="lg"
                 onClick={() => navigate(isPractitioner ? "/dashboard/practitioner" : "/dashboard/patient", { replace: true })}
               >
@@ -142,7 +142,7 @@ export default function RegistrationSuccess() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               
-              <p className="text-xs text-center text-muted-foreground">
+              <p className="text-xs sm:text-sm text-center text-muted-foreground">
                 Redirection automatique dans {countdown} seconde{countdown > 1 ? "s" : ""}...
               </p>
             </div>
