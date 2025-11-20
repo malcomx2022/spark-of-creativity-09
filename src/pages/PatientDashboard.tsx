@@ -5,7 +5,7 @@ import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle } from 'lucide-react';
+import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -21,6 +21,7 @@ import { ReviewsSection } from '@/components/dashboard/ReviewsSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
+import { PatientGroupSessionsSection } from '@/components/dashboard/PatientGroupSessionsSection';
 import { FedaPayWidget } from '@/components/FedaPayWidget';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -364,7 +365,7 @@ export default function PatientDashboard() {
 
         <Tabs defaultValue="overview" className="space-y-6">
           <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:grid-cols-11 gap-1 sm:gap-2">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:grid-cols-12 gap-1 sm:gap-2">
               <TabsTrigger value="overview" className="flex items-center gap-2 whitespace-nowrap">
                 <Activity className="h-4 w-4" />
                 <span className="hidden sm:inline">Accueil</span>
@@ -372,6 +373,10 @@ export default function PatientDashboard() {
               <TabsTrigger value="appointments" className="flex items-center gap-2 whitespace-nowrap">
                 <Calendar className="h-4 w-4" />
                 <span className="hidden sm:inline">RDV</span>
+              </TabsTrigger>
+              <TabsTrigger value="group-sessions" className="flex items-center gap-2 whitespace-nowrap">
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Séances</span>
               </TabsTrigger>
               <TabsTrigger value="triage" className="flex items-center gap-2 whitespace-nowrap">
                 <Shield className="h-4 w-4" />
@@ -602,6 +607,10 @@ export default function PatientDashboard() {
                 )}
               </TabsContent>
             </Tabs>
+          </TabsContent>
+
+          <TabsContent value="group-sessions">
+            <PatientGroupSessionsSection />
           </TabsContent>
 
           <TabsContent value="triage">
