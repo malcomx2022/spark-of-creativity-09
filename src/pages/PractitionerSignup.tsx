@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Stethoscope, Shield, Upload, FileText } from "lucide-react";
+import { ArrowLeft, Stethoscope, Shield, Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -19,6 +19,7 @@ import type { CreatePractitionerResponse } from "@/types/edge-function-responses
 import { uploadUserDocument } from "@/lib/file-upload";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface SignupFormData {
   firstName: string;
@@ -77,18 +78,13 @@ export default function PractitionerSignup() {
     diploma: null,
     licenseDocument: null,
     acceptTerms: false,
-    // Coach sportif specific fields
     sessionTypes: [] as string[],
     interventionZone: "",
     interventionRadius: "",
     certifications: "",
   });
-  const [documentUploads, setDocumentUploads] = useState({
-    profilePhoto: null as File | null,
-    idDocument: null as File | null,
-    diploma: null as File | null,
-    licenseDocument: null as File | null,
-  });
+
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const professionToType = useMemo<Record<string, string>>(() => ({
     "Médecin généraliste": "medecin",
@@ -116,81 +112,116 @@ export default function PractitionerSignup() {
 
   const isCoachSportif = formData.profession === "Coach sportif";
 
+  // Validation en temps réel
+  const validateField = (name: string, value: any): string => {
+    switch (name) {
+      case 'firstName':
+      case 'lastName':
+        return value.trim().length < 2 ? "Minimum 2 caractères requis" : "";
+      case 'email':
+        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "Email invalide" : "";
+      case 'phone':
+        return !/^\+?[0-9]{8,15}$/.test(value.replace(/\s/g, '')) ? "Numéro invalide (8-15 chiffres)" : "";
+      case 'password':
+        return value.length < 8 ? "Minimum 8 caractères requis" : "";
+      case 'dateOfBirth':
+        if (!value) return "Date de naissance requise";
+        const age = new Date().getFullYear() - new Date(value).getFullYear();
+        return age < 18 || age > 100 ? "Âge invalide (18-100 ans)" : "";
+      case 'interventionRadius':
+        if (isCoachSportif && value) {
+          const radius = parseInt(value);
+          return isNaN(radius) || radius < 1 || radius > 100 ? "Rayon entre 1 et 100 km" : "";
+        }
+        return "";
+      default:
+        return "";
+    }
+  };
+
+  const handleInputChange = (name: string, value: any) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    const error = validateField(name, value);
+    setFieldErrors(prev => ({ ...prev, [name]: error }));
+  };
+
+  const handleFileChange = (key: keyof typeof formData, file: File | null) => {
+    setFormData(prev => ({ ...prev, [key]: file }));
+    
+    if (file) {
+      // Validation fichier
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
+      const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+      
+      if (file.size > MAX_FILE_SIZE) {
+        setFieldErrors(prev => ({ ...prev, [key]: "Fichier trop volumineux (max 5MB)" }));
+        return;
+      }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setFieldErrors(prev => ({ ...prev, [key]: "Format non supporté (PDF, JPG, PNG)" }));
+        return;
+      }
+      setFieldErrors(prev => ({ ...prev, [key]: "" }));
+    }
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    
+    // Champs obligatoires
+    if (!formData.firstName.trim()) errors.firstName = "Prénom requis";
+    if (!formData.lastName.trim()) errors.lastName = "Nom requis";
+    if (!formData.dateOfBirth) errors.dateOfBirth = "Date de naissance requise";
+    if (!formData.gender) errors.gender = "Genre requis";
+    if (!formData.address.trim()) errors.address = "Adresse requise";
+    if (!formData.phone.trim()) errors.phone = "Téléphone requis";
+    if (!formData.email.trim()) errors.email = "Email requis";
+    if (!formData.password) errors.password = "Mot de passe requis";
+    if (!formData.profession) errors.profession = "Profession requise";
+    if (!isCoachSportif && !formData.specialty.trim()) errors.specialty = "Spécialité requise";
+    if (!formData.experience) errors.experience = "Expérience requise";
+    
+    // Documents obligatoires
+    if (!formData.idDocument) errors.idDocument = "Pièce d'identité requise";
+    if (!isCoachSportif && !formData.licenseDocument) {
+      errors.licenseDocument = "Autorisation d'exercice requise";
+    }
+    
+    // Validations spécifiques
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = "Les mots de passe ne correspondent pas";
+    }
+    
+    // Coach sportif
+    if (isCoachSportif) {
+      if (formData.sessionTypes.length === 0) errors.sessionTypes = "Au moins un type de séance requis";
+      if (!formData.interventionZone.trim()) errors.interventionZone = "Zone d'intervention requise";
+      if (!formData.interventionRadius) errors.interventionRadius = "Rayon d'intervention requis";
+    }
+    
+    if (!formData.acceptTerms) {
+      errors.acceptTerms = "Vous devez accepter la charte d'engagement";
+    }
+    
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      toast({
+        title: "Erreur de validation",
+        description: "Veuillez corriger les erreurs dans le formulaire",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
-    // Validation
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Erreur",
-        description: "Les mots de passe ne correspondent pas",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.acceptTerms) {
-      toast({
-        title: "Erreur", 
-        description: "Vous devez accepter la charte d'engagement",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
-      // Validation des documents obligatoires
-      if (!documentUploads.idDocument) {
-        toast({
-          title: "Document manquant",
-          description: "La pièce d'identité est obligatoire",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // L'attestation d'inscription n'est pas obligatoire pour les coachs sportifs
-      if (!isCoachSportif && !documentUploads.licenseDocument) {
-        toast({
-          title: "Document manquant",
-          description: "Le document d'autorisation d'exercice est obligatoire",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validation taille et type des fichiers
-      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-      const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-
-      for (const [key, file] of Object.entries(documentUploads)) {
-        if (file) {
-          if (file.size > MAX_FILE_SIZE) {
-            toast({
-              title: "Fichier trop volumineux",
-              description: `${key}: Maximum 5MB autorisé`,
-              variant: "destructive"
-            });
-            setIsSubmitting(false);
-            return;
-          }
-
-          if (!ALLOWED_TYPES.includes(file.type)) {
-            toast({
-              title: "Type de fichier non supporté",
-              description: `${key}: Seuls PDF, JPG et PNG sont autorisés`,
-              variant: "destructive"
-            });
-            setIsSubmitting(false);
-            return;
-          }
-        }
-      }
 
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
@@ -280,7 +311,10 @@ export default function PractitionerSignup() {
 
       // Convertir les fichiers en base64 pour l'edge function
       const documentsBase64: Record<string, string> = {};
-      for (const [key, file] of Object.entries(documentUploads)) {
+      const fileKeys: (keyof SignupFormData)[] = ['profilePhoto', 'idDocument', 'diploma', 'licenseDocument'];
+      
+      for (const key of fileKeys) {
+        const file = formData[key] as File | null;
         if (file) {
           const base64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
@@ -337,11 +371,6 @@ export default function PractitionerSignup() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleFileUpload = (field: string, file: File | null) => {
-    setFormData(prev => ({ ...prev, [field]: file }));
-    setDocumentUploads(prev => ({ ...prev, [field]: file }));
   };
 
   return (
@@ -477,9 +506,14 @@ export default function PractitionerSignup() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="profession">Profession *</Label>
-                      <Select value={formData.profession} onValueChange={(value) => setFormData(prev => ({ ...prev, profession: value }))}>
-                        <SelectTrigger>
+                      <Label htmlFor="profession" className="text-sm sm:text-base">
+                        Profession <span className="text-destructive">*</span>
+                      </Label>
+                      <Select 
+                        value={formData.profession} 
+                        onValueChange={(value) => handleInputChange('profession', value)}
+                      >
+                        <SelectTrigger className={`h-11 sm:h-12 ${fieldErrors.profession ? 'border-destructive' : ''}`}>
                           <SelectValue placeholder="Sélectionnez votre profession" />
                         </SelectTrigger>
                         <SelectContent>
@@ -488,17 +522,27 @@ export default function PractitionerSignup() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {fieldErrors.profession && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.profession}</p>
+                      )}
                     </div>
 
                     {!isCoachSportif && (
                       <div className="space-y-2">
-                        <Label htmlFor="specialty">Spécialité</Label>
+                        <Label htmlFor="specialty" className="text-sm sm:text-base">
+                          Spécialité <span className="text-destructive">*</span>
+                        </Label>
                         <Input
                           id="specialty"
                           placeholder="Ex: Cardiologie, Pédiatrie..."
                           value={formData.specialty}
-                          onChange={(e) => setFormData(prev => ({ ...prev, specialty: e.target.value }))}
+                          onChange={(e) => handleInputChange('specialty', e.target.value)}
+                          required
+                          className={`h-11 sm:h-12 ${fieldErrors.specialty ? 'border-destructive' : ''}`}
                         />
+                        {fieldErrors.specialty && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.specialty}</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -507,38 +551,49 @@ export default function PractitionerSignup() {
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="registrationNumber">N° d'inscription Ordre *</Label>
+                          <Label htmlFor="registrationNumber" className="text-sm sm:text-base">
+                            N° d'inscription Ordre
+                          </Label>
                           <Input
                             id="registrationNumber"
                             placeholder="Numéro d'inscription"
                             value={formData.registrationNumber}
-                            onChange={(e) => setFormData(prev => ({ ...prev, registrationNumber: e.target.value }))}
-                            required
+                            onChange={(e) => handleInputChange('registrationNumber', e.target.value)}
+                            className="h-11 sm:h-12"
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="experience">Années d'expérience *</Label>
+                          <Label htmlFor="experience" className="text-sm sm:text-base">
+                            Années d'expérience <span className="text-destructive">*</span>
+                          </Label>
                           <Input
                             id="experience"
                             type="number"
-                            min="1"
+                            min="0"
+                            max="70"
                             placeholder="Ex: 5"
                             value={formData.experience}
-                            onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
+                            onChange={(e) => handleInputChange('experience', e.target.value)}
                             required
+                            className={`h-11 sm:h-12 ${fieldErrors.experience ? 'border-destructive' : ''}`}
                           />
+                          {fieldErrors.experience && (
+                            <p className="text-xs text-destructive mt-1">{fieldErrors.experience}</p>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="currentWorkplace">Structure d'exercice actuelle *</Label>
+                        <Label htmlFor="currentWorkplace" className="text-sm sm:text-base">
+                          Structure d'exercice actuelle
+                        </Label>
                         <Input
                           id="currentWorkplace"
                           placeholder="Ex: Hôpital Principal, Cabinet Médical..."
                           value={formData.currentWorkplace}
-                          onChange={(e) => setFormData(prev => ({ ...prev, currentWorkplace: e.target.value }))}
-                          required
+                          onChange={(e) => handleInputChange('currentWorkplace', e.target.value)}
+                          className="h-11 sm:h-12"
                         />
                       </div>
                     </>
@@ -546,16 +601,23 @@ export default function PractitionerSignup() {
 
                   {isCoachSportif && (
                     <div className="space-y-2">
-                      <Label htmlFor="experience">Années d'expérience *</Label>
-                      <Input
-                        id="experience"
-                        type="number"
-                        min="1"
-                        placeholder="Ex: 5"
-                        value={formData.experience}
-                        onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
-                        required
-                      />
+                    <Label htmlFor="experience" className="text-sm sm:text-base">
+                      Années d'expérience <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="experience"
+                      type="number"
+                      min="0"
+                      max="70"
+                      placeholder="Ex: 5"
+                      value={formData.experience}
+                      onChange={(e) => handleInputChange('experience', e.target.value)}
+                      required
+                      className={`h-11 sm:h-12 ${fieldErrors.experience ? 'border-destructive' : ''}`}
+                    />
+                    {fieldErrors.experience && (
+                      <p className="text-xs text-destructive mt-1">{fieldErrors.experience}</p>
+                    )}
                     </div>
                   )}
                 </div>
@@ -566,71 +628,83 @@ export default function PractitionerSignup() {
                     <h4 className="font-semibold text-primary">Informations spécifiques Coach Sportif</h4>
                     
                     <div className="space-y-2">
-                      <Label>Types de séances proposées *</Label>
-                      <div className="flex gap-4">
+                      <Label className="text-sm sm:text-base">
+                        Types de séances proposées <span className="text-destructive">*</span>
+                      </Label>
+                      <div className="flex flex-wrap gap-4">
                         {sessionTypes.map((type) => (
                           <div key={type} className="flex items-center space-x-2">
                             <Checkbox
                               id={`session-${type}`}
                               checked={formData.sessionTypes.includes(type)}
                               onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    sessionTypes: [...prev.sessionTypes, type] 
-                                  }));
-                                } else {
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    sessionTypes: prev.sessionTypes.filter(t => t !== type) 
-                                  }));
-                                }
+                                const newSessionTypes = checked
+                                  ? [...formData.sessionTypes, type]
+                                  : formData.sessionTypes.filter(t => t !== type);
+                                handleInputChange('sessionTypes', newSessionTypes);
                               }}
                             />
-                            <Label htmlFor={`session-${type}`} className="capitalize cursor-pointer">
+                            <Label htmlFor={`session-${type}`} className="capitalize cursor-pointer text-sm sm:text-base">
                               {type}
                             </Label>
                           </div>
                         ))}
                       </div>
+                      {fieldErrors.sessionTypes && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.sessionTypes}</p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="interventionZone">Zone d'intervention *</Label>
+                        <Label htmlFor="interventionZone" className="text-sm sm:text-base">
+                          Zone d'intervention <span className="text-destructive">*</span>
+                        </Label>
                         <Input
                           id="interventionZone"
                           placeholder="Ex: Dakar, Thiès..."
                           value={formData.interventionZone}
-                          onChange={(e) => setFormData(prev => ({ ...prev, interventionZone: e.target.value }))}
+                          onChange={(e) => handleInputChange('interventionZone', e.target.value)}
                           required
+                          className={`h-11 sm:h-12 ${fieldErrors.interventionZone ? 'border-destructive' : ''}`}
                         />
+                        {fieldErrors.interventionZone && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.interventionZone}</p>
+                        )}
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="interventionRadius">Rayon d'intervention (km) *</Label>
+                        <Label htmlFor="interventionRadius" className="text-sm sm:text-base">
+                          Rayon d'intervention (km) <span className="text-destructive">*</span>
+                        </Label>
                         <Input
                           id="interventionRadius"
                           type="number"
                           min="1"
-                          max="50"
+                          max="100"
                           placeholder="Ex: 15"
                           value={formData.interventionRadius}
-                          onChange={(e) => setFormData(prev => ({ ...prev, interventionRadius: e.target.value }))}
+                          onChange={(e) => handleInputChange('interventionRadius', e.target.value)}
                           required
+                          className={`h-11 sm:h-12 ${fieldErrors.interventionRadius ? 'border-destructive' : ''}`}
                         />
+                        {fieldErrors.interventionRadius && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.interventionRadius}</p>
+                        )}
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="certifications">Certifications / Diplômes en coaching sportif *</Label>
+                      <Label htmlFor="certifications" className="text-sm sm:text-base">
+                        Certifications / Diplômes
+                      </Label>
                       <Textarea
                         id="certifications"
                         placeholder="Listez vos certifications (fitness, kinésithérapie sportive, etc.)"
                         value={formData.certifications}
-                        onChange={(e) => setFormData(prev => ({ ...prev, certifications: e.target.value }))}
-                        required
+                        onChange={(e) => handleInputChange('certifications', e.target.value)}
                         rows={3}
+                        className="min-h-[80px]"
                       />
                     </div>
                   </div>
@@ -645,48 +719,94 @@ export default function PractitionerSignup() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="profilePhoto">Photo de profil *</Label>
+                      <Label htmlFor="profilePhoto" className="text-sm sm:text-base">
+                        Photo de profil
+                      </Label>
                       <Input
                         id="profilePhoto"
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleFileUpload('profilePhoto', e.target.files?.[0] || null)}
-                        required
+                        onChange={(e) => handleFileChange('profilePhoto', e.target.files?.[0] || null)}
+                        className={`h-11 ${fieldErrors.profilePhoto ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.profilePhoto && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.profilePhoto}</p>
+                      )}
+                      {formData.profilePhoto && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          {formData.profilePhoto.name}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="idDocument">Pièce d'identité *</Label>
+                      <Label htmlFor="idDocument" className="text-sm sm:text-base">
+                        Pièce d'identité <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="idDocument"
                         type="file"
                         accept="image/*,.pdf"
-                        onChange={(e) => handleFileUpload('idDocument', e.target.files?.[0] || null)}
+                        onChange={(e) => handleFileChange('idDocument', e.target.files?.[0] || null)}
                         required
+                        className={`h-11 ${fieldErrors.idDocument ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.idDocument && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.idDocument}</p>
+                      )}
+                      {formData.idDocument && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          {formData.idDocument.name}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="diploma">Diplôme/Certificat *</Label>
+                      <Label htmlFor="diploma" className="text-sm sm:text-base">
+                        Diplôme/Certificat
+                      </Label>
                       <Input
                         id="diploma"
                         type="file"
                         accept="image/*,.pdf"
-                        onChange={(e) => handleFileUpload('diploma', e.target.files?.[0] || null)}
-                        required
+                        onChange={(e) => handleFileChange('diploma', e.target.files?.[0] || null)}
+                        className={`h-11 ${fieldErrors.diploma ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.diploma && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.diploma}</p>
+                      )}
+                      {formData.diploma && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          {formData.diploma.name}
+                        </p>
+                      )}
                     </div>
 
                     {!isCoachSportif && (
                       <div className="space-y-2">
-                        <Label htmlFor="licenseDocument">Attestation d'inscription *</Label>
+                        <Label htmlFor="licenseDocument" className="text-sm sm:text-base">
+                          Autorisation d'exercice <span className="text-destructive">*</span>
+                        </Label>
                         <Input
                           id="licenseDocument"
                           type="file"
                           accept="image/*,.pdf"
-                          onChange={(e) => handleFileUpload('licenseDocument', e.target.files?.[0] || null)}
+                          onChange={(e) => handleFileChange('licenseDocument', e.target.files?.[0] || null)}
                           required
+                          className={`h-11 ${fieldErrors.licenseDocument ? 'border-destructive' : ''}`}
                         />
+                        {fieldErrors.licenseDocument && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.licenseDocument}</p>
+                        )}
+                        {formData.licenseDocument && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            {formData.licenseDocument.name}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -708,27 +828,39 @@ export default function PractitionerSignup() {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="password">Mot de passe *</Label>
+                      <Label htmlFor="password" className="text-sm sm:text-base">
+                        Mot de passe <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="password"
                         type="password"
                         placeholder="Min. 8 caractères"
                         value={formData.password}
-                        onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
                         required
+                        className={`h-11 sm:h-12 ${fieldErrors.password ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.password && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.password}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Confirmer le mot de passe *</Label>
+                      <Label htmlFor="confirmPassword" className="text-sm sm:text-base">
+                        Confirmer le mot de passe <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="confirmPassword"
                         type="password"
                         placeholder="Répétez le mot de passe"
                         value={formData.confirmPassword}
-                        onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
                         required
+                        className={`h-11 sm:h-12 ${fieldErrors.confirmPassword ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.confirmPassword && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.confirmPassword}</p>
+                      )}
                     </div>
                   </div>
                 </div>

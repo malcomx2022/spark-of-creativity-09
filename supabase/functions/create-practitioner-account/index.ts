@@ -197,14 +197,25 @@ serve(async (req) => {
       profileCreated = true;
       console.log('✅ Profil créé');
 
-      // 2. Upload des documents avec validation
       console.log('📤 Upload documents...');
       const uploadedDocs: Record<string, any> = {};
       
       for (const [key, base64Data] of Object.entries(documents)) {
         if (base64Data) {
           try {
-            const ext = base64Data.includes('pdf') ? 'pdf' : 'jpg';
+            // Détecter l'extension à partir du content-type
+            const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,/);
+            const contentType = matches ? matches[1] : 'application/octet-stream';
+            
+            let ext = 'jpg'; // Par défaut
+            if (contentType.includes('pdf')) {
+              ext = 'pdf';
+            } else if (contentType.includes('png')) {
+              ext = 'png';
+            } else if (contentType.includes('jpeg') || contentType.includes('jpg')) {
+              ext = 'jpg';
+            }
+            
             const fileName = `${key}_${Date.now()}.${ext}`;
             const result = await uploadDocument(supabase, base64Data, fileName, userId);
             uploadedDocs[key] = result;
