@@ -138,7 +138,7 @@ serve(async (req) => {
         console.error(`Error processing payment reminder for ${payment.id}:`, error);
         errors.push({
           payment_id: payment.id,
-          error: error.message
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
     }
@@ -164,7 +164,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString()
       }),
       { 
