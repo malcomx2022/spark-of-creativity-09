@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Stethoscope, Shield, Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Stethoscope, Shield, Upload, FileText, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -816,6 +816,12 @@ export default function PractitionerSignup() {
                       <strong>Note:</strong> Tous les documents seront vérifiés par notre équipe. 
                       L'activation de votre compte peut prendre 24 à 48 heures.
                     </p>
+                    {isCoachSportif && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        <strong>Coach sportif :</strong> L'autorisation d'exercice n'est pas obligatoire. 
+                        Vos certifications seront vérifiées à partir des informations fournies.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -866,32 +872,44 @@ export default function PractitionerSignup() {
                 </div>
 
                 {/* Conditions */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="terms"
-                    checked={formData.acceptTerms}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, acceptTerms: checked as boolean }))}
-                  />
-                  <Label htmlFor="terms" className="text-sm">
-                    J'accepte la{" "}
-                    <a href="/terms-of-service#charte-praticiens" className="text-secondary hover:underline">
-                      Charte d'engagement des praticiens DomiCares
-                    </a>{" "}
-                    et les{" "}
-                    <a href="/terms-of-service" className="text-secondary hover:underline">
-                      CGU
-                    </a>
-                  </Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="terms"
+                      checked={formData.acceptTerms}
+                      onCheckedChange={(checked) => handleInputChange('acceptTerms', checked as boolean)}
+                      className={fieldErrors.acceptTerms ? 'border-destructive' : ''}
+                    />
+                    <Label htmlFor="terms" className="text-sm sm:text-base font-normal leading-relaxed cursor-pointer">
+                      J'accepte la{" "}
+                      <a href="/terms-of-service#charte-praticiens" className="text-primary hover:underline">
+                        Charte d'engagement des praticiens DomiCares
+                      </a>{" "}
+                      et les{" "}
+                      <a href="/terms-of-service" className="text-primary hover:underline">
+                        CGU
+                      </a>
+                    </Label>
+                  </div>
+                  {fieldErrors.acceptTerms && (
+                    <p className="text-xs text-destructive">{fieldErrors.acceptTerms}</p>
+                  )}
                 </div>
 
                 <Button
                   type="submit"
-                  variant="practitioner"
-                  size="xl"
-                  className="w-full"
+                  size="lg"
+                  className="w-full h-12 sm:h-14 text-base"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Soumission en cours..." : "Soumettre ma candidature"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Soumission en cours...
+                    </>
+                  ) : (
+                    "Soumettre ma candidature"
+                  )}
                 </Button>
               </form>
             </CardContent>

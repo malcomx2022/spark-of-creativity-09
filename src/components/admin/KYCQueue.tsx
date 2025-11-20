@@ -489,15 +489,64 @@ export function KYCQueue() {
                             
                             <div className="grid gap-3 p-4 border rounded-lg">
                               <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Assurance RCP</Label>
+                                <Label className="text-base font-semibold">Assurance RCP / Diplôme</Label>
                                 {getExpiryBadge(practitioner.insurance_expiry)}
                               </div>
                               <DocumentLink 
                                 url={documentUrls[practitioner.id]?.insurance_document_url || null}
-                                label="Assurance RCP"
+                                label="Assurance RCP / Diplôme"
                                 loading={loadingUrls[practitioner.id]}
                               />
                             </div>
+
+                            {/* Informations spécifiques Coach Sportif */}
+                            {practitioner.practitioner_type === 'coach_sportif' && (
+                              <div className="grid gap-3 p-4 border rounded-lg bg-primary/5">
+                                <Label className="text-base font-semibold text-primary">
+                                  Informations Coach Sportif
+                                </Label>
+                                
+                                {practitioner.session_types && practitioner.session_types.length > 0 && (
+                                  <div>
+                                    <p className="text-sm font-medium mb-2">Types de séances proposées :</p>
+                                    <div className="flex gap-2 flex-wrap">
+                                      {practitioner.session_types.map((type: string) => (
+                                        <Badge key={type} variant="secondary" className="capitalize">
+                                          {type}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {practitioner.intervention_zone && (
+                                  <div>
+                                    <p className="text-sm font-medium">Zone d'intervention :</p>
+                                    <p className="text-sm text-muted-foreground">{practitioner.intervention_zone}</p>
+                                  </div>
+                                )}
+
+                                {practitioner.intervention_radius && (
+                                  <div>
+                                    <p className="text-sm font-medium">Rayon d'intervention :</p>
+                                    <p className="text-sm text-muted-foreground">{practitioner.intervention_radius} km</p>
+                                  </div>
+                                )}
+
+                                {practitioner.certifications && practitioner.certifications.length > 0 && (
+                                  <div>
+                                    <p className="text-sm font-medium mb-2">Certifications :</p>
+                                    <div className="flex gap-2 flex-wrap">
+                                      {practitioner.certifications.map((cert: string, index: number) => (
+                                        <Badge key={index} variant="outline">
+                                          {cert}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </DialogContent>
                       </Dialog>
