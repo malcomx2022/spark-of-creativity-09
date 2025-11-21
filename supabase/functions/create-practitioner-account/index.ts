@@ -124,6 +124,43 @@ async function deleteWasabiDocument(supabase: any, filePath: string): Promise<vo
   }
 }
 
+async function sendKYCNotifications(supabase: any, practitionerName: string): Promise<void> {
+  const ADMIN_ROLES = ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst'];
+
+  const { data: adminUsers, error: adminRolesError } = await supabase
+    .from('user_roles')
+    .select('user_id, role')
+    .in('role', ADMIN_ROLES);
+
+  if (adminRolesError) {
+    throw new Error(`Erreur récupération admins: ${adminRolesError.message}`);
+  }
+
+  if (adminUsers && adminUsers.length > 0) {
+    const uniqueAdminIds = Array.from(new Set(adminUsers.map((admin: { user_id: string }) => admin.user_id)));
+
+    const notificationsPayload = uniqueAdminIds.map((adminId) => ({
+      user_id: adminId,
+      title: 'Nouveau dossier KYC à valider',
+      message: `Le praticien ${practitionerName} vient de s'inscrire et nécessite une validation KYC.`,
+      type: 'kyc_pending',
+      link: '/admin?tab=kyc',
+    }));
+
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .insert(notificationsPayload);
+
+    if (notificationError) {
+      throw new Error(`Erreur envoi notifications: ${notificationError.message}`);
+    }
+    
+    console.log(`✅ Notifications KYC envoyées à ${notificationsPayload.length} admin(s)`);
+  } else {
+    console.log('ℹ️ Aucun admin trouvé pour recevoir la notification KYC');
+  }
+}
+
 serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -251,39 +288,16 @@ serve(async (req) => {
         throw new Error(`Échec création praticien: ${practitionerError.message}`);
       }
 
-      console.log('🔔 Préparation des notifications admin pour le nouveau dossier KYC...');
-
-      const ADMIN_ROLES = ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst'];
-
-      const { data: adminUsers, error: adminRolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role')
-        .in('role', ADMIN_ROLES);
-
-      if (adminRolesError) {
-        console.error('❌ Erreur récupération admins pour notification KYC:', adminRolesError);
-      } else if (adminUsers && adminUsers.length > 0) {
-        const uniqueAdminIds = Array.from(new Set(adminUsers.map((admin: { user_id: string }) => admin.user_id)));
-
-        const notificationsPayload = uniqueAdminIds.map((adminId) => ({
-          user_id: adminId,
-          title: 'Nouveau dossier KYC à valider',
-          message: `Le praticien ${practitionerPayload.name} vient de s'inscrire et nécessite une validation KYC.`,
-          type: 'kyc_pending',
-          link: '/admin?tab=kyc',
-        }));
-
-        const { error: notificationError } = await supabase
-          .from('notifications')
-          .insert(notificationsPayload);
-
-        if (notificationError) {
-          console.error('❌ Erreur envoi notifications KYC:', notificationError);
-        } else {
-          console.log(`✅ Notifications KYC envoyées à ${notificationsPayload.length} admin(s)`);
-        }
-      } else {
-        console.log('ℹ️ Aucun admin trouvé pour recevoir la notification KYC');
+      practitionerCreated = true;
+      
+      // Envoyer les notifications KYC aux admins
+      console.log('🔔 Envoi notifications KYC aux admins...');
+      try {
+        await sendKYCNotifications(supabase, practitionerPayload.name);
+        console.log('✅ Notifications KYC envoyées');
+      } catch (notifError: any) {
+        console.error('❌ Erreur notifications KYC (non bloquant):', notifError);
+        // Non bloquant, on continue
       }
 
       console.log('✅ Compte praticien créé avec succès');
