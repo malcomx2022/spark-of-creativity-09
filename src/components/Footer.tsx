@@ -78,10 +78,10 @@ export default function Footer() {
             <ul className="space-y-2">
               <li>
                 <button
-                  onClick={() => !isPractitioner && navigate("/dashboard/patient")}
-                  disabled={isPractitioner}
+                  onClick={() => navigate("/dashboard/patient")}
+                  disabled={isPractitioner === true}
                   className={`text-sm transition-colors ${
-                    isPractitioner
+                    isPractitioner === true
                       ? "text-muted-foreground/40 cursor-not-allowed"
                       : "text-muted-foreground hover:text-primary"
                   }`}
@@ -91,10 +91,10 @@ export default function Footer() {
               </li>
               <li>
                 <button
-                  onClick={() => isPractitioner && navigate("/dashboard/practitioner")}
-                  disabled={!isPractitioner && user !== null}
+                  onClick={() => navigate("/dashboard/practitioner")}
+                  disabled={user !== null && isPractitioner === false}
                   className={`text-sm transition-colors ${
-                    !isPractitioner && user !== null
+                    user !== null && isPractitioner === false
                       ? "text-muted-foreground/40 cursor-not-allowed"
                       : "text-muted-foreground hover:text-primary"
                   }`}
