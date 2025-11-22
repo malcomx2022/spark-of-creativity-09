@@ -825,19 +825,51 @@ export function KYCQueue() {
 
       {/* Document Viewer Dialog */}
       <Dialog open={!!viewingDocument} onOpenChange={(open) => !open && setViewingDocument(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>{viewingDocument?.name}</DialogTitle>
             <DialogDescription>Prévisualisation du document</DialogDescription>
           </DialogHeader>
-          <div className="flex items-center justify-center bg-muted rounded-lg overflow-hidden" style={{ minHeight: '500px' }}>
+          <div className="mt-4">
             {viewingDocument?.url && (
-              <iframe
-                src={viewingDocument.url}
-                className="w-full h-full"
-                style={{ minHeight: '500px' }}
-                title={viewingDocument.name}
-              />
+              <>
+                {viewingDocument.url.toLowerCase().split('?')[0].endsWith('.pdf') ? (
+                  <div className="flex flex-col gap-2">
+                    <iframe
+                      src={`${viewingDocument.url}#toolbar=0`}
+                      className="w-full border rounded"
+                      style={{ minHeight: '70vh' }}
+                      title={viewingDocument.name}
+                      onError={(e) => {
+                        console.error("Error loading PDF in iframe:", e);
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => window.open(viewingDocument.url, '_blank')}
+                      className="w-full"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Ouvrir dans un nouvel onglet
+                    </Button>
+                  </div>
+                ) : (
+                  <img
+                    src={viewingDocument.url}
+                    alt={viewingDocument.name}
+                    className="w-full h-auto rounded"
+                    onError={(e) => {
+                      console.error("Error loading image:", e);
+                      const img = e.target as HTMLImageElement;
+                      img.style.display = 'none';
+                      const errorDiv = document.createElement('div');
+                      errorDiv.className = 'text-center py-8 text-muted-foreground';
+                      errorDiv.textContent = 'Impossible de charger l\'image. Essayez de la télécharger.';
+                      img.parentElement?.appendChild(errorDiv);
+                    }}
+                  />
+                )}
+              </>
             )}
           </div>
         </DialogContent>

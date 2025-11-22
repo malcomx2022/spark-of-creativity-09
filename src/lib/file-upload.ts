@@ -85,16 +85,47 @@ export async function getSignedFileUrl(filePath?: string | null): Promise<string
     return filePath;
   }
 
-  const { data, error } = await invokeEdgeFunctionWithRetry<PresignedUrlResponse>("get-presigned-url", {
-    body: {
-      filePath,
-      expiresIn: 3600,
-    },
-  });
+  try {
+    console.log("Requesting presigned URL for:", filePath);
+    
+    const { data, error } = await invokeEdgeFunctionWithRetry<PresignedUrlResponse>("get-presigned-url", {
+      body: {
+        filePath,
+        expiresIn: 3600,
+      },
+    });
 
-  if (error) {
+    if (error) {
+      console.error("Error getting presigned URL:", error);
+      throw error;
+    }
+
+    if (!data?.url) {
+      console.error("No URL returned from presigned URL function");
+      return null;
+    }
+
+    console.log("Presigned URL generated successfully");
+    return data.url;
+  } catch (error) {
+    console.error("Failed to get signed file URL:", error);
     throw error;
   }
+}
 
-  return data?.url ?? null;
+export function getFileExtension(filePath: string): string {
+  // Extract extension from path, handling URLs with query parameters
+  const pathWithoutQuery = filePath.split('?')[0];
+  const extension = pathWithoutQuery.split('.').pop()?.toLowerCase() || '';
+  return extension;
+}
+
+export function isImageFile(filePath: string): boolean {
+  const extension = getFileExtension(filePath);
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension);
+}
+
+export function isPdfFile(filePath: string): boolean {
+  const extension = getFileExtension(filePath);
+  return extension === 'pdf';
 }
