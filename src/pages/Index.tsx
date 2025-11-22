@@ -231,6 +231,68 @@ const Index = () => {
         </div>
       </section>
 
+      {/* Services rapides */}
+      <section className="py-12 sm:py-16 bg-gradient-to-br from-secondary/10 to-primary-glow/5">
+        <div className="container mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4">
+              Accédez rapidement à nos services
+            </h2>
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-4">
+              Trouvez le professionnel qu'il vous faut
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={() => navigate("/search-practitioners")}>
+              <CardHeader>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-16 h-16 gradient-primary rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Stethoscope className="h-8 w-8 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-2xl">Praticiens médicaux</CardTitle>
+                    <CardDescription>Médecins, infirmiers, kinés</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Consultations à domicile, soins infirmiers, rééducation et plus encore
+                </p>
+                <Button className="w-full" variant="medical">
+                  <Stethoscope className="mr-2 h-4 w-4" />
+                  Rechercher un praticien
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={() => navigate("/search-coaches")}>
+              <CardHeader>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Heart className="h-8 w-8 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-2xl">Coachs sportifs</CardTitle>
+                    <CardDescription>Séances groupe & individuelles</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Remise en forme, coaching personnalisé, séances de groupe dynamiques
+                </p>
+                <Button className="w-full bg-green-600 hover:bg-green-700">
+                  <Heart className="mr-2 h-4 w-4" />
+                  Trouver un coach
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="py-16 bg-white/50">
         <div className="container mx-auto px-4">
