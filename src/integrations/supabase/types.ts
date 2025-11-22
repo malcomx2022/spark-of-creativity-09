@@ -949,6 +949,27 @@ export type Database = {
         }
         Relationships: []
       }
+      otp_rate_limits: {
+        Row: {
+          attempts: number | null
+          blocked_until: string | null
+          first_attempt_at: string | null
+          phone_number: string
+        }
+        Insert: {
+          attempts?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          phone_number: string
+        }
+        Update: {
+          attempts?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          phone_number?: string
+        }
+        Relationships: []
+      }
       payment_attempts: {
         Row: {
           amount: number
@@ -2076,9 +2097,11 @@ export type Database = {
     }
     Functions: {
       auto_confirm_consultations: { Args: never; Returns: undefined }
+      check_otp_rate_limit: { Args: { phone: string }; Returns: Json }
       cleanup_expired_payment_slots: { Args: never; Returns: undefined }
       cleanup_old_file_access_logs: { Args: never; Returns: undefined }
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
+      cleanup_old_otp_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_payment_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
       has_role: {
