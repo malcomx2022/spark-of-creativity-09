@@ -92,7 +92,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [autoPrefilled, setAutoPrefilled] = useState(false);
   const [attemptNumber, setAttemptNumber] = useState(0);
   const [existingPaymentChecked, setExistingPaymentChecked] = useState(false);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const hasRehydratedRef = useRef(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollStartTimeRef = useRef<number>(0);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
 
@@ -275,6 +278,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   }, [useSavedMethod]);
 
   const handlePayment = async () => {
+    // ✅ CORRECTION BUG #1: Éviter les double-clics avec un flag
+    if (isCreatingPayment) {
+      console.log('⚠️ Création de paiement déjà en cours, ignorer');
+      return;
+    }
+    
+    setIsCreatingPayment(true);
+    
     // Si une méthode sauvegardée est sélectionnée, l'utiliser
     let resolvedPhoneNumber = phoneNumber;
 
@@ -308,6 +319,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     const sanitizedPhoneNumber = normalizePhoneNumber(resolvedPhoneNumber);
 
     if (!sanitizedPhoneNumber) {
+      setIsCreatingPayment(false);
       toast({
         title: 'Erreur',
         description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX',
@@ -318,6 +330,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     // Valider le nom du payeur
     if (!payerName.trim()) {
+      setIsCreatingPayment(false);
       toast({
         title: 'Erreur',
         description: 'Veuillez saisir le nom du payeur',
@@ -328,6 +341,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     // Valider l'email si fourni
     if (payerEmail && !payerEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      setIsCreatingPayment(false);
       toast({
         title: 'Erreur',
         description: 'Adresse email invalide',
@@ -368,6 +382,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         setTransactionId(existingPayment.fedapay_transaction_id || null);
         setPaymentStatus('pending');
         setPollCount(0);
+        setIsCreatingPayment(false);
 
         toast({
           title: 'Paiement en cours',
@@ -414,6 +429,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       if (error) {
         console.error('Supabase function error:', error);
         await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
+        setIsCreatingPayment(false);
         throw error;
       }
 
@@ -422,11 +438,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       if (isPaymentResponse(result)) {
         // Vérifier si une erreur est retournée
         if (result.error) {
+          setIsCreatingPayment(false);
           throw new Error(result.error);
         }
 
         // Vérifier que nous avons une URL de paiement
         if (!result.paymentUrl) {
+          setIsCreatingPayment(false);
           throw new Error('URL de paiement non reçue du serveur');
         }
 
@@ -436,6 +454,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         setExpiresAt(result.expiresAt || null);
         setPaymentStatus('pending');
         setPollCount(0);
+        setIsCreatingPayment(false);
 
         // Sauvegarder la méthode si demandé et consentement donné
         if (saveMethod && !useSavedMethod) {
@@ -471,6 +490,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           });
           setIsProcessing(false);
           setPaymentStatus('idle');
+          setIsCreatingPayment(false);
           return;
         }
 
@@ -487,12 +507,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           }
         }, 1000);
       } else {
+        setIsCreatingPayment(false);
         throw new Error('Format de réponse invalide du serveur');
       }
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
       setIsProcessing(false);
+      setIsCreatingPayment(false);
       
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       
@@ -544,23 +566,42 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     onOpenChange(false);
   }, [onOpenChange, resetPaymentState]);
 
-  // Poll payment status
+  // ✅ CORRECTION BUG #4: Poll payment status avec cleanup et timeout appropriés
   useEffect(() => {
-    if (!paymentId || paymentStatus !== 'pending') return;
+    if (!paymentId || paymentStatus !== 'pending') {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
 
-    const startTime = Date.now();
+    pollStartTimeRef.current = Date.now();
+    let isMounted = true;
+
     const checkPaymentStatus = async () => {
+      if (!isMounted) return;
+
       try {
-        // Check if max poll time exceeded
-        if (Date.now() - startTime > MAX_POLL_TIME) {
-          clearInterval(pollInterval);
-          setPaymentStatus('error');
-          setIsProcessing(false);
-          toast({
-            variant: "destructive",
-            title: "Délai dépassé",
-            description: "Le paiement prend trop de temps. Veuillez vérifier votre téléphone et contacter le support si nécessaire.",
-          });
+        // ✅ Vérifier le timeout
+        const elapsed = Date.now() - pollStartTimeRef.current;
+        if (elapsed > MAX_POLL_TIME) {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
+          if (isMounted) {
+            setPaymentStatus('error');
+            setIsProcessing(false);
+            await recordPaymentAttempt('timeout', 'Délai de paiement dépassé');
+            
+            toast({
+              variant: "destructive",
+              title: "Délai dépassé",
+              description: "Le paiement prend trop de temps. Vérifiez votre historique de paiements.",
+            });
+          }
           return;
         }
 
@@ -576,14 +617,18 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           return;
         }
 
+        if (!isMounted) return;
+
         setPollCount(prev => prev + 1);
 
         if (payment.status === 'paid') {
-          clearInterval(pollInterval);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
           setPaymentStatus('success');
           setIsProcessing(false);
-          
-          // Enregistrer le succès
           await recordPaymentAttempt('success');
           
           toast({
@@ -595,16 +640,19 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             onSuccess();
           }
           
-          // Close dialog after success
           setTimeout(() => {
-            closeDialog();
+            if (isMounted) {
+              closeDialog();
+            }
           }, 2000);
         } else if (['failed', 'canceled'].includes(payment.status)) {
-          clearInterval(pollInterval);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
           setPaymentStatus('error');
           setIsProcessing(false);
-          
-          // Enregistrer l'échec
           await recordPaymentAttempt('failed', `Paiement ${payment.status}`, 'payment_status_error', {
             status: payment.status,
           });
@@ -620,10 +668,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       }
     };
 
-    const pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
+    pollIntervalRef.current = setInterval(checkPaymentStatus, POLL_INTERVAL);
 
     return () => {
-      clearInterval(pollInterval);
+      isMounted = false;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     };
   }, [paymentId, paymentStatus, onSuccess, closeDialog]);
 
