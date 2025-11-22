@@ -9,6 +9,7 @@ import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { AddressSearchInput } from "@/components/AddressSearchInput";
 
 interface CreateGroupSessionDialogProps {
   coachId: string;
@@ -195,12 +196,16 @@ export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogPr
             </div>
 
             <div className="col-span-2 space-y-2">
-              <Label htmlFor="location">Lieu *</Label>
-              <Input
-                id="location"
-                placeholder="Ex: Parc de Hann, Plage de Ngor..."
+              <AddressSearchInput
+                label="Lieu *"
                 value={formData.location}
-                onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                onChange={(locationData) => {
+                  const fullAddress = locationData.city 
+                    ? `${locationData.address}, ${locationData.city}`
+                    : locationData.address;
+                  setFormData(prev => ({ ...prev, location: fullAddress }));
+                }}
+                placeholder="Rechercher un lieu (ex: Parc de Hann, Plage de Ngor...)"
                 required
               />
             </div>
