@@ -91,6 +91,36 @@ export function AddressSearchInput({
     }
   }, [recentSearches]);
 
+  // Récupérer le token Mapbox une seule fois
+  const [mapboxToken, setMapboxToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState(false);
+
+  useEffect(() => {
+    const fetchToken = async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data, error } = await supabase.functions.invoke('get-mapbox-token');
+        
+        if (error || !data?.token) {
+          setTokenError(true);
+          toast({
+            variant: 'destructive',
+            title: 'Configuration manquante',
+            description: 'Token Mapbox non configuré.',
+          });
+          return;
+        }
+        
+        setMapboxToken(data.token);
+      } catch (err) {
+        console.error('Error fetching Mapbox token:', err);
+        setTokenError(true);
+      }
+    };
+    
+    fetchToken();
+  }, []);
+
   // Recherche Mapbox avec debounce
   const performSearch = async (query: string) => {
     if (!query || query.length < 3) {
@@ -98,14 +128,14 @@ export function AddressSearchInput({
       return;
     }
 
-    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    
     if (!mapboxToken) {
-      toast({
-        variant: 'destructive',
-        title: 'Configuration manquante',
-        description: 'Token Mapbox non configuré.',
-      });
+      if (tokenError) {
+        toast({
+          variant: 'destructive',
+          title: 'Configuration manquante',
+          description: 'Token Mapbox non configuré.',
+        });
+      }
       return;
     }
 
@@ -142,6 +172,8 @@ export function AddressSearchInput({
 
   // Debounce de la recherche
   useEffect(() => {
+    if (!mapboxToken) return;
+    
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -155,7 +187,7 @@ export function AddressSearchInput({
         clearTimeout(debounceRef.current);
       }
     };
-  }, [searchValue]);
+  }, [searchValue, mapboxToken]);
 
   const handleSelectLocation = (feature: MapboxFeature) => {
     // Extraire la ville depuis le contexte
