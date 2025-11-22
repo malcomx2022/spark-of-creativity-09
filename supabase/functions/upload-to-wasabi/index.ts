@@ -29,7 +29,7 @@ serve(async (req) => {
       throw new Error('Wasabi credentials not configured');
     }
 
-    // Authenticate user
+    // Authenticate: accept both user tokens and service role key
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -40,22 +40,42 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { fileName, fileContent, contentType, folder = 'documents' } = await req.json();
+    
+    // Parse body first
+    const { fileName, fileContent, contentType, folder = 'documents', userId: providedUserId } = await req.json();
 
     if (!fileName || !fileContent) {
       return new Response(
         JSON.stringify({ error: 'fileName and fileContent are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+    
+    // Check if it's a service role key call (from another edge function)
+    const isServiceRoleCall = token === supabaseKey;
+    
+    let userId: string;
+    
+    if (isServiceRoleCall) {
+      // For service role calls, userId must be provided in the body
+      if (!providedUserId) {
+        return new Response(
+          JSON.stringify({ error: 'userId is required for service role calls' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = providedUserId;
+    } else {
+      // For user token calls, authenticate the user
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = user.id;
     }
 
     // Decode base64 file content
@@ -64,7 +84,7 @@ serve(async (req) => {
     // Generate unique file path
     const timestamp = Date.now();
     const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const filePath = `${folder}/${user.id}/${timestamp}-${sanitizedFileName}`;
+    const filePath = `${folder}/${userId}/${timestamp}-${sanitizedFileName}`;
 
     console.log('Uploading file to Wasabi:', filePath);
 
