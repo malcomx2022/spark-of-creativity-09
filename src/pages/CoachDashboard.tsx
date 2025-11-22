@@ -31,6 +31,7 @@ import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import AvailabilitySection from "@/components/dashboard/practitioner/AvailabilitySection";
 import { PaymentInfoSection } from "@/components/dashboard/practitioner/PaymentInfoSection";
 import { PractitionerRatesSection } from "@/components/dashboard/practitioner/PractitionerRatesSection";
+import { DocumentsSection } from "@/components/dashboard/practitioner/DocumentsSection";
 
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -473,11 +474,14 @@ export default function CoachDashboard() {
             </TabsContent>
 
             <TabsContent value="profile">
-              <ProfessionalProfileSection
-                practitionerId={coach.id}
-                practitionerData={coach}
-                isCoach
-              />
+              <div className="space-y-6">
+                <ProfessionalProfileSection
+                  practitionerId={coach.id}
+                  practitionerData={coach}
+                  isCoach
+                />
+                <DocumentsSection practitionerData={coach} />
+              </div>
             </TabsContent>
 
             <TabsContent value="notifications">
