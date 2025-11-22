@@ -7,6 +7,7 @@ import { MapPin, Navigation, Loader2, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AddressSearchInput } from '@/components/AddressSearchInput';
 
 interface LocationSectionProps {
   practitionerId: string;
@@ -204,20 +205,21 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="address">Adresse *</Label>
-              <Input
-                id="address"
-                type="text"
-                placeholder="Ex: Rue 123, Quartier, Ville"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                disabled={loading}
-              />
-              <p className="text-sm text-muted-foreground">
-                Votre adresse professionnelle ou de domicile
-              </p>
-            </div>
+            <AddressSearchInput
+              label="Adresse"
+              value={formData.address}
+              onChange={(location) => setFormData({
+                address: location.address,
+                latitude: location.latitude || null,
+                longitude: location.longitude || null,
+              })}
+              placeholder="Rechercher votre adresse professionnelle..."
+              required
+            />
+            
+            <p className="text-sm text-muted-foreground">
+              Votre adresse professionnelle ou de domicile
+            </p>
 
             {formData.latitude && formData.longitude && (
               <div className="p-3 bg-success/10 border border-success/20 rounded-lg flex items-start gap-2">
