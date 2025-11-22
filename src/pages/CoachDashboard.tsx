@@ -30,6 +30,7 @@ import { AppointmentCard } from "@/components/AppointmentCard";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import AvailabilitySection from "@/components/dashboard/practitioner/AvailabilitySection";
 import { PaymentInfoSection } from "@/components/dashboard/practitioner/PaymentInfoSection";
+import { PractitionerRatesSection } from "@/components/dashboard/practitioner/PractitionerRatesSection";
 
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -462,6 +463,7 @@ export default function CoachDashboard() {
 
             <TabsContent value="availability">
               <div className="space-y-6">
+                <PractitionerRatesSection practitionerId={coach.id} />
                 <AvailabilitySection 
                   practitionerId={coach.id}
                   practitionerData={coach}
