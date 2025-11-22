@@ -195,8 +195,19 @@ export default function PractitionerSignup() {
     // Coach sportif
     if (isCoachSportif) {
       if (formData.sessionTypes.length === 0) errors.sessionTypes = "Au moins un type de séance requis";
-      if (!formData.interventionZone.trim()) errors.interventionZone = "Zone d'intervention requise";
-      if (!formData.interventionRadius) errors.interventionRadius = "Rayon d'intervention requis";
+      if (!formData.interventionZone.trim()) {
+        errors.interventionZone = "Zone d'intervention requise";
+      } else if (formData.interventionZone.trim().length < 3) {
+        errors.interventionZone = "Zone d'intervention trop courte (min 3 caractères)";
+      }
+      if (!formData.interventionRadius) {
+        errors.interventionRadius = "Rayon d'intervention requis";
+      } else {
+        const radius = parseInt(formData.interventionRadius);
+        if (isNaN(radius) || radius < 1 || radius > 100) {
+          errors.interventionRadius = "Rayon entre 1 et 100 km";
+        }
+      }
     }
     
     if (!formData.acceptTerms) {
@@ -339,12 +350,27 @@ export default function PractitionerSignup() {
       );
 
       if (createError || !createResult?.success) {
-        throw new Error(createError?.message || createResult?.error || "Échec de création du compte");
+        const errorMessage = createError?.message || createResult?.error || "Échec de création du compte";
+        console.error('❌ Erreur création compte praticien:', { createError, createResult });
+        
+        // Messages d'erreur plus explicites
+        let userMessage = errorMessage;
+        if (errorMessage.includes('Document invalide') || errorMessage.includes('document')) {
+          userMessage = "Un ou plusieurs documents sont invalides. Vérifiez le format (PDF, JPG, PNG) et la taille (max 5MB).";
+        } else if (errorMessage.includes('validation') || errorMessage.includes('invalide')) {
+          userMessage = "Certaines informations du formulaire sont invalides. Veuillez vérifier vos données.";
+        } else if (errorMessage.includes('upload') || errorMessage.includes('Wasabi')) {
+          userMessage = "Erreur lors de l'upload des documents. Veuillez réessayer.";
+        }
+        
+        throw new Error(userMessage);
       }
+      
+      console.log('✅ Compte praticien créé avec succès');
 
       // Finaliser l'inscription et envoyer notification via edge function centralisée
       try {
-        await supabase.functions.invoke('complete-user-registration', {
+        const { data: completeResult, error: completeError } = await supabase.functions.invoke('complete-user-registration', {
           body: {
             userId: userId,
             data: {
@@ -355,8 +381,14 @@ export default function PractitionerSignup() {
             }
           }
         });
+        
+        if (completeError) {
+          console.error('⚠️ Erreur notification (non bloquante):', completeError);
+        } else {
+          console.log('✅ Notification envoyée avec succès');
+        }
       } catch (notifError) {
-        console.error('Erreur notification (non bloquante):', notifError);
+        console.error('⚠️ Erreur notification (non bloquante):', notifError);
       }
 
       // Rediriger vers la page de confirmation
