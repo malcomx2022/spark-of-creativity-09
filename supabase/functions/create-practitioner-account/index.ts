@@ -80,36 +80,32 @@ async function uploadDocument(
 
   const contentType = matches[1];
   const base64Content = matches[2];
+
+  console.log(`Upload document ${fileName}...`);
   
-  // Decode base64
-  const binaryString = atob(base64Content);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  // Appel de l'edge function upload-to-wasabi avec userId pour service role
+  const { data, error } = await supabase.functions.invoke("upload-to-wasabi", {
+    body: {
+      fileName,
+      fileContent: base64Content, // Envoyer le contenu base64 sans le préfixe data:
+      contentType,
+      folder: "practitioner-documents",
+      userId: userId // Nécessaire pour les appels service role
+    }
+  });
+
+  if (error) {
+    console.error('Erreur upload Wasabi:', error);
+    throw error;
   }
 
-  const filePath = `practitioner-documents/${userId}/${fileName}`;
-
-  // Upload to Wasabi via Supabase edge function
-  const { data: uploadData, error: uploadError } = await supabase.functions.invoke(
-    'upload-to-wasabi',
-    {
-      body: {
-        file: Array.from(bytes),
-        fileName: filePath,
-        contentType,
-      }
-    }
-  );
-
-  if (uploadError) {
-    console.error('Erreur upload Wasabi:', uploadError);
-    throw uploadError;
+  if (!data || !data.success) {
+    throw new Error('Échec upload Wasabi');
   }
 
   return {
-    path: filePath,
-    url: uploadData.url,
+    path: data.filePath,
+    url: data.url,
   };
 }
 
