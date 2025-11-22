@@ -268,10 +268,17 @@ serve(async (req) => {
         image: uploadedDocs.profilePhoto?.url || null,
         id_document_url: uploadedDocs.idDocument?.path || null,
         license_document_url: uploadedDocs.licenseDocument?.path || null,
-        insurance_document_url: uploadedDocs.diploma?.path || null,
+        insurance_document_url: uploadedDocs.diploma?.path || null, // Pour coach: diplôme/certification
         kyc_status: 'pending',
         can_accept_missions: false,
       };
+      
+      console.log('✅ Documents uploadés:', {
+        profilePhoto: !!uploadedDocs.profilePhoto,
+        idDocument: !!uploadedDocs.idDocument,
+        licenseDocument: !!uploadedDocs.licenseDocument,
+        diploma: !!uploadedDocs.diploma,
+      });
 
       const { data: practitionerResult, error: practitionerError } = await supabase
         .from('practitioners')
