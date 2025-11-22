@@ -4,24 +4,57 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Mail, Clock, ArrowRight } from "lucide-react";
 import Header from "@/components/Header";
+import { supabase } from "@/integrations/supabase/client";
+import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 
 export default function RegistrationSuccess() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const userType = searchParams.get("type") as "patient" | "practitioner" | null;
+  const practitionerType = searchParams.get("practitionerType");
   const [countdown, setCountdown] = useState(10);
+  const [dashboardPath, setDashboardPath] = useState<string>("/dashboard/patient");
 
   useEffect(() => {
-    if (!userType) {
-      navigate("/", { replace: true });
-      return;
-    }
+    const determineDashboardPath = async () => {
+      if (!userType) {
+        navigate("/", { replace: true });
+        return;
+      }
+
+      let targetPath = "/dashboard/patient";
+      
+      if (userType === "practitioner") {
+        // Si on a le practitionerType dans l'URL, on l'utilise directement
+        if (practitionerType === "coach_sportif") {
+          targetPath = "/dashboard/coach";
+        } else if (practitionerType) {
+          targetPath = "/dashboard/practitioner";
+        } else {
+          // Sinon, on récupère l'info depuis la base de données
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            targetPath = await getDashboardPathForUser(user.id);
+          } else {
+            targetPath = "/dashboard/practitioner";
+          }
+        }
+      }
+      
+      setDashboardPath(targetPath);
+    };
+
+    determineDashboardPath();
+  }, [userType, practitionerType, navigate]);
+
+  useEffect(() => {
+    if (!userType) return;
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          navigate(userType === "patient" ? "/dashboard/patient" : "/dashboard/practitioner", { replace: true });
+          navigate(dashboardPath, { replace: true });
           return 0;
         }
         return prev - 1;
@@ -29,7 +62,7 @@ export default function RegistrationSuccess() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [userType, navigate]);
+  }, [userType, dashboardPath, navigate]);
 
   if (!userType) return null;
 
@@ -136,7 +169,7 @@ export default function RegistrationSuccess() {
               <Button 
                 className="w-full min-h-[48px] text-base"
                 size="lg"
-                onClick={() => navigate(isPractitioner ? "/dashboard/practitioner" : "/dashboard/patient", { replace: true })}
+                onClick={() => navigate(dashboardPath, { replace: true })}
               >
                 Accéder à mon tableau de bord
                 <ArrowRight className="ml-2 h-4 w-4" />
