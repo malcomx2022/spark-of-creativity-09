@@ -51,6 +51,7 @@ function validatePractitionerData(practitionerData: any): string[] {
   return errors;
 }
 
+// ✅ CORRECTION BUG #2: Validation améliorée avec magic bytes
 function validateDocument(base64Data: string, documentType: string): { valid: boolean; error?: string } {
   const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
   if (!matches || matches.length !== 3) {
@@ -70,6 +71,39 @@ function validateDocument(base64Data: string, documentType: string): { valid: bo
 
   if (sizeInBytes > MAX_SIZE) {
     return { valid: false, error: `${documentType}: Fichier trop volumineux (max 5MB)` };
+  }
+
+  // ✅ Valider les magic bytes pour vérifier l'intégrité
+  try {
+    const binaryString = atob(base64Content.substring(0, 100)); // Premier 100 bytes suffisent
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Vérifier les magic bytes selon le type MIME
+    if (contentType === 'application/pdf') {
+      // PDF doit commencer par %PDF-
+      const pdfHeader = String.fromCharCode(...bytes.slice(0, 5));
+      if (pdfHeader !== '%PDF-') {
+        return { valid: false, error: `${documentType}: Fichier PDF corrompu ou invalide` };
+      }
+    } else if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
+      // JPEG doit commencer par FF D8 FF
+      if (bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF) {
+        return { valid: false, error: `${documentType}: Fichier JPEG corrompu ou invalide` };
+      }
+    } else if (contentType === 'image/png') {
+      // PNG doit commencer par 89 50 4E 47 0D 0A 1A 0A
+      const pngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+      for (let i = 0; i < pngMagic.length; i++) {
+        if (bytes[i] !== pngMagic[i]) {
+          return { valid: false, error: `${documentType}: Fichier PNG corrompu ou invalide` };
+        }
+      }
+    }
+  } catch (error) {
+    return { valid: false, error: `${documentType}: Impossible de valider le contenu du fichier` };
   }
 
   return { valid: true };
