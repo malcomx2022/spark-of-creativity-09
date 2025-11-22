@@ -356,19 +356,33 @@ export default function PractitionerSignup() {
 
       if (createError || !createResult?.success) {
         const errorMessage = createError?.message || createResult?.error || "Échec de création du compte";
-        console.error('❌ Erreur création compte praticien:', { createError, createResult });
+        console.error('❌ Erreur création compte praticien:', { 
+          createError, 
+          createResult
+        });
         
-        // Messages d'erreur plus explicites
+        // Messages d'erreur contextuels et explicites
         let userMessage = errorMessage;
+        let errorDetails = '';
+        
         if (errorMessage.includes('Document invalide') || errorMessage.includes('document')) {
-          userMessage = "Un ou plusieurs documents sont invalides. Vérifiez le format (PDF, JPG, PNG) et la taille (max 5MB).";
+          userMessage = "Un ou plusieurs documents sont invalides.";
+          errorDetails = "Vérifiez le format (PDF, JPG, PNG uniquement) et la taille (maximum 5MB par fichier).";
         } else if (errorMessage.includes('validation') || errorMessage.includes('invalide')) {
-          userMessage = "Certaines informations du formulaire sont invalides. Veuillez vérifier vos données.";
-        } else if (errorMessage.includes('upload') || errorMessage.includes('Wasabi')) {
-          userMessage = "Erreur lors de l'upload des documents. Veuillez réessayer.";
+          userMessage = "Certaines informations du formulaire sont invalides.";
+          errorDetails = "Vérifiez que tous les champs obligatoires sont correctement remplis.";
+        } else if (errorMessage.includes('upload') || errorMessage.includes('Wasabi') || errorMessage.includes('storage')) {
+          userMessage = "Erreur lors de l'upload des documents.";
+          errorDetails = "Veuillez vérifier votre connexion internet et réessayer.";
+        } else if (errorMessage.includes('phone') || errorMessage.includes('téléphone')) {
+          userMessage = "Numéro de téléphone invalide.";
+          errorDetails = "Utilisez le format international (+229... pour le Bénin).";
+        } else if (errorMessage.includes('email')) {
+          userMessage = "Email invalide ou déjà utilisé.";
+          errorDetails = "Vérifiez votre adresse email ou utilisez-en une autre.";
         }
         
-        throw new Error(userMessage);
+        throw new Error(`${userMessage}${errorDetails ? ' ' + errorDetails : ''}`);
       }
       
       console.log('✅ Compte praticien créé avec succès');

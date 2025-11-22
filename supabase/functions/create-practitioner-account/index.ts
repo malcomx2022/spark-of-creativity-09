@@ -265,7 +265,7 @@ serve(async (req) => {
       console.log('👨‍⚕️ Création praticien...');
       const practitionerPayload = {
         ...practitionerData,
-        image: uploadedDocs.profilePhoto?.url || null,
+        image: uploadedDocs.profilePhoto?.path || null, // ✅ CORRECTION: Utiliser path au lieu de url pour cohérence
         id_document_url: uploadedDocs.idDocument?.path || null,
         license_document_url: uploadedDocs.licenseDocument?.path || null,
         insurance_document_url: uploadedDocs.diploma?.path || null, // Pour coach: diplôme/certification
