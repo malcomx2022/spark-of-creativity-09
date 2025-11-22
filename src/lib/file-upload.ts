@@ -78,10 +78,13 @@ export async function uploadUserDocument({
 
 export async function getSignedFileUrl(filePath?: string | null): Promise<string | null> {
   if (!filePath) {
+    console.warn("getSignedFileUrl called with empty filePath");
     return null;
   }
 
-  if (filePath.startsWith("http")) {
+  // Already a full URL, return as is
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+    console.log("File path is already a full URL:", filePath.substring(0, 50) + "...");
     return filePath;
   }
 
@@ -96,19 +99,25 @@ export async function getSignedFileUrl(filePath?: string | null): Promise<string
     });
 
     if (error) {
-      console.error("Error getting presigned URL:", error);
+      console.error("Error getting presigned URL:", {
+        filePath,
+        error: error.message,
+      });
       throw error;
     }
 
     if (!data?.url) {
-      console.error("No URL returned from presigned URL function");
+      console.error("No URL returned from presigned URL function for:", filePath);
       return null;
     }
 
-    console.log("Presigned URL generated successfully");
+    console.log("Presigned URL generated successfully for:", filePath);
     return data.url;
   } catch (error) {
-    console.error("Failed to get signed file URL:", error);
+    console.error("Failed to get signed file URL:", {
+      filePath,
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }

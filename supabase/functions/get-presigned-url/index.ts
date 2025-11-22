@@ -151,7 +151,13 @@ serve(async (req) => {
     queryParams.append('X-Amz-Signature', signature);
     const presignedUrl = `https://${wasabiEndpoint}/${wasabiBucketName}/${filePath}?${queryParams.toString()}`;
 
-    console.log('Presigned URL generated successfully');
+    console.log('Presigned URL generated successfully:', {
+      filePath,
+      urlLength: presignedUrl.length,
+      expiresIn,
+      userId: user.id,
+      isAdmin
+    });
 
     return new Response(
       JSON.stringify({
@@ -159,6 +165,7 @@ serve(async (req) => {
         url: presignedUrl,
         expiresAt: new Date(expirationTime * 1000).toISOString(),
         expiresIn,
+        filePath,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
