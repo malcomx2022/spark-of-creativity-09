@@ -11,6 +11,7 @@ import Triage from "./pages/Triage";
 import PatientDashboard from "./pages/PatientDashboard";
 import PractitionerDashboard from "./pages/PractitionerDashboard";
 import PractitionerSearch from "./pages/PractitionerSearch";
+import CoachSearch from "./pages/CoachSearch";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
@@ -54,6 +55,7 @@ const App = () => (
           <Route path="/registration-success" element={<RegistrationSuccess />} />
           <Route path="/triage" element={<Triage />} />
           <Route path="/search-practitioners" element={<PractitionerSearch />} />
+          <Route path="/search-coaches" element={<CoachSearch />} />
           <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
           <Route path="/dashboard/patient" element={<ProtectedRoute><PatientDashboard /></ProtectedRoute>} />
           <Route path="/dashboard/practitioner" element={<ProtectedRoute><PractitionerDashboard /></ProtectedRoute>} />

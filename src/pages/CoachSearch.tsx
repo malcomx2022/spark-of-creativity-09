@@ -1,0 +1,296 @@
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Users, 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  Star,
+  User,
+  DollarSign,
+  Search
+} from "lucide-react";
+import { usePractitioners } from "@/hooks/usePractitioners";
+import { useGroupSessions } from "@/hooks/useGroupSessions";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useCreateAppointment } from "@/hooks/useAppointments";
+import { NewAppointmentDialog } from "@/components/NewAppointmentDialog";
+import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
+import type { CreateAppointmentData } from "@/types/appointment";
+
+export default function CoachSearch() {
+  const navigate = useNavigate();
+  const { data: user } = useSupabaseUser();
+  const [selectedZone, setSelectedZone] = useState<string>("all");
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+
+  const patientId = user?.id;
+  const patientName = (user?.user_metadata?.full_name as string) || user?.email || "Patient";
+  
+  const createAppointment = useCreateAppointment(patientId, patientName);
+
+  // Récupérer tous les coachs
+  const { data: allPractitioners = [], isLoading: isLoadingCoaches } = usePractitioners();
+  
+  const coaches = useMemo(() => 
+    allPractitioners.filter(p => p.specialty === "Coach sportif"),
+    [allPractitioners]
+  );
+
+  // Récupérer toutes les séances de groupe
+  const { sessions: allSessions = [], isLoading: isLoadingSessions } = useGroupSessions();
+
+  // Filtrer les séances disponibles
+  const availableSessions = useMemo(() => 
+    allSessions.filter(s => 
+      s.status === 'planifiee' || s.status === 'confirmee'
+    ),
+    [allSessions]
+  );
+
+  // Zones d'intervention uniques
+  const zones = useMemo(() => {
+    const allZones = coaches
+      .map(c => c.address)
+      .filter((z): z is string => !!z);
+    return ['all', ...Array.from(new Set(allZones))];
+  }, [coaches]);
+
+  // Filtrer les coachs par zone
+  const filteredCoaches = useMemo(() => {
+    if (selectedZone === 'all') return coaches;
+    return coaches.filter(c => c.address === selectedZone);
+  }, [coaches, selectedZone]);
+
+  const handleBookSession = (session: any) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    setSelectedSession(session);
+    setSessionDialogOpen(true);
+  };
+
+  const handleBookIndividual = () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    // NewAppointmentDialog gère son propre état d'ouverture via le bouton
+  };
+
+  if (isLoadingCoaches || isLoadingSessions) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+        <Header />
+        <main className="container mx-auto px-4 py-8 pt-24">
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+      <Header />
+      <main className="container mx-auto px-4 py-8 pt-24">
+        {/* En-tête */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Coachs Sportifs</h1>
+          <p className="text-muted-foreground">
+            Trouvez votre coach pour des séances de groupe ou un suivi personnalisé
+          </p>
+        </div>
+
+        {/* Filtres */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Search className="h-5 w-5 text-muted-foreground" />
+              <Select value={selectedZone} onValueChange={setSelectedZone}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Toutes les zones" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les zones</SelectItem>
+                  {zones.filter(z => z !== 'all').map((zone) => (
+                    <SelectItem key={zone} value={zone}>
+                      {zone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Tabs defaultValue="group" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="group" className="gap-2">
+              <Users className="h-4 w-4" />
+              Séances de groupe
+            </TabsTrigger>
+            <TabsTrigger value="individual" className="gap-2">
+              <User className="h-4 w-4" />
+              Coaching individuel
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Séances de groupe */}
+          <TabsContent value="group" className="space-y-6">
+            {availableSessions.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">
+                    Aucune séance de groupe disponible pour le moment
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2">
+                {availableSessions.map((session) => {
+                  const coach = coaches.find(c => c.id === session.coach_id);
+                  const spotsLeft = (session.max_participants || 0) - (session.current_participants || 0);
+
+                  return (
+                    <Card key={session.id} className="hover:shadow-lg transition-shadow">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarImage src={coach?.image} />
+                              <AvatarFallback>{coach?.name[0]}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <CardTitle className="text-lg">{session.session_name}</CardTitle>
+                              <p className="text-sm text-muted-foreground">{coach?.name}</p>
+                            </div>
+                          </div>
+                          <Badge variant={spotsLeft > 5 ? "default" : "secondary"}>
+                            {spotsLeft} places
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {session.description}
+                        </p>
+
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <span>
+                              {format(new Date(session.scheduled_date), "EEEE dd MMMM yyyy", { locale: fr })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-muted-foreground" />
+                            <span>{session.start_time} - {session.end_time}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                            <span className="line-clamp-1">{session.location}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-semibold">{session.price_per_person.toLocaleString()} F CFA / personne</span>
+                          </div>
+                        </div>
+
+                        <Button 
+                          className="w-full" 
+                          onClick={() => handleBookSession(session)}
+                          disabled={spotsLeft === 0}
+                        >
+                          {spotsLeft === 0 ? "Complet" : "Réserver"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Coaching individuel */}
+          <TabsContent value="individual" className="space-y-6">
+            {filteredCoaches.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <User className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">
+                    Aucun coach disponible dans cette zone
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {filteredCoaches.map((coach) => (
+                  <Card key={coach.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader>
+                      <div className="flex items-center gap-3 mb-2">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={coach.image} />
+                          <AvatarFallback>{coach.name[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <CardTitle className="text-lg">{coach.name}</CardTitle>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            <span>{coach.rating?.toFixed(1) || "N/A"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <span className="line-clamp-2">{coach.address}</span>
+                      </div>
+
+                      {coach.available ? (
+                        <Badge className="bg-green-600">Disponible</Badge>
+                      ) : (
+                        <Badge variant="secondary">Non disponible</Badge>
+                      )}
+
+                      <NewAppointmentDialog onSubmit={createAppointment.mutateAsync} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      <Footer />
+
+      {/* Dialogues */}
+      {selectedSession && (
+        <RegisterSessionDialog
+          session={selectedSession}
+          open={sessionDialogOpen}
+          onOpenChange={(open) => {
+            setSessionDialogOpen(open);
+            if (!open) setSelectedSession(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
