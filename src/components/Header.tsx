@@ -1,10 +1,16 @@
 import { Button } from "@/components/ui/button";
-import { Menu, Phone, MapPin, LogIn, UserPlus, Shield } from "lucide-react";
+import { Menu, Phone, MapPin, LogIn, UserPlus, Shield, Users, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import logo from "@/assets/logo.png";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -62,13 +68,23 @@ export default function Header() {
                 </button>
               </>
             )}
-            <button 
-              onClick={() => navigate("/search-practitioners")}
-              className="text-foreground hover:text-primary transition-colors flex items-center gap-1"
-            >
-              <MapPin className="h-4 w-4" />
-              Recherche
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <MapPin className="h-4 w-4" />
+                Recherche
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate("/search-practitioners")}>
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Praticiens médicaux
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/search-coaches")}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Coachs sportifs
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
 
           {/* Emergency Button & Auth */}
@@ -159,7 +175,14 @@ export default function Header() {
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
                 <MapPin className="h-4 w-4" />
-                Rechercher un praticien
+                Praticiens médicaux
+              </button>
+              <button 
+                onClick={() => navigate("/search-coaches")}
+                className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
+              >
+                <Users className="h-4 w-4" />
+                Coachs sportifs
               </button>
               <Button variant="urgent" size="sm" className="w-full sm:hidden">
                 <Phone className="h-4 w-4" />
