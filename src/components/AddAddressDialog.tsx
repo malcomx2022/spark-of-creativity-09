@@ -8,6 +8,7 @@ import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
+import { AddressSearchInput, type LocationData } from './AddressSearchInput';
 
 interface AddAddressDialogProps {
   userId: string;
@@ -23,6 +24,8 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
     address: '',
     city: '',
     postal_code: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
     is_default: false,
   });
 
@@ -35,7 +38,13 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
         .from('addresses')
         .insert({
           user_id: userId,
-          ...formData,
+          label: formData.label,
+          address: formData.address,
+          city: formData.city || null,
+          postal_code: formData.postal_code || null,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+          is_default: formData.is_default,
         });
 
       if (error) throw error;
@@ -51,6 +60,8 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
         address: '',
         city: '',
         postal_code: '',
+        latitude: null,
+        longitude: null,
         is_default: false,
       });
       setOpen(false);
@@ -88,24 +99,28 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
               placeholder="Domicile, Bureau..."
             />
           </div>
-          <div>
-            <Label htmlFor="address">Adresse complète *</Label>
-            <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              required
-              placeholder="123 Rue de l'Exemple"
-            />
-          </div>
+          
+          <AddressSearchInput
+            label="Adresse complète"
+            value={formData.address}
+            onChange={(location) => setFormData({
+              ...formData,
+              address: location.address,
+              city: location.city || formData.city,
+              latitude: location.latitude || null,
+              longitude: location.longitude || null,
+            })}
+            placeholder="Rechercher une adresse au Bénin..."
+            required
+          />
+          
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="city">Ville *</Label>
+              <Label htmlFor="city">Ville</Label>
               <Input
                 id="city"
                 value={formData.city}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                required
                 placeholder="Cotonou"
               />
             </div>

@@ -21,6 +21,7 @@ import type { FindPractitionerResponse } from '@/types/edge-function-responses';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
+import { AddressSearchInput } from './AddressSearchInput';
 
 const formSchema = z.object({
   specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
@@ -364,19 +365,13 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
                 </Button>
               </div>
               {locationMode === 'manual' && (
-                <div className="space-y-2">
-                  <Label htmlFor="manual-address">Adresse complète</Label>
-                  <Textarea
-                    id="manual-address"
-                    placeholder="Quartier, rue, repères…"
-                    value={manualAddress}
-                    onChange={(event) => setManualAddress(event.target.value)}
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Nous partagerons ces informations avec le praticien pour organiser sa venue.
-                  </p>
-                </div>
+                <AddressSearchInput
+                  label="Adresse complète"
+                  value={manualAddress}
+                  onChange={(location) => setManualAddress(location.address)}
+                  placeholder="Rechercher votre adresse au Bénin..."
+                  required
+                />
               )}
             </div>
 

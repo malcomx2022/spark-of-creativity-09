@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/patient-onboarding";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
+import { AddressSearchInput } from "@/components/AddressSearchInput";
 
 export default function PatientSignup() {
   const navigate = useNavigate();
@@ -287,16 +288,13 @@ export default function PatientSignup() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="address">Adresse complète *</Label>
-                    <Textarea
-                      id="address"
-                      placeholder="Votre adresse complète"
-                      value={formData.address}
-                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                      required
-                    />
-                  </div>
+                  <AddressSearchInput
+                    label="Adresse complète"
+                    value={formData.address}
+                    onChange={(location) => setFormData(prev => ({ ...prev, address: location.address }))}
+                    placeholder="Rechercher votre adresse au Bénin..."
+                    required
+                  />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">

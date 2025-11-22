@@ -20,6 +20,7 @@ import { uploadUserDocument } from "@/lib/file-upload";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AddressSearchInput } from "@/components/AddressSearchInput";
 
 interface SignupFormData {
   firstName: string;
@@ -520,16 +521,13 @@ export default function PractitionerSignup() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="address">Adresse complète *</Label>
-                    <Textarea
-                      id="address"
-                      placeholder="Votre adresse complète"
-                      value={formData.address}
-                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                      required
-                    />
-                  </div>
+                  <AddressSearchInput
+                    label="Adresse complète"
+                    value={formData.address}
+                    onChange={(location) => setFormData(prev => ({ ...prev, address: location.address }))}
+                    placeholder="Rechercher votre adresse au Bénin..."
+                    required
+                  />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
