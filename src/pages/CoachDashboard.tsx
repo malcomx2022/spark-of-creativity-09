@@ -22,12 +22,15 @@ import { ProfessionalProfileSection } from "@/components/dashboard/practitioner/
 import { SupportSection } from "@/components/dashboard/SupportSection";
 import { GroupSessionCard } from "@/components/coach/GroupSessionCard";
 import { CreateGroupSessionDialog } from "@/components/coach/CreateGroupSessionDialog";
+import { EditGroupSessionDialog } from "@/components/coach/EditGroupSessionDialog";
 import { useGroupSessions } from "@/hooks/useGroupSessions";
 
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [editingSession, setEditingSession] = useState<any>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // Fetch coach profile
   const { data: coach, isLoading: isLoadingCoach } = useQuery({
@@ -63,10 +66,11 @@ export default function CoachDashboard() {
     .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * 0.63), 0) || 0;
 
   const handleEditSession = (sessionId: string) => {
-    toast({
-      title: "Modification",
-      description: "La fonctionnalité de modification sera bientôt disponible",
-    });
+    const session = sessions?.find(s => s.id === sessionId);
+    if (session) {
+      setEditingSession(session);
+      setEditDialogOpen(true);
+    }
   };
 
   const handleCancelSession = (sessionId: string) => {
@@ -239,6 +243,12 @@ export default function CoachDashboard() {
                   </CardContent>
                 </Card>
               )}
+
+              <EditGroupSessionDialog
+                session={editingSession}
+                open={editDialogOpen}
+                onOpenChange={setEditDialogOpen}
+              />
             </TabsContent>
 
             <TabsContent value="profile">
