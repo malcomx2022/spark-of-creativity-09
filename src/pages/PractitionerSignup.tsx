@@ -188,8 +188,17 @@ export default function PractitionerSignup() {
     
     // Documents obligatoires
     if (!formData.idDocument) errors.idDocument = "Pièce d'identité requise";
-    if (!isCoachSportif && !formData.licenseDocument) {
-      errors.licenseDocument = "Autorisation d'exercice requise";
+    
+    if (isCoachSportif) {
+      // Pour coach sportif: diplôme ou certification obligatoire
+      if (!formData.diploma) {
+        errors.diploma = "Diplôme ou certification requis";
+      }
+    } else {
+      // Pour autres praticiens: autorisation d'exercice obligatoire
+      if (!formData.licenseDocument) {
+        errors.licenseDocument = "Autorisation d'exercice requise";
+      }
     }
     
     // Validations spécifiques

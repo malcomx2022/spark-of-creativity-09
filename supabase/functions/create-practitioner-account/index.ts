@@ -31,12 +31,21 @@ function validatePractitionerData(practitionerData: any): string[] {
     errors.push('Spécialité requise');
   }
 
-  if (practitionerData.years_experience !== null && (practitionerData.years_experience < 0 || practitionerData.years_experience > 70)) {
-    errors.push('Années d\'expérience invalides (0-70)');
+  // Validation spécifique pour coach sportif
+  if (isCoachSportif) {
+    if (!practitionerData.session_types || !Array.isArray(practitionerData.session_types) || practitionerData.session_types.length === 0) {
+      errors.push('Au moins un type de séance requis pour les coachs sportifs');
+    }
+    if (!practitionerData.intervention_zone || practitionerData.intervention_zone.trim().length < 3) {
+      errors.push('Zone d\'intervention requise (minimum 3 caractères)');
+    }
+    if (!practitionerData.intervention_radius || practitionerData.intervention_radius < 1 || practitionerData.intervention_radius > 100) {
+      errors.push('Rayon d\'intervention invalide (1-100 km)');
+    }
   }
 
-  if (practitionerData.intervention_radius && (practitionerData.intervention_radius < 1 || practitionerData.intervention_radius > 100)) {
-    errors.push('Rayon d\'intervention invalide (1-100 km)');
+  if (practitionerData.years_experience !== null && (practitionerData.years_experience < 0 || practitionerData.years_experience > 70)) {
+    errors.push('Années d\'expérience invalides (0-70)');
   }
 
   return errors;
@@ -191,6 +200,49 @@ serve(async (req) => {
       );
     }
 
+    // Validation des documents obligatoires selon le type de praticien
+    const isCoachSportif = practitionerData.practitioner_type === 'coach_sportif';
+    
+    // Vérifier documents obligatoires
+    if (!documents.idDocument) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Pièce d\'identité requise',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+    
+    if (isCoachSportif && !documents.diploma) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Diplôme ou certification requis pour les coachs sportifs',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+    
+    if (!isCoachSportif && !documents.licenseDocument) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Autorisation d\'exercice requise',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+    
     // Validation des documents
     for (const [key, base64Data] of Object.entries(documents)) {
       if (base64Data) {
