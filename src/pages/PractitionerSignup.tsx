@@ -54,9 +54,14 @@ export default function PractitionerSignup() {
   const { data: user, isLoading } = useSupabaseUser();
 
   useEffect(() => {
-    if (!isLoading && user) {
-      navigate("/dashboard/practitioner", { replace: true });
-    }
+    const redirectAuthenticatedUser = async () => {
+      if (!isLoading && user) {
+        const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
+        const dashboardPath = await getDashboardPathForUser(user.id);
+        navigate(dashboardPath, { replace: true });
+      }
+    };
+    redirectAuthenticatedUser();
   }, [user, isLoading, navigate]);
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
@@ -391,8 +396,8 @@ export default function PractitionerSignup() {
         console.error('⚠️ Erreur notification (non bloquante):', notifError);
       }
 
-      // Rediriger vers la page de confirmation
-      navigate('/registration-success?type=practitioner', { replace: true });
+      // Rediriger vers la page de confirmation avec le type de praticien
+      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({
