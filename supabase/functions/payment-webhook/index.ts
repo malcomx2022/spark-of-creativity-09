@@ -459,15 +459,27 @@ serve(async (req) => {
         );
       }
       
-      // Enregistrer l'événement pour idempotence
-      await supabase
-        .from('webhook_events')
-        .insert({
-          event_id: eventId,
-          event_type: webhookData.type || 'transaction.update',
-          payload: webhookData,
-        });
+    // ✅ CORRECTION BUG #3: Enregistrer l'événement avec gestion de conflit
+    const { error: insertError } = await supabase
+      .from('webhook_events')
+      .insert({
+        event_id: eventId,
+        event_type: webhookData.type || 'transaction.update',
+        payload: webhookData,
+      });
+    
+    // Si erreur de contrainte unique (23505), l'événement existe déjà
+    if (insertError?.code === '23505') {
+      console.log('Event already processed (duplicate):', eventId);
+      return new Response(
+        JSON.stringify({ success: true, message: 'Event already processed' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } else if (insertError) {
+      // Autre erreur, la propager
+      throw insertError;
     }
+  }
 
     const eventType = webhookData.type;
     const entityType = eventType?.includes('transfer') ? 'transfer' : 'transaction';
