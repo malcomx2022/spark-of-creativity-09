@@ -13,39 +13,107 @@ interface CreatePractitionerRequest {
   documents: Record<string, string>; // base64 encoded files
 }
 
-// Validation des données
+// Validation des données avec limites strictes
 function validatePractitionerData(practitionerData: any): string[] {
   const errors: string[] = [];
 
-  if (!practitionerData.name || practitionerData.name.trim().length < 2) {
-    errors.push('Nom invalide (minimum 2 caractères)');
+  // Nom - validation stricte
+  if (!practitionerData.name || typeof practitionerData.name !== 'string') {
+    errors.push('Nom requis');
+  } else {
+    const name = practitionerData.name.trim();
+    if (name.length < 2) {
+      errors.push('Nom invalide (minimum 2 caractères)');
+    } else if (name.length > 100) {
+      errors.push('Nom trop long (maximum 100 caractères)');
+    } else if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(name)) {
+      errors.push('Nom contient des caractères invalides');
+    }
   }
 
-  if (!practitionerData.phone || !/^\+?[0-9]{8,15}$/.test(practitionerData.phone.replace(/\s/g, ''))) {
-    errors.push('Numéro de téléphone invalide');
+  // Téléphone - validation format international
+  if (!practitionerData.phone || typeof practitionerData.phone !== 'string') {
+    errors.push('Numéro de téléphone requis');
+  } else {
+    const cleanPhone = practitionerData.phone.replace(/\s/g, '');
+    if (!/^\+?[0-9]{8,15}$/.test(cleanPhone)) {
+      errors.push('Numéro de téléphone invalide (format: +229XXXXXXXX)');
+    }
   }
 
-  // La spécialité n'est pas requise pour les coachs sportifs
+  // Vérification du type de praticien
   const isCoachSportif = practitionerData.practitioner_type === 'coach_sportif';
-  if (!isCoachSportif && (!practitionerData.specialty || practitionerData.specialty.trim().length < 2)) {
-    errors.push('Spécialité requise');
+  
+  // Spécialité - requise sauf pour coach sportif
+  if (!isCoachSportif) {
+    if (!practitionerData.specialty || typeof practitionerData.specialty !== 'string') {
+      errors.push('Spécialité requise');
+    } else {
+      const specialty = practitionerData.specialty.trim();
+      if (specialty.length < 2) {
+        errors.push('Spécialité invalide (minimum 2 caractères)');
+      } else if (specialty.length > 100) {
+        errors.push('Spécialité trop longue (maximum 100 caractères)');
+      }
+    }
   }
 
   // Validation spécifique pour coach sportif
   if (isCoachSportif) {
-    if (!practitionerData.session_types || !Array.isArray(practitionerData.session_types) || practitionerData.session_types.length === 0) {
+    // Types de séances
+    if (!practitionerData.session_types || !Array.isArray(practitionerData.session_types)) {
+      errors.push('Types de séances requis pour les coachs sportifs');
+    } else if (practitionerData.session_types.length === 0) {
       errors.push('Au moins un type de séance requis pour les coachs sportifs');
+    } else if (practitionerData.session_types.length > 10) {
+      errors.push('Trop de types de séances sélectionnés (maximum 10)');
     }
-    if (!practitionerData.intervention_zone || practitionerData.intervention_zone.trim().length < 3) {
-      errors.push('Zone d\'intervention requise (minimum 3 caractères)');
+    
+    // Zone d'intervention
+    if (!practitionerData.intervention_zone || typeof practitionerData.intervention_zone !== 'string') {
+      errors.push('Zone d\'intervention requise pour les coachs sportifs');
+    } else {
+      const zone = practitionerData.intervention_zone.trim();
+      if (zone.length < 3) {
+        errors.push('Zone d\'intervention trop courte (minimum 3 caractères)');
+      } else if (zone.length > 200) {
+        errors.push('Zone d\'intervention trop longue (maximum 200 caractères)');
+      }
     }
-    if (!practitionerData.intervention_radius || practitionerData.intervention_radius < 1 || practitionerData.intervention_radius > 100) {
-      errors.push('Rayon d\'intervention invalide (1-100 km)');
+    
+    // Rayon d'intervention
+    if (practitionerData.intervention_radius === undefined || practitionerData.intervention_radius === null) {
+      errors.push('Rayon d\'intervention requis pour les coachs sportifs');
+    } else {
+      const radius = Number(practitionerData.intervention_radius);
+      if (isNaN(radius) || radius < 1 || radius > 100) {
+        errors.push('Rayon d\'intervention invalide (doit être entre 1 et 100 km)');
+      }
     }
   }
 
-  if (practitionerData.years_experience !== null && (practitionerData.years_experience < 0 || practitionerData.years_experience > 70)) {
-    errors.push('Années d\'expérience invalides (0-70)');
+  // Années d'expérience
+  if (practitionerData.years_experience !== null && practitionerData.years_experience !== undefined) {
+    const years = Number(practitionerData.years_experience);
+    if (isNaN(years) || years < 0 || years > 70) {
+      errors.push('Années d\'expérience invalides (doit être entre 0 et 70)');
+    }
+  }
+
+  // Adresse - validation si présente
+  if (practitionerData.address) {
+    if (typeof practitionerData.address !== 'string') {
+      errors.push('Adresse invalide');
+    } else if (practitionerData.address.length > 200) {
+      errors.push('Adresse trop longue (maximum 200 caractères)');
+    }
+  }
+
+  // Certifications - validation si présentes
+  if (practitionerData.certifications && Array.isArray(practitionerData.certifications)) {
+    if (practitionerData.certifications.length > 20) {
+      errors.push('Trop de certifications (maximum 20)');
+    }
   }
 
   return errors;
