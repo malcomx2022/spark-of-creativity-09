@@ -14,7 +14,7 @@ interface LazyPractitionerMapProps {
 
 function MapLoadingFallback() {
   return (
-    <div className="w-full h-[600px] bg-muted rounded-lg flex items-center justify-center">
+    <div className="w-full h-full min-h-[500px] bg-muted rounded-lg flex items-center justify-center">
       <div className="text-center space-y-4">
         <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
         <p className="text-muted-foreground">Chargement de la carte...</p>
@@ -25,7 +25,7 @@ function MapLoadingFallback() {
 
 function MapErrorFallback({ onRetry }: { onRetry: () => void }) {
   return (
-    <Alert className="h-[600px] flex flex-col items-center justify-center">
+    <Alert className="h-full min-h-[500px] flex flex-col items-center justify-center">
       <MapPin className="h-12 w-12 text-muted-foreground mb-4" />
       <AlertDescription className="text-center space-y-4">
         <p className="text-lg font-semibold">Carte indisponible</p>
