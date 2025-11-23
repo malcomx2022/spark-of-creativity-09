@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 export function useGroupSessions(coachId?: string) {
   const { toast } = useToast();
@@ -18,7 +19,7 @@ export function useGroupSessions(coachId?: string) {
         query = query.eq('coach_id', coachId);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await withTimeout(Promise.resolve(query));
       
       if (error) throw error;
       return data;
