@@ -14,6 +14,7 @@ function mapPractitioner(row: any): PractitionerLocation {
     rating: row.rating ?? 0,
     phone: row.phone ?? '',
     image: row.image ?? undefined,
+    practitioner_type: row.practitioner_type ?? undefined,
   };
 }
 

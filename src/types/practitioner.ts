@@ -10,6 +10,7 @@ export interface PractitionerLocation {
   rating: number;
   phone: string;
   image?: string;
+  practitioner_type?: string;
 }
 
 export interface UserLocation {
