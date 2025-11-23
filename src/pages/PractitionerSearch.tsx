@@ -14,6 +14,7 @@ import { usePractitioners } from '@/hooks/usePractitioners';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -29,7 +30,6 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 export default function PractitionerSearch() {
   const navigate = useNavigate();
-  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
@@ -39,6 +39,18 @@ export default function PractitionerSearch() {
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
 
   const { data: user } = useSupabaseUser();
+
+  // Récupérer le token Mapbox
+  const { data: mapboxData } = useQuery({
+    queryKey: ['mapbox-token'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('get-mapbox-token');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const mapboxToken = mapboxData?.token || '';
 
   const {
     data: practitionersData = [],
@@ -53,7 +65,12 @@ export default function PractitionerSearch() {
       return;
     }
 
-    const enriched = practitionersData.map(practitioner => {
+    // Filtrer les praticiens avec des coordonnées valides
+    const validPractitioners = practitionersData.filter(
+      p => p.latitude != null && p.longitude != null && !isNaN(p.latitude) && !isNaN(p.longitude)
+    );
+
+    const enriched = validPractitioners.map(practitioner => {
       if (!userLocation) {
         return practitioner;
       }
@@ -83,6 +100,8 @@ export default function PractitionerSearch() {
       filtered = filtered.filter(p => p.specialty === selectedSpecialty);
     }
 
+    // Si l'utilisateur a une position, filtrer par rayon
+    // Sinon, afficher tous les praticiens valides
     const radius = parseFloat(searchRadius);
     if (!Number.isNaN(radius) && userLocation) {
       filtered = filtered.filter(p => (p.distance ?? Infinity) <= radius);
