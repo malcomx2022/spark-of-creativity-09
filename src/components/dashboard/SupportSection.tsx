@@ -12,6 +12,7 @@ import { toast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 export function SupportSection() {
   const navigate = useNavigate();
@@ -80,24 +81,30 @@ export function SupportSection() {
       });
 
       // Export user profile
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      const { data: profile } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+      );
 
       // Export appointments
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('patient_id', user.id);
+      const { data: appointments } = await withTimeout(
+        supabase
+          .from('appointments')
+          .select('*')
+          .eq('patient_id', user.id)
+      );
 
       // Export medical profile
-      const { data: medicalProfile } = await supabase
-        .from('medical_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
+      const { data: medicalProfile } = await withTimeout(
+        supabase
+          .from('medical_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single()
+      );
 
       const exportData = {
         profile,
@@ -122,9 +129,12 @@ export function SupportSection() {
         description: 'Vos données ont été téléchargées.',
       });
     } catch (error) {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: 'Erreur',
-        description: "Impossible d'exporter vos données.",
+        description: isTimeoutError 
+          ? error.message 
+          : "Impossible d'exporter vos données.",
         variant: 'destructive',
       });
     }
