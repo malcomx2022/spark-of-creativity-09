@@ -15,6 +15,8 @@ import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Star, Phone, Navigation } from 'lucide-react';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -37,6 +39,7 @@ export default function PractitionerSearch() {
   const [searchRadius, setSearchRadius] = useState<string>('15');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
+  const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
 
   const { data: user } = useSupabaseUser();
 
@@ -307,6 +310,7 @@ export default function PractitionerSearch() {
                   <LazyPractitionerMap
                     practitioners={filteredPractitioners}
                     userLocation={userLocation}
+                    onPractitionerSelect={setViewedPractitioner}
                     mapboxToken={mapboxToken}
                   />
                 </div>
@@ -357,6 +361,117 @@ export default function PractitionerSearch() {
           }}
         />
       )}
+
+      {viewedPractitioner && (
+        <Dialog open={!!viewedPractitioner} onOpenChange={() => setViewedPractitioner(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl flex items-center gap-2">
+                {viewedPractitioner.name}
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({viewedPractitioner.specialty})
+                </span>
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Détails du praticien {viewedPractitioner.name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              {viewedPractitioner.image && (
+                <img 
+                  src={viewedPractitioner.image} 
+                  alt={viewedPractitioner.name}
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+              )}
+              
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`h-5 w-5 ${
+                        i < Math.round(viewedPractitioner.rating || 0)
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    ({viewedPractitioner.rating?.toFixed(1)})
+                  </span>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-sm ${
+                  viewedPractitioner.available 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  {viewedPractitioner.available ? 'Disponible' : 'Indisponible'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm">
+                  <MapPin className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Adresse</p>
+                    <p className="text-muted-foreground">{viewedPractitioner.address}</p>
+                    {typeof viewedPractitioner.distance === 'number' && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        À {viewedPractitioner.distance.toFixed(1)} km de vous
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {viewedPractitioner.phone && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Téléphone</p>
+                      <p className="text-muted-foreground">{viewedPractitioner.phone}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button 
+                  className="flex-1"
+                  onClick={() => {
+                    if (!user) {
+                      toast({
+                        title: 'Connexion requise',
+                        description: 'Veuillez vous connecter pour demander un rendez-vous.',
+                        variant: 'destructive'
+                      });
+                      navigate('/login');
+                      return;
+                    }
+                    setSelectedPractitioner(viewedPractitioner);
+                    setViewedPractitioner(null);
+                  }}
+                >
+                  Demander un rendez-vous
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    window.open(
+                      `https://www.google.com/maps/dir/?api=1&destination=${viewedPractitioner.latitude},${viewedPractitioner.longitude}`,
+                      '_blank'
+                    );
+                  }}
+                >
+                  <Navigation className="h-4 w-4 mr-2" />
+                  Itinéraire
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+      
       <Footer />
     </div>
   );
