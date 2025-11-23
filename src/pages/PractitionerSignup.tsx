@@ -829,13 +829,14 @@ export default function PractitionerSignup() {
 
                     <div className="space-y-2">
                       <Label htmlFor="diploma" className="text-sm sm:text-base">
-                        Diplôme/Certificat
+                        Diplôme/Certificat {isCoachSportif && <span className="text-destructive">*</span>}
                       </Label>
                       <Input
                         id="diploma"
                         type="file"
                         accept="image/*,.pdf"
                         onChange={(e) => handleFileChange('diploma', e.target.files?.[0] || null)}
+                        required={isCoachSportif}
                         className={`h-11 ${fieldErrors.diploma ? 'border-destructive' : ''}`}
                       />
                       {fieldErrors.diploma && (
@@ -882,7 +883,7 @@ export default function PractitionerSignup() {
                     </p>
                     {isCoachSportif && (
                       <p className="text-sm text-muted-foreground mt-2">
-                        <strong>Coach sportif :</strong> L'autorisation d'exercice n'est pas obligatoire. 
+                        <strong>Coach sportif :</strong> Le diplôme ou certificat est obligatoire. L'autorisation d'exercice n'est pas requise. 
                         Vos certifications seront vérifiées à partir des informations fournies.
                       </p>
                     )}
