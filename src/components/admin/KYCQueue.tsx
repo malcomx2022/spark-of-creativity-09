@@ -309,8 +309,12 @@ export function KYCQueue() {
     loadDocumentUrls();
   }, [practitioners]);
 
-  const getExpiryBadge = (date: string | null) => {
-    if (!date) return <Badge variant="destructive">Non renseigné</Badge>;
+  const getExpiryBadge = (date: string | null, isRequired: boolean = true) => {
+    if (!date) {
+      return isRequired 
+        ? <Badge variant="destructive">Non renseigné</Badge>
+        : <Badge variant="outline" className="opacity-60">Non requis</Badge>;
+    }
     
     const expiry = new Date(date);
     const today = new Date();
@@ -471,10 +475,13 @@ export function KYCQueue() {
                             <DialogDescription>Vérification des pièces justificatives</DialogDescription>
                           </DialogHeader>
                           <div className="space-y-6">
+                            {/* Pièce d'identité - REQUIS pour TOUS */}
                             <div className="grid gap-3 p-4 border rounded-lg">
                               <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Pièce d'identité</Label>
-                                {getExpiryBadge(practitioner.id_document_expiry)}
+                                <Label className="text-base font-semibold">
+                                  Pièce d'identité <span className="text-destructive">*</span>
+                                </Label>
+                                {getExpiryBadge(practitioner.id_document_expiry, true)}
                               </div>
                               <DocumentLink 
                                 url={documentUrls[practitioner.id]?.id_document_url || null}
@@ -483,80 +490,162 @@ export function KYCQueue() {
                               />
                             </div>
                             
-                            <div className="grid gap-3 p-4 border rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Licence professionnelle</Label>
-                                {getExpiryBadge(practitioner.license_expiry)}
-                              </div>
-                              <div className="text-sm text-muted-foreground mb-2">
-                                Numéro: {practitioner.license_number || 'Non renseigné'}
-                              </div>
-                              <DocumentLink 
-                                url={documentUrls[practitioner.id]?.license_document_url || null}
-                                label="Licence professionnelle"
-                                loading={loadingUrls[practitioner.id]}
-                              />
-                            </div>
-                            
-                            <div className="grid gap-3 p-4 border rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Assurance RCP / Diplôme</Label>
-                                {getExpiryBadge(practitioner.insurance_expiry)}
-                              </div>
-                              <DocumentLink 
-                                url={documentUrls[practitioner.id]?.insurance_document_url || null}
-                                label="Assurance RCP / Diplôme"
-                                loading={loadingUrls[practitioner.id]}
-                              />
-                            </div>
+                            {/* Documents spécifiques selon le type de praticien */}
+                            {practitioner.practitioner_type === 'coach_sportif' ? (
+                              <>
+                                {/* Pour les COACHES SPORTIFS : Diplôme/Certificat REQUIS */}
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Diplôme/Certificat <span className="text-destructive">*</span>
+                                    </Label>
+                                    {!practitioner.insurance_document_url && !practitioner.diplomas?.length ? (
+                                      <Badge variant="destructive">Non renseigné</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="border-green-500">Fourni</Badge>
+                                    )}
+                                  </div>
+                                  <DocumentLink 
+                                    url={documentUrls[practitioner.id]?.insurance_document_url || null}
+                                    label="Diplôme/Certificat"
+                                    loading={loadingUrls[practitioner.id]}
+                                  />
+                                  {practitioner.diplomas && practitioner.diplomas.length > 0 && (
+                                    <div className="mt-2">
+                                      <p className="text-sm font-medium mb-1">Diplômes déclarés :</p>
+                                      <div className="flex gap-2 flex-wrap">
+                                        {practitioner.diplomas.map((diploma: string, index: number) => (
+                                          <Badge key={index} variant="secondary">{diploma}</Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
 
-                            {/* Informations spécifiques Coach Sportif */}
-                            {practitioner.practitioner_type === 'coach_sportif' && (
-                              <div className="grid gap-3 p-4 border rounded-lg bg-primary/5">
-                                <Label className="text-base font-semibold text-primary">
-                                  Informations Coach Sportif
-                                </Label>
+                                {/* Informations spécifiques REQUISES pour Coach Sportif */}
+                                <div className="grid gap-3 p-4 border rounded-lg bg-primary/5">
+                                  <Label className="text-base font-semibold text-primary">
+                                    Informations Coach Sportif (Requises)
+                                  </Label>
+                                  
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="text-sm font-medium">Types de séances proposées <span className="text-destructive">*</span></p>
+                                      {!practitioner.session_types || practitioner.session_types.length === 0 ? (
+                                        <Badge variant="destructive" className="text-xs">Non renseigné</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs border-green-500">✓ Renseigné</Badge>
+                                      )}
+                                    </div>
+                                    {practitioner.session_types && practitioner.session_types.length > 0 ? (
+                                      <div className="flex gap-2 flex-wrap">
+                                        {practitioner.session_types.map((type: string) => (
+                                          <Badge key={type} variant="secondary" className="capitalize">
+                                            {type}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground italic">Aucun type de séance renseigné</p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-sm font-medium">Zone d'intervention <span className="text-destructive">*</span></p>
+                                      {!practitioner.intervention_zone ? (
+                                        <Badge variant="destructive" className="text-xs">Non renseigné</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs border-green-500">✓ Renseigné</Badge>
+                                      )}
+                                    </div>
+                                    {practitioner.intervention_zone ? (
+                                      <p className="text-sm text-muted-foreground">{practitioner.intervention_zone}</p>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground italic">Zone non renseignée</p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-sm font-medium">Rayon d'intervention <span className="text-destructive">*</span></p>
+                                      {!practitioner.intervention_radius ? (
+                                        <Badge variant="destructive" className="text-xs">Non renseigné</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs border-green-500">✓ Renseigné</Badge>
+                                      )}
+                                    </div>
+                                    {practitioner.intervention_radius ? (
+                                      <p className="text-sm text-muted-foreground">{practitioner.intervention_radius} km</p>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground italic">Rayon non renseigné</p>
+                                    )}
+                                  </div>
+
+                                  {practitioner.certifications && practitioner.certifications.length > 0 && (
+                                    <div>
+                                      <p className="text-sm font-medium mb-2">Certifications (optionnel) :</p>
+                                      <div className="flex gap-2 flex-wrap">
+                                        {practitioner.certifications.map((cert: string, index: number) => (
+                                          <Badge key={index} variant="outline">
+                                            {cert}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {/* Pour les AUTRES PRATICIENS : Licence + Assurance REQUISES */}
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Autorisation d'exercice <span className="text-destructive">*</span>
+                                    </Label>
+                                    {getExpiryBadge(practitioner.license_expiry, true)}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground mb-2">
+                                    Numéro: {practitioner.license_number || <span className="text-destructive">Non renseigné</span>}
+                                  </div>
+                                  <DocumentLink 
+                                    url={documentUrls[practitioner.id]?.license_document_url || null}
+                                    label="Autorisation d'exercice"
+                                    loading={loadingUrls[practitioner.id]}
+                                  />
+                                </div>
                                 
-                                {practitioner.session_types && practitioner.session_types.length > 0 && (
-                                  <div>
-                                    <p className="text-sm font-medium mb-2">Types de séances proposées :</p>
-                                    <div className="flex gap-2 flex-wrap">
-                                      {practitioner.session_types.map((type: string) => (
-                                        <Badge key={type} variant="secondary" className="capitalize">
-                                          {type}
-                                        </Badge>
-                                      ))}
-                                    </div>
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Assurance RCP <span className="text-destructive">*</span>
+                                    </Label>
+                                    {getExpiryBadge(practitioner.insurance_expiry, true)}
                                   </div>
-                                )}
+                                  <DocumentLink 
+                                    url={documentUrls[practitioner.id]?.insurance_document_url || null}
+                                    label="Assurance RCP"
+                                    loading={loadingUrls[practitioner.id]}
+                                  />
+                                </div>
 
-                                {practitioner.intervention_zone && (
-                                  <div>
-                                    <p className="text-sm font-medium">Zone d'intervention :</p>
-                                    <p className="text-sm text-muted-foreground">{practitioner.intervention_zone}</p>
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Spécialité <span className="text-destructive">*</span>
+                                    </Label>
+                                    {!practitioner.specialty ? (
+                                      <Badge variant="destructive">Non renseigné</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="border-green-500">✓ Renseigné</Badge>
+                                    )}
                                   </div>
-                                )}
-
-                                {practitioner.intervention_radius && (
-                                  <div>
-                                    <p className="text-sm font-medium">Rayon d'intervention :</p>
-                                    <p className="text-sm text-muted-foreground">{practitioner.intervention_radius} km</p>
-                                  </div>
-                                )}
-
-                                {practitioner.certifications && practitioner.certifications.length > 0 && (
-                                  <div>
-                                    <p className="text-sm font-medium mb-2">Certifications :</p>
-                                    <div className="flex gap-2 flex-wrap">
-                                      {practitioner.certifications.map((cert: string, index: number) => (
-                                        <Badge key={index} variant="outline">
-                                          {cert}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {practitioner.specialty || <span className="text-destructive italic">Spécialité non renseignée</span>}
+                                  </p>
+                                </div>
+                              </>
                             )}
                           </div>
                         </DialogContent>
