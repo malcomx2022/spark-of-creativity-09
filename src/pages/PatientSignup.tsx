@@ -18,6 +18,7 @@ import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
+import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 
 export default function PatientSignup() {
   const navigate = useNavigate();
@@ -111,7 +112,8 @@ export default function PatientSignup() {
     // Inscription avec Supabase
     try {
       // 1. Créer le compte utilisateur Supabase (auto-confirmé)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { data: authData, error: authError } = await withTimeout(
+        supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
@@ -121,7 +123,8 @@ export default function PatientSignup() {
             user_type: 'patient'
           }
         }
-      });
+      })
+      );
 
       if (authError) {
         toast({
@@ -154,8 +157,8 @@ export default function PatientSignup() {
       const userId = authData.user.id;
 
       // 2. Finaliser l'inscription via edge function centralisée
-      const { error: registrationError } = await supabase.functions.invoke(
-        'complete-user-registration',
+      const { error: registrationError } = await withTimeout(
+        supabase.functions.invoke('complete-user-registration',
         {
           body: {
             userId,
@@ -164,7 +167,7 @@ export default function PatientSignup() {
               ...onboardingPayload
             }
           }
-        }
+        })
       );
 
       if (registrationError) {
@@ -182,9 +185,12 @@ export default function PatientSignup() {
       navigate('/registration-success?type=patient', { replace: true });
     } catch (error: any) {
       console.error('Erreur inscription:', error);
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         ...AUTH_MESSAGES.SIGNUP_ERROR,
-        description: error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
+        description: isTimeoutError 
+          ? error.message 
+          : (error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription),
         variant: "destructive"
       });
     } finally {

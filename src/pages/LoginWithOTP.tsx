@@ -10,6 +10,7 @@ import { useOTPAuth } from '@/hooks/useOTPAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
 import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
 
@@ -31,9 +32,14 @@ export default function LoginWithOTP() {
   // Vérifier si l'utilisateur est déjà connecté
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await redirectToDashboard();
+      try {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession());
+        if (session) {
+          await redirectToDashboard();
+        }
+      } catch (error) {
+        // Silencieux - l'utilisateur n'est simplement pas connecté
+        console.error('Session check timeout:', error);
       }
     };
     void checkSession();

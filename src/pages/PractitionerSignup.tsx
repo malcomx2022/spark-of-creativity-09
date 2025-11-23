@@ -21,6 +21,7 @@ import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
+import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 
 interface SignupFormData {
   firstName: string;
@@ -249,7 +250,8 @@ export default function PractitionerSignup() {
 
     try {
 
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await withTimeout(
+        supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
@@ -260,7 +262,8 @@ export default function PractitionerSignup() {
             phone: formData.phone,
           },
         },
-      });
+      })
+      );
 
       if (error) {
         // Gestion erreurs spécifiques
@@ -399,7 +402,8 @@ export default function PractitionerSignup() {
 
       // Finaliser l'inscription et envoyer notification via edge function centralisée
       try {
-        const { data: completeResult, error: completeError } = await supabase.functions.invoke('complete-user-registration', {
+        const { data: completeResult, error: completeError } = await withTimeout(
+          supabase.functions.invoke('complete-user-registration', {
           body: {
             userId: userId,
             data: {
@@ -409,7 +413,8 @@ export default function PractitionerSignup() {
               fullName: `${formData.firstName} ${formData.lastName}`
             }
           }
-        });
+        })
+        );
         
         if (completeError) {
           console.error('⚠️ Erreur notification (non bloquante):', completeError);
@@ -423,10 +428,11 @@ export default function PractitionerSignup() {
       // Rediriger vers la page de confirmation avec le type de praticien
       navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
     } catch (err) {
+      const isTimeoutError = err instanceof NetworkTimeoutError;
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({
         ...AUTH_MESSAGES.SIGNUP_ERROR,
-        description: message,
+        description: isTimeoutError ? message : message,
         variant: "destructive",
       });
     } finally {
