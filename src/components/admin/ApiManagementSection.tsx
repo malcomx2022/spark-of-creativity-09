@@ -251,7 +251,7 @@ export function ApiManagementSection() {
         </CardContent>
       </Card>
 
-      {/* Other APIs Section - Placeholder */}
+      {/* Other APIs Section */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Autres API</CardTitle>
@@ -266,21 +266,54 @@ export function ApiManagementSection() {
                 <p className="font-medium">Twilio (SMS/OTP)</p>
                 <p className="text-sm text-muted-foreground">Service de messages</p>
               </div>
-              <Badge variant="outline">Configuré</Badge>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  Configuré
+                </Badge>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => toast.info("Gestion Twilio - Fonctionnalité à venir")}
+                >
+                  Gérer
+                </Button>
+              </div>
             </div>
             <div className="flex items-center justify-between p-3 border rounded-lg">
               <div>
                 <p className="font-medium">Wasabi (Stockage)</p>
                 <p className="text-sm text-muted-foreground">Stockage de fichiers</p>
               </div>
-              <Badge variant="outline">Configuré</Badge>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  Configuré
+                </Badge>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => toast.info("Gestion Wasabi - Fonctionnalité à venir")}
+                >
+                  Gérer
+                </Button>
+              </div>
             </div>
             <div className="flex items-center justify-between p-3 border rounded-lg">
               <div>
                 <p className="font-medium">Mapbox (Cartographie)</p>
                 <p className="text-sm text-muted-foreground">Service de cartes</p>
               </div>
-              <Badge variant="outline">Configuré</Badge>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  Configuré
+                </Badge>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => toast.info("Gestion Mapbox - Fonctionnalité à venir")}
+                >
+                  Gérer
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
