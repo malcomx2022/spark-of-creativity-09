@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSupabaseUser } from './useSupabaseUser';
 import { toast } from './use-toast';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 export interface SavedPaymentMethod {
   id: string;
@@ -72,12 +73,14 @@ export function useSavedPaymentMethods() {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      const { data, error } = await supabase
-        .from('saved_payment_methods')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('saved_payment_methods')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return (data || []) as SavedPaymentMethod[];
@@ -99,26 +102,30 @@ export function useSavedPaymentMethods() {
 
       // Si on définit cette méthode comme par défaut, retirer le flag des autres
       if (setAsDefault) {
-        await supabase
-          .from('saved_payment_methods')
-          .update({ is_default: false })
-          .eq('user_id', user.id);
+        await withTimeout(
+          supabase
+            .from('saved_payment_methods')
+            .update({ is_default: false })
+            .eq('user_id', user.id)
+        );
       }
 
       const encryptedPhone = await encryptPhone(phoneNumber);
 
-      const { data, error } = await supabase
-        .from('saved_payment_methods')
-        .insert({
-          user_id: user.id,
-          provider,
-          phone_number_masked: maskPhoneNumber(phoneNumber),
-          phone_number_encrypted: encryptedPhone,
-          is_default: setAsDefault,
-          consent_given_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('saved_payment_methods')
+          .insert({
+            user_id: user.id,
+            provider,
+            phone_number_masked: maskPhoneNumber(phoneNumber),
+            phone_number_encrypted: encryptedPhone,
+            is_default: setAsDefault,
+            consent_given_at: new Date().toISOString(),
+          })
+          .select()
+          .single()
+      );
 
       if (error) throw error;
       return data;
@@ -131,9 +138,10 @@ export function useSavedPaymentMethods() {
       });
     },
     onError: (error: Error) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: 'Erreur',
-        description: error.message,
+        description: isTimeoutError ? error.message : error.message,
         variant: 'destructive',
       });
     },
@@ -141,10 +149,12 @@ export function useSavedPaymentMethods() {
 
   const deletePaymentMethod = useMutation({
     mutationFn: async (methodId: string) => {
-      const { error } = await supabase
-        .from('saved_payment_methods')
-        .delete()
-        .eq('id', methodId);
+      const { error } = await withTimeout(
+        supabase
+          .from('saved_payment_methods')
+          .delete()
+          .eq('id', methodId)
+      );
 
       if (error) throw error;
     },
@@ -156,9 +166,10 @@ export function useSavedPaymentMethods() {
       });
     },
     onError: (error: Error) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: 'Erreur',
-        description: error.message,
+        description: isTimeoutError ? error.message : error.message,
         variant: 'destructive',
       });
     },
@@ -169,16 +180,20 @@ export function useSavedPaymentMethods() {
       if (!user?.id) throw new Error('User not authenticated');
 
       // Retirer le flag par défaut de toutes les méthodes
-      await supabase
-        .from('saved_payment_methods')
-        .update({ is_default: false })
-        .eq('user_id', user.id);
+      await withTimeout(
+        supabase
+          .from('saved_payment_methods')
+          .update({ is_default: false })
+          .eq('user_id', user.id)
+      );
 
       // Définir la nouvelle méthode par défaut
-      const { error } = await supabase
-        .from('saved_payment_methods')
-        .update({ is_default: true })
-        .eq('id', methodId);
+      const { error } = await withTimeout(
+        supabase
+          .from('saved_payment_methods')
+          .update({ is_default: true })
+          .eq('id', methodId)
+      );
 
       if (error) throw error;
     },
@@ -189,9 +204,10 @@ export function useSavedPaymentMethods() {
       });
     },
     onError: (error: Error) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: 'Erreur',
-        description: error.message,
+        description: isTimeoutError ? error.message : error.message,
         variant: 'destructive',
       });
     },

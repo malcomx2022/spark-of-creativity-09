@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
+import { withTimeout } from '@/lib/network-timeout';
 
 export type SupportTicket = Tables<'support_tickets'>;
 
@@ -10,11 +11,13 @@ export function useSupportTickets(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
       
-      const { data, error } = await supabase
-        .from('support_tickets')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('support_tickets')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return data || [];
@@ -33,13 +36,15 @@ export function useCreateSupportTicket() {
       description: string;
       priority?: string;
     }) => {
-      const { error } = await supabase
-        .from('support_tickets')
-        .insert({
-          ...data,
-          status: 'ouvert',
-          priority: data.priority || 'medium',
-        });
+      const { error } = await withTimeout(
+        supabase
+          .from('support_tickets')
+          .insert({
+            ...data,
+            status: 'ouvert',
+            priority: data.priority || 'medium',
+          })
+      );
 
       if (error) throw error;
     },

@@ -22,6 +22,7 @@ import {
 } from '@/lib/payment-storage';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 import { PaymentAttemptsHistory } from '@/components/PaymentAttemptsHistory';
+import { withTimeout } from '@/lib/network-timeout';
 
 type PaymentMethod = 'mtn' | 'moov';
 
@@ -105,11 +106,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, phone')
-        .eq('id', user.id)
-        .single();
+      const { data: profile } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', user.id)
+          .single()
+      );
 
       if (profile) {
         if (profile.full_name && !payerName) {
@@ -138,14 +141,16 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     const checkExistingPayment = async () => {
       console.log('🔍 Vérification d\'un paiement existant pour le rendez-vous:', appointmentId);
       
-      const { data: existingPayment } = await supabase
-        .from('payments')
-        .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
-        .eq('appointment_id', appointmentId)
-        .in('status', ['initiated', 'pending'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: existingPayment } = await withTimeout(
+        supabase
+          .from('payments')
+          .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
+          .eq('appointment_id', appointmentId)
+          .in('status', ['initiated', 'pending'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      );
 
       if (existingPayment?.fedapay_payment_url) {
         console.log('✅ Paiement existant trouvé:', existingPayment.id);
@@ -364,14 +369,16 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
       // ✅ Vérifier une dernière fois qu'aucun paiement n'existe
-      const { data: existingPayment } = await supabase
-        .from('payments')
-        .select('id, fedapay_payment_url, fedapay_transaction_id, status')
-        .eq('appointment_id', appointmentId)
-        .in('status', ['initiated', 'pending'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: existingPayment } = await withTimeout(
+        supabase
+          .from('payments')
+          .select('id, fedapay_payment_url, fedapay_transaction_id, status')
+          .eq('appointment_id', appointmentId)
+          .in('status', ['initiated', 'pending'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      );
 
       // Si un paiement existe, l'utiliser au lieu d'en créer un nouveau
       if (existingPayment?.fedapay_payment_url) {

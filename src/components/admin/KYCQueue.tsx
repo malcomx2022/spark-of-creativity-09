@@ -22,6 +22,7 @@ import { getSignedFileUrl } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tables } from "@/integrations/supabase/types";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import { withTimeout } from "@/lib/network-timeout";
 
 interface DocumentUrls {
   id_document_url: string | null;
@@ -60,13 +61,15 @@ export function KYCQueue() {
     queryFn: async () => {
       if (!historyPractitionerId) return [] as KYCHistoryEntry[];
 
-      const { data, error } = await supabase
-        .from('admin_audit_logs')
-        .select('id, created_at, action, admin_id, details')
-        .eq('entity_type', 'practitioner')
-        .eq('entity_id', historyPractitionerId)
-        .ilike('action', 'KYC%')
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('admin_audit_logs')
+          .select('id, created_at, action, admin_id, details')
+          .eq('entity_type', 'practitioner')
+          .eq('entity_id', historyPractitionerId)
+          .ilike('action', 'KYC%')
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
 
@@ -74,10 +77,12 @@ export function KYCQueue() {
       let adminMap: Record<string, string | null> = {};
 
       if (adminIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', adminIds as string[]);
+        const { data: profilesData, error: profilesError } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', adminIds as string[])
+        );
 
         if (profilesError) {
           console.error('Error loading admin profiles:', profilesError);
@@ -106,13 +111,15 @@ export function KYCQueue() {
   } = useQuery<Tables<'practitioners'>[]>({
     queryKey: ['kyc-history-list'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select(
-          'id, name, phone, specialty, kyc_status, kyc_comment, kyc_reviewed_at, kyc_validated_at, created_at'
-        )
-        .order('kyc_reviewed_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .select(
+            'id, name, phone, specialty, kyc_status, kyc_comment, kyc_reviewed_at, kyc_validated_at, created_at'
+          )
+          .order('kyc_reviewed_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return (data || []) as Tables<'practitioners'>[];
@@ -125,11 +132,13 @@ export function KYCQueue() {
   } = useQuery<Tables<'practitioners'>[]>({
     queryKey: ['kyc-queue'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('*')
-        .in('kyc_status', ['pending', 'incomplete'])
-        .order('created_at', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .select('*')
+          .in('kyc_status', ['pending', 'incomplete'])
+          .order('created_at', { ascending: true })
+      );
 
       if (error) throw error;
       return (data || []) as Tables<'practitioners'>[];
@@ -175,16 +184,18 @@ export function KYCQueue() {
       }
 
       console.log('[KYC Update] Updating practitioner in database...');
-      const { error } = await supabase
-        .from('practitioners')
-        .update({
-          kyc_status: status,
-          kyc_comment: comment,
-          kyc_reviewed_by: user.id,
-          kyc_reviewed_at: new Date().toISOString(),
-          can_accept_missions: status === 'approved',
-        })
-        .eq('id', id);
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .update({
+            kyc_status: status,
+            kyc_comment: comment,
+            kyc_reviewed_by: user.id,
+            kyc_reviewed_at: new Date().toISOString(),
+            can_accept_missions: status === 'approved',
+          })
+          .eq('id', id)
+      );
 
       if (error) {
         console.error('[KYC Update] Database update error:', error);
