@@ -16,9 +16,10 @@ interface AppointmentCardProps {
   onReject?: (id: string) => void;
   onComplete?: (id: string) => void;
   onPaymentRequired?: (appointmentId: string) => void;
+  disabled?: boolean;
 }
 
-export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired, disabled = false }: AppointmentCardProps) {
   const { data: user } = useSupabaseUser();
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const getStatusColor = (status: string) => {
@@ -134,10 +135,21 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
         <div className="flex gap-2 pt-2">
           {userRole === 'practitioner' && appointment.status === 'awaiting_practitioner' && onConfirm && onReject && (
             <>
-              <Button onClick={() => onConfirm(appointment.id)} size="sm" className="flex-1">
+              <Button 
+                onClick={() => onConfirm(appointment.id)} 
+                size="sm" 
+                className="flex-1"
+                disabled={disabled}
+              >
                 Accepter
               </Button>
-              <Button onClick={() => onReject(appointment.id)} size="sm" variant="destructive" className="flex-1">
+              <Button 
+                onClick={() => onReject(appointment.id)} 
+                size="sm" 
+                variant="destructive" 
+                className="flex-1"
+                disabled={disabled}
+              >
                 Refuser
               </Button>
             </>
