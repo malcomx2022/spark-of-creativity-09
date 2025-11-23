@@ -26,10 +26,10 @@ serve(async (req: Request) => {
 
     console.log('[send-kyc-status-notification] Processing:', { practitionerId, status });
 
-    // Récupérer les informations du praticien
+    // Récupérer les informations du praticien avec son type
     const { data: practitioner, error: practitionerError } = await supabase
       .from('practitioners')
-      .select('user_id, name, phone')
+      .select('user_id, name, phone, practitioner_type')
       .eq('id', practitionerId)
       .single();
 
@@ -49,6 +49,13 @@ serve(async (req: Request) => {
     const email = userData.user.email;
     const fullName = practitioner.name;
     const phone = practitioner.phone;
+    
+    // Déterminer le dashboard approprié selon le type de praticien
+    const baseUrl = supabaseUrl.split('/functions')[0];
+    const dashboardPath = practitioner.practitioner_type === 'coach_sportif' 
+      ? '/dashboard/coach' 
+      : '/dashboard/practitioner';
+    const dashboardUrl = `${baseUrl}${dashboardPath}`;
 
     // Préparer le contenu selon le statut
     let emailSubject = '';
@@ -75,7 +82,7 @@ serve(async (req: Request) => {
             </div>
 
             <p style="margin-top: 30px;">
-              <a href="${supabaseUrl.split('/functions')[0]}/dashboard/practitioner" 
+              <a href="${dashboardUrl}" 
                  style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
                 Accéder à mon dashboard
               </a>
@@ -86,7 +93,7 @@ serve(async (req: Request) => {
             </p>
           </div>
         `;
-        smsContent = `✅ DomiCares : Votre compte praticien est activé ! Vous pouvez maintenant recevoir des consultations. Connectez-vous : ${supabaseUrl.split('/functions')[0]}/dashboard/practitioner`;
+        smsContent = `✅ DomiCares : Votre compte ${practitioner.practitioner_type === 'coach_sportif' ? 'coach' : 'praticien'} est activé ! Vous pouvez maintenant recevoir des consultations. Connectez-vous : ${dashboardUrl}`;
         break;
 
       case 'rejected':
@@ -148,7 +155,7 @@ serve(async (req: Request) => {
             </div>
 
             <p style="margin-top: 30px;">
-              <a href="${supabaseUrl.replace('/functions/v1', '')}/dashboard/practitioner" 
+              <a href="${dashboardUrl}" 
                  style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
                 Compléter mon dossier
               </a>
