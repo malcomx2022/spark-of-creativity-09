@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Star, Phone, Navigation } from 'lucide-react';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -44,13 +45,16 @@ export default function PractitionerSearch() {
   const { data: user } = useSupabaseUser();
 
   // Récupérer le token Mapbox
-  const { data: mapboxData } = useQuery({
+  const { data: mapboxData, error: mapboxError } = useQuery({
     queryKey: ['mapbox-token'],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('get-mapbox-token');
+      const { data, error } = await withTimeout(
+        supabase.functions.invoke('get-mapbox-token')
+      );
       if (error) throw error;
       return data;
     },
+    retry: 2,
   });
 
   const mapboxToken = mapboxData?.token || '';
@@ -268,9 +272,15 @@ export default function PractitionerSearch() {
                           )}
                         </p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <Button onClick={() => toast({ title: 'Contact', description: `Appel en cours vers ${practitioner.phone}` })}>
-                          Contacter
+                       <div className="flex items-center justify-between">
+                        <Button 
+                          asChild
+                          disabled={!practitioner.phone}
+                        >
+                          <a href={practitioner.phone ? `tel:${practitioner.phone}` : undefined}>
+                            <Phone className="h-4 w-4 mr-2" />
+                            Contacter
+                          </a>
                         </Button>
                         <Button 
                           variant="outline" 
@@ -307,12 +317,25 @@ export default function PractitionerSearch() {
               </CardHeader>
               <CardContent>
                 <div className="h-[500px]">
-                  <LazyPractitionerMap
-                    practitioners={filteredPractitioners}
-                    userLocation={userLocation}
-                    onPractitionerSelect={setViewedPractitioner}
-                    mapboxToken={mapboxToken}
-                  />
+                  {mapboxError ? (
+                    <div className="flex items-center justify-center h-full text-destructive">
+                      <div className="text-center">
+                        <MapPin className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Erreur de chargement de la carte</p>
+                      </div>
+                    </div>
+                  ) : !mapboxToken ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : (
+                    <LazyPractitionerMap
+                      practitioners={filteredPractitioners}
+                      userLocation={userLocation}
+                      onPractitionerSelect={setViewedPractitioner}
+                      mapboxToken={mapboxToken}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -323,41 +346,52 @@ export default function PractitionerSearch() {
       {selectedPractitioner && user && (
         <NewAppointmentDialog
           onSubmit={async (data) => {
-            const { data: session } = await supabase.auth.getSession();
-            if (!session?.session?.user) {
-              throw new Error('Utilisateur non authentifié');
+            try {
+              const { data: session } = await withTimeout(supabase.auth.getSession());
+              if (!session?.session?.user) {
+                throw new Error('Utilisateur non authentifié');
+              }
+
+              const { data: profile } = await withTimeout(
+                supabase
+                  .from('profiles')
+                  .select('full_name')
+                  .eq('id', session.session.user.id)
+                  .single() as unknown as Promise<any>
+              );
+
+              const appointmentData = {
+                patient_id: session.session.user.id,
+                patient_name: profile?.full_name || 'Patient',
+                practitioner_id: selectedPractitioner.id,
+                practitioner_name: selectedPractitioner.name,
+                specialty: data.specialty,
+                date: new Date(data.date).toISOString().split('T')[0],
+                time: data.time,
+                status: 'awaiting_practitioner',
+                address: selectedPractitioner.address,
+                reason: data.reason,
+                urgency_level: data.urgencyLevel,
+              };
+
+              const { data: appointment, error } = await withTimeout(
+                supabase
+                  .from('appointments')
+                  .insert([appointmentData])
+                  .select()
+                  .single() as unknown as Promise<any>
+              );
+
+              if (error) throw error;
+
+              setSelectedPractitioner(null);
+              return appointment;
+            } catch (error) {
+              if (error instanceof NetworkTimeoutError) {
+                throw new Error('Timeout: Vérifiez votre connexion internet');
+              }
+              throw error;
             }
-
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', session.session.user.id)
-              .single();
-
-            const appointmentData = {
-              patient_id: session.session.user.id,
-              patient_name: profile?.full_name || 'Patient',
-              practitioner_id: selectedPractitioner.id,
-              practitioner_name: selectedPractitioner.name,
-              specialty: data.specialty,
-              date: new Date(data.date).toISOString().split('T')[0],
-              time: data.time,
-              status: 'awaiting_practitioner',
-              address: selectedPractitioner.address,
-              reason: data.reason,
-              urgency_level: data.urgencyLevel,
-            };
-
-            const { data: appointment, error } = await supabase
-              .from('appointments')
-              .insert([appointmentData])
-              .select()
-              .single();
-
-            if (error) throw error;
-
-            setSelectedPractitioner(null);
-            return appointment;
           }}
         />
       )}
