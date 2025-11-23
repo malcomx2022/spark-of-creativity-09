@@ -38,40 +38,40 @@ export function usePatientGroupSessions(patientId?: string) {
     queryFn: async () => {
       if (!patientId) return [];
 
-      const queryBuilder = supabase
-        .from('group_session_participants')
-        .select(`
-          id,
-          session_id,
-          patient_id,
-          joined_at,
-          payment_status,
-          session:group_sessions!inner(
+      const { data, error } = await withTimeout(
+        supabase
+          .from('group_session_participants')
+          .select(`
             id,
-            session_name,
-            session_type,
-            max_participants,
-            min_participants,
-            current_participants,
-            scheduled_date,
-            start_time,
-            end_time,
-            price_per_person,
-            location,
-            status,
-            description,
-            coach:practitioners!inner(
+            session_id,
+            patient_id,
+            joined_at,
+            payment_status,
+            session:group_sessions!inner(
               id,
-              name,
-              image,
-              specialty
+              session_name,
+              session_type,
+              max_participants,
+              min_participants,
+              current_participants,
+              scheduled_date,
+              start_time,
+              end_time,
+              price_per_person,
+              location,
+              status,
+              description,
+              coach:practitioners!inner(
+                id,
+                name,
+                image,
+                specialty
+              )
             )
-          )
-        `)
-        .eq('patient_id', patientId)
-        .order('joined_at', { ascending: false });
-
-      const { data, error } = await withTimeout(queryBuilder);
+          `)
+          .eq('patient_id', patientId)
+          .order('joined_at', { ascending: false })
+      );
 
       if (error) {
         console.error('Error fetching patient group sessions:', error);

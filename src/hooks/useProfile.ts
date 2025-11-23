@@ -10,13 +10,13 @@ export function useProfile(userId?: string) {
     queryFn: async () => {
       if (!userId) return null;
       
-      const query = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-      
-      const { data, error } = await withTimeout(query);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle()
+      );
 
       if (error) throw error;
       return data;
@@ -31,11 +31,11 @@ export function useUpdateProfile() {
 
   return useMutation({
     mutationFn: async ({ userId, data }: { userId: string; data: Partial<Profile> }) => {
-      const query = supabase
-        .from('profiles')
-        .upsert({ id: userId, ...data });
-      
-      const { error } = await withTimeout(query);
+      const { error } = await withTimeout(
+        supabase
+          .from('profiles')
+          .upsert({ id: userId, ...data })
+      );
 
       if (error) throw error;
     },
@@ -61,13 +61,13 @@ export function useMedicalProfile(userId?: string) {
     queryFn: async () => {
       if (!userId) return null;
       
-      const query = supabase
-        .from('medical_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      const { data, error } = await withTimeout(query);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('medical_profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle()
+      );
 
       if (error) throw error;
       return data;
@@ -82,11 +82,11 @@ export function useUpdateMedicalProfile() {
 
   return useMutation({
     mutationFn: async ({ userId, data }: { userId: string; data: Partial<MedicalProfile> }) => {
-      const query = supabase
-        .from('medical_profiles')
-        .upsert({ user_id: userId, ...data });
-      
-      const { error } = await withTimeout(query);
+      const { error } = await withTimeout(
+        supabase
+          .from('medical_profiles')
+          .upsert({ user_id: userId, ...data })
+      );
 
       if (error) throw error;
     },
@@ -112,13 +112,13 @@ export function useEmergencyContacts(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
       
-      const query = supabase
-        .from('emergency_contacts')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      
-      const { data, error } = await withTimeout(query);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('emergency_contacts')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return data || [];
@@ -133,13 +133,13 @@ export function useAddresses(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
       
-      const query = supabase
-        .from('addresses')
-        .select('*')
-        .eq('user_id', userId)
-        .order('is_default', { ascending: false });
-      
-      const { data, error } = await withTimeout(query);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('addresses')
+          .select('*')
+          .eq('user_id', userId)
+          .order('is_default', { ascending: false })
+      );
 
       if (error) throw error;
       return data || [];

@@ -29,13 +29,13 @@ async function fetchAppointmentsByField(field: 'patient_id' | 'practitioner_id',
     return [];
   }
 
-  const query = supabase
-    .from('appointments')
-    .select('*')
-    .eq(field, id)
-    .order('date', { ascending: true });
-
-  const { data, error } = await withTimeout(query);
+  const { data, error } = await withTimeout(
+    supabase
+      .from('appointments')
+      .select('*')
+      .eq(field, id)
+      .order('date', { ascending: true })
+  );
 
   if (error) {
     throw error;
@@ -45,13 +45,13 @@ async function fetchAppointmentsByField(field: 'patient_id' | 'practitioner_id',
 }
 
 async function insertAppointment(payload: TablesInsert<'appointments'>) {
-  const query = supabase
-    .from('appointments')
-    .insert(payload)
-    .select()
-    .single();
-
-  const { error, data } = await withTimeout(query);
+  const { error, data } = await withTimeout(
+    supabase
+      .from('appointments')
+      .insert(payload)
+      .select()
+      .single()
+  );
 
   if (error) {
     throw error;
@@ -61,14 +61,14 @@ async function insertAppointment(payload: TablesInsert<'appointments'>) {
 }
 
 async function updateAppointment(id: string, payload: TablesUpdate<'appointments'>) {
-  const query = supabase
-    .from('appointments')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  const { error, data } = await withTimeout(query);
+  const { error, data } = await withTimeout(
+    supabase
+      .from('appointments')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single()
+  );
 
   if (error) {
     throw error;
@@ -105,22 +105,22 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       const currentUser = await supabase.auth.getUser();
       if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
       
-      const profileQuery = supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', currentUser.data.user.id)
-        .single();
+      const profile = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', currentUser.data.user.id)
+          .single()
+      );
 
-      const profile = await withTimeout(profileQuery);
-
-      const addressesQuery = supabase
-        .from('addresses')
-        .select('*')
-        .eq('user_id', currentUser.data.user.id)
-        .eq('is_default', true)
-        .maybeSingle();
-
-      const addresses = await withTimeout(addressesQuery);
+      const addresses = await withTimeout(
+        supabase
+          .from('addresses')
+          .select('*')
+          .eq('user_id', currentUser.data.user.id)
+          .eq('is_default', true)
+          .maybeSingle()
+      );
 
       return insertAppointment({
         patient_id: patientId,
