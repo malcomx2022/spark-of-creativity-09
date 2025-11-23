@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 
-const MAX_ATTEMPTS = 3; // Plus de tentatives pour les erreurs réseau
-const BASE_DELAY_MS = 1000; // Délai plus long pour laisser le temps au réseau de récupérer
+const MAX_ATTEMPTS = 3;
+const BASE_DELAY_MS = 1000;
+const GLOBAL_TIMEOUT_MS = 30000; // 30 secondes max pour toutes les tentatives
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   "failed to fetch",
@@ -91,7 +92,15 @@ export async function invokeEdgeFunctionWithRetry<T>(
   const attempts = Math.max(1, maxAttempts);
   let lastError: unknown = null;
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  // Timeout global pour toutes les tentatives
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('La requête a pris trop de temps. Vérifiez votre connexion internet.'));
+    }, GLOBAL_TIMEOUT_MS);
+  });
+
+  const retryPromise = (async () => {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       console.log(`[Retry] Tentative ${attempt}/${attempts} pour ${functionName}`);
       
@@ -145,13 +154,17 @@ export async function invokeEdgeFunctionWithRetry<T>(
       }
     }
 
-    // Backoff exponentiel: 1s, 2s, 4s, 8s...
-    const backoffDelay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-    await delay(backoffDelay);
-  }
+      // Backoff exponentiel: 1s, 2s, 4s, 8s...
+      const backoffDelay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      await delay(backoffDelay);
+    }
 
-  return {
-    data: null,
-    error: toError(lastError),
-  };
+    return {
+      data: null,
+      error: toError(lastError),
+    };
+  })();
+
+  // Utiliser Promise.race pour appliquer le timeout global
+  return Promise.race([retryPromise, timeoutPromise]);
 }
