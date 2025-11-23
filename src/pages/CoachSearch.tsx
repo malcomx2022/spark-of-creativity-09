@@ -27,6 +27,7 @@ import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog"
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { CreateAppointmentData } from "@/types/appointment";
+import { toast } from "@/hooks/use-toast";
 
 export default function CoachSearch() {
   const navigate = useNavigate();
@@ -34,6 +35,8 @@ export default function CoachSearch() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const [selectedCoach, setSelectedCoach] = useState<any>(null);
+  const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
 
   const patientId = user?.id;
   const patientName = (user?.user_metadata?.full_name as string) || user?.email || "Patient";
@@ -82,12 +85,18 @@ export default function CoachSearch() {
     setSessionDialogOpen(true);
   };
 
-  const handleBookIndividual = () => {
+  const handleBookIndividual = (coach: any) => {
     if (!user) {
+      toast({
+        title: 'Connexion requise',
+        description: 'Veuillez vous connecter pour demander un rendez-vous avec un coach.',
+        variant: 'destructive'
+      });
       navigate('/login');
       return;
     }
-    // NewAppointmentDialog gère son propre état d'ouverture via le bouton
+    setSelectedCoach(coach);
+    setAppointmentDialogOpen(true);
   };
 
   if (isLoadingCoaches || isLoadingSessions) {
@@ -268,7 +277,13 @@ export default function CoachSearch() {
                         <Badge variant="secondary">Non disponible</Badge>
                       )}
 
-                      <NewAppointmentDialog onSubmit={createAppointment.mutateAsync} />
+                      <Button 
+                        className="w-full" 
+                        onClick={() => handleBookIndividual(coach)}
+                        disabled={!coach.available}
+                      >
+                        Demander un rendez-vous
+                      </Button>
                     </CardContent>
                   </Card>
                 ))}
@@ -289,6 +304,17 @@ export default function CoachSearch() {
             setSessionDialogOpen(open);
             if (!open) setSelectedSession(null);
           }}
+        />
+      )}
+
+      {selectedCoach && user && (
+        <NewAppointmentDialog 
+          open={appointmentDialogOpen}
+          onOpenChange={(open) => {
+            setAppointmentDialogOpen(open);
+            if (!open) setSelectedCoach(null);
+          }}
+          onSubmit={createAppointment.mutateAsync}
         />
       )}
     </div>

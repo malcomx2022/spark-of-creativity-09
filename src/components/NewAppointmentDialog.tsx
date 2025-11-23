@@ -35,10 +35,14 @@ type FormValues = z.infer<typeof formSchema>;
 
 interface NewAppointmentDialogProps {
   onSubmit: (data: CreateAppointmentData) => Promise<any>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
-  const [open, setOpen] = useState(false);
+export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChange }: NewAppointmentDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const handleOpenChange = onOpenChange || setInternalOpen;
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
   const [locationMode, setLocationMode] = useState<'auto' | 'manual'>('auto');
   const [manualAddress, setManualAddress] = useState('');
@@ -56,8 +60,8 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   });
   
   // Demander la localisation dès l'ouverture du dialogue
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
+  const handleDialogOpenChange = (newOpen: boolean) => {
+    handleOpenChange(newOpen);
 
     if (!newOpen) {
       setLocationMode('auto');
@@ -113,7 +117,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
             description: 'Votre demande a été envoyée. Notre équipe vous contactera sous 30 minutes pour affecter un praticien disponible et confirmer votre rendez-vous.',
             duration: 6000,
           });
-          setOpen(false);
+          handleOpenChange(false);
           setIsSearchingPractitioner(false);
           setLocationMode('auto');
           setManualAddress('');
@@ -219,7 +223,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
       console.log('✅ Rendez-vous créé avec succès', createdAppointment);
       
       if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
-        setOpen(false);
+        handleOpenChange(false);
         setIsSearchingPractitioner(false);
         setLocationMode('auto');
         setManualAddress('');
@@ -305,7 +309,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <Button className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
@@ -526,7 +530,7 @@ export function NewAppointmentDialog({ onSubmit }: NewAppointmentDialogProps) {
             />
 
             <div className="flex gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} className="flex-1">
                 Annuler
               </Button>
               <Button 
