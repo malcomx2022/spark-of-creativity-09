@@ -175,47 +175,143 @@ export default function PractitionerSignup() {
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
     
-    // Champs obligatoires
-    if (!formData.firstName.trim()) errors.firstName = "Prénom requis";
-    if (!formData.lastName.trim()) errors.lastName = "Nom requis";
-    if (!formData.dateOfBirth) errors.dateOfBirth = "Date de naissance requise";
+    // ✅ Validation stricte avec limites de longueur
+    const firstName = formData.firstName.trim();
+    const lastName = formData.lastName.trim();
+    const address = formData.address.trim();
+    const phone = formData.phone.trim();
+    const email = formData.email.trim().toLowerCase();
+    
+    // Prénom
+    if (!firstName) {
+      errors.firstName = "Prénom requis";
+    } else if (firstName.length < 2) {
+      errors.firstName = "Le prénom doit contenir au moins 2 caractères";
+    } else if (firstName.length > 50) {
+      errors.firstName = "Le prénom ne peut pas dépasser 50 caractères";
+    } else if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(firstName)) {
+      errors.firstName = "Le prénom contient des caractères invalides";
+    }
+    
+    // Nom
+    if (!lastName) {
+      errors.lastName = "Nom requis";
+    } else if (lastName.length < 2) {
+      errors.lastName = "Le nom doit contenir au moins 2 caractères";
+    } else if (lastName.length > 50) {
+      errors.lastName = "Le nom ne peut pas dépasser 50 caractères";
+    } else if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(lastName)) {
+      errors.lastName = "Le nom contient des caractères invalides";
+    }
+    
+    // Date de naissance
+    if (!formData.dateOfBirth) {
+      errors.dateOfBirth = "Date de naissance requise";
+    } else {
+      const birthDate = new Date(formData.dateOfBirth);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      if (age < 18 || age > 100) {
+        errors.dateOfBirth = "Vous devez avoir entre 18 et 100 ans";
+      }
+    }
+    
+    // Genre
     if (!formData.gender) errors.gender = "Genre requis";
-    if (!formData.address.trim()) errors.address = "Adresse requise";
-    if (!formData.phone.trim()) errors.phone = "Téléphone requis";
-    if (!formData.email.trim()) errors.email = "Email requis";
-    if (!formData.password) errors.password = "Mot de passe requis";
+    
+    // Adresse
+    if (!address) {
+      errors.address = "Adresse requise";
+    } else if (address.length < 5) {
+      errors.address = "L'adresse doit contenir au moins 5 caractères";
+    } else if (address.length > 200) {
+      errors.address = "L'adresse ne peut pas dépasser 200 caractères";
+    }
+    
+    // Téléphone
+    if (!phone) {
+      errors.phone = "Téléphone requis";
+    } else if (!/^\+?[0-9]{8,15}$/.test(phone.replace(/\s/g, ''))) {
+      errors.phone = "Numéro de téléphone invalide (format: +229XXXXXXXX)";
+    }
+    
+    // Email
+    if (!email) {
+      errors.email = "Email requis";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Format d'email invalide";
+    } else if (email.length > 255) {
+      errors.email = "L'email ne peut pas dépasser 255 caractères";
+    }
+    
+    // Mot de passe
+    if (!formData.password) {
+      errors.password = "Mot de passe requis";
+    } else if (formData.password.length < 8) {
+      errors.password = "Le mot de passe doit contenir au moins 8 caractères";
+    } else if (formData.password.length > 100) {
+      errors.password = "Le mot de passe ne peut pas dépasser 100 caractères";
+    }
+    
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = "Les mots de passe ne correspondent pas";
+    }
+    
+    // Profession
     if (!formData.profession) errors.profession = "Profession requise";
-    if (!isCoachSportif && !formData.specialty.trim()) errors.specialty = "Spécialité requise";
-    if (!formData.experience) errors.experience = "Expérience requise";
+    
+    // Spécialité (non requise pour coach)
+    if (!isCoachSportif) {
+      const specialty = formData.specialty.trim();
+      if (!specialty) {
+        errors.specialty = "Spécialité requise";
+      } else if (specialty.length < 2) {
+        errors.specialty = "La spécialité doit contenir au moins 2 caractères";
+      } else if (specialty.length > 100) {
+        errors.specialty = "La spécialité ne peut pas dépasser 100 caractères";
+      }
+    }
+    
+    // Expérience
+    if (!formData.experience) {
+      errors.experience = "Expérience requise";
+    } else {
+      const exp = parseInt(formData.experience);
+      if (isNaN(exp) || exp < 0 || exp > 70) {
+        errors.experience = "L'expérience doit être entre 0 et 70 ans";
+      }
+    }
+    
+    // Lieu de travail (optionnel mais avec limite)
+    if (formData.currentWorkplace && formData.currentWorkplace.length > 200) {
+      errors.currentWorkplace = "Le lieu de travail ne peut pas dépasser 200 caractères";
+    }
     
     // Documents obligatoires
     if (!formData.idDocument) errors.idDocument = "Pièce d'identité requise";
     
     if (isCoachSportif) {
-      // Pour coach sportif: diplôme ou certification obligatoire
+      // Pour coach sportif: diplôme obligatoire
       if (!formData.diploma) {
         errors.diploma = "Diplôme ou certification requis";
       }
-    } else {
-      // Pour autres praticiens: autorisation d'exercice obligatoire
-      if (!formData.licenseDocument) {
-        errors.licenseDocument = "Autorisation d'exercice requise";
+      
+      // Types de séances
+      if (formData.sessionTypes.length === 0) {
+        errors.sessionTypes = "Au moins un type de séance requis";
       }
-    }
-    
-    // Validations spécifiques
-    if (formData.password !== formData.confirmPassword) {
-      errors.confirmPassword = "Les mots de passe ne correspondent pas";
-    }
-    
-    // Coach sportif
-    if (isCoachSportif) {
-      if (formData.sessionTypes.length === 0) errors.sessionTypes = "Au moins un type de séance requis";
-      if (!formData.interventionZone.trim()) {
+      
+      // Zone d'intervention
+      const zone = formData.interventionZone.trim();
+      if (!zone) {
         errors.interventionZone = "Zone d'intervention requise";
-      } else if (formData.interventionZone.trim().length < 3) {
+      } else if (zone.length < 3) {
         errors.interventionZone = "Zone d'intervention trop courte (min 3 caractères)";
+      } else if (zone.length > 200) {
+        errors.interventionZone = "Zone d'intervention ne peut pas dépasser 200 caractères";
       }
+      
+      // Rayon d'intervention
       if (!formData.interventionRadius) {
         errors.interventionRadius = "Rayon d'intervention requis";
       } else {
@@ -224,8 +320,19 @@ export default function PractitionerSignup() {
           errors.interventionRadius = "Rayon entre 1 et 100 km";
         }
       }
+      
+      // Certifications (optionnel mais avec limite)
+      if (formData.certifications && formData.certifications.length > 500) {
+        errors.certifications = "Les certifications ne peuvent pas dépasser 500 caractères";
+      }
+    } else {
+      // Pour autres praticiens: autorisation d'exercice obligatoire
+      if (!formData.licenseDocument) {
+        errors.licenseDocument = "Autorisation d'exercice requise";
+      }
     }
     
+    // Acceptation CGU
     if (!formData.acceptTerms) {
       errors.acceptTerms = "Vous devez accepter la charte d'engagement";
     }
