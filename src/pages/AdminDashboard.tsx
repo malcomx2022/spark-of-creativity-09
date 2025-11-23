@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useEffect, useRef, useState } from "react";
-import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone } from "lucide-react";
+import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { AdminManagement } from "@/components/admin/AdminManagement";
 import { KYCQueue } from "@/components/admin/KYCQueue";
@@ -16,6 +16,7 @@ import { OperationsSection } from "@/components/admin/OperationsSection";
 import { ComplianceSection } from "@/components/admin/ComplianceSection";
 import { UsersManagementSection } from "@/components/admin/UsersManagementSection";
 import { OTPManagementSection } from "@/components/admin/OTPManagementSection";
+import { ApiManagementSection } from "@/components/admin/ApiManagementSection";
 import { useAdminStats } from "@/hooks/useAdminStats";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useNotifications, useMarkNotificationAsRead } from "@/hooks/useNotifications";
@@ -141,7 +142,7 @@ export default function AdminDashboard() {
         {/* Main Admin Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-9 gap-1">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-10 gap-1">
               <TabsTrigger value="dashboard" className="whitespace-nowrap">
                 <Activity className="h-4 w-4 mr-2" />
                 Vue d'ensemble
@@ -176,6 +177,10 @@ export default function AdminDashboard() {
               <TabsTrigger value="otp" className="whitespace-nowrap">
                 <Phone className="h-4 w-4 mr-2" />
                 OTP
+              </TabsTrigger>
+              <TabsTrigger value="api" className="whitespace-nowrap">
+                <Settings className="h-4 w-4 mr-2" />
+                API
               </TabsTrigger>
               <TabsTrigger value="compliance" className="whitespace-nowrap">
                 <BookOpen className="h-4 w-4 mr-2" />
@@ -216,6 +221,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="otp">
             <OTPManagementSection />
+          </TabsContent>
+
+          <TabsContent value="api">
+            <ApiManagementSection />
           </TabsContent>
 
           <TabsContent value="compliance">
