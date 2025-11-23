@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { withTimeout } from "@/lib/network-timeout";
 
 export interface PractitionerRate {
   id: string;
@@ -18,11 +19,13 @@ export const usePractitionerRates = (practitionerId?: string) => {
     queryFn: async () => {
       if (!practitionerId) return [];
       
-      const { data, error } = await supabase
-        .from("practitioner_rates")
-        .select("*")
-        .eq("practitioner_id", practitionerId)
-        .order("service_type");
+      const { data, error } = await withTimeout(
+        supabase
+          .from("practitioner_rates")
+          .select("*")
+          .eq("practitioner_id", practitionerId)
+          .order("service_type")
+      );
 
       if (error) throw error;
       return data as PractitionerRate[];
@@ -36,11 +39,13 @@ export const useCreatePractitionerRate = () => {
 
   return useMutation({
     mutationFn: async (rate: Omit<PractitionerRate, "id" | "created_at" | "updated_at">) => {
-      const { data, error } = await supabase
-        .from("practitioner_rates")
-        .insert(rate)
-        .select()
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from("practitioner_rates")
+          .insert(rate)
+          .select()
+          .single()
+      );
 
       if (error) throw error;
       return data;
@@ -60,12 +65,14 @@ export const useUpdatePractitionerRate = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PractitionerRate> & { id: string }) => {
-      const { data, error } = await supabase
-        .from("practitioner_rates")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from("practitioner_rates")
+          .update(updates)
+          .eq("id", id)
+          .select()
+          .single()
+      );
 
       if (error) throw error;
       return data;
@@ -85,10 +92,12 @@ export const useDeletePractitionerRate = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("practitioner_rates")
-        .delete()
-        .eq("id", id);
+      const { error } = await withTimeout(
+        supabase
+          .from("practitioner_rates")
+          .delete()
+          .eq("id", id)
+      );
 
       if (error) throw error;
     },

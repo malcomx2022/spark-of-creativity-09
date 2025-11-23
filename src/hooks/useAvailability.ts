@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
+import { withTimeout } from '@/lib/network-timeout';
 
 export type PractitionerAvailability = Tables<'practitioner_availability'>;
 export type PractitionerException = Tables<'practitioner_exceptions'>;
@@ -12,11 +13,13 @@ export function usePractitionerAvailability(practitionerId?: string) {
     queryFn: async () => {
       if (!practitionerId) return [];
       
-      const { data, error } = await supabase
-        .from('practitioner_availability')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .order('day_of_week', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('practitioner_availability')
+          .select('*')
+          .eq('practitioner_id', practitionerId)
+          .order('day_of_week', { ascending: true })
+      );
 
       if (error) throw error;
       return data || [];
@@ -32,11 +35,13 @@ export function useCreateAvailability() {
   return useMutation({
     mutationFn: async (data: TablesInsert<'practitioner_availability'>) => {
       // 1. Vérifier les chevauchements avec les créneaux existants
-      const { data: existingSlots, error: fetchError } = await supabase
-        .from('practitioner_availability')
-        .select('*')
-        .eq('practitioner_id', data.practitioner_id)
-        .eq('day_of_week', data.day_of_week);
+      const { data: existingSlots, error: fetchError } = await withTimeout(
+        supabase
+          .from('practitioner_availability')
+          .select('*')
+          .eq('practitioner_id', data.practitioner_id)
+          .eq('day_of_week', data.day_of_week)
+      );
 
       if (fetchError) throw fetchError;
 
@@ -60,9 +65,11 @@ export function useCreateAvailability() {
       }
 
       // 3. Insérer le nouveau créneau si pas de chevauchement
-      const { error } = await supabase
-        .from('practitioner_availability')
-        .insert(data);
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioner_availability')
+          .insert(data)
+      );
 
       if (error) throw error;
     },
@@ -84,10 +91,12 @@ export function useUpdateAvailability() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: TablesUpdate<'practitioner_availability'> }) => {
-      const { error } = await supabase
-        .from('practitioner_availability')
-        .update(data)
-        .eq('id', id);
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioner_availability')
+          .update(data)
+          .eq('id', id)
+      );
 
       if (error) throw error;
     },
@@ -102,10 +111,12 @@ export function useDeleteAvailability() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('practitioner_availability')
-        .delete()
-        .eq('id', id);
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioner_availability')
+          .delete()
+          .eq('id', id)
+      );
 
       if (error) throw error;
     },
@@ -121,11 +132,13 @@ export function usePractitionerExceptions(practitionerId?: string) {
     queryFn: async () => {
       if (!practitionerId) return [];
       
-      const { data, error } = await supabase
-        .from('practitioner_exceptions')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .order('date', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('practitioner_exceptions')
+          .select('*')
+          .eq('practitioner_id', practitionerId)
+          .order('date', { ascending: true })
+      );
 
       if (error) throw error;
       return data || [];
@@ -139,9 +152,11 @@ export function useCreateException() {
 
   return useMutation({
     mutationFn: async (data: TablesInsert<'practitioner_exceptions'>) => {
-      const { error } = await supabase
-        .from('practitioner_exceptions')
-        .insert(data);
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioner_exceptions')
+          .insert(data)
+      );
 
       if (error) throw error;
     },
@@ -156,10 +171,12 @@ export function useDeleteException() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('practitioner_exceptions')
-        .delete()
-        .eq('id', id);
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioner_exceptions')
+          .delete()
+          .eq('id', id)
+      );
 
       if (error) throw error;
     },

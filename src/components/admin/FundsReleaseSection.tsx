@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Play, RefreshCw, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { withTimeout } from '@/lib/network-timeout';
 
 export function FundsReleaseSection() {
   const [lastRunResult, setLastRunResult] = useState<any>(null);
@@ -16,20 +17,22 @@ export function FundsReleaseSection() {
   const { data: heldPayments = [], isLoading, refetch } = useQuery({
     queryKey: ['held-payments'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          id,
-          amount,
-          net_amount,
-          hold_until,
-          created_at,
-          appointment_id,
-          appointments!inner(practitioner_id, practitioner_name)
-        `)
-        .eq('payout_status', 'held')
-        .eq('status', 'paid')
-        .order('hold_until', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('payments')
+          .select(`
+            id,
+            amount,
+            net_amount,
+            hold_until,
+            created_at,
+            appointment_id,
+            appointments!inner(practitioner_id, practitioner_name)
+          `)
+          .eq('payout_status', 'held')
+          .eq('status', 'paid')
+          .order('hold_until', { ascending: true })
+      );
 
       if (error) throw error;
       return data || [];

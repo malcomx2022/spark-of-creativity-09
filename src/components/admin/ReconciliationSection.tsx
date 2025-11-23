@@ -12,6 +12,7 @@ import { fr } from "date-fns/locale";
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, Calendar, Download, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { formatAmount } from "@/lib/payment-config";
+import { withTimeout } from "@/lib/network-timeout";
 
 interface Anomaly {
   type: 'missing_in_db' | 'missing_in_fedapay' | 'amount_mismatch' | 'status_mismatch';
@@ -54,11 +55,13 @@ export default function ReconciliationSection() {
   const { data: reports, isLoading } = useQuery({
     queryKey: ["reconciliation-reports"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("reconciliation_reports")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
+      const { data, error } = await withTimeout(
+        supabase
+          .from("reconciliation_reports")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(20)
+      );
       
       if (error) throw error;
       return (data || []).map(report => ({

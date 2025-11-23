@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PractitionerLocation } from '@/types/practitioner';
+import { withTimeout } from '@/lib/network-timeout';
 
 function mapPractitioner(row: any): PractitionerLocation {
   return {
@@ -19,10 +20,12 @@ function mapPractitioner(row: any): PractitionerLocation {
 }
 
 async function fetchPractitioners() {
-  const { data, error } = await supabase
-    .from('practitioners')
-    .select('*')
-    .order('name', { ascending: true });
+  const { data, error } = await withTimeout(
+    supabase
+      .from('practitioners')
+      .select('*')
+      .order('name', { ascending: true })
+  );
 
   if (error) {
     throw error;

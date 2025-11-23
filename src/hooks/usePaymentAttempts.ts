@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout } from '@/lib/network-timeout';
 
 export interface PaymentAttempt {
   id: string;
@@ -24,11 +25,13 @@ export function usePaymentAttempts(appointmentId?: string) {
     queryFn: async () => {
       if (!appointmentId) return [];
       
-      const { data, error } = await supabase
-        .from('payment_attempts')
-        .select('*')
-        .eq('appointment_id', appointmentId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('payment_attempts')
+          .select('*')
+          .eq('appointment_id', appointmentId)
+          .order('created_at', { ascending: false })
+      );
 
       if (error) {
         console.error('Error fetching payment attempts:', error);

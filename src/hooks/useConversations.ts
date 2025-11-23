@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { withTimeout } from '@/lib/network-timeout';
 
 export interface Conversation {
   appointment_id: string;
@@ -39,24 +40,26 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
       if (!userId) return [];
       
       // Get appointments with their last message (optimized query)
-      const { data: appointments, error: aptError } = await supabase
-        .from('appointments')
-        .select(`
-          *,
-          messages (
-            id,
-            content,
-            created_at,
-            sender_id,
-            is_read
+      const { data: appointments, error: aptError } = await withTimeout(
+        supabase
+          .from('appointments')
+          .select(`
+            *,
+            messages (
+              id,
+              content,
+              created_at,
+              sender_id,
+              is_read
+            )
+          `)
+          .or(
+            userType === 'patient' 
+              ? `patient_id.eq.${userId}`
+              : `practitioner_id.eq.${userId}`
           )
-        `)
-        .or(
-          userType === 'patient' 
-            ? `patient_id.eq.${userId}`
-            : `practitioner_id.eq.${userId}`
-        )
-        .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+      );
 
       if (aptError) throw aptError;
       if (!appointments || appointments.length === 0) return [];
@@ -133,11 +136,13 @@ export function useConversationMessages(appointmentId?: string, userId?: string)
     queryFn: async () => {
       if (!appointmentId) return [];
       
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('appointment_id', appointmentId)
-        .order('created_at', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('messages')
+          .select('*')
+          .eq('appointment_id', appointmentId)
+          .order('created_at', { ascending: true })
+      );
 
       if (error) throw error;
       return data || [];
@@ -250,18 +255,20 @@ export function useSendMessage() {
         attachmentSize = data.attachment.size;
       }
 
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          sender_id: data.sender_id,
-          content: data.content,
-          appointment_id: data.appointment_id,
-          is_read: false,
-          attachment_url: attachmentUrl,
-          attachment_type: attachmentType,
-          attachment_name: attachmentName,
-          attachment_size: attachmentSize,
-        });
+      const { error } = await withTimeout(
+        supabase
+          .from('messages')
+          .insert({
+            sender_id: data.sender_id,
+            content: data.content,
+            appointment_id: data.appointment_id,
+            is_read: false,
+            attachment_url: attachmentUrl,
+            attachment_type: attachmentType,
+            attachment_name: attachmentName,
+            attachment_size: attachmentSize,
+          })
+      );
 
       if (error) throw error;
     },
@@ -284,12 +291,14 @@ export function useMarkMessagesAsRead() {
       user_id: string;
     }) => {
       // Mark all unread messages in this conversation as read
-      const { error } = await supabase
-        .from('messages')
-        .update({ is_read: true })
-        .eq('appointment_id', data.appointment_id)
-        .neq('sender_id', data.user_id)
-        .eq('is_read', false);
+      const { error } = await withTimeout(
+        supabase
+          .from('messages')
+          .update({ is_read: true })
+          .eq('appointment_id', data.appointment_id)
+          .neq('sender_id', data.user_id)
+          .eq('is_read', false)
+      );
 
       if (error) throw error;
     },

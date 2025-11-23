@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
+import { withTimeout } from '@/lib/network-timeout';
 
 export type Review = Tables<'reviews'>;
 
@@ -10,12 +11,14 @@ export function usePractitionerReviews(practitionerId?: string) {
     queryFn: async () => {
       if (!practitionerId) return [];
       
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .eq('is_hidden', false)
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('reviews')
+          .select('*')
+          .eq('practitioner_id', practitionerId)
+          .eq('is_hidden', false)
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return data || [];
@@ -30,11 +33,13 @@ export function useReviewStats(practitionerId?: string) {
     queryFn: async () => {
       if (!practitionerId) return null;
       
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('rating')
-        .eq('practitioner_id', practitionerId)
-        .eq('is_hidden', false);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('reviews')
+          .select('rating')
+          .eq('practitioner_id', practitionerId)
+          .eq('is_hidden', false)
+      );
 
       if (error) throw error;
       

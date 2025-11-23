@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables, TablesInsert } from '@/integrations/supabase/types';
+import { withTimeout } from '@/lib/network-timeout';
 
 export type Message = Tables<'messages'>;
 
@@ -12,39 +13,47 @@ export function useMessages(userId?: string, userType?: 'patient' | 'practitione
       
       if (userType === 'practitioner') {
         // Pour le praticien: récupérer les messages des rendez-vous où il est le praticien
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('practitioner_id', userId);
+        const { data: appointments } = await withTimeout(
+          supabase
+            .from('appointments')
+            .select('id')
+            .eq('practitioner_id', userId)
+        );
         
         if (!appointments || appointments.length === 0) return [];
         
         const appointmentIds = appointments.map(apt => apt.id);
         
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .in('appointment_id', appointmentIds)
-          .order('created_at', { ascending: false });
+        const { data, error } = await withTimeout(
+          supabase
+            .from('messages')
+            .select('*')
+            .in('appointment_id', appointmentIds)
+            .order('created_at', { ascending: false })
+        );
 
         if (error) throw error;
         return data || [];
       } else {
         // Pour le patient: récupérer les messages envoyés ou reçus via ses rendez-vous
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('patient_id', userId);
+        const { data: appointments } = await withTimeout(
+          supabase
+            .from('appointments')
+            .select('id')
+            .eq('patient_id', userId)
+        );
         
         if (!appointments || appointments.length === 0) return [];
         
         const appointmentIds = appointments.map(apt => apt.id);
         
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .in('appointment_id', appointmentIds)
-          .order('created_at', { ascending: false });
+        const { data, error } = await withTimeout(
+          supabase
+            .from('messages')
+            .select('*')
+            .in('appointment_id', appointmentIds)
+            .order('created_at', { ascending: false })
+        );
 
         if (error) throw error;
         return data || [];
@@ -59,9 +68,11 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: async (data: TablesInsert<'messages'>) => {
-      const { error } = await supabase
-        .from('messages')
-        .insert(data);
+      const { error } = await withTimeout(
+        supabase
+          .from('messages')
+          .insert(data)
+      );
 
       if (error) throw error;
     },
@@ -76,10 +87,12 @@ export function useMarkMessageAsRead() {
 
   return useMutation({
     mutationFn: async (messageId: string) => {
-      const { error } = await supabase
-        .from('messages')
-        .update({ is_read: true })
-        .eq('id', messageId);
+      const { error } = await withTimeout(
+        supabase
+          .from('messages')
+          .update({ is_read: true })
+          .eq('id', messageId)
+      );
 
       if (error) throw error;
     },
