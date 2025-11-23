@@ -357,12 +357,16 @@ export default function PractitionerSignup() {
 
     try {
 
+      // Déterminer le dashboard selon le type de praticien
+      const practitionerTypeForSignup = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
+      const dashboardPath = practitionerTypeForSignup === 'coach_sportif' ? '/dashboard/coach' : '/dashboard/practitioner';
+
       const { data, error } = await withTimeout(
         supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard/practitioner`,
+          emailRedirectTo: `${window.location.origin}${dashboardPath}`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`.trim(),
             role: "practitioner",
