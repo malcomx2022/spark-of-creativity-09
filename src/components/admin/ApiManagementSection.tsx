@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -14,6 +16,12 @@ import { Settings, Key, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-reac
 export function ApiManagementSection() {
   const queryClient = useQueryClient();
   const [selectedMode, setSelectedMode] = useState<string>("");
+  
+  // Dialog states
+  const [fedapayDialogOpen, setFedapayDialogOpen] = useState(false);
+  const [twilioDialogOpen, setTwilioDialogOpen] = useState(false);
+  const [wasabiDialogOpen, setWasabiDialogOpen] = useState(false);
+  const [mapboxDialogOpen, setMapboxDialogOpen] = useState(false);
 
   // Récupérer la configuration actuelle
   const { data: currentConfig, isLoading } = useQuery({
@@ -273,7 +281,7 @@ export function ApiManagementSection() {
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => toast.info("Gestion Twilio - Fonctionnalité à venir")}
+                  onClick={() => setTwilioDialogOpen(true)}
                 >
                   Gérer
                 </Button>
@@ -291,7 +299,7 @@ export function ApiManagementSection() {
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => toast.info("Gestion Wasabi - Fonctionnalité à venir")}
+                  onClick={() => setWasabiDialogOpen(true)}
                 >
                   Gérer
                 </Button>
@@ -309,7 +317,7 @@ export function ApiManagementSection() {
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => toast.info("Gestion Mapbox - Fonctionnalité à venir")}
+                  onClick={() => setMapboxDialogOpen(true)}
                 >
                   Gérer
                 </Button>
@@ -318,6 +326,125 @@ export function ApiManagementSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* FedaPay Keys Dialog */}
+      <Dialog open={fedapayDialogOpen} onOpenChange={setFedapayDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gérer les clés API FedaPay</DialogTitle>
+            <DialogDescription>
+              Mettez à jour les clés API pour les modes Sandbox et Production.
+              Les clés seront stockées de manière sécurisée dans les secrets.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Pour mettre à jour les clés FedaPay, veuillez utiliser l'outil de gestion des secrets
+                dans les paramètres du projet ou contacter un administrateur.
+              </AlertDescription>
+            </Alert>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Secrets à configurer :</p>
+              <ul className="text-sm space-y-2 ml-4 list-disc">
+                <li><code className="bg-muted px-1">FEDAPAY_PUBLIC_KEY</code> - Clé publique</li>
+                <li><code className="bg-muted px-1">FEDAPAY_SECRET_KEY</code> - Clé secrète</li>
+                <li><code className="bg-muted px-1">FEDAPAY_WEBHOOK_SECRET</code> - Secret webhook</li>
+                <li><code className="bg-muted px-1">FEDAPAY_MODE</code> - Mode (sandbox/live)</li>
+              </ul>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Twilio Keys Dialog */}
+      <Dialog open={twilioDialogOpen} onOpenChange={setTwilioDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gérer les clés API Twilio</DialogTitle>
+            <DialogDescription>
+              Mettez à jour les identifiants Twilio pour le service SMS/OTP.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Pour mettre à jour les clés Twilio, veuillez utiliser l'outil de gestion des secrets
+                dans les paramètres du projet ou contacter un administrateur.
+              </AlertDescription>
+            </Alert>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Secrets à configurer :</p>
+              <ul className="text-sm space-y-2 ml-4 list-disc">
+                <li><code className="bg-muted px-1">TWILIO_ACCOUNT_SID</code> - Account SID</li>
+                <li><code className="bg-muted px-1">TWILIO_AUTH_TOKEN</code> - Auth Token</li>
+                <li><code className="bg-muted px-1">TWILIO_PHONE_NUMBER</code> - Numéro de téléphone</li>
+                <li><code className="bg-muted px-1">TWILIO_VERIFY_SERVICE_SID</code> - Service SID de vérification</li>
+              </ul>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wasabi Keys Dialog */}
+      <Dialog open={wasabiDialogOpen} onOpenChange={setWasabiDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gérer les clés API Wasabi</DialogTitle>
+            <DialogDescription>
+              Mettez à jour les identifiants Wasabi pour le stockage de fichiers.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Pour mettre à jour les clés Wasabi, veuillez utiliser l'outil de gestion des secrets
+                dans les paramètres du projet ou contacter un administrateur.
+              </AlertDescription>
+            </Alert>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Secrets à configurer :</p>
+              <ul className="text-sm space-y-2 ml-4 list-disc">
+                <li><code className="bg-muted px-1">WASABI_ACCESS_KEY_ID</code> - Access Key ID</li>
+                <li><code className="bg-muted px-1">WASABI_SECRET_ACCESS_KEY</code> - Secret Access Key</li>
+                <li><code className="bg-muted px-1">WASABI_ENDPOINT</code> - Endpoint URL</li>
+                <li><code className="bg-muted px-1">WASABI_REGION</code> - Région</li>
+                <li><code className="bg-muted px-1">WASABI_BUCKET_NAME</code> - Nom du bucket</li>
+              </ul>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mapbox Token Dialog */}
+      <Dialog open={mapboxDialogOpen} onOpenChange={setMapboxDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gérer le token Mapbox</DialogTitle>
+            <DialogDescription>
+              Mettez à jour le token d'accès Mapbox pour le service de cartographie.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Pour mettre à jour le token Mapbox, veuillez utiliser l'outil de gestion des secrets
+                dans les paramètres du projet ou contacter un administrateur.
+              </AlertDescription>
+            </Alert>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Secret à configurer :</p>
+              <ul className="text-sm space-y-2 ml-4 list-disc">
+                <li><code className="bg-muted px-1">VITE_MAPBOX_TOKEN</code> - Token d'accès Mapbox</li>
+              </ul>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
