@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { withTimeout } from '@/lib/network-timeout';
 
 export interface PatientGroupSession {
   id: string;
@@ -37,7 +38,7 @@ export function usePatientGroupSessions(patientId?: string) {
     queryFn: async () => {
       if (!patientId) return [];
 
-      const { data, error } = await supabase
+      const queryBuilder = supabase
         .from('group_session_participants')
         .select(`
           id,
@@ -69,6 +70,8 @@ export function usePatientGroupSessions(patientId?: string) {
         `)
         .eq('patient_id', patientId)
         .order('joined_at', { ascending: false });
+
+      const { data, error } = await withTimeout(queryBuilder);
 
       if (error) {
         console.error('Error fetching patient group sessions:', error);

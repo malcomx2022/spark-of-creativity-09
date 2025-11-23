@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 interface RegisterSessionParams {
   sessionId: string;
@@ -21,17 +22,19 @@ export function useGroupSessionRegistration() {
         throw new Error('Vous devez être connecté pour vous inscrire');
       }
 
-      const { data, error } = await supabase.functions.invoke(
-        'register-group-session',
-        {
-          body: {
-            sessionId: params.sessionId,
-            patientId: user.id,
-            amount: params.amount,
-            paymentMethod: params.paymentMethod,
-            phoneNumber: params.phoneNumber,
+      const { data, error } = await withTimeout(
+        supabase.functions.invoke(
+          'register-group-session',
+          {
+            body: {
+              sessionId: params.sessionId,
+              patientId: user.id,
+              amount: params.amount,
+              paymentMethod: params.paymentMethod,
+              phoneNumber: params.phoneNumber,
+            }
           }
-        }
+        )
       );
 
       if (error) throw error;
@@ -53,9 +56,12 @@ export function useGroupSessionRegistration() {
       }
     },
     onError: (error: any) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de s'inscrire à la séance",
+        description: isTimeoutError 
+          ? error.message 
+          : (error.message || "Impossible de s'inscrire à la séance"),
         variant: "destructive"
       });
     }
