@@ -374,6 +374,7 @@ const Index = () => {
                 variant="outline"
                 size="xl"
                 className="border-white text-white hover:bg-white hover:text-primary"
+                onClick={() => navigate('/services')}
               >
                 En savoir plus
               </Button>
