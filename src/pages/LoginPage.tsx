@@ -10,6 +10,7 @@ import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
+import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -24,46 +25,64 @@ export default function LoginPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: formData.email,
-      password: formData.password,
-    });
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        })
+      );
 
-    if (error) {
+      if (error) {
+        toast({
+          ...AUTH_MESSAGES.LOGIN_ERROR,
+          description: error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Vérifier le rôle de l'utilisateur
+      const roleResult = await withTimeout<{ data: { role: string } | null }>(
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle() as unknown as Promise<any>
+      );
+
+      const practitionerResult = await withTimeout<{ data: { id: string } | null }>(
+        supabase
+          .from('practitioners')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .maybeSingle() as unknown as Promise<any>
+      );
+
+      toast(AUTH_MESSAGES.LOGIN_SUCCESS);
+
+      // Rediriger selon le rôle
+      if (roleResult.data?.role) {
+        navigateToDashboard(navigate, 'admin');
+      } else if (practitionerResult.data) {
+        navigateToDashboard(navigate, 'practitioner');
+      } else {
+        navigateToDashboard(navigate, 'patient');
+      }
+
+      setIsSubmitting(false);
+    } catch (error: any) {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         ...AUTH_MESSAGES.LOGIN_ERROR,
-        description: error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription,
+        description: isTimeoutError 
+          ? error.message 
+          : (error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription),
         variant: "destructive"
       });
       setIsSubmitting(false);
-      return;
     }
-
-    // Vérifier le rôle de l'utilisateur
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    const { data: practitionerData } = await supabase
-      .from('practitioners')
-      .select('id')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    toast(AUTH_MESSAGES.LOGIN_SUCCESS);
-
-    // Rediriger selon le rôle
-    if (roleData?.role) {
-      navigateToDashboard(navigate, 'admin');
-    } else if (practitionerData) {
-      navigateToDashboard(navigate, 'practitioner');
-    } else {
-      navigateToDashboard(navigate, 'patient');
-    }
-
-    setIsSubmitting(false);
   };
 
   return (
