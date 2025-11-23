@@ -89,10 +89,12 @@ export default function Header() {
 
           {/* Emergency Button & Auth */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            <Button variant="urgent" size="sm" className="hidden sm:flex min-h-[40px]">
-              <Phone className="h-4 w-4" />
-              <span className="hidden md:inline">Urgence 112</span>
-              <span className="md:hidden">112</span>
+            <Button variant="urgent" size="sm" className="hidden sm:flex min-h-[40px]" asChild>
+              <a href="tel:112" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                <span className="hidden md:inline">Urgence 112</span>
+                <span className="md:hidden">112</span>
+              </a>
             </Button>
             
             {user ? (
@@ -184,9 +186,11 @@ export default function Header() {
                 <Users className="h-4 w-4" />
                 Coachs sportifs
               </button>
-              <Button variant="urgent" size="sm" className="w-full sm:hidden">
-                <Phone className="h-4 w-4" />
-                Urgence 112
+              <Button variant="urgent" size="sm" className="w-full sm:hidden" asChild>
+                <a href="tel:112" className="flex items-center gap-2">
+                  <Phone className="h-4 w-4" />
+                  Urgence 112
+                </a>
               </Button>
               
               {user ? (

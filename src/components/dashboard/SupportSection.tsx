@@ -4,14 +4,17 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { HelpCircle, Shield, Plus } from 'lucide-react';
+import { HelpCircle, Shield, Plus, Download } from 'lucide-react';
 import { useSupportTickets, useCreateSupportTicket } from '@/hooks/useSupportTickets';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 
 export function SupportSection() {
+  const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
   const { data: tickets = [], isLoading } = useSupportTickets(user?.id);
   const createTicket = useCreateSupportTicket();
@@ -65,6 +68,66 @@ export function SupportSection() {
       ferme: 'outline',
     };
     return variants[status] || 'outline';
+  };
+
+  const handleDataExport = async () => {
+    if (!user?.id) return;
+
+    try {
+      toast({
+        title: 'Export en cours',
+        description: 'Préparation de vos données...',
+      });
+
+      // Export user profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      // Export appointments
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('patient_id', user.id);
+
+      // Export medical profile
+      const { data: medicalProfile } = await supabase
+        .from('medical_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      const exportData = {
+        profile,
+        appointments,
+        medicalProfile,
+        exportDate: new Date().toISOString(),
+      };
+
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `mes-donnees-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Export réussi',
+        description: 'Vos données ont été téléchargées.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: "Impossible d'exporter vos données.",
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -165,18 +228,27 @@ export function SupportSection() {
               Conformité & Consentements
             </h3>
             <div className="space-y-2 text-sm">
-              <p className="flex items-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer">
+              <button 
+                onClick={() => navigate('/terms-of-service')}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer w-full text-left"
+              >
                 <Shield className="h-4 w-4" />
                 Conditions générales d'utilisation
-              </p>
-              <p className="flex items-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer">
+              </button>
+              <button 
+                onClick={() => navigate('/privacy-policy')}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer w-full text-left"
+              >
                 <Shield className="h-4 w-4" />
                 Politique de confidentialité
-              </p>
-              <p className="flex items-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer">
-                <Shield className="h-4 w-4" />
+              </button>
+              <button 
+                onClick={handleDataExport}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer w-full text-left"
+              >
+                <Download className="h-4 w-4" />
                 Export de mes données
-              </p>
+              </button>
             </div>
           </div>
         </CardContent>
