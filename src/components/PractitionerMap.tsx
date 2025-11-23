@@ -381,7 +381,7 @@ export default function PractitionerMap({
   };
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full min-h-[500px]">
       {/* Search bar */}
       <div className="absolute top-4 left-4 right-4 z-10 flex gap-2">
         <div className="flex-1 max-w-md">
@@ -403,7 +403,7 @@ export default function PractitionerMap({
         </Button>
       </div>
 
-      <div ref={mapContainer} className="absolute inset-0 rounded-lg" />
+      <div ref={mapContainer} className="absolute inset-0 rounded-lg w-full h-full" />
       
       {selectedPractitioner && (
         <Card className="absolute bottom-4 left-4 right-4 p-4 shadow-lg z-10 max-w-md mx-auto">
