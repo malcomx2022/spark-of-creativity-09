@@ -83,6 +83,16 @@ export default function PractitionerDashboard() {
   const handleAccept = async (appointmentId: string) => {
     if (processingAppointment === appointmentId) return;
     
+    // Bloquer si le compte n'est pas validé
+    if (!practitioner?.can_accept_missions) {
+      toast({
+        title: 'Compte non activé',
+        description: 'Votre compte doit être validé avant d\'accepter des consultations.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
     setProcessingAppointment(appointmentId);
     try {
       const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
@@ -128,6 +138,16 @@ export default function PractitionerDashboard() {
 
   const handleReject = async (appointmentId: string) => {
     if (processingAppointment === appointmentId) return;
+    
+    // Bloquer si le compte n'est pas validé
+    if (!practitioner?.can_accept_missions) {
+      toast({
+        title: 'Compte non activé',
+        description: 'Votre compte doit être validé avant de refuser des consultations.',
+        variant: 'destructive'
+      });
+      return;
+    }
     
     setProcessingAppointment(appointmentId);
     try {
@@ -258,72 +278,72 @@ export default function PractitionerDashboard() {
           <p className="text-muted-foreground">Bienvenue, {practitioner.name}</p>
         </div>
 
-        {/* Alerte pour les comptes en attente de validation */}
-        {practitioner.kyc_status === 'pending' && (
+        {/* Alerte pour les comptes non opérationnels */}
+        {!practitioner.can_accept_missions && (
           <Card className="mb-8 border-orange-500 bg-orange-50 dark:bg-orange-950/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
-                <Clock className="h-5 w-5" />
-                Compte en attente de validation
+                <AlertCircle className="h-5 w-5" />
+                ⚠️ Compte non opérationnel
               </CardTitle>
               <CardDescription className="text-orange-600 dark:text-orange-300">
-                Votre dossier est en cours de vérification par notre équipe. Ce processus prend généralement 24 à 48 heures.
-                Vous recevrez un email et un SMS dès que votre compte sera activé.
+                {practitioner.kyc_status === 'pending' && (
+                  <>
+                    Votre dossier est en cours de vérification par notre équipe. Ce processus prend généralement 24 à 48 heures.
+                    Vous recevrez un email et un SMS dès que votre compte sera activé.
+                  </>
+                )}
+                {practitioner.kyc_status === 'incomplete' && (
+                  <>
+                    Des documents ou informations sont manquants dans votre dossier.
+                    {practitioner.kyc_comment && ` Détails : ${practitioner.kyc_comment}`}
+                  </>
+                )}
+                {practitioner.kyc_status === 'rejected' && (
+                  <>
+                    Votre dossier n'a pas été validé.
+                    {practitioner.kyc_comment && ` Raison : ${practitioner.kyc_comment}`}
+                  </>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                📋 Documents en cours de vérification :
-              </p>
-              <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
-                <li>Pièce d'identité</li>
-                <li>Licence d'exercice</li>
-                <li>Diplômes et certifications</li>
-              </ul>
+              <div className="bg-white/50 dark:bg-black/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                <p className="text-sm font-semibold text-orange-800 dark:text-orange-300 mb-2">
+                  🚫 Restrictions actuelles :
+                </p>
+                <ul className="list-disc list-inside text-sm text-orange-700 dark:text-orange-400 space-y-1">
+                  <li>Vous ne pouvez pas accepter de nouvelles consultations</li>
+                  <li>Vous ne pouvez pas refuser de consultations</li>
+                  <li>Vous pouvez consulter votre dashboard et compléter votre profil</li>
+                </ul>
+              </div>
+              {practitioner.kyc_status === 'pending' && (
+                <div className="mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    📋 Documents en cours de vérification :
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
+                    <li>Pièce d'identité</li>
+                    <li>Licence d'exercice</li>
+                    <li>Diplômes et certifications</li>
+                  </ul>
+                </div>
+              )}
+              {practitioner.kyc_status === 'incomplete' && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  Veuillez compléter votre dossier dans l'onglet "Profil" ou contactez le support : support@domicares.life
+                </p>
+              )}
+              {practitioner.kyc_status === 'rejected' && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  Veuillez contacter le support pour plus d'informations : support@domicares.life
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {/* Alerte pour les comptes refusés */}
-        {practitioner.kyc_status === 'rejected' && (
-          <Card className="mb-8 border-red-500 bg-red-50 dark:bg-red-950/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                <AlertCircle className="h-5 w-5" />
-                Compte non validé
-              </CardTitle>
-              <CardDescription className="text-red-600 dark:text-red-300">
-                Votre dossier n'a pas été validé. Raison : {practitioner.kyc_comment || "Non spécifiée"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Veuillez contacter le support pour plus d'informations : support@domicares.life
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Alerte pour les comptes incomplets */}
-        {practitioner.kyc_status === 'incomplete' && (
-          <Card className="mb-8 border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
-                <AlertCircle className="h-5 w-5" />
-                Documents incomplets
-              </CardTitle>
-              <CardDescription className="text-yellow-600 dark:text-yellow-300">
-                Des documents ou informations sont manquants dans votre dossier.
-                {practitioner.kyc_comment && ` Détails : ${practitioner.kyc_comment}`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Veuillez compléter votre dossier ou contacter le support : support@domicares.life
-              </p>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Cartes de résumé */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -468,6 +488,7 @@ export default function PractitionerDashboard() {
                         userRole="practitioner"
                         onConfirm={() => handleAccept(appointment.id)}
                         onReject={() => handleReject(appointment.id)}
+                        disabled={!practitioner.can_accept_missions}
                       />
                     </div>
                   ))
