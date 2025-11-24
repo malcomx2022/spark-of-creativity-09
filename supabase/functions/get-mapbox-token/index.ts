@@ -11,9 +11,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const mapboxToken = Deno.env.get('VITE_MAPBOX_TOKEN');
+    // Les edge functions n'ont pas accès aux variables VITE_*, utiliser directement le secret
+    const mapboxToken = Deno.env.get('MAPBOX_TOKEN') || Deno.env.get('VITE_MAPBOX_TOKEN');
 
     if (!mapboxToken) {
+      console.error('MAPBOX_TOKEN non trouvé dans les secrets');
       return new Response(
         JSON.stringify({ error: 'Token Mapbox non configuré' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
