@@ -53,3 +53,39 @@ verify_jwt = true
 
 [functions.send-kyc-status-notification]
 verify_jwt = true
+
+[functions.get-mapbox-token]
+verify_jwt = false
+
+[functions.complete-user-registration]
+verify_jwt = true
+
+[functions.create-practitioner-account]
+verify_jwt = true
+
+[functions.register-group-session]
+verify_jwt = true
+
+[functions.release-held-funds]
+verify_jwt = true
+
+[functions.schedule-consultation-tasks]
+verify_jwt = true
+
+[functions.secure-phone]
+verify_jwt = true
+
+[functions.send-account-activation]
+verify_jwt = true
+
+[functions.send-payment-reminders]
+verify_jwt = true
+
+[functions.send-push-notification]
+verify_jwt = true
+
+[functions.send-registration-notification]
+verify_jwt = true
+
+[functions.cleanup-non-test-accounts]
+verify_jwt = true
