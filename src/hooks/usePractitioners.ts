@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PractitionerLocation } from '@/types/practitioner';
-import { withTimeout } from '@/lib/network-timeout';
 
 function mapPractitioner(row: any): PractitionerLocation {
   return {
@@ -20,14 +19,14 @@ function mapPractitioner(row: any): PractitionerLocation {
 }
 
 async function fetchPractitioners() {
-  const { data, error } = await withTimeout(
-    supabase
-      .from('practitioners')
-      .select('*')
-      .order('name', { ascending: true })
-  );
+  const { data, error } = await supabase
+    .from('practitioners')
+    .select('*')
+    .eq('available', true)
+    .order('name', { ascending: true });
 
   if (error) {
+    console.error('Erreur chargement praticiens:', error);
     throw error;
   }
 
@@ -39,5 +38,7 @@ export function usePractitioners() {
     queryKey: ['practitioners'],
     queryFn: fetchPractitioners,
     staleTime: 5 * 60 * 1000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }

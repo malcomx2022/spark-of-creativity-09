@@ -14,10 +14,8 @@ import { usePractitioners } from '@/hooks/usePractitioners';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Star, Phone, Navigation } from 'lucide-react';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -52,6 +50,7 @@ export default function PractitionerSearch() {
     data: practitionersData = [],
     isLoading: isLoadingPractitioners,
     isError: isPractitionerError,
+    error: practitionerError,
   } = usePractitioners();
 
   useEffect(() => {
@@ -61,9 +60,11 @@ export default function PractitionerSearch() {
       return;
     }
 
-    // Filtrer les praticiens avec des coordonnées valides
+    // Filtrer les praticiens avec des coordonnées GPS valides pour la carte
     const validPractitioners = practitionersData.filter(
-      p => p.latitude != null && p.longitude != null && !isNaN(p.latitude) && !isNaN(p.longitude)
+      p => p.latitude != null && p.longitude != null && 
+           !isNaN(p.latitude) && !isNaN(p.longitude) &&
+           p.latitude !== 0 && p.longitude !== 0
     );
 
     const enriched = validPractitioners.map(practitioner => {
@@ -217,21 +218,56 @@ export default function PractitionerSearch() {
             <div className="space-y-4">
               {isPractitionerError ? (
                 <Card>
-                  <CardContent className="flex items-center gap-2 text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    Impossible de charger les praticiens.
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3 text-destructive">
+                      <AlertCircle className="h-12 w-12" />
+                      <div className="text-center">
+                        <p className="font-semibold">Impossible de charger les praticiens</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {practitionerError?.message || 'Erreur de connexion'}
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-4"
+                          onClick={() => window.location.reload()}
+                        >
+                          Réessayer
+                        </Button>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ) : isLoadingPractitioners ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Chargement des praticiens...</span>
-                </div>
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Chargement des praticiens...</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : practitionersData.length === 0 ? (
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <AlertCircle className="h-12 w-12" />
+                      <p>Aucun praticien disponible pour le moment.</p>
+                    </div>
+                  </CardContent>
+                </Card>
               ) : filteredPractitioners.length === 0 ? (
                 <Card>
-                  <CardContent className="flex items-center gap-2 text-muted-foreground">
-                    <AlertCircle className="h-4 w-4" />
-                    Aucun praticien ne correspond à votre recherche.
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <AlertCircle className="h-12 w-12" />
+                      <div className="text-center">
+                        <p className="font-semibold">Aucun praticien trouvé</p>
+                        <p className="text-sm mt-1">
+                          Essayez d'élargir votre rayon de recherche ou de changer la spécialité
+                        </p>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
@@ -333,18 +369,16 @@ export default function PractitionerSearch() {
         <NewAppointmentDialog
           onSubmit={async (data) => {
             try {
-              const { data: session } = await withTimeout(supabase.auth.getSession());
+              const { data: session } = await supabase.auth.getSession();
               if (!session?.session?.user) {
                 throw new Error('Utilisateur non authentifié');
               }
 
-              const { data: profile } = await withTimeout(
-                supabase
-                  .from('profiles')
-                  .select('full_name')
-                  .eq('id', session.session.user.id)
-                  .single() as unknown as Promise<any>
-              );
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('id', session.session.user.id)
+                .single();
 
               const appointmentData = {
                 patient_id: session.session.user.id,
@@ -360,22 +394,28 @@ export default function PractitionerSearch() {
                 urgency_level: data.urgencyLevel,
               };
 
-              const { data: appointment, error } = await withTimeout(
-                supabase
-                  .from('appointments')
-                  .insert([appointmentData])
-                  .select()
-                  .single() as unknown as Promise<any>
-              );
+              const { data: appointment, error } = await supabase
+                .from('appointments')
+                .insert([appointmentData])
+                .select()
+                .single();
 
               if (error) throw error;
+
+              toast({
+                title: 'Demande envoyée',
+                description: 'Votre demande de rendez-vous a été envoyée avec succès.',
+              });
 
               setSelectedPractitioner(null);
               return appointment;
             } catch (error) {
-              if (error instanceof NetworkTimeoutError) {
-                throw new Error('Timeout: Vérifiez votre connexion internet');
-              }
+              console.error('Erreur création RDV:', error);
+              toast({
+                title: 'Erreur',
+                description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous',
+                variant: 'destructive'
+              });
               throw error;
             }
           }}
