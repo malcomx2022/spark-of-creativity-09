@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LazyPractitionerMap from '@/components/LazyPractitionerMap';
@@ -42,9 +43,17 @@ export default function PractitionerSearch() {
 
   const { data: user } = useSupabaseUser();
 
-  // Utiliser directement le token Mapbox depuis les variables d'environnement
-  // (C'est un token public, pas besoin d'Edge Function)
-  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+  // Récupérer le token Mapbox via l'edge function
+  const { data: mapboxData, isLoading: isLoadingMapbox } = useQuery({
+    queryKey: ['mapbox-token'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('get-mapbox-token');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const mapboxToken = mapboxData?.token || '';
 
   const {
     data: practitionersData = [],
@@ -342,12 +351,16 @@ export default function PractitionerSearch() {
               </CardHeader>
               <CardContent>
                 <div className="h-[500px]">
-                  {!mapboxToken ? (
+                  {isLoadingMapbox ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : !mapboxToken ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                       <div className="text-center">
                         <MapPin className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Token Mapbox non configuré</p>
-                        <p className="text-xs mt-1">Ajoutez VITE_MAPBOX_TOKEN aux variables d'environnement</p>
+                        <p className="text-sm">Carte non disponible</p>
+                        <p className="text-xs mt-1">Configuration Mapbox requise</p>
                       </div>
                     </div>
                   ) : (
