@@ -40,7 +40,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.create-test-users]
-verify_jwt = false
+verify_jwt = true
 
 [functions.find-available-practitioner]
 verify_jwt = false
@@ -55,7 +55,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.get-mapbox-token]
-verify_jwt = false
+verify_jwt = true
 
 [functions.complete-user-registration]
 verify_jwt = true
