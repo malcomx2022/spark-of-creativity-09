@@ -40,7 +40,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.create-test-users]
-verify_jwt = true
+verify_jwt = false
 
 [functions.find-available-practitioner]
 verify_jwt = false
