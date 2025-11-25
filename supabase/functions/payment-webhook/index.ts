@@ -305,24 +305,8 @@ async function handleTransactionEvent(
         }
       });
 
-    // Apply ledger entries for paid payment
-    if (paymentStatus === 'paid') {
-      try {
-        await fetch(`${supabaseUrl}/functions/v1/apply-ledger-entries`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            paymentId: payment.id,
-            status: 'paid'
-          })
-        });
-      } catch (ledgerError) {
-        console.error('Error applying ledger entries:', ledgerError);
-      }
-    }
+    // ✅ CORRECTION CRITIQUE #5: Supprimé le double appel à apply-ledger-entries
+    // (Déjà appelé ligne 173-183 via supabase.functions.invoke)
   }
 }
 
