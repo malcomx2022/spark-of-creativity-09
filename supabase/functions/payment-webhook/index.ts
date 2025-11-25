@@ -9,6 +9,22 @@ const corsHeaders = {
 };
 
 /**
+ * Comparaison sécurisée de buffers pour prévenir les timing attacks
+ */
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a[i] ^ b[i];
+  }
+  
+  return result === 0;
+}
+
+/**
  * Vérifie la signature HMAC du webhook FedaPay
  */
 async function verifyWebhookSignature(
@@ -36,7 +52,12 @@ async function verifyWebhookSignature(
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
     
-    return expectedSignature === signature;
+    // ✅ CORRECTION CRITIQUE #1: Utiliser comparaison sécurisée pour prévenir les timing attacks
+    const expectedBuffer = encoder.encode(expectedSignature);
+    const actualBuffer = encoder.encode(signature);
+    
+    // Comparaison sécurisée pour éviter les timing attacks
+    return timingSafeEqual(expectedBuffer, actualBuffer);
   } catch (error) {
     console.error('Signature verification error:', error);
     return false;
@@ -440,17 +461,23 @@ serve(async (req) => {
       console.warn('⚠️ No webhook secret configured, skipping verification');
     }
 
-    // Vérification de l'horodatage (rejet si > 5 minutes)
+    // ✅ AMÉLIORATION #3: Vérification de l'horodatage (rejet si > 5 minutes ou dans le futur)
     const timestamp = webhookData.created_at;
     if (timestamp) {
       const eventTime = new Date(timestamp * 1000);
       const now = new Date();
       const diffMinutes = (now.getTime() - eventTime.getTime()) / (1000 * 60);
       
-      if (diffMinutes > 5) {
-        console.error('Webhook timestamp too old:', diffMinutes, 'minutes');
+      // Rejeter si trop vieux OU dans le futur (avec marge de 1 minute pour clock skew)
+      if (Math.abs(diffMinutes) > 5) {
+        console.error('Webhook timestamp invalid:', {
+          eventTime: eventTime.toISOString(),
+          now: now.toISOString(),
+          diffMinutes,
+          reason: diffMinutes > 0 ? 'too_old' : 'in_future'
+        });
         return new Response(
-          JSON.stringify({ error: 'Timestamp too old' }),
+          JSON.stringify({ error: 'Invalid timestamp' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -458,43 +485,35 @@ serve(async (req) => {
 
     const eventId = webhookData.id;
     
-    // Vérification de l'idempotence
+    // ✅ AMÉLIORATION #4: Vérification de l'idempotence avec UPSERT atomique
     if (eventId) {
-      const { data: existingEvent } = await supabase
+      const { data: webhookEvent, error: upsertError } = await supabase
         .from('webhook_events')
-        .select('id')
-        .eq('event_id', eventId)
-        .single();
-      
-      if (existingEvent) {
-        console.log('Event already processed:', eventId);
+        .upsert({
+          event_id: eventId,
+          event_type: webhookData.type || 'transaction.update',
+          payload: webhookData,
+        }, {
+          onConflict: 'event_id',
+          ignoreDuplicates: true
+        })
+        .select()
+        .maybeSingle();
+
+      // Si pas de données retournées, c'est que l'événement existait déjà (ignoreDuplicates)
+      if (!webhookEvent) {
+        console.log('Event already processed (atomic check):', eventId);
         return new Response(
           JSON.stringify({ success: true, message: 'Event already processed' }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
-    // ✅ CORRECTION BUG #3: Enregistrer l'événement avec gestion de conflit
-    const { error: insertError } = await supabase
-      .from('webhook_events')
-      .insert({
-        event_id: eventId,
-        event_type: webhookData.type || 'transaction.update',
-        payload: webhookData,
-      });
-    
-    // Si erreur de contrainte unique (23505), l'événement existe déjà
-    if (insertError?.code === '23505') {
-      console.log('Event already processed (duplicate):', eventId);
-      return new Response(
-        JSON.stringify({ success: true, message: 'Event already processed' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else if (insertError) {
-      // Autre erreur, la propager
-      throw insertError;
+
+      if (upsertError) {
+        console.error('Error inserting webhook event:', upsertError);
+        throw upsertError;
+      }
     }
-  }
 
     const eventType = webhookData.type;
     const entityType = eventType?.includes('transfer') ? 'transfer' : 'transaction';

@@ -5,6 +5,7 @@ import { parseFedaPayResponse } from "./utils.ts";
 import { calculateFees, parseFeeConfig, calculateHoldUntil } from "./fee-calculator.ts";
 import { normalizeStatus } from "./payment-status.ts";
 import { dispatchNotification } from "../_shared/notifications.ts";
+import { fetchWithTimeout } from "./fetch-with-timeout.ts";
 
 const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
@@ -316,43 +317,55 @@ serve(async (req) => {
     const customerEmail = payerEmail || `patient-${paymentUserId}@domicares.app`;
 
     // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
-    console.log('📝 Étape 1 : Création de la transaction FedaPay');
-    console.log('Détails transaction:', { 
-      montant: amountToCharge, 
-      mode: selectedMode,
-      client: { prenom: firstname, nom: lastname, téléphone: phoneNumber }
-    });
-    const createTransactionResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        description: `Paiement rendez-vous médical #${appointmentId}`,
-        amount: amountToCharge,
-        currency: {
-          iso: 'XOF'
+    const isProduction = Deno.env.get('FEDAPAY_MODE') === 'live';
+    
+    if (!isProduction) {
+      console.log('📝 Étape 1 : Création de la transaction FedaPay');
+      console.log('Détails transaction:', { 
+        montant: amountToCharge, 
+        mode: selectedMode,
+        client: { prenom: firstname, nom: lastname }
+      });
+    } else {
+      console.log('📝 Étape 1 : Création de la transaction FedaPay', { appointmentId });
+    }
+    
+    // ✅ CORRECTION CRITIQUE #2: Ajouter timeout de 30 secondes
+    const createTransactionResponse = await fetchWithTimeout(
+      `${fedapayBaseUrl}/v1/transactions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
         },
-        callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-        customer: {
-          firstname,
-          lastname,
-          email: customerEmail,
-          phone_number: {
-            number: phoneNumber,
-            country: 'BJ'
+        body: JSON.stringify({
+          description: `Paiement rendez-vous médical #${appointmentId}`,
+          amount: amountToCharge,
+          currency: {
+            iso: 'XOF'
+          },
+          callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          customer: {
+            firstname,
+            lastname,
+            email: customerEmail,
+            phone_number: {
+              number: phoneNumber,
+              country: 'BJ'
+            }
+          },
+          custom_metadata: {
+            appointment_id: appointmentId,
+            user_id: paymentUserId,
+            payment_method: paymentMethod,
+            payer_name: payerName,
+            payer_email: payerEmail || null
           }
-        },
-        custom_metadata: {
-          appointment_id: appointmentId,
-          user_id: paymentUserId,
-          payment_method: paymentMethod,
-          payer_name: payerName,
-          payer_email: payerEmail || null
-        }
-      }),
-    });
+        }),
+      },
+      30000 // Timeout de 30 secondes
+    );
 
     if (!createTransactionResponse.ok) {
       const errorData = await createTransactionResponse.json();
@@ -367,8 +380,16 @@ serve(async (req) => {
     }
 
     const fedapayData: any = await createTransactionResponse.json();
-    console.log('FedaPay transaction created successfully:', fedapayData);
-    console.log('✅ Étape 1 Terminée : Transaction créée');
+    
+    // ✅ AMÉLIORATION #5: Logs sans données sensibles en production
+    if (isProduction) {
+      console.log('✅ Étape 1 Terminée : Transaction créée', {
+        transactionId: fedapayData.v1_transaction?.id || fedapayData['v1/transaction']?.id
+      });
+    } else {
+      console.log('FedaPay transaction created successfully:', fedapayData);
+      console.log('✅ Étape 1 Terminée : Transaction créée');
+    }
 
     // Extract transaction from response (FedaPay peut utiliser v1_transaction OU v1/transaction)
     const transaction = fedapayData.v1_transaction || fedapayData['v1/transaction'] || fedapayData.transaction || fedapayData;
@@ -381,18 +402,28 @@ serve(async (req) => {
     }
     
     // ÉTAPE 2: Générer le token de paiement
-    console.log('🔑 Étape 2 : Génération du token de paiement');
-    console.log('Step 2: Generating payment token for transaction:', transaction.id);
-    const generateTokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transaction.id}/token`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
+    if (!isProduction) {
+      console.log('🔑 Étape 2 : Génération du token de paiement');
+      console.log('Step 2: Generating payment token for transaction:', transaction.id);
+    } else {
+      console.log('🔑 Étape 2 : Génération du token', { transactionId: transaction.id });
+    }
+    
+    // ✅ CORRECTION CRITIQUE #2: Ajouter timeout de 30 secondes
+    const generateTokenResponse = await fetchWithTimeout(
+      `${fedapayBaseUrl}/v1/transactions/${transaction.id}/token`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: selectedMode
+        })
       },
-      body: JSON.stringify({
-        mode: selectedMode
-      })
-    });
+      30000 // Timeout de 30 secondes
+    );
 
     if (!generateTokenResponse.ok) {
       const tokenError = await generateTokenResponse.json();
@@ -407,15 +438,21 @@ serve(async (req) => {
     }
 
     const tokenData: any = await generateTokenResponse.json();
-    console.log('FedaPay token generated successfully:', tokenData);
-    console.log('✅ Étape 2 Terminée : Token généré avec succès');
+    
+    // ✅ AMÉLIORATION #5: Logs sans données sensibles en production
+    if (isProduction) {
+      console.log('✅ Étape 2 Terminée : Token généré');
+    } else {
+      console.log('FedaPay token generated successfully:', tokenData);
+      console.log('✅ Étape 2 Terminée : Token généré avec succès');
+    }
     
     // FedaPay retourne directement { token: "...", url: "..." }
     const paymentToken = tokenData.token;
     const paymentUrl = tokenData.url;
     
     if (!paymentToken || !paymentUrl) {
-      console.error('Payment token or URL not found in response:', tokenData);
+      console.error('Payment token or URL not found in response');
       return new Response(
         JSON.stringify({ 
           error: 'Token ou URL de paiement non disponible',
@@ -425,7 +462,9 @@ serve(async (req) => {
       );
     }
     
-    console.log('Payment URL extracted:', paymentUrl);
+    if (!isProduction) {
+      console.log('Payment URL extracted:', paymentUrl);
+    }
 
     // ÉTAPE 3: Le paiement est prêt, le patient recevra le lien par notification
     console.log('✅ Étape 3 : Transaction et token créés, paiement prêt pour le patient');
