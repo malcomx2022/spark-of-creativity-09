@@ -39,6 +39,24 @@ serve(async (req) => {
       throw new Error('Données manquantes: sessionId, patientId, amount et phoneNumber requis');
     }
 
+    // Récupérer les informations du patient pour le paiement
+    const { data: patientProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('full_name, id')
+      .eq('id', body.patientId)
+      .single();
+
+    if (profileError || !patientProfile) {
+      throw new Error('Profil patient non trouvé');
+    }
+
+    // Obtenir l'email du patient
+    const { data: { user: patientUser }, error: userError } = await supabase.auth.admin.getUserById(body.patientId);
+    
+    if (userError || !patientUser) {
+      throw new Error('Utilisateur non trouvé');
+    }
+
     // Vérifier que la séance existe et a des places disponibles
     const { data: session, error: sessionError } = await supabase
       .from('group_sessions')
@@ -93,7 +111,7 @@ serve(async (req) => {
       participantId = participant.id;
       console.log('✅ Participation créée:', participantId);
 
-      // 2. Créer le paiement
+      // 2. Créer le paiement en mode service role avec toutes les infos requises
       const { data: payment, error: paymentError } = await supabase.functions.invoke(
         'create-payment',
         {
@@ -102,6 +120,10 @@ serve(async (req) => {
             amount: body.amount,
             paymentMethod: body.paymentMethod,
             phoneNumber: body.phoneNumber,
+            payerName: patientProfile.full_name || 'Patient',
+            payerEmail: patientUser.email || `patient-${body.patientId}@domicares.app`,
+            bypassAuth: true,
+            patientId: body.patientId
           }
         }
       );
@@ -132,13 +154,7 @@ serve(async (req) => {
         throw new Error('Paiement créé mais invalide');
       }
 
-      // 3. Récupérer les infos complètes pour notifications
-      const { data: patientProfile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', body.patientId)
-        .single();
-
+      // 3. Récupérer les infos du coach pour notifications
       const { data: coach } = await supabase
         .from('practitioners')
         .select('name, user_id')

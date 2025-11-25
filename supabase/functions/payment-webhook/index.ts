@@ -80,10 +80,10 @@ async function handleTransactionEvent(
   const holdUntil = new Date();
   holdUntil.setDate(holdUntil.getDate() + holdPeriodDays);
 
-  // Récupérer le paiement complet pour les mises à jour
+  // Récupérer le paiement pour les mises à jour
   const { data: payment } = await supabase
     .from('payments')
-    .select('id, net_amount, appointments(practitioner_id)')
+    .select('id, net_amount, appointment_id')
     .eq('fedapay_transaction_id', transactionId.toString())
     .single();
 
@@ -91,8 +91,39 @@ async function handleTransactionEvent(
     throw new Error('Payment not found');
   }
 
-  const practitionerId = payment.appointments?.practitioner_id;
+  // Déterminer le practitioner_id selon le type (rendez-vous classique vs séance de groupe)
+  let practitionerId: string | null = null;
   const netAmount = payment.net_amount || 0;
+
+  if (payment.appointment_id && payment.appointment_id.startsWith('group_session_')) {
+    // Format: group_session_{sessionId}_{participantId}
+    console.log('🏋️ Paiement de séance de groupe détecté dans webhook');
+    const parts = payment.appointment_id.split('_');
+    const sessionId = parts[2];
+    
+    // Récupérer le coach_id depuis group_sessions
+    const { data: sessionData } = await supabase
+      .from('group_sessions')
+      .select('coach_id')
+      .eq('id', sessionId)
+      .single();
+    
+    if (sessionData?.coach_id) {
+      practitionerId = sessionData.coach_id;
+      console.log('Coach ID récupéré pour webhook:', practitionerId);
+    }
+  } else {
+    // Rendez-vous classique
+    const { data: appointmentData } = await supabase
+      .from('appointments')
+      .select('practitioner_id')
+      .eq('id', payment.appointment_id)
+      .single();
+    
+    if (appointmentData?.practitioner_id) {
+      practitionerId = appointmentData.practitioner_id;
+    }
+  }
 
   // ✅ CORRECTION ERREUR #2: Utiliser la fonction atomique pour mettre à jour payment + balance
   if (practitionerId && paymentStatus === 'paid') {

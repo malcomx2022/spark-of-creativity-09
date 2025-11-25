@@ -419,19 +419,49 @@ serve(async (req) => {
     console.log('Fee breakdown:', feeBreakdown);
 
     // ✅ CORRECTION ERREUR #1: Initialiser le solde praticien
-    // Récupérer le practitioner_id depuis l'appointment
-    const { data: appointmentData } = await supabase
-      .from('appointments')
-      .select('practitioner_id')
-      .eq('id', appointmentId)
-      .single();
+    // Gérer différemment les rendez-vous classiques vs séances de groupe
+    let practitionerId: string | null = null;
+    
+    if (appointmentId.startsWith('group_session_')) {
+      // Format: group_session_{sessionId}_{participantId}
+      console.log('🏋️ Paiement de séance de groupe détecté');
+      const parts = appointmentId.split('_');
+      const sessionId = parts[2]; // group_session_{sessionId}_{participantId}
+      
+      // Récupérer le coach_id depuis group_sessions
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('group_sessions')
+        .select('coach_id')
+        .eq('id', sessionId)
+        .single();
+      
+      if (sessionError) {
+        console.error('Error fetching group session:', sessionError);
+      } else if (sessionData?.coach_id) {
+        practitionerId = sessionData.coach_id;
+        console.log('Coach ID récupéré:', practitionerId);
+      }
+    } else {
+      // Rendez-vous classique
+      const { data: appointmentData, error: appointmentError } = await supabase
+        .from('appointments')
+        .select('practitioner_id')
+        .eq('id', appointmentId)
+        .single();
+      
+      if (appointmentError) {
+        console.error('Error fetching appointment:', appointmentError);
+      } else if (appointmentData?.practitioner_id) {
+        practitionerId = appointmentData.practitioner_id;
+      }
+    }
 
-    if (appointmentData?.practitioner_id) {
-      console.log('Initializing practitioner balance:', appointmentData.practitioner_id, feeBreakdown.netAmount);
+    if (practitionerId) {
+      console.log('Initializing practitioner balance:', practitionerId, feeBreakdown.netAmount);
       
       const { error: balanceError } = await supabase.rpc('initialize_payment_balance', {
         p_payment_id: payment.id,
-        p_practitioner_id: appointmentData.practitioner_id,
+        p_practitioner_id: practitionerId,
         p_net_amount: feeBreakdown.netAmount
       });
 
@@ -441,6 +471,8 @@ serve(async (req) => {
       } else {
         console.log('Practitioner balance initialized successfully');
       }
+    } else {
+      console.warn('⚠️ Aucun practitioner_id trouvé pour ce paiement:', appointmentId);
     }
 
     // Émettre événement payment.intent.created
