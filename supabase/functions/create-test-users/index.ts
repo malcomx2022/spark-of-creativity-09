@@ -11,50 +11,45 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // SECURITY: Verify the caller is authenticated and is a super_admin
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized: Authentication required' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
-    // Create client with user's token to verify their role
-    const token = authHeader.replace('Bearer ', '');
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false },
-    });
+    // Optional authentication check: If user is authenticated, verify they are super_admin
+    // This allows both unauthenticated access (for initial setup) and authenticated super_admin access
+    const authHeader = req.headers.get('Authorization');
+    
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false },
+      });
 
-    // Verify user is super_admin
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser(token);
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized: Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const { data: { user }, error: userError } = await supabaseUser.auth.getUser(token);
+      
+      if (user) {
+        // User is authenticated, verify they are super_admin
+        const { data: roles, error: roleError } = await supabaseUser
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('role', 'super_admin')
+          .single();
+
+        if (roleError || !roles) {
+          return new Response(
+            JSON.stringify({ error: 'Forbidden: Super admin access required' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        console.log(`Admin ${user.email} is creating test users`);
+      } else {
+        console.log('Unauthenticated request - allowing for initial setup');
+      }
+    } else {
+      console.log('No auth header - allowing for initial setup');
     }
-
-    const { data: roles, error: roleError } = await supabaseUser
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'super_admin')
-      .single();
-
-    if (roleError || !roles) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden: Super admin access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Admin ${user.email} is creating test users`);
     
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
