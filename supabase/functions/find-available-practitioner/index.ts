@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
               user_id: practitioner.user_id,
               name: practitioner.name,
               specialty: practitioner.specialty,
-              phone: practitioner.phone,
+              // SECURITY: Phone number removed - only shared after appointment booking
               distance: practitioner.distance,
             },
           }),
