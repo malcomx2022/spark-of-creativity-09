@@ -41,9 +41,29 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
+  const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const widgetRef = useRef<FedaPayCheckoutWidget | null>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
+
+  // Load FedaPay configuration
+  useEffect(() => {
+    const loadFedaPayConfig = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
+        if (error) throw error;
+        setFedapayConfig(data);
+      } catch (error) {
+        console.error('Failed to load FedaPay config:', error);
+        toast({
+          title: 'Erreur de configuration',
+          description: 'Impossible de charger la configuration de paiement',
+          variant: 'destructive',
+        });
+      }
+    };
+    loadFedaPayConfig();
+  }, []);
 
   // Load user profile data to pre-fill form
   useEffect(() => {
@@ -93,6 +113,15 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       toast({
         title: 'Erreur',
         description: 'Le système de paiement n\'est pas encore chargé. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!fedapayConfig) {
+      toast({
+        title: 'Erreur',
+        description: 'Configuration de paiement non disponible. Veuillez rafraîchir la page.',
         variant: 'destructive',
       });
       return;
@@ -188,19 +217,21 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       const txId = parseInt(String(result.transactionId));
       setTransactionId(txId);
 
-      // Get FedaPay API key from environment
-      // Note: You need to add VITE_FEDAPAY_PUBLIC_KEY to your .env file
-      // For sandbox: pk_sandbox_xxxxx, For live: pk_live_xxxxx
-      const fedapayPublicKey = import.meta.env.VITE_FEDAPAY_PUBLIC_KEY || 'pk_sandbox_default_key';
-      
-      if (!fedapayPublicKey || fedapayPublicKey === 'pk_sandbox_default_key') {
-        console.warn('⚠️ FedaPay public key not configured. Please add VITE_FEDAPAY_PUBLIC_KEY to your .env file');
+      // Verify FedaPay configuration is loaded
+      if (!fedapayConfig) {
+        throw new Error('Configuration de paiement non disponible');
       }
+
+      console.log('Initializing FedaPay widget with:', {
+        transactionId: txId,
+        environment: fedapayConfig.environment,
+        amount
+      });
 
       // Initialize FedaPay widget
       const widget = initFedaPayWidget({
-        public_key: fedapayPublicKey,
-        environment: import.meta.env.VITE_FEDAPAY_ENVIRONMENT || 'sandbox',
+        public_key: fedapayConfig.publicKey,
+        environment: fedapayConfig.environment as 'sandbox' | 'live',
         transaction: {
           id: txId,
           amount: amount,
