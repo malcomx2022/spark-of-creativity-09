@@ -23,6 +23,13 @@ import {
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 import { PaymentAttemptsHistory } from '@/components/PaymentAttemptsHistory';
 import { withTimeout } from '@/lib/network-timeout';
+import { 
+  initFedaPayWidget, 
+  isFedaPayLoaded, 
+  CHECKOUT_COMPLETED, 
+  DIALOG_DISMISSED,
+  type FedaPayCheckoutWidget 
+} from '@/lib/fedapay-widget';
 
 type PaymentMethod = 'mtn' | 'moov';
 
@@ -94,11 +101,47 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [attemptNumber, setAttemptNumber] = useState(0);
   const [existingPaymentChecked, setExistingPaymentChecked] = useState(false);
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const hasRehydratedRef = useRef(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollStartTimeRef = useRef<number>(0);
+  const widgetRef = useRef<any>(null);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
+
+  // ✅ CORRECTION CRITIQUE #1: Charger la configuration FedaPay
+  useEffect(() => {
+    const loadFedaPayConfig = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
+        if (error) throw error;
+        setFedapayConfig(data);
+      } catch (error) {
+        console.error('Failed to load FedaPay config:', error);
+        toast({
+          title: 'Erreur de configuration',
+          description: 'Impossible de charger la configuration de paiement',
+          variant: 'destructive',
+        });
+      }
+    };
+    if (open) {
+      loadFedaPayConfig();
+    }
+  }, [open]);
+
+  // Cleanup widget on unmount
+  useEffect(() => {
+    return () => {
+      if (widgetRef.current) {
+        try {
+          widgetRef.current.close();
+        } catch (error) {
+          console.error('Error closing FedaPay widget:', error);
+        }
+      }
+    };
+  }, []);
 
   // Charger le profil utilisateur pour pré-remplir les informations
   useEffect(() => {
@@ -477,23 +520,12 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           }
         }
 
-        toast({
-          title: 'Paiement initié',
-          description: result.message || 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-        });
-
-        // Ouvrir la page de paiement dans une nouvelle fenêtre
-        const paymentWindow = window.open(
-          result.paymentUrl,
-          '_blank',
-          'width=600,height=700,scrollbars=yes,location=yes'
-        );
-
-        if (!paymentWindow) {
+        // ✅ CORRECTION CRITIQUE #1: Utiliser le widget FedaPay au lieu d'ouvrir une simple URL
+        if (!isFedaPayLoaded()) {
           toast({
-            variant: "destructive",
-            title: "Popup bloqué",
-            description: "Veuillez autoriser les popups pour continuer le paiement.",
+            title: 'Erreur',
+            description: 'Le système de paiement n\'est pas encore chargé. Veuillez réessayer.',
+            variant: 'destructive',
           });
           setIsProcessing(false);
           setPaymentStatus('idle');
@@ -501,18 +533,120 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           return;
         }
 
-        // Monitor if window is closed
-        const windowCheckInterval = setInterval(() => {
-          if (paymentWindow.closed) {
-            clearInterval(windowCheckInterval);
-            if (paymentStatus === 'pending') {
+        if (!fedapayConfig) {
+          toast({
+            title: 'Erreur',
+            description: 'Configuration de paiement non disponible. Veuillez rafraîchir la page.',
+            variant: 'destructive',
+          });
+          setIsProcessing(false);
+          setPaymentStatus('idle');
+          setIsCreatingPayment(false);
+          return;
+        }
+
+        if (!result.transactionId) {
+          toast({
+            title: 'Erreur',
+            description: 'ID de transaction non reçu du serveur',
+            variant: 'destructive',
+          });
+          setIsProcessing(false);
+          setPaymentStatus('idle');
+          setIsCreatingPayment(false);
+          return;
+        }
+
+        const txId = parseInt(String(result.transactionId));
+
+        console.log('Initializing FedaPay widget with:', {
+          transactionId: txId,
+          environment: fedapayConfig.environment,
+          amount
+        });
+
+        // Initialiser le widget FedaPay
+        const widget = initFedaPayWidget({
+          public_key: fedapayConfig.publicKey,
+          environment: fedapayConfig.environment as 'sandbox' | 'live',
+          transaction: {
+            id: txId,
+            amount: amount,
+            description: `Paiement rendez-vous médical #${appointmentId}`,
+          },
+          customer: {
+            phone_number: {
+              number: sanitizedPhoneNumber,
+              country: 'BJ',
+            },
+          },
+          currency: {
+            iso: 'XOF',
+          },
+          locale: 'fr',
+          onComplete: async (payload) => {
+            console.log('Payment completed:', payload);
+
+            if (payload.reason === CHECKOUT_COMPLETED) {
+              // Paiement réussi
+              setPaymentStatus('success');
+              setIsProcessing(false);
+              await recordPaymentAttempt('success');
+
+              // Sauvegarder la méthode si demandé
+              if (saveMethod && !useSavedMethod) {
+                try {
+                  await addPaymentMethod({
+                    provider: paymentMethod,
+                    phoneNumber: sanitizedPhoneNumber,
+                    setAsDefault: paymentMethods.length === 0,
+                  });
+                } catch (saveError) {
+                  console.error('Error saving payment method:', saveError);
+                }
+              }
+
               toast({
-                title: "Fenêtre fermée",
-                description: "Vérification du statut du paiement en cours...",
+                title: 'Paiement réussi !',
+                description: 'Votre rendez-vous a été confirmé.',
+              });
+
+              if (onSuccess) {
+                onSuccess();
+              }
+
+              setTimeout(() => {
+                resetPaymentState();
+                onOpenChange(false);
+              }, 2000);
+            } else if (payload.reason === DIALOG_DISMISSED) {
+              // Utilisateur a fermé le dialog
+              setPaymentStatus('error');
+              setIsProcessing(false);
+              await recordPaymentAttempt('failed', 'Paiement annulé par l\'utilisateur', 'user_cancelled');
+
+              toast({
+                title: 'Paiement annulé',
+                description: 'Vous avez annulé le paiement.',
+                variant: 'destructive',
               });
             }
-          }
-        }, 1000);
+          },
+        });
+
+        if (!widget) {
+          throw new Error('Impossible d\'initialiser le widget de paiement');
+        }
+
+        widgetRef.current = widget;
+
+        // Ouvrir le widget de paiement
+        widget.open();
+
+        toast({
+          title: 'Paiement initié',
+          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+        });
       } else {
         setIsCreatingPayment(false);
         throw new Error('Format de réponse invalide du serveur');

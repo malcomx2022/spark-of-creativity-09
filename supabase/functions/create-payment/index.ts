@@ -156,6 +156,76 @@ serve(async (req) => {
     const amountToCharge = requestedAmount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
     console.log('Payment initiated:', { appointmentId, amountToCharge, paymentMethod, phoneNumber });
 
+    // ✅ CORRECTION CRITIQUE #3: Récupérer practitioner_id AVANT de créer la transaction FedaPay
+    let practitionerId: string | null = null;
+    
+    if (appointmentId.startsWith('group_session_')) {
+      // Format: group_session_{sessionId}_{participantId}
+      console.log('🏋️ Paiement de séance de groupe détecté');
+      const parts = appointmentId.split('_');
+      const sessionId = parts[2]; // group_session_{sessionId}_{participantId}
+      
+      // Récupérer le coach_id depuis group_sessions
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('group_sessions')
+        .select('coach_id')
+        .eq('id', sessionId)
+        .single();
+      
+      if (sessionError) {
+        console.error('Error fetching group session:', sessionError);
+        return new Response(
+          JSON.stringify({ error: 'Séance de groupe non trouvée' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!sessionData?.coach_id) {
+        console.error('Coach not found for group session:', sessionId);
+        return new Response(
+          JSON.stringify({ error: 'Coach non trouvé pour cette séance' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      practitionerId = sessionData.coach_id;
+      console.log('Coach ID récupéré:', practitionerId);
+    } else {
+      // Rendez-vous classique
+      const { data: appointmentData, error: appointmentError } = await supabase
+        .from('appointments')
+        .select('practitioner_id')
+        .eq('id', appointmentId)
+        .single();
+      
+      if (appointmentError) {
+        console.error('Error fetching appointment:', appointmentError);
+        return new Response(
+          JSON.stringify({ error: 'Rendez-vous non trouvé' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!appointmentData?.practitioner_id) {
+        console.error('Practitioner not found for appointment:', appointmentId);
+        return new Response(
+          JSON.stringify({ error: 'Praticien non trouvé pour ce rendez-vous' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      practitionerId = appointmentData.practitioner_id;
+      console.log('Practitioner ID récupéré:', practitionerId);
+    }
+    
+    if (!practitionerId) {
+      console.error('No practitioner_id found for payment');
+      return new Response(
+        JSON.stringify({ error: 'Praticien non trouvé, impossible de créer le paiement' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Créer l'idempotency key
     const idempotencyKey = `${appointmentId}-${Date.now()}`;
 
@@ -418,43 +488,7 @@ serve(async (req) => {
     console.log('Payment stored in database:', payment);
     console.log('Fee breakdown:', feeBreakdown);
 
-    // ✅ CORRECTION ERREUR #1: Initialiser le solde praticien
-    // Gérer différemment les rendez-vous classiques vs séances de groupe
-    let practitionerId: string | null = null;
-    
-    if (appointmentId.startsWith('group_session_')) {
-      // Format: group_session_{sessionId}_{participantId}
-      console.log('🏋️ Paiement de séance de groupe détecté');
-      const parts = appointmentId.split('_');
-      const sessionId = parts[2]; // group_session_{sessionId}_{participantId}
-      
-      // Récupérer le coach_id depuis group_sessions
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('group_sessions')
-        .select('coach_id')
-        .eq('id', sessionId)
-        .single();
-      
-      if (sessionError) {
-        console.error('Error fetching group session:', sessionError);
-      } else if (sessionData?.coach_id) {
-        practitionerId = sessionData.coach_id;
-        console.log('Coach ID récupéré:', practitionerId);
-      }
-    } else {
-      // Rendez-vous classique
-      const { data: appointmentData, error: appointmentError } = await supabase
-        .from('appointments')
-        .select('practitioner_id')
-        .eq('id', appointmentId)
-        .single();
-      
-      if (appointmentError) {
-        console.error('Error fetching appointment:', appointmentError);
-      } else if (appointmentData?.practitioner_id) {
-        practitionerId = appointmentData.practitioner_id;
-      }
-    }
+    // ✅ practitioner_id déjà récupéré en début de fonction (ligne ~157)
 
     if (practitionerId) {
       console.log('Initializing practitioner balance:', practitionerId, feeBreakdown.netAmount);
