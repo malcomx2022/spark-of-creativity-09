@@ -10,9 +10,18 @@ export function useGroupSessions(coachId?: string) {
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['group-sessions', coachId],
     queryFn: async () => {
+      // Check if user is authenticated
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        // Return empty array for unauthenticated users
+        return [];
+      }
+
       let query = supabase
         .from('group_sessions')
         .select('*')
+        .in('status', ['confirmee', 'planifiee'])
         .order('scheduled_date', { ascending: true });
 
       if (coachId) {
@@ -24,7 +33,7 @@ export function useGroupSessions(coachId?: string) {
       if (error) throw error;
       return data;
     },
-    enabled: !!coachId
+    enabled: true
   });
 
   const cancelSession = useMutation({
