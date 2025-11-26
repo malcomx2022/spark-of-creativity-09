@@ -267,7 +267,7 @@ export default function PractitionerSignup() {
     // Spécialité (requise pour tous, y compris les coachs)
     const specialty = formData.specialty.trim();
     if (!specialty) {
-      errors.specialty = "Spécialité requise";
+      errors.specialty = isCoachSportif ? "Spécialité sportive requise" : "Spécialité requise";
     } else if (specialty.length < 2) {
       errors.specialty = "La spécialité doit contenir au moins 2 caractères";
     } else if (specialty.length > 100) {
