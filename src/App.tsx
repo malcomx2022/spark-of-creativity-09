@@ -57,10 +57,10 @@ const App = () => (
           <Route path="/search-practitioners" element={<PractitionerSearch />} />
           <Route path="/search-coaches" element={<CoachSearch />} />
           <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
-          <Route path="/dashboard/patient" element={<ProtectedRoute><PatientDashboard /></ProtectedRoute>} />
-          <Route path="/dashboard/practitioner" element={<ProtectedRoute><PractitionerDashboard /></ProtectedRoute>} />
-          <Route path="/dashboard/coach" element={<ProtectedRoute><CoachDashboard /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/patient" element={<ProtectedRoute allowedRoles={['patient']}><PatientDashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/practitioner" element={<ProtectedRoute allowedRoles={['practitioner']}><PractitionerDashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/coach" element={<ProtectedRoute allowedRoles={['coach']}><CoachDashboard /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

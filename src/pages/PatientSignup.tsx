@@ -201,9 +201,14 @@ export default function PatientSignup() {
       );
 
       if (authError) {
+        const normalizedMessage = authError.message?.toLowerCase() ?? '';
+        const isEmailAlreadyUsed = normalizedMessage.includes('already registered') || normalizedMessage.includes('already been registered');
+
         toast({
           ...AUTH_MESSAGES.SIGNUP_ERROR,
-          description: authError.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
+          description: isEmailAlreadyUsed
+            ? "Cet email est déjà lié à un compte patient ou praticien. Connectez-vous ou utilisez une autre adresse."
+            : (authError.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription),
           variant: "destructive"
         });
         setIsSubmitting(false);
