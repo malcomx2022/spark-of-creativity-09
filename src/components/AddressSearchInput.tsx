@@ -103,18 +103,27 @@ export function AddressSearchInput({
         
         if (error || !data?.token) {
           setTokenError(true);
+          console.error('❌ Token Mapbox non configuré:', error);
           toast({
             variant: 'destructive',
-            title: 'Configuration manquante',
-            description: 'Token Mapbox non configuré.',
+            title: '⚙️ Configuration manquante',
+            description: 'Le service de recherche d\'adresse n\'est pas configuré. Veuillez contacter l\'administrateur pour activer le token Mapbox.',
+            duration: 7000,
           });
           return;
         }
         
         setMapboxToken(data.token);
+        console.log('✅ Token Mapbox chargé avec succès');
       } catch (err) {
-        console.error('Error fetching Mapbox token:', err);
+        console.error('❌ Erreur lors du chargement du token Mapbox:', err);
         setTokenError(true);
+        toast({
+          variant: 'destructive',
+          title: '❌ Erreur de configuration',
+          description: 'Impossible de charger la configuration de recherche d\'adresse. Vérifiez votre connexion internet.',
+          duration: 5000,
+        });
       }
     };
     
@@ -123,26 +132,30 @@ export function AddressSearchInput({
 
   // Recherche Mapbox avec debounce
   const performSearch = async (query: string) => {
-    if (!query || query.length < 3) {
+    // Validation de la longueur minimale
+    if (!query || query.trim().length === 0) {
       setResults([]);
       return;
     }
 
+    if (query.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+
+    // Vérifier que le token est disponible
     if (!mapboxToken) {
       if (tokenError) {
-        toast({
-          variant: 'destructive',
-          title: 'Configuration manquante',
-          description: 'Token Mapbox non configuré.',
-        });
+        console.warn('⚠️ Tentative de recherche sans token Mapbox configuré');
       }
       return;
     }
 
     setLoading(true);
+    console.log(`🔍 Recherche Mapbox pour: "${query}"`);
 
     try {
-      const encodedQuery = encodeURIComponent(query);
+      const encodedQuery = encodeURIComponent(query.trim());
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedQuery}.json?` +
         `access_token=${mapboxToken}&` +
         `country=BJ&` +
@@ -150,21 +163,61 @@ export function AddressSearchInput({
         `limit=5&` +
         `language=fr`;
 
-      const response = await fetch(url);
+      // Timeout pour la requête réseau
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 secondes
+
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Mapbox API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Erreur API Mapbox:', response.status, errorText);
+        
+        if (response.status === 401) {
+          throw new Error('🔑 Token Mapbox invalide. Veuillez contacter l\'administrateur.');
+        } else if (response.status === 429) {
+          throw new Error('⏱️ Trop de requêtes. Veuillez patienter quelques secondes et réessayer.');
+        } else if (response.status >= 500) {
+          throw new Error('🌐 Le service Mapbox est temporairement indisponible. Réessayez dans quelques instants.');
+        } else {
+          throw new Error(`Erreur API Mapbox (${response.status}). Veuillez réessayer.`);
+        }
       }
 
       const data = await response.json();
-      setResults(data.features || []);
+      const features = data.features || [];
+      
+      console.log(`✅ ${features.length} résultat(s) trouvé(s)`);
+      setResults(features);
+      
     } catch (err) {
-      console.error('Geocoding error:', err);
+      console.error('❌ Erreur lors de la recherche d\'adresse:', err);
+      
+      let errorTitle = '🔍 Erreur de recherche';
+      let errorDescription = 'Impossible de rechercher l\'adresse. Veuillez réessayer.';
+      
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          errorTitle = '⏱️ Timeout de recherche';
+          errorDescription = 'La recherche a pris trop de temps. Vérifiez votre connexion internet et réessayez.';
+        } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          errorTitle = '📡 Erreur réseau';
+          errorDescription = 'Impossible de contacter le service de recherche. Vérifiez votre connexion internet et réessayez.';
+        } else if (err.message.startsWith('🔑') || err.message.startsWith('⏱️') || err.message.startsWith('🌐')) {
+          // Messages déjà formatés depuis les codes d'erreur HTTP
+          errorDescription = err.message;
+        }
+      }
+      
       toast({
         variant: 'destructive',
-        title: 'Erreur de recherche',
-        description: 'Impossible de rechercher l\'adresse. Réessayez.',
+        title: errorTitle,
+        description: errorDescription,
+        duration: 5000,
       });
+      
+      setResults([]);
     } finally {
       setLoading(false);
     }
