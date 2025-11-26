@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { createClient } from '@supabase/supabase-js';
 import type { CreateTestAccountsResponse } from "@/types/edge-function-responses";
 import { useNavigate } from "react-router-dom";
 import { Loader2, LogOut, RefreshCw } from "lucide-react";
@@ -21,7 +21,20 @@ export default function CreateTestAccounts() {
     setIsCreating(true);
     setError(null);
     try {
-      const { data, error } = await invokeEdgeFunctionWithRetry<CreateTestAccountsResponse>('create-test-users');
+      // Create a supabase client without auth for this specific call
+      // This ensures the function is called without authentication headers
+      const anonClient = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          }
+        }
+      );
+      
+      const { data, error } = await anonClient.functions.invoke<CreateTestAccountsResponse>('create-test-users');
       
       if (error) {
         setError(error.message);
