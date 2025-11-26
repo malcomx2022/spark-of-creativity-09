@@ -339,7 +339,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
             specialty: data.specialty,
             appointmentDate: appointmentDate,
             appointmentTime: data.time,
-            maxRadius: 15,
+            maxRadius: 100,
           },
         },
         3, // 3 tentatives max
@@ -393,7 +393,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         
         toast({
           title: '😔 Aucun praticien disponible',
-          description: `Aucun ${data.specialty} disponible dans un rayon de 15 km le ${formattedDate} à ${data.time}.\n\nSuggestions:\n• Essayez une autre date ou heure\n• Choisissez un créneau plus tard dans la journée\n• Vérifiez les jours suivants`,
+          description: `Aucun ${data.specialty} disponible dans un rayon de 100 km le ${formattedDate} à ${data.time}.\n\nSuggestions:\n• Essayez une autre date ou heure\n• Choisissez un créneau plus tard dans la journée\n• Vérifiez les jours suivants`,
           variant: 'destructive',
           duration: 8000,
         });
@@ -591,7 +591,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           <Alert className="mb-4 bg-primary/5 border-primary/20">
             <MapPin className="h-4 w-4" />
             <AlertDescription>
-              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>15 km</strong> autour de votre position actuelle.
+              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>100 km</strong> autour de votre position actuelle.
               <div className="text-xs mt-1 text-muted-foreground">
                 Position: {position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}° (±{Math.round(position.accuracy)}m)
               </div>

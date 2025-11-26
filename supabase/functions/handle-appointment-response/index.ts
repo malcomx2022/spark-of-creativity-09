@@ -312,7 +312,7 @@ serve(async (req) => {
         specialty: appointment.specialty,
         appointmentDate: appointment.date,
         appointmentTime: appointment.time,
-        maxRadius: 10,
+        maxRadius: 100,
       };
 
       const { data: practitioners } = await supabase

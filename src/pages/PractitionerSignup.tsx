@@ -857,7 +857,7 @@ export default function PractitionerSignup() {
                           type="number"
                           min="1"
                           max="100"
-                          placeholder="Ex: 15"
+                          placeholder="Ex: 100"
                           value={formData.interventionRadius}
                           onChange={(e) => handleInputChange('interventionRadius', e.target.value)}
                           required

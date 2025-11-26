@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
       specialty,
       appointmentDate,
       appointmentTime,
-      maxRadius = 10, // 10 km par défaut
+      maxRadius = 100, // 100 km par défaut
     } = requestData;
 
     console.log('🔍 Recherche de praticien:', {
