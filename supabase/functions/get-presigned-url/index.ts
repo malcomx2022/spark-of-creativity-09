@@ -74,9 +74,37 @@ serve(async (req) => {
     });
 
     // Verify user has access to this file
-    // Admins can access all files, others only their own files
-    if (!isAdmin && !filePath.includes(user.id)) {
-      console.log('Access denied: User is not admin and file path does not contain user ID');
+    // 1. Admins can access all files
+    // 2. Users can access files in paths containing their user ID
+    // 3. Practitioners can access their KYC documents
+    let hasAccess = isAdmin || filePath.includes(user.id);
+    
+    if (!hasAccess) {
+      // Check if user is a practitioner and the file is one of their documents
+      const { data: practitioner } = await supabase
+        .from('practitioners')
+        .select('id_document_url, license_document_url, insurance_document_url')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (practitioner) {
+        const practitionerDocs = [
+          practitioner.id_document_url,
+          practitioner.license_document_url,
+          practitioner.insurance_document_url
+        ].filter(Boolean);
+        
+        hasAccess = practitionerDocs.some(doc => doc === filePath);
+        console.log('Practitioner document check:', {
+          filePath,
+          practitionerDocs,
+          hasAccess
+        });
+      }
+    }
+    
+    if (!hasAccess) {
+      console.log('Access denied: User does not have permission to access this file');
       return new Response(
         JSON.stringify({ error: 'Unauthorized access to this file' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
