@@ -24,10 +24,14 @@ import { Label } from '@/components/ui/label';
 import { AddressSearchInput } from './AddressSearchInput';
 
 const formSchema = z.object({
-  specialty: z.string().min(1, 'Veuillez sélectionner une spécialité'),
-  date: z.date({ message: 'Veuillez sélectionner une date' }),
-  time: z.string().min(1, 'Veuillez sélectionner une heure'),
-  reason: z.string().min(10, 'Veuillez décrire la raison (minimum 10 caractères)').max(500),
+  specialty: z.string().min(1, '❌ Vous devez sélectionner une spécialité médicale'),
+  date: z.date({ 
+    message: '❌ Vous devez sélectionner une date pour le rendez-vous'
+  }),
+  time: z.string().min(1, '❌ Vous devez choisir un créneau horaire'),
+  reason: z.string()
+    .min(10, '❌ La raison doit contenir au moins 10 caractères pour permettre au praticien de mieux comprendre votre besoin')
+    .max(500, '❌ La raison ne peut pas dépasser 500 caractères. Veuillez être plus concis'),
   urgencyLevel: z.string().optional()
 });
 
@@ -89,11 +93,23 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     console.log('🔵 Formulaire soumis avec les données:', data);
 
     if (locationMode === 'manual') {
+      // Validation de l'adresse manuelle
       if (!manualAddress.trim()) {
         toast({
-          title: 'Adresse requise',
-          description: 'Veuillez indiquer l’adresse de l’intervention.',
+          title: '❌ Adresse requise',
+          description: 'Vous devez indiquer une adresse complète pour l\'intervention. Utilisez la recherche d\'adresse pour trouver votre localisation.',
           variant: 'destructive',
+          duration: 5000,
+        });
+        return;
+      }
+
+      if (manualAddress.trim().length < 10) {
+        toast({
+          title: '❌ Adresse incomplète',
+          description: 'L\'adresse semble trop courte. Veuillez fournir une adresse complète (rue, quartier, ville).',
+          variant: 'destructive',
+          duration: 5000,
         });
         return;
       }
@@ -261,15 +277,20 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     const errors = form.formState.errors;
     const errorMessages = [];
     
-    if (errors.specialty) errorMessages.push('Veuillez sélectionner une spécialité');
-    if (errors.date) errorMessages.push('Veuillez sélectionner une date');
-    if (errors.time) errorMessages.push('Veuillez sélectionner une heure');
-    if (errors.reason) errorMessages.push('Veuillez décrire la raison (minimum 10 caractères)');
+    if (errors.specialty) errorMessages.push(errors.specialty.message || 'Spécialité manquante');
+    if (errors.date) errorMessages.push(errors.date.message || 'Date manquante');
+    if (errors.time) errorMessages.push(errors.time.message || 'Heure manquante');
+    if (errors.reason) errorMessages.push(errors.reason.message || 'Raison invalide');
+    
+    if (errorMessages.length === 0) {
+      errorMessages.push('Veuillez vérifier tous les champs du formulaire');
+    }
     
     toast({
-      title: 'Formulaire incomplet',
-      description: errorMessages.join('\n'),
-      variant: 'destructive'
+      title: '❌ Formulaire incomplet',
+      description: errorMessages.join('\n\n'),
+      variant: 'destructive',
+      duration: 6000,
     });
   };
 
@@ -347,7 +368,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit, handleFormError)} className="space-y-4">
             <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
-              <p className="text-sm font-medium">Comment souhaitez-vous préciser le lieu d’intervention ?</p>
+              <p className="text-sm font-medium">Comment souhaitez-vous préciser le lieu d'intervention ?</p>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -368,7 +389,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                   onClick={() => setLocationMode('manual')}
                   size="sm"
                 >
-                  Saisir l’adresse manuellement
+                  Saisir l'adresse manuellement
                 </Button>
               </div>
               {locationMode === 'manual' && (
@@ -387,11 +408,13 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               name="specialty"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Spécialité recherchée</FormLabel>
+                  <FormLabel className="text-sm font-medium">
+                    Spécialité recherchée <span className="text-destructive">*</span>
+                  </FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sélectionnez une spécialité" />
+                      <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
+                        <SelectValue placeholder="Choisissez une spécialité..." />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -402,7 +425,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage />
+                  <FormMessage className="text-xs font-medium" />
                 </FormItem>
               )}
             />
@@ -413,7 +436,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                 name="date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel>Date souhaitée</FormLabel>
+                    <FormLabel className="text-sm font-medium">
+                      Date souhaitée <span className="text-destructive">*</span>
+                    </FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
@@ -421,13 +446,13 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                             variant="outline"
                             className={cn(
                               'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
+                              !field.value && 'text-muted-foreground border-muted-foreground/30'
                             )}
                           >
                             {field.value ? (
                               format(field.value, 'PPP', { locale: fr })
                             ) : (
-                              <span>Choisir une date</span>
+                              <span>Sélectionnez une date...</span>
                             )}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
@@ -456,7 +481,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                         />
                       </PopoverContent>
                     </Popover>
-                    <FormMessage />
+                    <FormMessage className="text-xs font-medium" />
                   </FormItem>
                 )}
               />
@@ -466,22 +491,30 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                 name="time"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Heure souhaitée</FormLabel>
+                    <FormLabel className="text-sm font-medium">
+                      Heure souhaitée <span className="text-destructive">*</span>
+                    </FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choisir une heure" />
+                        <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
+                          <SelectValue placeholder="Sélectionnez un créneau..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {getAvailableTimeSlots().map((time) => (
-                          <SelectItem key={time} value={time}>
-                            {time}
-                          </SelectItem>
-                        ))}
+                        {getAvailableTimeSlots().length > 0 ? (
+                          getAvailableTimeSlots().map((time) => (
+                            <SelectItem key={time} value={time}>
+                              {time}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="p-2 text-sm text-muted-foreground text-center">
+                            Aucun créneau disponible pour aujourd'hui
+                          </div>
+                        )}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-xs font-medium" />
                   </FormItem>
                 )}
               />
@@ -516,18 +549,37 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Motif de la consultation</FormLabel>
+                  <FormLabel className="text-sm font-medium">
+                    Motif de la consultation <span className="text-destructive">*</span>
+                  </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Décrivez brièvement la raison de votre demande... (minimum 10 caractères)"
-                      className="min-h-[100px]"
+                      placeholder="Décrivez brièvement la raison de votre demande (ex: fièvre persistante, douleurs, suivi médical...)..."
+                      className={cn(
+                        "min-h-[100px] resize-none",
+                        field.value && field.value.length < 10 && "border-destructive/50",
+                        field.value && field.value.length > 500 && "border-destructive"
+                      )}
                       {...field}
+                      maxLength={500}
                     />
                   </FormControl>
-                  <div className="text-xs text-muted-foreground">
-                    {field.value?.length || 0} / 10 caractères minimum
+                  <div className="flex justify-between items-center text-xs">
+                    <span className={cn(
+                      "text-muted-foreground",
+                      field.value && field.value.length < 10 && "text-destructive font-medium"
+                    )}>
+                      {field.value?.length || 0} / 10 minimum
+                    </span>
+                    <span className={cn(
+                      "text-muted-foreground",
+                      field.value && field.value.length > 450 && "text-orange-500 font-medium",
+                      field.value && field.value.length >= 500 && "text-destructive font-medium"
+                    )}>
+                      Maximum: {field.value?.length || 0} / 500
+                    </span>
                   </div>
-                  <FormMessage className="text-destructive font-medium" />
+                  <FormMessage className="text-xs font-medium" />
                 </FormItem>
               )}
             />
