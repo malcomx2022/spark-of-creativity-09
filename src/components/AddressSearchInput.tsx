@@ -5,6 +5,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { MapPin, Building2, Home, Loader2, Clock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export interface LocationData {
   address: string;
@@ -29,6 +30,7 @@ interface AddressSearchInputProps {
   placeholder?: string;
   required?: boolean;
   className?: string;
+  error?: string;
 }
 
 const STORAGE_KEY = 'recent_addresses_v2';
@@ -49,6 +51,7 @@ export function AddressSearchInput({
   placeholder = 'Rechercher une adresse au Bénin...',
   required = false,
   className = '',
+  error,
 }: AddressSearchInputProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState(value);
@@ -286,7 +289,10 @@ export function AddressSearchInput({
               onChange={(e) => setSearchValue(e.target.value)}
               onFocus={() => setOpen(true)}
               required={required}
-              className="pr-10"
+              className={cn(
+                'pr-10',
+                error && 'border-destructive focus-visible:ring-destructive'
+              )}
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
               {loading ? (
@@ -351,6 +357,9 @@ export function AddressSearchInput({
           </Command>
         </PopoverContent>
       </Popover>
+      {error && (
+        <p className="text-xs text-destructive mt-1">{error}</p>
+      )}
       {searchValue.length > 0 && searchValue.length < 3 && (
         <p className="text-xs text-muted-foreground mt-1">
           Tapez au moins 3 caractères pour rechercher
