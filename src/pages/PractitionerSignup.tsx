@@ -29,6 +29,8 @@ interface SignupFormData {
   dateOfBirth: string;
   gender: string;
   address: string;
+  latitude: number | null;
+  longitude: number | null;
   phone: string;
   email: string;
   password: string;
@@ -71,6 +73,8 @@ export default function PractitionerSignup() {
     dateOfBirth: "",
     gender: "",
     address: "",
+    latitude: null,
+    longitude: null,
     phone: "",
     email: "",
     password: "",
@@ -434,6 +438,8 @@ export default function PractitionerSignup() {
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         phone: formData.phone,
         address: formData.address,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
         specialty: formData.specialty || formData.profession,
         practitioner_type: practitionerType,
         years_experience: yearsExperience,
@@ -641,7 +647,12 @@ export default function PractitionerSignup() {
                   <AddressSearchInput
                     label="Adresse complète"
                     value={formData.address}
-                    onChange={(location) => setFormData(prev => ({ ...prev, address: location.address }))}
+                    onChange={(location) => setFormData(prev => ({ 
+                      ...prev, 
+                      address: location.address,
+                      latitude: location.latitude ?? null,
+                      longitude: location.longitude ?? null,
+                    }))}
                     placeholder="Rechercher votre adresse au Bénin..."
                     required
                   />
