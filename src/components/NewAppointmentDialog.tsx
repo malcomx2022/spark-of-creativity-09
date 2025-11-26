@@ -48,6 +48,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
   const handleOpenChange = onOpenChange || setInternalOpen;
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Protection contre double soumission
   const [locationMode, setLocationMode] = useState<'auto' | 'manual'>('auto');
   const [manualAddress, setManualAddress] = useState('');
 
@@ -70,6 +71,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     if (!newOpen) {
       setLocationMode('auto');
       setManualAddress('');
+      setIsSubmitting(false); // Reset état de soumission
       form.reset({
         specialty: '',
         date: undefined,
@@ -90,10 +92,34 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   };
 
   const handleSubmit = async (data: FormValues) => {
+    // Protection contre double soumission
+    if (isSubmitting || isSearchingPractitioner) {
+      console.warn('⚠️ Soumission déjà en cours, requête ignorée');
+      toast({
+        title: '⏳ Traitement en cours',
+        description: 'Veuillez patienter, votre demande est en cours de traitement.',
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Bloquer la soumission pendant le chargement GPS
+    if (locationMode === 'auto' && geoLoading) {
+      toast({
+        title: '📍 Géolocalisation en cours',
+        description: 'Veuillez patienter pendant que nous déterminons votre position.',
+        variant: 'destructive',
+        duration: 4000,
+      });
+      return;
+    }
+
     console.log('🔵 Formulaire soumis avec les données:', data);
+    setIsSubmitting(true);
 
     // Vérification de la géolocalisation en mode automatique AVANT tout traitement
     if (locationMode === 'auto' && !position) {
+      setIsSubmitting(false);
       toast({
         title: '📍 Localisation requise',
         description: geoError 
@@ -109,9 +135,45 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       return;
     }
 
+    // Validation de la précision de la géolocalisation
+    if (locationMode === 'auto' && position) {
+      const MAX_ACCURACY_METERS = 1000; // 1 km de précision max
+      
+      if (position.accuracy > MAX_ACCURACY_METERS) {
+        setIsSubmitting(false);
+        toast({
+          title: '📍 Géolocalisation imprécise',
+          description: `Votre position n'est pas assez précise (±${Math.round(position.accuracy)}m). Rapprochez-vous d'une fenêtre ou d'un lieu ouvert, puis réessayez. Vous pouvez aussi passer en mode manuel.`,
+          variant: 'destructive',
+          duration: 7000,
+        });
+        return;
+      }
+
+      // Vérifier si le cache de position est obsolète (> 5 minutes)
+      const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+      const positionAge = Date.now() - position.timestamp;
+      
+      if (positionAge > CACHE_MAX_AGE_MS) {
+        console.warn('⚠️ Position en cache obsolète, demande de rafraîchissement');
+        setIsSubmitting(false);
+        toast({
+          title: '🔄 Position obsolète',
+          description: 'Votre position GPS est trop ancienne. Cliquez sur "Réessayer la géolocalisation" pour obtenir votre position actuelle.',
+          variant: 'destructive',
+          duration: 6000,
+        });
+        return;
+      }
+
+      console.log(`✅ Position valide - Précision: ${Math.round(position.accuracy)}m, Age: ${Math.round(positionAge / 1000)}s`);
+    }
+
+
     if (locationMode === 'manual') {
       // Validation de l'adresse manuelle
       if (!manualAddress.trim()) {
+        setIsSubmitting(false);
         toast({
           title: '❌ Adresse requise',
           description: 'Vous devez indiquer une adresse complète pour l\'intervention. Utilisez la recherche d\'adresse pour trouver votre localisation.',
@@ -122,6 +184,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       }
 
       if (manualAddress.trim().length < 10) {
+        setIsSubmitting(false);
         toast({
           title: '❌ Adresse incomplète',
           description: 'L\'adresse semble trop courte. Veuillez fournir une adresse complète (rue, quartier, ville).',
@@ -143,35 +206,69 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           addressOverride: manualAddress,
         };
 
+        console.log('📤 Envoi de la demande avec adresse manuelle...');
         const createdAppointment = await onSubmit(appointmentPayload);
 
-        if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
-          toast({
-            title: '✅ Demande enregistrée avec succès',
-            description: 'Votre demande a été envoyée. Notre équipe vous contactera sous 30 minutes pour affecter un praticien disponible et confirmer votre rendez-vous.',
-            duration: 6000,
-          });
-          handleOpenChange(false);
-          setIsSearchingPractitioner(false);
-          setLocationMode('auto');
-          setManualAddress('');
-          form.reset({
-            specialty: '',
-            date: undefined,
-            time: '',
-            reason: '',
-            urgencyLevel: 'non-urgent'
-          });
-        } else {
-          throw new Error("Le rendez-vous n'a pas pu être créé");
+        // Validation stricte du retour
+        if (!createdAppointment) {
+          throw new Error('💾 Le serveur n\'a retourné aucune donnée. La création du rendez-vous a échoué.');
         }
-      } catch (error) {
-        console.error('❌ Erreur:', error);
-        setIsSearchingPractitioner(false);
+
+        if (typeof createdAppointment !== 'object') {
+          throw new Error(`💾 Type de retour invalide: le serveur a retourné un ${typeof createdAppointment} au lieu d'un objet.`);
+        }
+
+        if (!('id' in createdAppointment) || !createdAppointment.id) {
+          console.error('❌ Réponse invalide:', createdAppointment);
+          throw new Error('💾 L\'ID du rendez-vous n\'a pas été retourné par le serveur. Le rendez-vous n\'a peut-être pas été créé correctement.');
+        }
+
+        console.log('✅ Rendez-vous créé avec ID:', createdAppointment.id);
+
         toast({
-          title: 'Erreur',
-          description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous. Veuillez réessayer.',
+          title: '✅ Demande enregistrée avec succès',
+          description: 'Votre demande a été envoyée. Notre équipe vous contactera sous 30 minutes pour affecter un praticien disponible et confirmer votre rendez-vous.',
+          duration: 6000,
+        });
+        
+        handleOpenChange(false);
+        setIsSearchingPractitioner(false);
+        setIsSubmitting(false);
+        setLocationMode('auto');
+        setManualAddress('');
+        form.reset({
+          specialty: '',
+          date: undefined,
+          time: '',
+          reason: '',
+          urgencyLevel: 'non-urgent'
+        });
+        
+      } catch (error) {
+        console.error('❌ Erreur création rendez-vous (mode manuel):', error);
+        setIsSearchingPractitioner(false);
+        setIsSubmitting(false);
+        
+        let errorTitle = '❌ Échec de création';
+        let errorDescription = 'Impossible de créer le rendez-vous. Veuillez réessayer.';
+        
+        if (error instanceof Error) {
+          errorDescription = error.message;
+          
+          if (error.message.includes('💾')) {
+            errorTitle = '💾 Erreur de sauvegarde';
+          } else if (error.message.includes('timeout') || error.message.includes('⏱️')) {
+            errorTitle = '⏱️ Délai dépassé';
+          } else if (error.message.includes('network') || error.message.includes('📡')) {
+            errorTitle = '📡 Erreur réseau';
+          }
+        }
+        
+        toast({
+          title: errorTitle,
+          description: errorDescription,
           variant: 'destructive',
+          duration: 6000,
         });
       }
       return;
@@ -291,33 +388,47 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       
       console.log('🔵 Création du rendez-vous en attente de confirmation du praticien...');
       const createdAppointment = await onSubmit(appointmentPayload);
-      console.log('✅ Rendez-vous créé avec succès', createdAppointment);
+      console.log('✅ Rendez-vous créé, vérification de la réponse...', createdAppointment);
       
-      if (createdAppointment && typeof createdAppointment === 'object' && 'id' in createdAppointment) {
-        handleOpenChange(false);
-        setIsSearchingPractitioner(false);
-        setLocationMode('auto');
-        setManualAddress('');
-        form.reset({
-          specialty: '',
-          date: undefined,
-          time: '',
-          reason: '',
-          urgencyLevel: 'non-urgent'
-        });
-        
-        toast({
-          title: '✅ Demande envoyée avec succès',
-          description: `Votre demande a été envoyée à ${practitioner.name}. Le praticien répondra généralement sous 30 minutes. Vous recevrez une notification dès qu'il acceptera.`,
-          duration: 6000,
-        });
-      } else {
-        throw new Error('L\'ID du rendez-vous n\'a pas été retourné');
+      // Validation stricte du retour
+      if (!createdAppointment) {
+        throw new Error('💾 Le serveur n\'a retourné aucune donnée. La création du rendez-vous a échoué.');
       }
+
+      if (typeof createdAppointment !== 'object') {
+        throw new Error(`💾 Type de retour invalide: le serveur a retourné un ${typeof createdAppointment} au lieu d'un objet.`);
+      }
+
+      if (!('id' in createdAppointment) || !createdAppointment.id) {
+        console.error('❌ Réponse invalide du serveur:', createdAppointment);
+        throw new Error('💾 L\'ID du rendez-vous n\'a pas été retourné par le serveur. Le rendez-vous n\'a peut-être pas été créé correctement.');
+      }
+
+      console.log('✅ Rendez-vous créé avec succès - ID:', createdAppointment.id);
+      
+      handleOpenChange(false);
+      setIsSearchingPractitioner(false);
+      setIsSubmitting(false);
+      setLocationMode('auto');
+      setManualAddress('');
+      form.reset({
+        specialty: '',
+        date: undefined,
+        time: '',
+        reason: '',
+        urgencyLevel: 'non-urgent'
+      });
+      
+      toast({
+        title: '✅ Demande envoyée avec succès',
+        description: `Votre demande a été envoyée à ${practitioner.name}. Le praticien répondra généralement sous 30 minutes. Vous recevrez une notification dès qu'il acceptera.`,
+        duration: 6000,
+      });
       
     } catch (error) {
       console.error('❌ Erreur lors de la création du rendez-vous:', error);
       setIsSearchingPractitioner(false);
+      setIsSubmitting(false);
       
       // Message d'erreur détaillé
       let errorTitle = '❌ Erreur';
@@ -327,7 +438,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         errorDescription = error.message;
         
         // Classifier l'erreur pour un meilleur titre
-        if (error.message.includes('timeout') || error.message.includes('⏱️')) {
+        if (error.message.includes('💾')) {
+          errorTitle = '💾 Erreur de sauvegarde';
+        } else if (error.message.includes('timeout') || error.message.includes('⏱️')) {
           errorTitle = '⏱️ Délai dépassé';
         } else if (error.message.includes('network') || error.message.includes('réseau') || error.message.includes('📡')) {
           errorTitle = '📡 Erreur de connexion';
@@ -397,11 +510,26 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
 
-    return timeSlots.filter((time) => {
+    const availableSlots = timeSlots.filter((time) => {
       const [hours, minutes] = time.split(':').map(Number);
       // Garder le créneau si l'heure est future ou si c'est l'heure actuelle mais les minutes sont futures
       return hours > currentHour || (hours === currentHour && minutes > currentMinutes);
     });
+
+    // Si aucun créneau disponible aujourd'hui (après 18h par exemple)
+    if (availableSlots.length === 0) {
+      // Afficher un toast d'information pour guider l'utilisateur
+      setTimeout(() => {
+        toast({
+          title: '⏰ Plus de créneaux aujourd\'hui',
+          description: `Il est ${currentHour}h${String(currentMinutes).padStart(2, '0')}. Tous les créneaux d'aujourd'hui sont passés. Veuillez sélectionner une date ultérieure (demain ou plus tard).`,
+          variant: 'destructive',
+          duration: 8000,
+        });
+      }, 300); // Léger délai pour éviter les toasts simultanés
+    }
+
+    return availableSlots;
   };
 
   return (
@@ -424,7 +552,10 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           <Alert className="mb-4 bg-primary/5 border-primary/20">
             <MapPin className="h-4 w-4" />
             <AlertDescription>
-              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>15 km</strong> autour de votre position actuelle ({position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}°).
+              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>15 km</strong> autour de votre position actuelle.
+              <div className="text-xs mt-1 text-muted-foreground">
+                Position: {position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}° (±{Math.round(position.accuracy)}m)
+              </div>
             </AlertDescription>
           </Alert>
         )}
@@ -696,12 +827,12 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               <Button 
                 type="submit" 
                 className="flex-1" 
-                disabled={isSearchingPractitioner || geoLoading}
+                disabled={isSearchingPractitioner || geoLoading || isSubmitting}
               >
-                {isSearchingPractitioner ? (
+                {isSearchingPractitioner || isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Recherche...
+                    {isSubmitting ? 'Envoi en cours...' : 'Recherche...'}
                   </>
                 ) : geoLoading ? (
                   <>
