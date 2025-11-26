@@ -146,11 +146,17 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
         throw new Error("URL non générée");
       }
       window.open(url, "_blank", "noopener,noreferrer");
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error("Erreur lors de l'accès au document:", error);
+      
+      const errorMessage = error?.message || "";
+      const isFileNotFound = errorMessage.includes("NoSuchKey") || errorMessage.includes("n'existe pas");
+      
       toast({
-        title: "Impossible d'ouvrir le document",
-        description: "Veuillez réessayer plus tard.",
+        title: isFileNotFound ? "Document introuvable" : "Impossible d'ouvrir le document",
+        description: isFileNotFound 
+          ? "Le document a été supprimé ou n'existe plus dans le système de stockage. Veuillez le télécharger à nouveau."
+          : "Une erreur est survenue lors de l'accès au document. Veuillez réessayer.",
         variant: "destructive",
       });
     }
