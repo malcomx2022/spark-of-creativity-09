@@ -213,7 +213,7 @@ export default function PractitionerSearch() {
                       <SelectValue placeholder="Rayon" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['25', '50', '75', '100'].map(radius => (
+                      {['5', '10', '25', '40', '55', '70', '85', '100'].map(radius => (
                         <SelectItem key={radius} value={radius}>
                           {radius} km
                         </SelectItem>
