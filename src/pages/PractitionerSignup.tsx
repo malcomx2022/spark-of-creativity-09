@@ -124,33 +124,72 @@ export default function PractitionerSignup() {
   const isCoachSportif = formData.profession === "Coach sportif";
 
   // Validation en temps réel
-  const validateField = (name: string, value: any): string => {
+  const validateField = (name: string, value: unknown): string => {
     switch (name) {
       case 'firstName':
       case 'lastName':
-        return value.trim().length < 2 ? "Minimum 2 caractères requis" : "";
+        if (typeof value !== 'string' || !value.trim()) return name === 'firstName' ? "Prénom requis" : "Nom requis";
+        if (value.trim().length < 2) return "Minimum 2 caractères requis";
+        return !/^[a-zA-ZÀ-ÿ\s'-]+$/.test(value.trim()) ? "Caractères invalides" : "";
+      case 'address':
+        if (typeof value !== 'string' || !value.trim()) return "Adresse requise";
+        if (value.trim().length < 5) return "Adresse trop courte (min. 5 caractères)";
+        return value.trim().length > 200 ? "Adresse trop longue (max 200 caractères)" : "";
       case 'email':
-        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "Email invalide" : "";
+        return typeof value === 'string' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "Email invalide" : "";
       case 'phone':
-        return !/^\+?[0-9]{8,15}$/.test(value.replace(/\s/g, '')) ? "Numéro invalide (8-15 chiffres)" : "";
+        return typeof value === 'string' && !/^\+?[0-9]{8,15}$/.test(value.replace(/\s/g, '')) ? "Numéro invalide (8-15 chiffres)" : "";
       case 'password':
-        return value.length < 8 ? "Minimum 8 caractères requis" : "";
-      case 'dateOfBirth':
-        if (!value) return "Date de naissance requise";
+        return typeof value === 'string' && value.length < 8 ? "Minimum 8 caractères requis" : "";
+      case 'confirmPassword':
+        return typeof value === 'string' && value !== formData.password ? "Les mots de passe ne correspondent pas" : "";
+      case 'gender':
+        return !value ? "Genre requis" : "";
+      case 'dateOfBirth': {
+        if (typeof value !== 'string' || !value) return "Date de naissance requise";
         const age = new Date().getFullYear() - new Date(value).getFullYear();
         return age < 18 || age > 100 ? "Âge invalide (18-100 ans)" : "";
+      }
+      case 'profession':
+        return !value ? "Profession requise" : "";
+      case 'specialty': {
+        const specialtyValue = (value || '').toString().trim();
+        if (!specialtyValue) return isCoachSportif ? "Spécialité sportive requise" : "Spécialité requise";
+        if (specialtyValue.length < 2) return "La spécialité doit contenir au moins 2 caractères";
+        return specialtyValue.length > 100 ? "La spécialité ne peut pas dépasser 100 caractères" : "";
+      }
+      case 'experience': {
+        if (!value) return "Expérience requise";
+        const exp = parseInt(value, 10);
+        return isNaN(exp) || exp < 0 || exp > 70 ? "L'expérience doit être entre 0 et 70 ans" : "";
+      }
+      case 'interventionZone': {
+        if (!isCoachSportif) return "";
+        const zone = (value || '').toString().trim();
+        if (!zone) return "Zone d'intervention requise";
+        if (zone.length < 3) return "Zone d'intervention trop courte (min 3 caractères)";
+        return zone.length > 200 ? "Zone d'intervention ne peut pas dépasser 200 caractères" : "";
+      }
       case 'interventionRadius':
         if (isCoachSportif && value) {
           const radius = parseInt(value);
           return isNaN(radius) || radius < 1 || radius > 100 ? "Rayon entre 1 et 100 km" : "";
+        } else if (isCoachSportif && !value) {
+          return "Rayon d'intervention requis";
         }
         return "";
+      case 'sessionTypes':
+        return isCoachSportif && (!value || value.length === 0)
+          ? "Au moins un type de séance requis"
+          : "";
+      case 'acceptTerms':
+        return value !== true ? "Vous devez accepter la charte d'engagement" : "";
       default:
         return "";
     }
   };
 
-  const handleInputChange = (name: string, value: any) => {
+  const handleInputChange = (name: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [name]: value }));
     const error = validateField(name, value);
     setFieldErrors(prev => ({ ...prev, [name]: error }));
@@ -599,20 +638,30 @@ export default function PractitionerSignup() {
                         id="firstName"
                         placeholder="Votre prénom"
                         value={formData.firstName}
-                        onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                        onChange={(e) => handleInputChange('firstName', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.firstName}
+                        className={fieldErrors.firstName ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.firstName && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.firstName}</p>
+                      )}
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="lastName">Nom de famille *</Label>
                       <Input
                         id="lastName"
                         placeholder="Votre nom"
                         value={formData.lastName}
-                        onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                        onChange={(e) => handleInputChange('lastName', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.lastName}
+                        className={fieldErrors.lastName ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.lastName && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.lastName}</p>
+                      )}
                     </div>
                   </div>
 
@@ -623,15 +672,20 @@ export default function PractitionerSignup() {
                         id="dateOfBirth"
                         type="date"
                         value={formData.dateOfBirth}
-                        onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                        onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.dateOfBirth}
+                        className={fieldErrors.dateOfBirth ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.dateOfBirth && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.dateOfBirth}</p>
+                      )}
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="gender">Sexe *</Label>
-                      <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
-                        <SelectTrigger>
+                      <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
+                        <SelectTrigger className={fieldErrors.gender ? 'border-destructive' : ''}>
                           <SelectValue placeholder="Sélectionnez" />
                         </SelectTrigger>
                         <SelectContent>
@@ -639,20 +693,28 @@ export default function PractitionerSignup() {
                           <SelectItem value="femme">Femme</SelectItem>
                         </SelectContent>
                       </Select>
+                      {fieldErrors.gender && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.gender}</p>
+                      )}
                     </div>
                   </div>
 
                   <AddressSearchInput
                     label="Adresse complète"
                     value={formData.address}
-                    onChange={(location) => setFormData(prev => ({ 
-                      ...prev, 
-                      address: location.address,
-                      latitude: location.latitude ?? null,
-                      longitude: location.longitude ?? null,
-                    }))}
+                    onChange={(location) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        address: location.address,
+                        latitude: location.latitude ?? null,
+                        longitude: location.longitude ?? null,
+                      }));
+                      const error = validateField('address', location.address);
+                      setFieldErrors(prev => ({ ...prev, address: error }));
+                    }}
                     placeholder="Rechercher votre adresse au Bénin..."
                     required
+                    error={fieldErrors.address}
                   />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -661,12 +723,13 @@ export default function PractitionerSignup() {
                       <PhoneInput
                         id="phone"
                         value={formData.phone}
-                        onChange={(value) => setFormData(prev => ({ ...prev, phone: value }))}
+                        onChange={(value) => handleInputChange('phone', value)}
                         countryCode="+229"
                         localNumberLength={8}
+                        error={fieldErrors.phone}
                       />
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="email">Email professionnel *</Label>
                       <Input
@@ -674,9 +737,14 @@ export default function PractitionerSignup() {
                         type="email"
                         placeholder="votre@email.com"
                         value={formData.email}
-                        onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.email}
+                        className={fieldErrors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.email && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.email}</p>
+                      )}
                     </div>
                   </div>
                 </div>
