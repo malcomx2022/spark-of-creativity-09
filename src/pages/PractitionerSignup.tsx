@@ -264,16 +264,14 @@ export default function PractitionerSignup() {
     // Profession
     if (!formData.profession) errors.profession = "Profession requise";
     
-    // Spécialité (non requise pour coach)
-    if (!isCoachSportif) {
-      const specialty = formData.specialty.trim();
-      if (!specialty) {
-        errors.specialty = "Spécialité requise";
-      } else if (specialty.length < 2) {
-        errors.specialty = "La spécialité doit contenir au moins 2 caractères";
-      } else if (specialty.length > 100) {
-        errors.specialty = "La spécialité ne peut pas dépasser 100 caractères";
-      }
+    // Spécialité (requise pour tous, y compris les coachs)
+    const specialty = formData.specialty.trim();
+    if (!specialty) {
+      errors.specialty = isCoachSportif ? "Spécialité sportive requise" : "Spécialité requise";
+    } else if (specialty.length < 2) {
+      errors.specialty = "La spécialité doit contenir au moins 2 caractères";
+    } else if (specialty.length > 100) {
+      errors.specialty = "La spécialité ne peut pas dépasser 100 caractères";
     }
     
     // Expérience
@@ -713,11 +711,32 @@ export default function PractitionerSignup() {
                       )}
                     </div>
 
-                    {!isCoachSportif && (
-                      <div className="space-y-2">
-                        <Label htmlFor="specialty" className="text-sm sm:text-base">
-                          Spécialité <span className="text-destructive">*</span>
-                        </Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="specialty" className="text-sm sm:text-base">
+                        {isCoachSportif ? 'Spécialité sportive' : 'Spécialité'} <span className="text-destructive">*</span>
+                      </Label>
+                      {isCoachSportif ? (
+                        <Select
+                          value={formData.specialty}
+                          onValueChange={(value) => handleInputChange('specialty', value)}
+                        >
+                          <SelectTrigger className={`h-11 sm:h-12 ${fieldErrors.specialty ? 'border-destructive' : ''}`}>
+                            <SelectValue placeholder="Sélectionnez votre spécialité sportive" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Fitness">Fitness</SelectItem>
+                            <SelectItem value="Musculation">Musculation</SelectItem>
+                            <SelectItem value="Cardio-training">Cardio-training</SelectItem>
+                            <SelectItem value="Yoga">Yoga</SelectItem>
+                            <SelectItem value="Pilates">Pilates</SelectItem>
+                            <SelectItem value="CrossFit">CrossFit</SelectItem>
+                            <SelectItem value="Sport santé">Sport santé</SelectItem>
+                            <SelectItem value="Préparation physique">Préparation physique</SelectItem>
+                            <SelectItem value="Coaching nutritionnel sportif">Coaching nutritionnel sportif</SelectItem>
+                            <SelectItem value="Remise en forme">Remise en forme</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
                         <Input
                           id="specialty"
                           placeholder="Ex: Cardiologie, Pédiatrie..."
@@ -726,11 +745,11 @@ export default function PractitionerSignup() {
                           required
                           className={`h-11 sm:h-12 ${fieldErrors.specialty ? 'border-destructive' : ''}`}
                         />
-                        {fieldErrors.specialty && (
-                          <p className="text-xs text-destructive mt-1">{fieldErrors.specialty}</p>
-                        )}
-                      </div>
-                    )}
+                      )}
+                      {fieldErrors.specialty && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.specialty}</p>
+                      )}
+                    </div>
                   </div>
 
                   {!isCoachSportif && (
