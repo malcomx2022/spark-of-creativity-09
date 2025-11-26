@@ -190,7 +190,10 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       const appointmentDate = `${year}-${month}-${day}`;
       
       console.log('📅 Date formatée pour la recherche:', appointmentDate);
+      console.log('📍 Position:', { lat: position.latitude, lon: position.longitude });
+      console.log('🔎 Paramètres:', { specialty: data.specialty, date: appointmentDate, time: data.time });
       
+      // Appeler l'edge function avec retry et callback de progression
       const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry<FindPractitionerResponse>(
         'find-available-practitioner',
         {
@@ -202,28 +205,72 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
             appointmentTime: data.time,
             maxRadius: 15,
           },
+        },
+        3, // 3 tentatives max
+        (attempt, error) => {
+          console.warn(`⚠️ Tentative ${attempt} échouée:`, error.message);
+          if (attempt === 1) {
+            toast({
+              title: '🔄 Recherche en cours...',
+              description: 'Première tentative échouée, nouvelle tentative en cours.',
+              duration: 3000,
+            });
+          }
         }
       );
 
+      // Validation de la réponse de l'edge function
       if (practitionerError) {
-        throw new Error(practitionerError.message);
+        console.error('❌ Erreur de l\'edge function find-available-practitioner:', practitionerError);
+        
+        const errorMessage = practitionerError.message || 'Erreur inconnue';
+        
+        // Gestion des différents types d'erreurs
+        if (errorMessage.includes('timeout') || errorMessage.includes('trop de temps')) {
+          throw new Error('⏱️ Le serveur met trop de temps à répondre. Vérifiez votre connexion internet et réessayez.');
+        } else if (errorMessage.includes('network') || errorMessage.includes('réseau') || errorMessage.includes('fetch')) {
+          throw new Error('📡 Erreur réseau lors de la recherche de praticien. Vérifiez votre connexion internet.');
+        } else {
+          throw new Error(`❌ Erreur du serveur: ${errorMessage}`);
+        }
       }
 
-      if (!practitionerData?.success || !practitionerData?.practitioner) {
+      // Validation de la structure de la réponse
+      if (!practitionerData) {
+        console.error('❌ Réponse invalide: pas de données retournées');
+        throw new Error('🔧 Le serveur a retourné une réponse invalide. Veuillez contacter le support.');
+      }
+
+      if (typeof practitionerData !== 'object') {
+        console.error('❌ Réponse invalide: type incorrect', typeof practitionerData);
+        throw new Error('🔧 Le serveur a retourné des données dans un format invalide.');
+      }
+
+      // Aucun praticien disponible
+      if (!practitionerData.success || !practitionerData.practitioner) {
         setIsSearchingPractitioner(false);
         
         // Formater la date pour l'affichage en français
         const formattedDate = format(data.date, 'dd/MM/yyyy', { locale: fr });
         
+        console.warn('⚠️ Aucun praticien disponible dans les critères recherchés');
+        
         toast({
-          title: 'Aucun praticien disponible',
-          description: `Aucun praticien disponible le ${formattedDate} à ${data.time}. Veuillez choisir une autre date ou heure.`,
+          title: '😔 Aucun praticien disponible',
+          description: `Aucun ${data.specialty} disponible dans un rayon de 15 km le ${formattedDate} à ${data.time}.\n\nSuggestions:\n• Essayez une autre date ou heure\n• Choisissez un créneau plus tard dans la journée\n• Vérifiez les jours suivants`,
           variant: 'destructive',
+          duration: 8000,
         });
         return;
       }
 
+      // Validation de l'objet praticien
       const practitioner = practitionerData.practitioner;
+      if (!practitioner.id || !practitioner.name) {
+        console.error('❌ Données praticien invalides:', practitioner);
+        throw new Error('🔧 Les informations du praticien sont incomplètes. Veuillez réessayer.');
+      }
+
       console.log('✅ Praticien trouvé:', practitioner);
 
       toast({
@@ -269,12 +316,31 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       }
       
     } catch (error) {
-      console.error('❌ Erreur:', error);
+      console.error('❌ Erreur lors de la création du rendez-vous:', error);
       setIsSearchingPractitioner(false);
+      
+      // Message d'erreur détaillé
+      let errorTitle = '❌ Erreur';
+      let errorDescription = 'Impossible de créer le rendez-vous. Veuillez réessayer.';
+      
+      if (error instanceof Error) {
+        errorDescription = error.message;
+        
+        // Classifier l'erreur pour un meilleur titre
+        if (error.message.includes('timeout') || error.message.includes('⏱️')) {
+          errorTitle = '⏱️ Délai dépassé';
+        } else if (error.message.includes('network') || error.message.includes('réseau') || error.message.includes('📡')) {
+          errorTitle = '📡 Erreur de connexion';
+        } else if (error.message.includes('serveur') || error.message.includes('🔧')) {
+          errorTitle = '🔧 Erreur du serveur';
+        }
+      }
+      
       toast({
-        title: 'Erreur',
-        description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous. Veuillez réessayer.',
-        variant: 'destructive'
+        title: errorTitle,
+        description: errorDescription,
+        variant: 'destructive',
+        duration: 6000,
       });
     }
   };
