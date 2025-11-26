@@ -2252,6 +2252,10 @@ export type Database = {
       }
     }
     Functions: {
+      approve_practitioner_kyc: {
+        Args: { p_reviewed_by?: string; p_user_id: string }
+        Returns: Json
+      }
       auto_confirm_consultations: { Args: never; Returns: undefined }
       check_otp_rate_limit: { Args: { phone: string }; Returns: Json }
       cleanup_expired_payment_slots: { Args: never; Returns: undefined }
