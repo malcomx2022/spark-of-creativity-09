@@ -167,8 +167,9 @@ Deno.serve(async (req) => {
           rating: 4.5,
           years_experience: 10,
           bio: 'Médecin généraliste expérimenté disponible pour consultations à domicile',
-          kyc_status: 'pending',
-          can_accept_missions: false,
+          practitioner_type: 'autre',
+          kyc_status: 'approved',
+          can_accept_missions: true,
           id_document_url: 'test-documents/id_test.pdf',
           license_document_url: 'test-documents/license_test.pdf',
           insurance_document_url: 'test-documents/insurance_test.pdf',
@@ -239,7 +240,7 @@ Deno.serve(async (req) => {
           intervention_zone: 'Cotonou et environs',
           intervention_radius: 15,
           certifications: ['Certificat de coach sportif', 'Nutrition sportive'],
-          kyc_status: 'validated',
+          kyc_status: 'approved',
           can_accept_missions: true,
         }, { onConflict: 'user_id' });
         if (coachError) console.error('Coach practitioner entry error:', coachError);
