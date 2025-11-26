@@ -55,7 +55,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const isSubmittingRef = useRef(false);
   const submissionTimestampRef = useRef<number>(0);
 
-  const { position, requestPosition, loading: geoLoading, error: geoError } = useGeolocation();
+  const { position, requestPosition, loading: geoLoading, error: geoError, quality, isRefining } = useGeolocation();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -588,18 +588,37 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         </DialogHeader>
 
         {locationMode === 'auto' && position && (
-          <Alert className="mb-4 bg-primary/5 border-primary/20">
+          <Alert className={cn(
+            "mb-4 border-2",
+            quality?.level === 'excellent' ? "bg-green-50 border-green-300" :
+            quality?.level === 'good' ? "bg-blue-50 border-blue-300" :
+            quality?.level === 'fair' ? "bg-yellow-50 border-yellow-300" :
+            "bg-orange-50 border-orange-300"
+          )}>
             <MapPin className="h-4 w-4" />
             <AlertDescription>
-              <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>100 km</strong> autour de votre position actuelle.
-              <div className="text-xs mt-1 text-muted-foreground">
-                Position: {position.latitude.toFixed(4)}°, {position.longitude.toFixed(4)}° (±{Math.round(position.accuracy)}m)
+              <div className="space-y-1">
+                <div>
+                  <strong>Recherche automatique :</strong> Le système recherchera un praticien disponible dans un rayon de <strong>100 km</strong> autour de votre position actuelle.
+                </div>
+                <div className={cn("text-sm font-medium", quality?.color || "text-muted-foreground")}>
+                  {quality?.message || 'Position obtenue'}
+                  {isRefining && (
+                    <span className="ml-2 inline-flex items-center">
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      Affinage en cours...
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Coordonnées: {position.latitude.toFixed(6)}°, {position.longitude.toFixed(6)}°
+                </div>
               </div>
             </AlertDescription>
           </Alert>
         )}
 
-        {locationMode === 'auto' && geoLoading && (
+        {locationMode === 'auto' && geoLoading && !position && (
           <Alert className="mb-4 bg-blue-50 border-blue-200">
             <Loader2 className="h-4 w-4 animate-spin" />
             <AlertDescription className="flex items-center justify-between">
