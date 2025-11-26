@@ -170,6 +170,11 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
     }
   };
 
+  const isKYCValidated = () => {
+    const status = practitionerData?.kyc_status || "pending";
+    return status === "approved" || status === "validated";
+  };
+
   const getKYCStatusBadge = () => {
     const status = practitionerData?.kyc_status || "pending";
     const config = {
@@ -205,13 +210,25 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
           </div>
         </CardHeader>
         <CardContent>
-          {!practitionerData?.can_accept_missions && (
+          {isKYCValidated() && (
+            <div className="bg-primary/10 text-primary p-4 rounded-lg flex items-start gap-3 mb-4">
+              <CheckCircle className="h-5 w-5 mt-0.5" />
+              <div>
+                <p className="font-medium">Dossier validé</p>
+                <p className="text-sm mt-1">
+                  Votre dossier a été validé. Vous ne pouvez plus modifier vos documents, uniquement les consulter.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!practitionerData?.can_accept_missions && !isKYCValidated() && (
             <div className="bg-destructive/10 text-destructive p-4 rounded-lg flex items-start gap-3">
               <AlertCircle className="h-5 w-5 mt-0.5" />
               <div>
                 <p className="font-medium">Acceptation de missions bloquée</p>
                 <p className="text-sm mt-1">
-                  Vous ne pouvez pas accepter de missions tant que votre profil n'est pas validé.
+                  Vous ne pouvez pas accepter de missions tant que votre profil n'est pas validé. Vous pouvez resoummettre votre dossier avec de nouveaux documents.
                 </p>
               </div>
             </div>
@@ -231,7 +248,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
-                  disabled={!isEditing}
+                  disabled={!isEditing || isKYCValidated()}
                   onChange={(e) => handleDocumentSelection("idDocument", e.target.files?.[0] || null)}
                 />
                 {documentState.idDocument && (
@@ -254,7 +271,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
-                  disabled={!isEditing}
+                  disabled={!isEditing || isKYCValidated()}
                   onChange={(e) => handleDocumentSelection("licenseDocument", e.target.files?.[0] || null)}
                 />
                 {documentState.licenseDocument && (
@@ -277,7 +294,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
-                  disabled={!isEditing}
+                  disabled={!isEditing || isKYCValidated()}
                   onChange={(e) => handleDocumentSelection("insuranceDocument", e.target.files?.[0] || null)}
                 />
                 {documentState.insuranceDocument && (
@@ -306,31 +323,35 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
               <CardTitle>Profil professionnel</CardTitle>
               <CardDescription>Vos informations et compétences</CardDescription>
             </div>
-            {!isEditing ? (
-              <Button onClick={() => setIsEditing(true)}>Modifier</Button>
-            ) : (
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setIsEditing(false)}>
-                  Annuler
-                </Button>
-                <Button onClick={handleSave} disabled={loading}>
-                  Sauvegarder
-                </Button>
-              </div>
+            {!isKYCValidated() && (
+              <>
+                {!isEditing ? (
+                  <Button onClick={() => setIsEditing(true)}>Modifier</Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setIsEditing(false)}>
+                      Annuler
+                    </Button>
+                    <Button onClick={handleSave} disabled={loading}>
+                      Sauvegarder
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="bio">Biographie</Label>
-            <Textarea
-              id="bio"
-              value={formData.bio}
-              onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-              disabled={!isEditing}
-              rows={4}
-              placeholder="Présentez votre parcours et votre approche..."
-            />
+              <Textarea
+                id="bio"
+                value={formData.bio}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                disabled={!isEditing || isKYCValidated()}
+                rows={4}
+                placeholder="Présentez votre parcours et votre approche..."
+              />
           </div>
           
           <div className="grid gap-4 md:grid-cols-2">
@@ -340,7 +361,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 id="diplomas"
                 value={formData.diplomas}
                 onChange={(e) => setFormData({ ...formData, diplomas: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
                 placeholder="Master en Soins Infirmiers, ..."
               />
             </div>
@@ -350,7 +371,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 id="languages"
                 value={formData.languages}
                 onChange={(e) => setFormData({ ...formData, languages: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
                 placeholder="Français, Anglais, ..."
               />
             </div>
@@ -364,7 +385,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 type="number"
                 value={formData.years_experience}
                 onChange={(e) => setFormData({ ...formData, years_experience: parseInt(e.target.value) })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
               />
             </div>
             <div>
@@ -373,7 +394,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 id="license"
                 value={formData.license_number}
                 onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
                 placeholder="N° d'agrément"
               />
             </div>
@@ -386,7 +407,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
               type="number"
               value={formData.intervention_radius}
               onChange={(e) => setFormData({ ...formData, intervention_radius: parseInt(e.target.value) })}
-              disabled={!isEditing}
+              disabled={!isEditing || isKYCValidated()}
             />
           </div>
 
@@ -396,7 +417,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
               id="communes"
               value={formData.communes_served}
               onChange={(e) => setFormData({ ...formData, communes_served: e.target.value })}
-              disabled={!isEditing}
+              disabled={!isEditing || isKYCValidated()}
               rows={2}
               placeholder="Paris 15e, Issy-les-Moulineaux, ..."
             />
