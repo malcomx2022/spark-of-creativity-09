@@ -67,6 +67,11 @@ export default function PractitionerSearch() {
     error: practitionerError,
   } = usePractitioners();
 
+  // Demander automatiquement la géolocalisation au chargement de la page
+  useEffect(() => {
+    requestPosition();
+  }, []);
+
   // Mettre à jour userLocation quand position change
   useEffect(() => {
     if (position) {
