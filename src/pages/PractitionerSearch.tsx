@@ -17,6 +17,9 @@ import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Star, Phone, Navigation } from 'lucide-react';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -37,11 +40,13 @@ export default function PractitionerSearch() {
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
   const [searchRadius, setSearchRadius] = useState<string>('100');
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
   const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
 
   const { data: user } = useSupabaseUser();
+  
+  // Utiliser le hook de géolocalisation amélioré
+  const { position, requestPosition, loading: geoLoading, error: geoError, quality, isRefining } = useGeolocation();
 
   // Récupérer le token Mapbox via l'edge function
   const { data: mapboxData, isLoading: isLoadingMapbox } = useQuery({
@@ -61,6 +66,23 @@ export default function PractitionerSearch() {
     isError: isPractitionerError,
     error: practitionerError,
   } = usePractitioners();
+
+  // Mettre à jour userLocation quand position change
+  useEffect(() => {
+    if (position) {
+      setUserLocation({
+        latitude: position.latitude,
+        longitude: position.longitude,
+      });
+      
+      if (quality) {
+        toast({
+          title: '📍 Position obtenue',
+          description: quality.message,
+        });
+      }
+    }
+  }, [position, quality]);
 
   useEffect(() => {
     if (practitionersData.length === 0) {
@@ -122,40 +144,7 @@ export default function PractitionerSearch() {
   );
 
   const getUserLocation = () => {
-    setIsLoadingLocation(true);
-
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        position => {
-          setUserLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-          toast({
-            title: 'Position obtenue',
-            description: 'Votre position a été localisée avec succès.'
-          });
-          setIsLoadingLocation(false);
-        },
-        error => {
-          console.error('Erreur de géolocalisation:', error);
-          toast({
-            title: 'Erreur',
-            description: 'Impossible d\'obtenir votre position.',
-            variant: 'destructive'
-          });
-          setIsLoadingLocation(false);
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      toast({
-        title: 'Non supporté',
-        description: 'La géolocalisation n\'est pas supportée par votre navigateur.',
-        variant: 'destructive'
-      });
-      setIsLoadingLocation(false);
-    }
+    requestPosition();
   };
 
 
@@ -169,11 +158,11 @@ export default function PractitionerSearch() {
             <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between">
               <h1 className="text-2xl sm:text-3xl font-bold">Trouver un praticien</h1>
               <div className="flex items-center gap-2">
-                <Button onClick={getUserLocation} disabled={isLoadingLocation} className="min-h-[44px]">
-                  {isLoadingLocation ? (
+                <Button onClick={getUserLocation} disabled={geoLoading || isRefining} className="min-h-[44px]">
+                  {geoLoading || isRefining ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      <span className="hidden sm:inline">Localisation en cours...</span>
+                      <span className="hidden sm:inline">{isRefining ? 'Affinage...' : 'Localisation en cours...'}</span>
                       <span className="sm:hidden">Position...</span>
                     </>
                   ) : (
@@ -185,6 +174,30 @@ export default function PractitionerSearch() {
                 </Button>
               </div>
             </div>
+
+            {position && quality && (
+              <Alert className={cn(
+                "border-2",
+                quality.level === 'excellent' ? "bg-green-50 border-green-300" :
+                quality.level === 'good' ? "bg-blue-50 border-blue-300" :
+                quality.level === 'fair' ? "bg-yellow-50 border-yellow-300" :
+                "bg-orange-50 border-orange-300"
+              )}>
+                <MapPin className="h-4 w-4" />
+                <AlertDescription>
+                  <div className={cn("font-medium", quality.color)}>
+                    {quality.message}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {geoError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{geoError}</AlertDescription>
+              </Alert>
+            )}
 
             <Card>
               <CardContent className="p-6 space-y-4">
