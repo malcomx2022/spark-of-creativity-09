@@ -267,7 +267,7 @@ export default function PractitionerSignup() {
     // Spécialité (requise pour tous, y compris les coachs)
     const specialty = formData.specialty.trim();
     if (!specialty) {
-      errors.specialty = isCoachSportif ? "Spécialité sportive requise" : "Spécialité requise";
+      errors.specialty = "Spécialité requise";
     } else if (specialty.length < 2) {
       errors.specialty = "La spécialité doit contenir au moins 2 caractères";
     } else if (specialty.length > 100) {
@@ -752,77 +752,55 @@ export default function PractitionerSignup() {
                     </div>
                   </div>
 
-                  {!isCoachSportif && (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="registrationNumber" className="text-sm sm:text-base">
-                            N° d'inscription Ordre
-                          </Label>
-                          <Input
-                            id="registrationNumber"
-                            placeholder="Numéro d'inscription"
-                            value={formData.registrationNumber}
-                            onChange={(e) => handleInputChange('registrationNumber', e.target.value)}
-                            className="h-11 sm:h-12"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="experience" className="text-sm sm:text-base">
-                            Années d'expérience <span className="text-destructive">*</span>
-                          </Label>
-                          <Input
-                            id="experience"
-                            type="number"
-                            min="0"
-                            max="70"
-                            placeholder="Ex: 5"
-                            value={formData.experience}
-                            onChange={(e) => handleInputChange('experience', e.target.value)}
-                            required
-                            className={`h-11 sm:h-12 ${fieldErrors.experience ? 'border-destructive' : ''}`}
-                          />
-                          {fieldErrors.experience && (
-                            <p className="text-xs text-destructive mt-1">{fieldErrors.experience}</p>
-                          )}
-                        </div>
-                      </div>
-
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {!isCoachSportif && (
                       <div className="space-y-2">
-                        <Label htmlFor="currentWorkplace" className="text-sm sm:text-base">
-                          Structure d'exercice actuelle
+                        <Label htmlFor="registrationNumber" className="text-sm sm:text-base">
+                          N° d'inscription Ordre
                         </Label>
                         <Input
-                          id="currentWorkplace"
-                          placeholder="Ex: Hôpital Principal, Cabinet Médical..."
-                          value={formData.currentWorkplace}
-                          onChange={(e) => handleInputChange('currentWorkplace', e.target.value)}
+                          id="registrationNumber"
+                          placeholder="Numéro d'inscription"
+                          value={formData.registrationNumber}
+                          onChange={(e) => handleInputChange('registrationNumber', e.target.value)}
                           className="h-11 sm:h-12"
                         />
                       </div>
-                    </>
-                  )}
-
-                  {isCoachSportif && (
-                    <div className="space-y-2">
-                    <Label htmlFor="experience" className="text-sm sm:text-base">
-                      Années d'expérience <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="experience"
-                      type="number"
-                      min="0"
-                      max="70"
-                      placeholder="Ex: 5"
-                      value={formData.experience}
-                      onChange={(e) => handleInputChange('experience', e.target.value)}
-                      required
-                      className={`h-11 sm:h-12 ${fieldErrors.experience ? 'border-destructive' : ''}`}
-                    />
-                    {fieldErrors.experience && (
-                      <p className="text-xs text-destructive mt-1">{fieldErrors.experience}</p>
                     )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="experience" className="text-sm sm:text-base">
+                        Années d'expérience <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="experience"
+                        type="number"
+                        min="0"
+                        max="70"
+                        placeholder="Ex: 5"
+                        value={formData.experience}
+                        onChange={(e) => handleInputChange('experience', e.target.value)}
+                        required
+                        className={`h-11 sm:h-12 ${fieldErrors.experience ? 'border-destructive' : ''}`}
+                      />
+                      {fieldErrors.experience && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.experience}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isCoachSportif && (
+                    <div className="space-y-2">
+                      <Label htmlFor="currentWorkplace" className="text-sm sm:text-base">
+                        Structure d'exercice actuelle
+                      </Label>
+                      <Input
+                        id="currentWorkplace"
+                        placeholder="Ex: Hôpital Principal, Cabinet Médical..."
+                        value={formData.currentWorkplace}
+                        onChange={(e) => handleInputChange('currentWorkplace', e.target.value)}
+                        className="h-11 sm:h-12"
+                      />
                     </div>
                   )}
                 </div>
