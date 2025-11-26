@@ -160,8 +160,11 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
     const status = practitionerData?.kyc_status || "pending";
     const config = {
       pending: { icon: Clock, variant: "secondary" as const, label: "En attente" },
+      approved: { icon: CheckCircle, variant: "default" as const, label: "Validé" },
       validated: { icon: CheckCircle, variant: "default" as const, label: "Validé" },
+      rejected: { icon: XCircle, variant: "destructive" as const, label: "Refusé" },
       refused: { icon: XCircle, variant: "destructive" as const, label: "Refusé" },
+      incomplete: { icon: AlertCircle, variant: "outline" as const, label: "Incomplet" },
       to_renew: { icon: AlertCircle, variant: "outline" as const, label: "À renouveler" },
     };
     const { icon: Icon, variant, label } = config[status as keyof typeof config] || config.pending;
