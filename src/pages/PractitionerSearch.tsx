@@ -36,7 +36,7 @@ export default function PractitionerSearch() {
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
-  const [searchRadius, setSearchRadius] = useState<string>('15');
+  const [searchRadius, setSearchRadius] = useState<string>('100');
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
   const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
@@ -213,7 +213,7 @@ export default function PractitionerSearch() {
                       <SelectValue placeholder="Rayon" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['5', '10', '15'].map(radius => (
+                      {['25', '50', '75', '100'].map(radius => (
                         <SelectItem key={radius} value={radius}>
                           {radius} km
                         </SelectItem>
