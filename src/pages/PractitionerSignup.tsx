@@ -867,7 +867,7 @@ export default function PractitionerSignup() {
                         </Label>
                         <Input
                           id="interventionZone"
-                          placeholder="Ex: Dakar, Thiès..."
+                          placeholder="Ex: Cotonou, Porto-Novo, Abomey-Calavi..."
                           value={formData.interventionZone}
                           onChange={(e) => handleInputChange('interventionZone', e.target.value)}
                           required
