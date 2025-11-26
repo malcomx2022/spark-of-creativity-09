@@ -24,11 +24,11 @@ interface UseGeolocationReturn {
 const STORAGE_KEY = 'last_geolocation_position';
 
 const ERROR_MESSAGES = {
-  PERMISSION_DENIED: 'Activez la localisation dans vos paramètres pour trouver des praticiens près de vous.',
-  POSITION_UNAVAILABLE: 'Position GPS indisponible. Vérifiez votre connexion et réessayez.',
-  TIMEOUT: 'Délai dépassé pour obtenir votre position. Veuillez réessayer.',
-  UNKNOWN: 'Une erreur est survenue lors de la récupération de votre position.',
-  NOT_SUPPORTED: 'La géolocalisation n\'est pas supportée par votre navigateur.',
+  PERMISSION_DENIED: '🚫 Permission GPS refusée. Pour utiliser la recherche automatique, vous devez autoriser l\'accès à votre localisation dans les paramètres de votre navigateur. Sinon, passez en mode manuel pour saisir votre adresse.',
+  POSITION_UNAVAILABLE: '📡 Position GPS indisponible. Vérifiez que le GPS de votre appareil est activé et que vous êtes dans une zone avec une bonne réception satellite. Si le problème persiste, utilisez le mode manuel.',
+  TIMEOUT: '⏱️ Délai de localisation dépassé (>10 secondes). Le GPS prend trop de temps à répondre. Essayez de vous rapprocher d\'une fenêtre ou d\'un lieu ouvert, puis cliquez sur "Réessayer". Vous pouvez aussi utiliser le mode manuel.',
+  UNKNOWN: '❓ Erreur inconnue de géolocalisation. Veuillez vérifier que votre appareil et navigateur supportent la géolocalisation, puis réessayez. En cas d\'échec, utilisez le mode manuel.',
+  NOT_SUPPORTED: '❌ Votre navigateur ne supporte pas la géolocalisation. Veuillez passer en mode manuel pour saisir votre adresse ou utilisez un navigateur plus récent (Chrome, Firefox, Safari, Edge).',
 };
 
 export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocationReturn {

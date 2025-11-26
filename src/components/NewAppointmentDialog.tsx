@@ -92,6 +92,23 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const handleSubmit = async (data: FormValues) => {
     console.log('🔵 Formulaire soumis avec les données:', data);
 
+    // Vérification de la géolocalisation en mode automatique AVANT tout traitement
+    if (locationMode === 'auto' && !position) {
+      toast({
+        title: '📍 Localisation requise',
+        description: geoError 
+          ? `${geoError}\n\nVous pouvez soit réessayer la géolocalisation, soit passer en mode manuel pour saisir votre adresse.`
+          : 'Nous avons besoin de votre position pour rechercher un praticien près de vous. Veuillez autoriser la géolocalisation ou passer en mode manuel.',
+        variant: 'destructive',
+        duration: 7000,
+      });
+      
+      if (!geoLoading && !geoError) {
+        requestPosition();
+      }
+      return;
+    }
+
     if (locationMode === 'manual') {
       // Validation de l'adresse manuelle
       if (!manualAddress.trim()) {
@@ -157,17 +174,6 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           variant: 'destructive',
         });
       }
-      return;
-    }
-
-    // Vérifier la géolocalisation
-    if (!position) {
-      toast({
-        title: 'Localisation requise',
-        description: 'Nous avons besoin de votre localisation pour trouver un praticien près de vous.',
-        variant: 'destructive'
-      });
-      requestPosition();
       return;
     }
 
@@ -357,10 +363,36 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           </Alert>
         )}
 
+        {locationMode === 'auto' && geoLoading && (
+          <Alert className="mb-4 bg-blue-50 border-blue-200">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>📍 Localisation en cours... Veuillez autoriser l'accès à votre position GPS.</span>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {locationMode === 'auto' && geoError && (
           <Alert variant="destructive" className="mb-4">
-            <AlertDescription>
-              {geoError} Vous pouvez passer en mode manuel si vous préférez renseigner une adresse.
+            <AlertDescription className="space-y-2">
+              <p>{geoError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={requestPosition}
+                disabled={geoLoading}
+                className="mt-2"
+              >
+                {geoLoading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                    Localisation...
+                  </>
+                ) : (
+                  '🔄 Réessayer la géolocalisation'
+                )}
+              </Button>
             </AlertDescription>
           </Alert>
         )}
@@ -380,8 +412,15 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                     }
                   }}
                   size="sm"
+                  className="relative"
                 >
-                  Géolocalisation automatique
+                  📍 Géolocalisation automatique
+                  {locationMode === 'auto' && !position && !geoLoading && !geoError && (
+                    <span className="ml-2 text-xs opacity-70">(Cliquez pour activer)</span>
+                  )}
+                  {locationMode === 'auto' && position && (
+                    <span className="ml-2">✓</span>
+                  )}
                 </Button>
                 <Button
                   type="button"
@@ -389,7 +428,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                   onClick={() => setLocationMode('manual')}
                   size="sm"
                 >
-                  Saisir l'adresse manuellement
+                  ✍️ Saisir l'adresse manuellement
                 </Button>
               </div>
               {locationMode === 'manual' && (
