@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -48,9 +48,12 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
   const handleOpenChange = onOpenChange || setInternalOpen;
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // Protection contre double soumission
   const [locationMode, setLocationMode] = useState<'auto' | 'manual'>('auto');
   const [manualAddress, setManualAddress] = useState('');
+  
+  // Protection renforcée contre double soumission
+  const isSubmittingRef = useRef(false);
+  const submissionTimestampRef = useRef<number>(0);
 
   const { position, requestPosition, loading: geoLoading, error: geoError } = useGeolocation();
 
@@ -64,6 +67,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     }
   });
   
+  // Obtenir l'état de soumission de React Hook Form
+  const isFormSubmitting = form.formState.isSubmitting;
+  
   // Demander la localisation dès l'ouverture du dialogue
   const handleDialogOpenChange = (newOpen: boolean) => {
     handleOpenChange(newOpen);
@@ -71,7 +77,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     if (!newOpen) {
       setLocationMode('auto');
       setManualAddress('');
-      setIsSubmitting(false); // Reset état de soumission
+      // Reset protection double soumission
+      isSubmittingRef.current = false;
+      submissionTimestampRef.current = 0;
       form.reset({
         specialty: '',
         date: undefined,
@@ -92,19 +100,50 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   };
 
   const handleSubmit = async (data: FormValues) => {
-    // Protection contre double soumission
-    if (isSubmitting || isSearchingPractitioner) {
-      console.warn('⚠️ Soumission déjà en cours, requête ignorée');
+    // PROTECTION RENFORCÉE contre double soumission
+    const now = Date.now();
+    const MIN_DELAY_BETWEEN_SUBMISSIONS = 2000; // 2 secondes minimum entre soumissions
+    
+    // Vérifier si une soumission est déjà en cours
+    if (isSubmittingRef.current) {
+      console.warn('⚠️ Soumission déjà en cours (via ref), requête bloquée');
       toast({
         title: '⏳ Traitement en cours',
-        description: 'Veuillez patienter, votre demande est en cours de traitement.',
+        description: 'Votre demande est déjà en cours de traitement. Veuillez patienter.',
         duration: 3000,
       });
+      return;
+    }
+    
+    // Vérifier si une soumission récente a eu lieu (protection temporelle)
+    if (now - submissionTimestampRef.current < MIN_DELAY_BETWEEN_SUBMISSIONS) {
+      const remainingMs = MIN_DELAY_BETWEEN_SUBMISSIONS - (now - submissionTimestampRef.current);
+      console.warn(`⚠️ Soumission trop rapide, veuillez patienter ${Math.ceil(remainingMs / 1000)}s`);
+      toast({
+        title: '⚠️ Veuillez patienter',
+        description: `Merci d'attendre ${Math.ceil(remainingMs / 1000)} seconde(s) avant de soumettre à nouveau.`,
+        variant: 'destructive',
+        duration: 2000,
+      });
+      return;
+    }
+
+    // Marquer comme en cours de soumission
+    isSubmittingRef.current = true;
+    submissionTimestampRef.current = now;
+    console.log('🔒 Soumission verrouillée');
+    
+    // Protection additionnelle
+    if (isSearchingPractitioner) {
+      console.warn('⚠️ Recherche de praticien déjà en cours');
+      isSubmittingRef.current = false;
       return;
     }
 
     // Bloquer la soumission pendant le chargement GPS
     if (locationMode === 'auto' && geoLoading) {
+      console.warn('⚠️ Géolocalisation en cours');
+      isSubmittingRef.current = false;
       toast({
         title: '📍 Géolocalisation en cours',
         description: 'Veuillez patienter pendant que nous déterminons votre position.',
@@ -115,11 +154,11 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     }
 
     console.log('🔵 Formulaire soumis avec les données:', data);
-    setIsSubmitting(true);
+
 
     // Vérification de la géolocalisation en mode automatique AVANT tout traitement
     if (locationMode === 'auto' && !position) {
-      setIsSubmitting(false);
+      isSubmittingRef.current = false;
       toast({
         title: '📍 Localisation requise',
         description: geoError 
@@ -140,7 +179,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       const MAX_ACCURACY_METERS = 1000; // 1 km de précision max
       
       if (position.accuracy > MAX_ACCURACY_METERS) {
-        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         toast({
           title: '📍 Géolocalisation imprécise',
           description: `Votre position n'est pas assez précise (±${Math.round(position.accuracy)}m). Rapprochez-vous d'une fenêtre ou d'un lieu ouvert, puis réessayez. Vous pouvez aussi passer en mode manuel.`,
@@ -156,7 +195,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       
       if (positionAge > CACHE_MAX_AGE_MS) {
         console.warn('⚠️ Position en cache obsolète, demande de rafraîchissement');
-        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         toast({
           title: '🔄 Position obsolète',
           description: 'Votre position GPS est trop ancienne. Cliquez sur "Réessayer la géolocalisation" pour obtenir votre position actuelle.',
@@ -173,7 +212,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     if (locationMode === 'manual') {
       // Validation de l'adresse manuelle
       if (!manualAddress.trim()) {
-        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         toast({
           title: '❌ Adresse requise',
           description: 'Vous devez indiquer une adresse complète pour l\'intervention. Utilisez la recherche d\'adresse pour trouver votre localisation.',
@@ -184,7 +223,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       }
 
       if (manualAddress.trim().length < 10) {
-        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         toast({
           title: '❌ Adresse incomplète',
           description: 'L\'adresse semble trop courte. Veuillez fournir une adresse complète (rue, quartier, ville).',
@@ -233,7 +272,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         
         handleOpenChange(false);
         setIsSearchingPractitioner(false);
-        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         setLocationMode('auto');
         setManualAddress('');
         form.reset({
@@ -247,7 +286,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       } catch (error) {
         console.error('❌ Erreur création rendez-vous (mode manuel):', error);
         setIsSearchingPractitioner(false);
-        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         
         let errorTitle = '❌ Échec de création';
         let errorDescription = 'Impossible de créer le rendez-vous. Veuillez réessayer.';
@@ -408,7 +447,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       
       handleOpenChange(false);
       setIsSearchingPractitioner(false);
-      setIsSubmitting(false);
+      isSubmittingRef.current = false;
       setLocationMode('auto');
       setManualAddress('');
       form.reset({
@@ -428,7 +467,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     } catch (error) {
       console.error('❌ Erreur lors de la création du rendez-vous:', error);
       setIsSearchingPractitioner(false);
-      setIsSubmitting(false);
+      isSubmittingRef.current = false;
       
       // Message d'erreur détaillé
       let errorTitle = '❌ Erreur';
@@ -595,7 +634,17 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit, handleFormError)} className="space-y-4">
+          <form 
+            onSubmit={form.handleSubmit(handleSubmit, handleFormError)} 
+            className="space-y-4"
+            onKeyDown={(e) => {
+              // Empêcher la soumission avec Enter si déjà en cours
+              if (e.key === 'Enter' && (isFormSubmitting || isSubmittingRef.current || isSearchingPractitioner)) {
+                e.preventDefault();
+                console.warn('⚠️ Soumission via Enter bloquée - déjà en cours');
+              }
+            }}
+          >
             <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
               <p className="text-sm font-medium">Comment souhaitez-vous préciser le lieu d'intervention ?</p>
               <div className="flex flex-wrap gap-2">
@@ -827,12 +876,12 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               <Button 
                 type="submit" 
                 className="flex-1" 
-                disabled={isSearchingPractitioner || geoLoading || isSubmitting}
+                disabled={isSearchingPractitioner || geoLoading || isFormSubmitting || isSubmittingRef.current}
               >
-                {isSearchingPractitioner || isSubmitting ? (
+                {isSearchingPractitioner || isFormSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {isSubmitting ? 'Envoi en cours...' : 'Recherche...'}
+                    {isFormSubmitting ? 'Envoi en cours...' : 'Recherche...'}
                   </>
                 ) : geoLoading ? (
                   <>
