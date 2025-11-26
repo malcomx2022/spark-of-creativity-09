@@ -92,6 +92,63 @@ async function processPatientRegistration(
 ) {
   console.log('[processPatientRegistration] Creating profile for user:', userId);
 
+  // ✅ VALIDATION BACKEND
+  // Validation téléphone
+  if (!data.profile.phone || !/^\+229\d{8}$/.test(data.profile.phone)) {
+    throw new Error('Numéro de téléphone invalide (format requis: +229XXXXXXXX)');
+  }
+
+  // Validation nom complet
+  if (!data.profile.fullName || data.profile.fullName.trim().length < 3) {
+    throw new Error('Nom complet trop court (minimum 3 caractères)');
+  }
+
+  // Validation date de naissance
+  if (data.profile.dateOfBirth) {
+    const birthDate = new Date(data.profile.dateOfBirth);
+    const today = new Date();
+    const age = today.getFullYear() - birthDate.getFullYear();
+    if (age < 0 || age > 120 || birthDate > today) {
+      throw new Error('Date de naissance invalide');
+    }
+  }
+
+  // Validation genre
+  const validGenders = ['homme', 'femme', 'autre', 'non_specifie'];
+  if (data.profile.gender && !validGenders.includes(data.profile.gender)) {
+    throw new Error('Genre invalide');
+  }
+
+  // Validation contact d'urgence
+  if (data.emergencyContact) {
+    if (!data.emergencyContact.phone || !/^\+229\d{8}$/.test(data.emergencyContact.phone)) {
+      throw new Error('Numéro de contact d\'urgence invalide');
+    }
+    if (!data.emergencyContact.name || data.emergencyContact.name.trim().length < 2) {
+      throw new Error('Nom du contact d\'urgence invalide');
+    }
+  }
+
+  // Validation adresse
+  if (data.address && (!data.address.address || data.address.address.trim().length < 10)) {
+    throw new Error('Adresse trop courte (minimum 10 caractères)');
+  }
+
+  // ✅ Vérification unicité du téléphone
+  const { data: existingPhone, error: phoneCheckError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('phone', data.profile.phone)
+    .maybeSingle();
+
+  if (phoneCheckError && phoneCheckError.code !== 'PGRST116') {
+    throw phoneCheckError;
+  }
+
+  if (existingPhone) {
+    throw new Error('Ce numéro de téléphone est déjà utilisé');
+  }
+
   // 1. Créer/Mettre à jour le profil
   const genderMap: Record<string, 'homme' | 'femme' | 'autre' | 'non_specifie'> = {
     'homme': 'homme',
@@ -184,7 +241,7 @@ async function processPatientRegistration(
     .from('consents')
     .insert({
       user_id: userId,
-      consent_type: 'terms_and_conditions',
+      consent_type: 'cgu',
       is_accepted: true,
       accepted_at: data.acceptTermsAt,
     });

@@ -167,14 +167,14 @@ async function recordTermsConsent(userId: string, acceptedAt: string) {
   if (consentSelectError) throw consentSelectError;
 
   if (!existingConsent) {
-    const { error } = await supabase
-      .from('consents')
-      .insert({
-        user_id: userId,
-        consent_type: 'cgu',
-        is_accepted: true,
-        accepted_at: acceptedAt,
-      });
+  const { error } = await supabase
+    .from('consents')
+    .insert({
+      user_id: userId,
+      consent_type: 'cgu',
+      is_accepted: true,
+      accepted_at: acceptedAt,
+    });
 
     if (error) throw error;
     return;

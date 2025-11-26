@@ -19,12 +19,58 @@ import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
+import { z } from "zod";
+
+// Schéma de validation Zod
+const patientSignupSchema = z.object({
+  firstName: z.string()
+    .trim()
+    .min(2, "Le prénom doit contenir au moins 2 caractères")
+    .max(50, "Le prénom ne peut pas dépasser 50 caractères"),
+  lastName: z.string()
+    .trim()
+    .min(2, "Le nom doit contenir au moins 2 caractères")
+    .max(50, "Le nom ne peut pas dépasser 50 caractères"),
+  dateOfBirth: z.string()
+    .refine((date) => {
+      const birthDate = new Date(date);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      return age >= 0 && age <= 120 && birthDate <= today;
+    }, "Date de naissance invalide"),
+  gender: z.string()
+    .min(1, "Veuillez sélectionner votre sexe"),
+  address: z.string()
+    .trim()
+    .min(10, "L'adresse doit contenir au moins 10 caractères"),
+  phone: z.string()
+    .regex(/^\+229\d{8}$/, "Le numéro doit être au format +229XXXXXXXX"),
+  email: z.string()
+    .email("Adresse email invalide")
+    .max(255, "L'email ne peut pas dépasser 255 caractères"),
+  password: z.string()
+    .min(8, "Le mot de passe doit contenir au moins 8 caractères")
+    .max(72, "Le mot de passe ne peut pas dépasser 72 caractères"),
+  confirmPassword: z.string(),
+  emergencyContactName: z.string()
+    .trim()
+    .min(2, "Le nom du contact doit contenir au moins 2 caractères"),
+  emergencyContactPhone: z.string()
+    .regex(/^\+229\d{8}$/, "Le numéro doit être au format +229XXXXXXXX"),
+  medicalHistory: z.array(z.string()),
+  acceptTerms: z.boolean()
+    .refine((val) => val === true, "Vous devez accepter les conditions d'utilisation")
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Les mots de passe ne correspondent pas",
+  path: ["confirmPassword"]
+});
 
 export default function PatientSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: user, isLoading } = useSupabaseUser();
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -60,26 +106,31 @@ export default function PatientSignup() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setValidationErrors({});
 
-    // Validation
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Erreur",
-        description: "Les mots de passe ne correspondent pas",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.acceptTerms) {
-      toast({
-        title: "Erreur", 
-        description: "Vous devez accepter les conditions d'utilisation",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
+    // Validation Zod
+    try {
+      patientSignupSchema.parse(formData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const errors: Record<string, string> = {};
+        error.issues.forEach((err) => {
+          if (err.path[0]) {
+            errors[err.path[0].toString()] = err.message;
+          }
+        });
+        setValidationErrors(errors);
+        
+        // Afficher la première erreur
+        const firstError = error.issues[0];
+        toast({
+          title: "Erreur de validation",
+          description: firstError.message,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
     }
 
     const acceptedAt = new Date().toISOString();
@@ -111,6 +162,27 @@ export default function PatientSignup() {
 
     // Inscription avec Supabase
     try {
+      // ✅ Vérifier l'unicité du téléphone AVANT inscription
+      const { data: existingProfile, error: profileCheckError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('phone', formData.phone)
+        .maybeSingle();
+
+      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+        // PGRST116 = not found (ce qui est bon)
+        throw profileCheckError;
+      }
+
+      if (existingProfile) {
+        toast({
+          title: "Erreur",
+          description: "Ce numéro de téléphone est déjà utilisé",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
       // 1. Créer le compte utilisateur Supabase (auto-confirmé)
       const { data: authData, error: authError } = await withTimeout(
         supabase.auth.signUp({
@@ -120,7 +192,9 @@ export default function PatientSignup() {
           emailRedirectTo: `${window.location.origin}/dashboard/patient`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`,
-            user_type: 'patient'
+            user_type: 'patient',
+            // ✅ Sauvegarder les données en backup au cas où edge function échoue
+            pending_onboarding: onboardingPayload
           }
         }
       })
@@ -148,12 +222,14 @@ export default function PatientSignup() {
 
       // Vérifier si l'email nécessite une confirmation
       if (authData.user && !authData.user.confirmed_at && !authData.session) {
+        // Email non confirmé : rediriger vers page de confirmation
         toast(AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION);
         navigateToEmailConfirmation(navigate, formData.email, 'patient');
         setIsSubmitting(false);
         return;
       }
 
+      // Si l'utilisateur est auto-confirmé et a une session, on continue
       const userId = authData.user.id;
 
       // 2. Finaliser l'inscription via edge function centralisée
@@ -172,15 +248,41 @@ export default function PatientSignup() {
 
       if (registrationError) {
         console.error('Erreur lors de la finalisation:', registrationError);
+        
+        // ⚠️ Compte créé mais données non finalisées
+        // Les données sont dans user_metadata.pending_onboarding et pourront être récupérées plus tard
+        
         toast({
           ...AUTH_MESSAGES.SIGNUP_ERROR,
-          description: "Échec de la finalisation de l'inscription",
+          description: "Compte créé mais finalisation incomplète. Reconnectez-vous pour terminer.",
           variant: "destructive"
         });
+        
+        // On déconnecte pour forcer l'utilisateur à se reconnecter et récupérer les données
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error('Erreur lors de la déconnexion:', signOutError);
+        }
+        
         setIsSubmitting(false);
         return;
       }
 
+      // ✅ Finalisation réussie : nettoyer le pending_onboarding
+      await supabase.auth.updateUser({
+        data: {
+          pending_onboarding: null,
+          patient_onboarding_completed: true
+        }
+      });
+
+      // ✅ Inscription réussie : reste connecté et redirige vers succès
+      toast({
+        title: "Inscription réussie !",
+        description: "Bienvenue sur Domicares",
+      });
+      
       // Rediriger vers la page de confirmation
       navigate('/registration-success?type=patient', { replace: true });
     } catch (error: any) {
@@ -253,7 +355,11 @@ export default function PatientSignup() {
                         value={formData.firstName}
                         onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
                         required
+                        className={validationErrors.firstName ? "border-destructive" : ""}
                       />
+                      {validationErrors.firstName && (
+                        <p className="text-sm text-destructive">{validationErrors.firstName}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -264,7 +370,11 @@ export default function PatientSignup() {
                         value={formData.lastName}
                         onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
                         required
+                        className={validationErrors.lastName ? "border-destructive" : ""}
                       />
+                      {validationErrors.lastName && (
+                        <p className="text-sm text-destructive">{validationErrors.lastName}</p>
+                      )}
                     </div>
                   </div>
 
@@ -277,13 +387,21 @@ export default function PatientSignup() {
                         value={formData.dateOfBirth}
                         onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
                         required
+                        className={validationErrors.dateOfBirth ? "border-destructive" : ""}
                       />
+                      {validationErrors.dateOfBirth && (
+                        <p className="text-sm text-destructive">{validationErrors.dateOfBirth}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
                       <Label htmlFor="gender">Sexe *</Label>
-                      <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
-                        <SelectTrigger>
+                      <Select 
+                        value={formData.gender} 
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}
+                        required
+                      >
+                        <SelectTrigger className={validationErrors.gender ? "border-destructive" : ""}>
                           <SelectValue placeholder="Sélectionnez" />
                         </SelectTrigger>
                         <SelectContent>
@@ -291,16 +409,23 @@ export default function PatientSignup() {
                           <SelectItem value="femme">Femme</SelectItem>
                         </SelectContent>
                       </Select>
+                      {validationErrors.gender && (
+                        <p className="text-sm text-destructive">{validationErrors.gender}</p>
+                      )}
                     </div>
                   </div>
 
                   <AddressSearchInput
-                    label="Adresse complète"
+                    label="Adresse complète *"
                     value={formData.address}
                     onChange={(location) => setFormData(prev => ({ ...prev, address: location.address }))}
                     placeholder="Rechercher votre adresse au Bénin..."
                     required
+                    className={validationErrors.address ? "border-destructive" : ""}
                   />
+                  {validationErrors.address && (
+                    <p className="text-sm text-destructive">{validationErrors.address}</p>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -311,7 +436,11 @@ export default function PatientSignup() {
                         onChange={(value) => setFormData(prev => ({ ...prev, phone: value }))}
                         countryCode="+229"
                         localNumberLength={8}
+                        className={validationErrors.phone ? "border-destructive" : ""}
                       />
+                      {validationErrors.phone && (
+                        <p className="text-sm text-destructive">{validationErrors.phone}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -323,7 +452,11 @@ export default function PatientSignup() {
                         value={formData.email}
                         onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                         required
+                        className={validationErrors.email ? "border-destructive" : ""}
                       />
+                      {validationErrors.email && (
+                        <p className="text-sm text-destructive">{validationErrors.email}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -345,7 +478,11 @@ export default function PatientSignup() {
                         value={formData.password}
                         onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                         required
+                        className={validationErrors.password ? "border-destructive" : ""}
                       />
+                      {validationErrors.password && (
+                        <p className="text-sm text-destructive">{validationErrors.password}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -357,7 +494,11 @@ export default function PatientSignup() {
                         value={formData.confirmPassword}
                         onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
                         required
+                        className={validationErrors.confirmPassword ? "border-destructive" : ""}
                       />
+                      {validationErrors.confirmPassword && (
+                        <p className="text-sm text-destructive">{validationErrors.confirmPassword}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -393,7 +534,11 @@ export default function PatientSignup() {
                         value={formData.emergencyContactName}
                         onChange={(e) => setFormData(prev => ({ ...prev, emergencyContactName: e.target.value }))}
                         required
+                        className={validationErrors.emergencyContactName ? "border-destructive" : ""}
                       />
+                      {validationErrors.emergencyContactName && (
+                        <p className="text-sm text-destructive">{validationErrors.emergencyContactName}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -404,28 +549,37 @@ export default function PatientSignup() {
                         onChange={(value) => setFormData(prev => ({ ...prev, emergencyContactPhone: value }))}
                         countryCode="+229"
                         localNumberLength={8}
+                        className={validationErrors.emergencyContactPhone ? "border-destructive" : ""}
                       />
+                      {validationErrors.emergencyContactPhone && (
+                        <p className="text-sm text-destructive">{validationErrors.emergencyContactPhone}</p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Conditions */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="terms"
-                    checked={formData.acceptTerms}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, acceptTerms: checked as boolean }))}
-                  />
-                  <Label htmlFor="terms" className="text-sm">
-                    J'accepte les{" "}
-                    <a href="/terms-of-service" className="text-primary hover:underline">
-                      Conditions Générales d'Utilisation
-                    </a>{" "}
-                    et la{" "}
-                    <a href="/privacy-policy" className="text-primary hover:underline">
-                      Politique de Confidentialité
-                    </a>
-                  </Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="terms"
+                      checked={formData.acceptTerms}
+                      onCheckedChange={(checked) => setFormData(prev => ({ ...prev, acceptTerms: checked as boolean }))}
+                    />
+                    <Label htmlFor="terms" className="text-sm">
+                      J'accepte les{" "}
+                      <a href="/terms-of-service" className="text-primary hover:underline">
+                        Conditions Générales d'Utilisation
+                      </a>{" "}
+                      et la{" "}
+                      <a href="/privacy-policy" className="text-primary hover:underline">
+                        Politique de Confidentialité
+                      </a>
+                    </Label>
+                  </div>
+                  {validationErrors.acceptTerms && (
+                    <p className="text-sm text-destructive">{validationErrors.acceptTerms}</p>
+                  )}
                 </div>
 
                 <Button
