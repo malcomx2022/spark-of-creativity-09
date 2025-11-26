@@ -4,7 +4,7 @@
 export const NETWORK_TIMEOUT = 30000; // 30 secondes
 
 export class NetworkTimeoutError extends Error {
-  constructor(message = "La requête a pris trop de temps. Vérifiez votre connexion internet.") {
+  constructor(message = "Délai de connexion dépassé (>30 secondes). Vérifiez votre connexion internet et réessayez.") {
     super(message);
     this.name = "NetworkTimeoutError";
   }
