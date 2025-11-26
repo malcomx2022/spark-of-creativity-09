@@ -69,8 +69,10 @@ export default function PractitionerSearch() {
 
   // Demander automatiquement la géolocalisation au chargement de la page
   useEffect(() => {
+    // Ne demander qu'une seule fois au montage
     requestPosition();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionnellement vide - on ne veut déclencher qu'une fois
 
   // Mettre à jour userLocation quand position change
   useEffect(() => {
@@ -80,7 +82,8 @@ export default function PractitionerSearch() {
         longitude: position.longitude,
       });
       
-      if (quality) {
+      // Afficher un toast uniquement si la qualité est bonne
+      if (quality && quality.level !== 'poor') {
         toast({
           title: '📍 Position obtenue',
           description: quality.message,
@@ -183,15 +186,23 @@ export default function PractitionerSearch() {
             {position && quality && (
               <Alert className={cn(
                 "border-2",
-                quality.level === 'excellent' ? "bg-green-50 border-green-300" :
-                quality.level === 'good' ? "bg-blue-50 border-blue-300" :
-                quality.level === 'fair' ? "bg-yellow-50 border-yellow-300" :
-                "bg-orange-50 border-orange-300"
+                quality.level === 'excellent' ? "bg-green-50 border-green-300 dark:bg-green-950 dark:border-green-700" :
+                quality.level === 'good' ? "bg-blue-50 border-blue-300 dark:bg-blue-950 dark:border-blue-700" :
+                quality.level === 'fair' ? "bg-yellow-50 border-yellow-300 dark:bg-yellow-950 dark:border-yellow-700" :
+                "bg-orange-50 border-orange-300 dark:bg-orange-950 dark:border-orange-700"
               )}>
                 <MapPin className="h-4 w-4" />
                 <AlertDescription>
-                  <div className={cn("font-medium", quality.color)}>
-                    {quality.message}
+                  <div className="space-y-1">
+                    <div className={cn("font-medium", quality.color)}>
+                      {quality.message}
+                    </div>
+                    {quality.level === 'poor' && (
+                      <p className="text-xs text-muted-foreground">
+                        Les résultats sont affichés mais la distance peut être imprécise. 
+                        Essayez de vous rapprocher d'une fenêtre ou d'un lieu ouvert pour une meilleure précision.
+                      </p>
+                    )}
                   </div>
                 </AlertDescription>
               </Alert>
@@ -200,7 +211,16 @@ export default function PractitionerSearch() {
             {geoError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{geoError}</AlertDescription>
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <div className="font-medium">{geoError}</div>
+                    {geoError.includes('Permission') && (
+                      <p className="text-xs mt-1">
+                        Pour activer la géolocalisation: Menu navigateur → Paramètres du site → Localisation → Autoriser
+                      </p>
+                    )}
+                  </div>
+                </AlertDescription>
               </Alert>
             )}
 
