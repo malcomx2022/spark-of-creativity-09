@@ -44,17 +44,15 @@ function validatePractitionerData(practitionerData: any): string[] {
   // Vérification du type de praticien
   const isCoachSportif = practitionerData.practitioner_type === 'coach_sportif';
   
-  // Spécialité - requise sauf pour coach sportif
-  if (!isCoachSportif) {
-    if (!practitionerData.specialty || typeof practitionerData.specialty !== 'string') {
-      errors.push('Spécialité requise');
-    } else {
-      const specialty = practitionerData.specialty.trim();
-      if (specialty.length < 2) {
-        errors.push('Spécialité invalide (minimum 2 caractères)');
-      } else if (specialty.length > 100) {
-        errors.push('Spécialité trop longue (maximum 100 caractères)');
-      }
+  // Spécialité - requise pour tous (y compris les coachs sportifs)
+  if (!practitionerData.specialty || typeof practitionerData.specialty !== 'string') {
+    errors.push('Spécialité requise');
+  } else {
+    const specialty = practitionerData.specialty.trim();
+    if (specialty.length < 2) {
+      errors.push('Spécialité invalide (minimum 2 caractères)');
+    } else if (specialty.length > 100) {
+      errors.push('Spécialité trop longue (maximum 100 caractères)');
     }
   }
 
