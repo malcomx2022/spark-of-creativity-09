@@ -68,6 +68,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       setManualAddress('');
       form.reset({
         specialty: '',
+        date: undefined,
         time: '',
         reason: '',
         urgencyLevel: 'non-urgent'
@@ -123,6 +124,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           setManualAddress('');
           form.reset({
             specialty: '',
+            date: undefined,
             time: '',
             reason: '',
             urgencyLevel: 'non-urgent'
@@ -229,6 +231,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         setManualAddress('');
         form.reset({
           specialty: '',
+          date: undefined,
           time: '',
           reason: '',
           urgencyLevel: 'non-urgent'
@@ -530,7 +533,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
             />
 
             <div className="flex gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} className="flex-1">
+              <Button type="button" variant="outline" onClick={() => handleDialogOpenChange(false)} className="flex-1">
                 Annuler
               </Button>
               <Button 
