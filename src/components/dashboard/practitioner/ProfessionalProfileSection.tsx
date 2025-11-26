@@ -222,11 +222,14 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 />
                 {documentState.idDocument && (
                   <Button
+                    type="button"
                     variant="outline"
-                    size="sm"
+                    size="default"
                     onClick={() => handleViewDocument(documentState.idDocument)}
+                    className="shrink-0"
                   >
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-4 w-4 mr-2" />
+                    Voir
                   </Button>
                 )}
               </div>
@@ -242,11 +245,14 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 />
                 {documentState.licenseDocument && (
                   <Button
+                    type="button"
                     variant="outline"
-                    size="sm"
+                    size="default"
                     onClick={() => handleViewDocument(documentState.licenseDocument)}
+                    className="shrink-0"
                   >
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-4 w-4 mr-2" />
+                    Voir
                   </Button>
                 )}
               </div>
@@ -262,11 +268,14 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 />
                 {documentState.insuranceDocument && (
                   <Button
+                    type="button"
                     variant="outline"
-                    size="sm"
+                    size="default"
                     onClick={() => handleViewDocument(documentState.insuranceDocument)}
+                    className="shrink-0"
                   >
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-4 w-4 mr-2" />
+                    Voir
                   </Button>
                 )}
               </div>
