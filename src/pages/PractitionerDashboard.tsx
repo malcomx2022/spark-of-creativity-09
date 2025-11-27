@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Calendar, 
-  Clock, 
+import { Button } from '@/components/ui/button';
+import {
+  Calendar,
+  Clock,
   CheckCircle2,
   AlertCircle,
   TrendingUp,
@@ -17,7 +18,8 @@ import {
   HelpCircle,
   Shield,
   ClipboardCheck,
-  Wallet
+  Wallet,
+  RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -25,6 +27,7 @@ import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAp
 import { useNotifications } from '@/hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import Header from '@/components/Header';
 import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
@@ -43,9 +46,11 @@ import { DocumentsSection } from '@/components/dashboard/practitioner/DocumentsS
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const practitionerUserId = user?.id;
-  
+
   // 🔔 Activer les notifications en temps réel
   useNotifications(practitionerUserId);
   const practitionerName =
@@ -53,22 +58,46 @@ export default function PractitionerDashboard() {
     user?.email ||
     'Praticien';
 
-  // Récupérer les données du praticien
-  const { data: practitioner, isLoading: practitionerLoading } = useQuery({
+  // Récupérer les données du praticien avec retry automatique
+  const { data: practitioner, isLoading: practitionerLoading, refetch } = useQuery({
     queryKey: ["practitioner", practitionerUserId],
     queryFn: async () => {
       if (!practitionerUserId) return null;
+
+      console.log('🔄 Récupération du profil praticien...');
       const { data, error } = await supabase
         .from("practitioners")
         .select("*")
         .eq("user_id", practitionerUserId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur récupération praticien:', error);
+        throw error;
+      }
+
+      console.log('✅ Profil praticien récupéré avec succès');
       return data;
     },
     enabled: !!practitionerUserId,
+    retry: 3, // Retry automatique 3 fois
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000), // Backoff exponentiel: 1s, 2s, 4s
   });
+
+  // Retry automatique si praticien non trouvé (pour les nouveaux inscrits)
+  useEffect(() => {
+    if (!practitioner && !practitionerLoading && practitionerUserId && retryCount < 3) {
+      console.log(`⏳ Retry automatique ${retryCount + 1}/3 après 1.5s...`);
+
+      const timer = setTimeout(() => {
+        console.log('🔄 Retry manuel...');
+        refetch();
+        setRetryCount(prev => prev + 1);
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [practitioner, practitionerLoading, retryCount, refetch, practitionerUserId]);
 
   const practitionerId = practitioner?.id;
 
@@ -255,14 +284,72 @@ export default function PractitionerDashboard() {
   if (!practitioner) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20 p-6">
-        <div className="container mx-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profil praticien introuvable</CardTitle>
-              <CardDescription>
-                Veuillez compléter votre inscription en tant que praticien.
+        <Header />
+        <div className="container mx-auto max-w-2xl mt-20">
+          <Card className="border-2">
+            <CardHeader className="text-center space-y-4">
+              <div className="flex justify-center">
+                <div className="rounded-full bg-orange-100 dark:bg-orange-900/20 p-4">
+                  {retryCount < 3 ? (
+                    <Loader2 className="w-12 h-12 text-orange-600 dark:text-orange-400 animate-spin" />
+                  ) : (
+                    <AlertCircle className="w-12 h-12 text-orange-600 dark:text-orange-400" />
+                  )}
+                </div>
+              </div>
+
+              <CardTitle className="text-2xl">
+                {retryCount < 3 ? 'Chargement du profil...' : 'Profil praticien introuvable'}
+              </CardTitle>
+
+              <CardDescription className="text-base">
+                {retryCount < 3 ? (
+                  <>
+                    Synchronisation de votre profil en cours. Veuillez patienter...
+                    <br />
+                    <span className="text-xs text-muted-foreground mt-2 block">
+                      Tentative {retryCount + 1} sur 3
+                    </span>
+                  </>
+                ) : (
+                  'Impossible de charger votre profil praticien. Si vous venez de vous inscrire, veuillez vous reconnecter.'
+                )}
               </CardDescription>
             </CardHeader>
+
+            {retryCount >= 3 && (
+              <CardContent className="space-y-4">
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                  <h4 className="font-semibold text-sm">Que faire ?</h4>
+                  <ul className="text-sm text-muted-foreground space-y-1 ml-4">
+                    <li>• Si vous venez de vous inscrire, reconnectez-vous</li>
+                    <li>• Vérifiez votre connexion internet</li>
+                    <li>• Contactez le support si le problème persiste</li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setRetryCount(0);
+                      refetch();
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Réessayer
+                  </Button>
+
+                  <Button
+                    className="flex-1"
+                    onClick={() => navigate('/login')}
+                  >
+                    Se reconnecter
+                  </Button>
+                </div>
+              </CardContent>
+            )}
           </Card>
         </div>
       </div>
