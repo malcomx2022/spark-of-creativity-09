@@ -1,21 +1,26 @@
-import { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import type { Session } from '@supabase/supabase-js';
-
 import { supabase } from '@/integrations/supabase/client';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { User } from '@supabase/supabase-js';
 
-function ProtectedRouteSkeleton() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/10 p-6">
-      <div className="w-full max-w-sm space-y-4">
-        <Skeleton className="h-6 w-1/3" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    </div>
-  );
+// Define user roles
+export type AppRole = "admin" | "patient" | "practitioner";
+
+// A mock function to get user role. Replace with actual logic later.
+// For example, from Supabase JWT: user.app_metadata.roles
+const getUserRole = (user: User | null): AppRole[] => {
+  if (!user) return [];
+  // This is a mock. In a real app, you'd get this from the user's metadata.
+  // For now, let's assume the email gives a hint.
+  if (user.email?.includes('admin')) return ['admin'];
+  if (user.email?.includes('patient')) return ['patient'];
+  if (user.email?.includes('practitioner')) return ['practitioner'];
+  return ['patient']; // Default to patient
+};
+
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+  allowedRoles?: AppRole[];
 }
 
 type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
@@ -33,38 +38,51 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   const location = useLocation();
 
   useEffect(() => {
-    let isMounted = true;
+    const supabaseClient = supabase;
+    if (supabaseClient) {
+      const checkUser = async () => {
+        const { data: { session } } = await supabaseClient.auth.getSession();
 
-    const syncSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
+        if (!session?.user) {
+          setLoading(false);
+          navigate('/login');
+          return;
+        }
 
-      if (!isMounted) return;
+        setUser(session.user);
+        const userRoles = getUserRole(session.user);
 
-      if (error) {
-        console.error('Unable to retrieve current session:', error);
-        setSession(null);
-        setStatus('unauthenticated');
-        return;
-      }
+        if (allowedRoles && allowedRoles.length > 0) {
+          const hasPermission = userRoles.some(role => allowedRoles.includes(role));
+          if (!hasPermission) {
+            navigate('/'); // Redirect to home if no permission
+            return;
+          }
+        }
 
-      setSession(data.session ?? null);
-      setStatus(data.session ? 'authenticated' : 'unauthenticated');
-    };
+        setLoading(false);
+      };
 
-    void syncSession();
+      checkUser();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) return;
+      const { data: authListener } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+        if (!session?.user) {
+          navigate('/login');
+        } else {
+          setUser(session.user);
+        }
+      });
 
-      setSession(nextSession ?? null);
-      setStatus(nextSession ? 'authenticated' : 'unauthenticated');
-    });
-
-    return () => {
-      isMounted = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+      return () => {
+        if (authListener?.subscription) {
+          authListener.subscription.unsubscribe();
+        }
+      };
+    } else {
+      setLoading(false);
+      navigate('/login');
+    }
+  }, [navigate, allowedRoles]);
 
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) {
