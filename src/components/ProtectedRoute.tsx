@@ -1,88 +1,56 @@
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { User } from '@supabase/supabase-js';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { Session } from '@supabase/supabase-js';
+import { Loader2 } from 'lucide-react';
 
-// Define user roles
-export type AppRole = "admin" | "patient" | "practitioner";
-
-// A mock function to get user role. Replace with actual logic later.
-// For example, from Supabase JWT: user.app_metadata.roles
-const getUserRole = (user: User | null): AppRole[] => {
-  if (!user) return [];
-  // This is a mock. In a real app, you'd get this from the user's metadata.
-  // For now, let's assume the email gives a hint.
-  if (user.email?.includes('admin')) return ['admin'];
-  if (user.email?.includes('patient')) return ['patient'];
-  if (user.email?.includes('practitioner')) return ['practitioner'];
-  return ['patient']; // Default to patient
-};
+export type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: AppRole[];
 }
 
-type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
-
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  allowedRoles?: AppRole[];
+function ProtectedRouteSkeleton() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [roleStatus, setRoleStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
-  const location = useLocation();
 
   useEffect(() => {
-    const supabaseClient = supabase;
-    if (supabaseClient) {
-      const checkUser = async () => {
-        const { data: { session } } = await supabaseClient.auth.getSession();
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        setStatus('unauthenticated');
+        return;
+      }
 
-        if (!session?.user) {
-          setLoading(false);
-          navigate('/login');
-          return;
-        }
+      setSession(session);
+      setStatus('authenticated');
+    };
 
-        setUser(session.user);
-        const userRoles = getUserRole(session.user);
+    checkAuth();
 
-        if (allowedRoles && allowedRoles.length > 0) {
-          const hasPermission = userRoles.some(role => allowedRoles.includes(role));
-          if (!hasPermission) {
-            navigate('/'); // Redirect to home if no permission
-            return;
-          }
-        }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setStatus(session ? 'authenticated' : 'unauthenticated');
+    });
 
-        setLoading(false);
-      };
-
-      checkUser();
-
-      const { data: authListener } = supabaseClient.auth.onAuthStateChange((_event, session) => {
-        if (!session?.user) {
-          navigate('/login');
-        } else {
-          setUser(session.user);
-        }
-      });
-
-      return () => {
-        if (authListener?.subscription) {
-          authListener.subscription.unsubscribe();
-        }
-      };
-    } else {
-      setLoading(false);
-      navigate('/login');
-    }
-  }, [navigate, allowedRoles]);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) {
