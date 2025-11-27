@@ -176,7 +176,6 @@ serve(async (req) => {
     }
 
     // Vérifier les droits (sauf si bypassAuth)
-    const paymentUserId = requestBypassAuth && requestPatientId ? requestPatientId : user!.id;
     if (!bypassAuth && appointment.patient_id !== paymentUserId) {
       console.error('Unauthorized access to appointment');
       return new Response(
