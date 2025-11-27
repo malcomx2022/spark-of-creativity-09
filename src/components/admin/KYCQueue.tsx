@@ -12,7 +12,6 @@ import {
   XCircle,
   AlertCircle,
   FileText,
-  Calendar,
   Download,
   Eye,
   History,
@@ -23,6 +22,7 @@ import { getSignedFileUrl } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tables } from "@/integrations/supabase/types";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import { withTimeout } from "@/lib/network-timeout";
 
 interface DocumentUrls {
   id_document_url: string | null;
@@ -47,9 +47,13 @@ export function KYCQueue() {
   const [loadingUrls, setLoadingUrls] = useState<Record<string, boolean>>({});
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
   const [historyPractitionerId, setHistoryPractitionerId] = useState<string | null>(null);
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [incompleteDialogOpen, setIncompleteDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [currentAction, setCurrentAction] = useState<'approve' | 'incomplete' | 'reject' | null>(null);
 
   const {
-    data: history,
+    data: practitionerHistoryEntries,
     isLoading: isHistoryLoading,
   } = useQuery({
     queryKey: ['kyc-history', historyPractitionerId],
@@ -57,13 +61,15 @@ export function KYCQueue() {
     queryFn: async () => {
       if (!historyPractitionerId) return [] as KYCHistoryEntry[];
 
-      const { data, error } = await supabase
-        .from('admin_audit_logs')
-        .select('id, created_at, action, admin_id, details')
-        .eq('entity_type', 'practitioner')
-        .eq('entity_id', historyPractitionerId)
-        .ilike('action', 'KYC%')
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('admin_audit_logs')
+          .select('id, created_at, action, admin_id, details')
+          .eq('entity_type', 'practitioner')
+          .eq('entity_id', historyPractitionerId)
+          .ilike('action', 'KYC%')
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
 
@@ -71,10 +77,12 @@ export function KYCQueue() {
       let adminMap: Record<string, string | null> = {};
 
       if (adminIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', adminIds as string[]);
+        const { data: profilesData, error: profilesError } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', adminIds as string[])
+        );
 
         if (profilesError) {
           console.error('Error loading admin profiles:', profilesError);
@@ -97,17 +105,43 @@ export function KYCQueue() {
     },
   });
 
-  const { data: practitioners, isLoading } = useQuery({
-    queryKey: ['kyc-queue'],
+  const {
+    data: kycHistoryPractitioners = [],
+    isLoading: isKycHistoryPractitionersLoading,
+  } = useQuery<Tables<'practitioners'>[]>({
+    queryKey: ['kyc-history-list'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('*')
-        .in('kyc_status', ['pending', 'incomplete'])
-        .order('created_at', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .select(
+            'id, name, phone, specialty, kyc_status, kyc_comment, kyc_reviewed_at, kyc_validated_at, created_at'
+          )
+          .order('kyc_reviewed_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
-      return data;
+      return (data || []) as Tables<'practitioners'>[];
+    },
+  });
+
+  const {
+    data: practitioners = [],
+    isLoading,
+  } = useQuery<Tables<'practitioners'>[]>({
+    queryKey: ['kyc-queue'],
+    queryFn: async () => {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .select('*')
+          .in('kyc_status', ['pending', 'incomplete'])
+          .order('created_at', { ascending: true })
+      );
+
+      if (error) throw error;
+      return (data || []) as Tables<'practitioners'>[];
     },
   });
 
@@ -126,6 +160,7 @@ export function KYCQueue() {
 
       if (shouldInvalidate) {
         queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
+        queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
       }
     };
 
@@ -141,36 +176,96 @@ export function KYCQueue() {
 
   const updateKYCMutation = useMutation({
     mutationFn: async ({ id, status, comment }: { id: string; status: string; comment?: string }) => {
+      console.log('[KYC Update] Starting mutation:', { id, status, comment });
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
-        .from('practitioners')
-        .update({
-          kyc_status: status,
-          kyc_comment: comment,
-          kyc_reviewed_by: user?.id,
-          kyc_reviewed_at: new Date().toISOString(),
-          can_accept_missions: status === 'approved',
-        })
-        .eq('id', id);
+      if (!user) {
+        throw new Error('Utilisateur non authentifié');
+      }
 
-      if (error) throw error;
+      console.log('[KYC Update] Updating practitioner in database...');
+      const { error } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .update({
+            kyc_status: status,
+            kyc_comment: comment,
+            kyc_reviewed_by: user.id,
+            kyc_reviewed_at: new Date().toISOString(),
+            can_accept_missions: status === 'approved',
+          })
+          .eq('id', id)
+      );
 
-      // Log audit
-      await supabase.from('admin_audit_logs').insert({
-        admin_id: user?.id,
+      if (error) {
+        console.error('[KYC Update] Database update error:', error);
+        throw error;
+      }
+
+      console.log('[KYC Update] Inserting audit log...');
+      const { error: auditError } = await supabase.from('admin_audit_logs').insert({
+        admin_id: user.id,
         action: `KYC ${status}`,
         entity_type: 'practitioner',
         entity_id: id,
         details: { comment },
       });
+
+      if (auditError) {
+        console.error('[KYC Update] Audit log error:', auditError);
+        // Ne pas bloquer si le log d'audit échoue
+      }
+
+      console.log('[KYC Update] Mutation completed successfully');
     },
-    onSuccess: () => {
+    onSuccess: async (_, variables) => {
+      console.log('[KYC Update] onSuccess triggered');
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
-      toast({ title: "Statut KYC mis à jour" });
+      queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
+      
+      // Envoyer la notification appropriée selon le statut
+      try {
+        console.log('[KYC Update] Sending notification...');
+        await supabase.functions.invoke('send-kyc-status-notification', {
+          body: {
+            practitionerId: variables.id,
+            status: variables.status,
+            comment: variables.comment
+          }
+        });
+        
+        const statusMessages = {
+          approved: "Le praticien a été notifié de l'activation de son compte",
+          rejected: "Le praticien a été notifié du refus de son dossier",
+          incomplete: "Le praticien a été notifié des éléments manquants"
+        };
+        
+        toast({ 
+          title: "Statut KYC mis à jour", 
+          description: statusMessages[variables.status as keyof typeof statusMessages] || "Statut mis à jour"
+        });
+      } catch (notifError) {
+        console.error('[KYC Update] Error sending notification:', notifError);
+        toast({ 
+          title: "Statut KYC mis à jour", 
+          description: "Statut modifié (erreur d'envoi de notification)" 
+        });
+      }
+      
       setSelectedPractitioner(null);
       setComment("");
+      setApproveDialogOpen(false);
+      setIncompleteDialogOpen(false);
+      setRejectDialogOpen(false);
     },
+    onError: (error: Error) => {
+      console.error('[KYC Update] Mutation error:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de mettre à jour le statut KYC",
+        variant: "destructive"
+      });
+    }
   });
 
   // Load signed URLs for documents
@@ -214,8 +309,12 @@ export function KYCQueue() {
     loadDocumentUrls();
   }, [practitioners]);
 
-  const getExpiryBadge = (date: string | null) => {
-    if (!date) return <Badge variant="destructive">Non renseigné</Badge>;
+  const getExpiryBadge = (date: string | null, isRequired: boolean = true) => {
+    if (!date) {
+      return isRequired 
+        ? <Badge variant="destructive">Non renseigné</Badge>
+        : <Badge variant="outline" className="opacity-60">Non requis</Badge>;
+    }
     
     const expiry = new Date(date);
     const today = new Date();
@@ -310,6 +409,20 @@ export function KYCQueue() {
     return `ID ${entry.admin_id.slice(0, 8)}…`;
   };
 
+  const getStatusMeta = (status: string | null) => {
+    switch (status) {
+      case 'approved':
+        return { label: 'Approuvé', variant: 'secondary' as const };
+      case 'rejected':
+        return { label: 'Refusé', variant: 'destructive' as const };
+      case 'incomplete':
+        return { label: 'Incomplet', variant: 'outline' as const };
+      case 'pending':
+      default:
+        return { label: 'En attente', variant: 'outline' as const };
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -362,10 +475,13 @@ export function KYCQueue() {
                             <DialogDescription>Vérification des pièces justificatives</DialogDescription>
                           </DialogHeader>
                           <div className="space-y-6">
+                            {/* Pièce d'identité - REQUIS pour TOUS */}
                             <div className="grid gap-3 p-4 border rounded-lg">
                               <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Pièce d'identité</Label>
-                                {getExpiryBadge(practitioner.id_document_expiry)}
+                                <Label className="text-base font-semibold">
+                                  Pièce d'identité <span className="text-destructive">*</span>
+                                </Label>
+                                {getExpiryBadge(practitioner.id_document_expiry, true)}
                               </div>
                               <DocumentLink 
                                 url={documentUrls[practitioner.id]?.id_document_url || null}
@@ -374,32 +490,163 @@ export function KYCQueue() {
                               />
                             </div>
                             
-                            <div className="grid gap-3 p-4 border rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Licence professionnelle</Label>
-                                {getExpiryBadge(practitioner.license_expiry)}
-                              </div>
-                              <div className="text-sm text-muted-foreground mb-2">
-                                Numéro: {practitioner.license_number || 'Non renseigné'}
-                              </div>
-                              <DocumentLink 
-                                url={documentUrls[practitioner.id]?.license_document_url || null}
-                                label="Licence professionnelle"
-                                loading={loadingUrls[practitioner.id]}
-                              />
-                            </div>
-                            
-                            <div className="grid gap-3 p-4 border rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-base font-semibold">Assurance RCP</Label>
-                                {getExpiryBadge(practitioner.insurance_expiry)}
-                              </div>
-                              <DocumentLink 
-                                url={documentUrls[practitioner.id]?.insurance_document_url || null}
-                                label="Assurance RCP"
-                                loading={loadingUrls[practitioner.id]}
-                              />
-                            </div>
+                            {/* Documents spécifiques selon le type de praticien */}
+                            {practitioner.practitioner_type === 'coach_sportif' ? (
+                              <>
+                                {/* Pour les COACHES SPORTIFS : Diplôme/Certificat REQUIS */}
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Diplôme/Certificat <span className="text-destructive">*</span>
+                                    </Label>
+                                    {!practitioner.insurance_document_url && !practitioner.diplomas?.length ? (
+                                      <Badge variant="destructive">Non renseigné</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="border-green-500">Fourni</Badge>
+                                    )}
+                                  </div>
+                                  <DocumentLink 
+                                    url={documentUrls[practitioner.id]?.insurance_document_url || null}
+                                    label="Diplôme/Certificat"
+                                    loading={loadingUrls[practitioner.id]}
+                                  />
+                                  {practitioner.diplomas && practitioner.diplomas.length > 0 && (
+                                    <div className="mt-2">
+                                      <p className="text-sm font-medium mb-1">Diplômes déclarés :</p>
+                                      <div className="flex gap-2 flex-wrap">
+                                        {practitioner.diplomas.map((diploma: string, index: number) => (
+                                          <Badge key={index} variant="secondary">{diploma}</Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Informations spécifiques REQUISES pour Coach Sportif */}
+                                <div className="grid gap-3 p-4 border rounded-lg bg-primary/5">
+                                  <Label className="text-base font-semibold text-primary">
+                                    Informations Coach Sportif (Requises)
+                                  </Label>
+                                  
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="text-sm font-medium">Types de séances proposées <span className="text-destructive">*</span></p>
+                                      {!practitioner.session_types || practitioner.session_types.length === 0 ? (
+                                        <Badge variant="destructive" className="text-xs">Non renseigné</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs border-green-500">✓ Renseigné</Badge>
+                                      )}
+                                    </div>
+                                    {practitioner.session_types && practitioner.session_types.length > 0 ? (
+                                      <div className="flex gap-2 flex-wrap">
+                                        {practitioner.session_types.map((type: string) => (
+                                          <Badge key={type} variant="secondary" className="capitalize">
+                                            {type}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground italic">Aucun type de séance renseigné</p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-sm font-medium">Zone d'intervention <span className="text-destructive">*</span></p>
+                                      {!practitioner.intervention_zone ? (
+                                        <Badge variant="destructive" className="text-xs">Non renseigné</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs border-green-500">✓ Renseigné</Badge>
+                                      )}
+                                    </div>
+                                    {practitioner.intervention_zone ? (
+                                      <p className="text-sm text-muted-foreground">{practitioner.intervention_zone}</p>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground italic">Zone non renseignée</p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-sm font-medium">Rayon d'intervention <span className="text-destructive">*</span></p>
+                                      {!practitioner.intervention_radius ? (
+                                        <Badge variant="destructive" className="text-xs">Non renseigné</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-xs border-green-500">✓ Renseigné</Badge>
+                                      )}
+                                    </div>
+                                    {practitioner.intervention_radius ? (
+                                      <p className="text-sm text-muted-foreground">{practitioner.intervention_radius} km</p>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground italic">Rayon non renseigné</p>
+                                    )}
+                                  </div>
+
+                                  {practitioner.certifications && practitioner.certifications.length > 0 && (
+                                    <div>
+                                      <p className="text-sm font-medium mb-2">Certifications (optionnel) :</p>
+                                      <div className="flex gap-2 flex-wrap">
+                                        {practitioner.certifications.map((cert: string, index: number) => (
+                                          <Badge key={index} variant="outline">
+                                            {cert}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {/* Pour les AUTRES PRATICIENS : Licence + Assurance REQUISES */}
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Autorisation d'exercice <span className="text-destructive">*</span>
+                                    </Label>
+                                    {getExpiryBadge(practitioner.license_expiry, true)}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground mb-2">
+                                    Numéro: {practitioner.license_number || <span className="text-destructive">Non renseigné</span>}
+                                  </div>
+                                  <DocumentLink 
+                                    url={documentUrls[practitioner.id]?.license_document_url || null}
+                                    label="Autorisation d'exercice"
+                                    loading={loadingUrls[practitioner.id]}
+                                  />
+                                </div>
+                                
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Assurance RCP <span className="text-destructive">*</span>
+                                    </Label>
+                                    {getExpiryBadge(practitioner.insurance_expiry, true)}
+                                  </div>
+                                  <DocumentLink 
+                                    url={documentUrls[practitioner.id]?.insurance_document_url || null}
+                                    label="Assurance RCP"
+                                    loading={loadingUrls[practitioner.id]}
+                                  />
+                                </div>
+
+                                <div className="grid gap-3 p-4 border rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold">
+                                      Spécialité <span className="text-destructive">*</span>
+                                    </Label>
+                                    {!practitioner.specialty ? (
+                                      <Badge variant="destructive">Non renseigné</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="border-green-500">✓ Renseigné</Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {practitioner.specialty || <span className="text-destructive italic">Spécialité non renseignée</span>}
+                                  </p>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </DialogContent>
                       </Dialog>
@@ -415,9 +662,24 @@ export function KYCQueue() {
                           Historique
                         </Button>
 
-                        <Dialog>
+                        <Dialog open={approveDialogOpen} onOpenChange={(open) => {
+                          setApproveDialogOpen(open);
+                          if (!open) {
+                            setComment("");
+                            setSelectedPractitioner(null);
+                          }
+                        }}>
                           <DialogTrigger asChild>
-                            <Button size="sm" variant="default" onClick={() => setSelectedPractitioner(practitioner)}>
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              onClick={() => {
+                                setComment("");
+                                setSelectedPractitioner(practitioner);
+                                setCurrentAction('approve');
+                                setApproveDialogOpen(true);
+                              }}
+                            >
                               <CheckCircle className="h-4 w-4 mr-1" />
                               Approuver
                             </Button>
@@ -426,7 +688,7 @@ export function KYCQueue() {
                             <DialogHeader>
                               <DialogTitle>Approuver le praticien</DialogTitle>
                               <DialogDescription>
-                                Confirmer la validation du dossier KYC
+                                Confirmer la validation du dossier KYC de {selectedPractitioner?.name}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
@@ -441,22 +703,41 @@ export function KYCQueue() {
                               </div>
                               <Button
                                 className="w-full"
-                                onClick={() => updateKYCMutation.mutate({
-                                  id: practitioner.id,
-                                  status: 'approved',
-                                  comment,
-                                })}
+                                onClick={() => {
+                                  if (selectedPractitioner) {
+                                    updateKYCMutation.mutate({
+                                      id: selectedPractitioner.id,
+                                      status: 'approved',
+                                      comment,
+                                    });
+                                  }
+                                }}
                                 disabled={updateKYCMutation.isPending}
                               >
-                                Confirmer l'approbation
+                                {updateKYCMutation.isPending ? "Traitement..." : "Confirmer l'approbation"}
                               </Button>
                             </div>
                           </DialogContent>
                         </Dialog>
 
-                        <Dialog>
+                        <Dialog open={incompleteDialogOpen} onOpenChange={(open) => {
+                          setIncompleteDialogOpen(open);
+                          if (!open) {
+                            setComment("");
+                            setSelectedPractitioner(null);
+                          }
+                        }}>
                           <DialogTrigger asChild>
-                            <Button size="sm" variant="outline" onClick={() => setSelectedPractitioner(practitioner)}>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => {
+                                setComment("");
+                                setSelectedPractitioner(practitioner);
+                                setCurrentAction('incomplete');
+                                setIncompleteDialogOpen(true);
+                              }}
+                            >
                               <AlertCircle className="h-4 w-4 mr-1" />
                               Incomplet
                             </Button>
@@ -465,7 +746,7 @@ export function KYCQueue() {
                             <DialogHeader>
                               <DialogTitle>Demander un complément</DialogTitle>
                               <DialogDescription>
-                                Indiquer les documents ou informations manquantes
+                                Indiquer les documents ou informations manquantes pour {selectedPractitioner?.name}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
@@ -481,22 +762,41 @@ export function KYCQueue() {
                               </div>
                               <Button
                                 className="w-full"
-                                onClick={() => updateKYCMutation.mutate({
-                                  id: practitioner.id,
-                                  status: 'incomplete',
-                                  comment,
-                                })}
+                                onClick={() => {
+                                  if (selectedPractitioner) {
+                                    updateKYCMutation.mutate({
+                                      id: selectedPractitioner.id,
+                                      status: 'incomplete',
+                                      comment,
+                                    });
+                                  }
+                                }}
                                 disabled={!comment || updateKYCMutation.isPending}
                               >
-                                Envoyer la demande
+                                {updateKYCMutation.isPending ? "Traitement..." : "Envoyer la demande"}
                               </Button>
                             </div>
                           </DialogContent>
                         </Dialog>
 
-                        <Dialog>
+                        <Dialog open={rejectDialogOpen} onOpenChange={(open) => {
+                          setRejectDialogOpen(open);
+                          if (!open) {
+                            setComment("");
+                            setSelectedPractitioner(null);
+                          }
+                        }}>
                           <DialogTrigger asChild>
-                            <Button size="sm" variant="destructive">
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => {
+                                setComment("");
+                                setSelectedPractitioner(practitioner);
+                                setCurrentAction('reject');
+                                setRejectDialogOpen(true);
+                              }}
+                            >
                               <XCircle className="h-4 w-4 mr-1" />
                               Refuser
                             </Button>
@@ -505,7 +805,7 @@ export function KYCQueue() {
                             <DialogHeader>
                               <DialogTitle>Refuser le praticien</DialogTitle>
                               <DialogDescription>
-                                Justifier le refus du dossier KYC
+                                Justifier le refus du dossier KYC de {selectedPractitioner?.name}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
@@ -522,14 +822,18 @@ export function KYCQueue() {
                               <Button
                                 className="w-full"
                                 variant="destructive"
-                                onClick={() => updateKYCMutation.mutate({
-                                  id: practitioner.id,
-                                  status: 'rejected',
-                                  comment,
-                                })}
+                                onClick={() => {
+                                  if (selectedPractitioner) {
+                                    updateKYCMutation.mutate({
+                                      id: selectedPractitioner.id,
+                                      status: 'rejected',
+                                      comment,
+                                    });
+                                  }
+                                }}
                                 disabled={!comment || updateKYCMutation.isPending}
                               >
-                                Confirmer le refus
+                                {updateKYCMutation.isPending ? "Traitement..." : "Confirmer le refus"}
                               </Button>
                             </div>
                           </DialogContent>
@@ -548,21 +852,124 @@ export function KYCQueue() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Historique des validations</CardTitle>
+          <CardDescription>
+            Consultez l'ensemble des décisions KYC prises pour les praticiens
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isKycHistoryPractitionersLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+          ) : kycHistoryPractitioners && kycHistoryPractitioners.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Praticien</TableHead>
+                  <TableHead>Statut KYC</TableHead>
+                  <TableHead>Dernière action</TableHead>
+                  <TableHead>Dernier commentaire</TableHead>
+                  <TableHead className="w-[140px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {kycHistoryPractitioners.map((practitioner) => {
+                  const statusMeta = getStatusMeta(practitioner.kyc_status);
+
+                  return (
+                    <TableRow key={practitioner.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{practitioner.name}</div>
+                          <div className="text-sm text-muted-foreground">{practitioner.phone}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {practitioner.kyc_reviewed_at || practitioner.kyc_validated_at
+                          ? formatDateTime(practitioner.kyc_reviewed_at || practitioner.kyc_validated_at)
+                          : 'Aucune action enregistrée'}
+                      </TableCell>
+                      <TableCell>
+                        {practitioner.kyc_comment ? (
+                          <span className="text-sm">{practitioner.kyc_comment}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Aucun commentaire</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHistoryPractitionerId(practitioner.id)}
+                        >
+                          <History className="h-4 w-4 mr-1" />
+                          Historique
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Aucun historique de validation disponible
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Document Viewer Dialog */}
       <Dialog open={!!viewingDocument} onOpenChange={(open) => !open && setViewingDocument(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>{viewingDocument?.name}</DialogTitle>
             <DialogDescription>Prévisualisation du document</DialogDescription>
           </DialogHeader>
-          <div className="flex items-center justify-center bg-muted rounded-lg overflow-hidden" style={{ minHeight: '500px' }}>
+          <div className="mt-4">
             {viewingDocument?.url && (
-              <iframe
-                src={viewingDocument.url}
-                className="w-full h-full"
-                style={{ minHeight: '500px' }}
-                title={viewingDocument.name}
-              />
+              <>
+                {viewingDocument.url.toLowerCase().split('?')[0].endsWith('.pdf') ? (
+                  <div className="flex flex-col gap-2">
+                    <iframe
+                      src={`${viewingDocument.url}#toolbar=0`}
+                      className="w-full border rounded"
+                      style={{ minHeight: '70vh' }}
+                      title={viewingDocument.name}
+                      onError={(e) => {
+                        console.error("Error loading PDF in iframe:", e);
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => window.open(viewingDocument.url, '_blank')}
+                      className="w-full"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Ouvrir dans un nouvel onglet
+                    </Button>
+                  </div>
+                ) : (
+                  <img
+                    src={viewingDocument.url}
+                    alt={viewingDocument.name}
+                    className="w-full h-auto rounded"
+                    onError={(e) => {
+                      console.error("Error loading image:", e);
+                      const img = e.target as HTMLImageElement;
+                      img.style.display = 'none';
+                      const errorDiv = document.createElement('div');
+                      errorDiv.className = 'text-center py-8 text-muted-foreground';
+                      errorDiv.textContent = 'Impossible de charger l\'image. Essayez de la télécharger.';
+                      img.parentElement?.appendChild(errorDiv);
+                    }}
+                  />
+                )}
+              </>
             )}
           </div>
         </DialogContent>
@@ -578,9 +985,9 @@ export function KYCQueue() {
           </DialogHeader>
           {isHistoryLoading ? (
             <div className="py-8 text-center text-muted-foreground">Chargement de l'historique...</div>
-          ) : history && history.length > 0 ? (
+          ) : practitionerHistoryEntries && practitionerHistoryEntries.length > 0 ? (
             <div className="space-y-4">
-              {history.map((entry) => {
+              {practitionerHistoryEntries.map((entry) => {
                 const meta = getActionMeta(entry.action);
                 const Icon = meta.icon;
 

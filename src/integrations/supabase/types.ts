@@ -89,16 +89,24 @@ export type Database = {
       appointments: {
         Row: {
           address: string
+          confirmation_requested_at: string | null
           created_at: string | null
           date: string
           duration: number
           id: string
           internal_notes: string | null
           notes: string | null
+          patient_confirmed_at: string | null
           patient_id: string
           patient_name: string
+          payment_amount: number | null
+          payment_expires_at: string | null
           practitioner_id: string
+          practitioner_last_location_update: string | null
+          practitioner_latitude: number | null
+          practitioner_longitude: number | null
           practitioner_name: string
+          practitioner_status: string | null
           pre_visit_checklist: Json | null
           reason: string
           specialty: string
@@ -110,16 +118,24 @@ export type Database = {
         }
         Insert: {
           address: string
+          confirmation_requested_at?: string | null
           created_at?: string | null
           date: string
           duration?: number
           id?: string
           internal_notes?: string | null
           notes?: string | null
+          patient_confirmed_at?: string | null
           patient_id: string
           patient_name: string
+          payment_amount?: number | null
+          payment_expires_at?: string | null
           practitioner_id: string
+          practitioner_last_location_update?: string | null
+          practitioner_latitude?: number | null
+          practitioner_longitude?: number | null
           practitioner_name: string
+          practitioner_status?: string | null
           pre_visit_checklist?: Json | null
           reason: string
           specialty: string
@@ -131,16 +147,24 @@ export type Database = {
         }
         Update: {
           address?: string
+          confirmation_requested_at?: string | null
           created_at?: string | null
           date?: string
           duration?: number
           id?: string
           internal_notes?: string | null
           notes?: string | null
+          patient_confirmed_at?: string | null
           patient_id?: string
           patient_name?: string
+          payment_amount?: number | null
+          payment_expires_at?: string | null
           practitioner_id?: string
+          practitioner_last_location_update?: string | null
+          practitioner_latitude?: number | null
+          practitioner_longitude?: number | null
           practitioner_name?: string
+          practitioner_status?: string | null
           pre_visit_checklist?: Json | null
           reason?: string
           specialty?: string
@@ -205,6 +229,13 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_notes_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -664,6 +695,13 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "group_sessions_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ledger_accounts: {
@@ -925,6 +963,89 @@ export type Database = {
         }
         Relationships: []
       }
+      otp_rate_limits: {
+        Row: {
+          attempts: number | null
+          blocked_until: string | null
+          first_attempt_at: string | null
+          phone_number: string
+        }
+        Insert: {
+          attempts?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          phone_number: string
+        }
+        Update: {
+          attempts?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          phone_number?: string
+        }
+        Relationships: []
+      }
+      payment_attempts: {
+        Row: {
+          amount: number
+          appointment_id: string | null
+          attempt_number: number
+          completed_at: string | null
+          created_at: string | null
+          error_details: Json | null
+          error_message: string | null
+          error_type: string | null
+          id: string
+          payment_id: string | null
+          payment_method: string
+          phone_number_encrypted: string | null
+          retry_after: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          appointment_id?: string | null
+          attempt_number?: number
+          completed_at?: string | null
+          created_at?: string | null
+          error_details?: Json | null
+          error_message?: string | null
+          error_type?: string | null
+          id?: string
+          payment_id?: string | null
+          payment_method: string
+          phone_number_encrypted?: string | null
+          retry_after?: string | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          appointment_id?: string | null
+          attempt_number?: number
+          completed_at?: string | null
+          created_at?: string | null
+          error_details?: Json | null
+          error_message?: string | null
+          error_type?: string | null
+          id?: string
+          payment_id?: string | null
+          payment_method?: string
+          phone_number_encrypted?: string | null
+          retry_after?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_attempts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_events: {
         Row: {
           created_at: string | null
@@ -1019,6 +1140,9 @@ export type Database = {
           invoice_number: string | null
           net_amount: number | null
           patient_id: string
+          payer_email: string | null
+          payer_name: string | null
+          payer_phone: string | null
           payment_method: string
           payment_session_data: Json | null
           payout_status: string | null
@@ -1044,6 +1168,9 @@ export type Database = {
           invoice_number?: string | null
           net_amount?: number | null
           patient_id: string
+          payer_email?: string | null
+          payer_name?: string | null
+          payer_phone?: string | null
           payment_method: string
           payment_session_data?: Json | null
           payout_status?: string | null
@@ -1069,6 +1196,9 @@ export type Database = {
           invoice_number?: string | null
           net_amount?: number | null
           patient_id?: string
+          payer_email?: string | null
+          payer_name?: string | null
+          payer_phone?: string | null
           payment_method?: string
           payment_session_data?: Json | null
           payout_status?: string | null
@@ -1196,6 +1326,13 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "practitioner_availability_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       practitioner_balances: {
@@ -1234,6 +1371,13 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "practitioner_balances_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: true
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       practitioner_exceptions: {
@@ -1267,6 +1411,13 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practitioner_exceptions_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1314,6 +1465,13 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practitioner_payment_info_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1388,6 +1546,13 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "practitioner_payouts_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       practitioner_rates: {
@@ -1424,6 +1589,13 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practitioner_rates_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1775,6 +1947,44 @@ export type Database = {
         }
         Relationships: []
       }
+      service_audit_log: {
+        Row: {
+          action: string
+          id: string
+          modified_at: string | null
+          modified_by: string | null
+          new_values: Json | null
+          old_values: Json | null
+          service_id: string | null
+        }
+        Insert: {
+          action: string
+          id?: string
+          modified_at?: string | null
+          modified_by?: string | null
+          new_values?: Json | null
+          old_values?: Json | null
+          service_id?: string | null
+        }
+        Update: {
+          action?: string
+          id?: string
+          modified_at?: string | null
+          modified_by?: string | null
+          new_values?: Json | null
+          old_values?: Json | null
+          service_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_audit_log_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           base_price: number | null
@@ -1977,11 +2187,82 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      practitioners_public_view: {
+        Row: {
+          available: boolean | null
+          bio: string | null
+          certifications: string[] | null
+          communes_served: string[] | null
+          created_at: string | null
+          id: string | null
+          image: string | null
+          intervention_zone: string | null
+          languages: string[] | null
+          name: string | null
+          practitioner_type:
+            | Database["public"]["Enums"]["practitioner_type"]
+            | null
+          primary_commune: string | null
+          rating: number | null
+          session_types: string[] | null
+          specialty: string | null
+          years_experience: number | null
+        }
+        Insert: {
+          available?: boolean | null
+          bio?: string | null
+          certifications?: string[] | null
+          communes_served?: string[] | null
+          created_at?: string | null
+          id?: string | null
+          image?: string | null
+          intervention_zone?: string | null
+          languages?: string[] | null
+          name?: string | null
+          practitioner_type?:
+            | Database["public"]["Enums"]["practitioner_type"]
+            | null
+          primary_commune?: never
+          rating?: number | null
+          session_types?: string[] | null
+          specialty?: string | null
+          years_experience?: number | null
+        }
+        Update: {
+          available?: boolean | null
+          bio?: string | null
+          certifications?: string[] | null
+          communes_served?: string[] | null
+          created_at?: string | null
+          id?: string | null
+          image?: string | null
+          intervention_zone?: string | null
+          languages?: string[] | null
+          name?: string | null
+          practitioner_type?:
+            | Database["public"]["Enums"]["practitioner_type"]
+            | null
+          primary_commune?: never
+          rating?: number | null
+          session_types?: string[] | null
+          specialty?: string | null
+          years_experience?: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      approve_practitioner_kyc: {
+        Args: { p_reviewed_by?: string; p_user_id: string }
+        Returns: Json
+      }
+      auto_confirm_consultations: { Args: never; Returns: undefined }
+      check_otp_rate_limit: { Args: { phone: string }; Returns: Json }
+      cleanup_expired_payment_slots: { Args: never; Returns: undefined }
       cleanup_old_file_access_logs: { Args: never; Returns: undefined }
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
+      cleanup_old_otp_rate_limits: { Args: never; Returns: undefined }
+      cleanup_old_payment_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
       has_role: {
         Args: {
@@ -1990,7 +2271,28 @@ export type Database = {
         }
         Returns: boolean
       }
+      initialize_payment_balance: {
+        Args: {
+          p_net_amount: number
+          p_payment_id: string
+          p_practitioner_id: string
+        }
+        Returns: Json
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      promote_to_super_admin: { Args: { user_email: string }; Returns: Json }
+      request_consultation_confirmation: { Args: never; Returns: undefined }
+      update_payment_with_balance: {
+        Args: {
+          p_hold_until?: string
+          p_net_amount: number
+          p_new_payout_status: string
+          p_new_status: string
+          p_payment_id: string
+          p_practitioner_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role:

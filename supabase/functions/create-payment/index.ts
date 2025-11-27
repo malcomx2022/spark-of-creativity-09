@@ -5,99 +5,32 @@ import { parseFedaPayResponse } from "./utils.ts";
 import { calculateFees, parseFeeConfig, calculateHoldUntil } from "./fee-calculator.ts";
 import { normalizeStatus } from "./payment-status.ts";
 import { dispatchNotification } from "../_shared/notifications.ts";
+import { fetchWithTimeout } from "./fetch-with-timeout.ts";
+
+const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
 // Validation schema avec Zod
 const PaymentRequestSchema = z.object({
-  appointmentId: z.string().uuid({ message: "Invalid appointment ID format" }),
+  appointmentId: z.string().uuid({ message: "Format d'identifiant de rendez-vous invalide" }),
   amount: z.number()
-    .min(100, { message: "Amount must be at least 100 XOF" })
-    .max(1000000, { message: "Amount must not exceed 1,000,000 XOF" }),
-  paymentMethod: z.enum(['mtn', 'orange', 'moov'], { 
-    errorMap: () => ({ message: "Payment method must be 'mtn', 'orange', or 'moov'" })
+    .min(100, { message: "Le montant doit être d'au moins 100 XOF" })
+    .max(1000000, { message: "Le montant ne doit pas dépasser 1 000 000 XOF" })
+    .optional(),
+  paymentMethod: z.enum(['mtn', 'moov'], {
+    errorMap: () => ({ message: "La méthode de paiement doit être 'mtn' ou 'moov'" })
   }),
   phoneNumber: z.string()
-    .regex(/^\+[1-9]\d{8,14}$/, { message: "Phone number must be in international format (e.g., +22912345678)" })
+    .regex(/^\+229(01)?\d{8}$/, { 
+      message: "Le numéro doit être au format béninois : +229XXXXXXXX ou +2290101XXXXXXXX" 
+    }),
+  payerName: z.string().min(2, { message: "Le nom du payeur doit contenir au moins 2 caractères" }),
+  payerEmail: z.string().email({ message: "Format d'email invalide" }).optional(),
 });
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-interface FedaPayUssdResult {
-  attempted: boolean;
-  success: boolean;
-  payload?: unknown;
-  error?: string;
-}
-
-async function triggerFedapayUssdValidation({
-  transactionId,
-  phoneNumber,
-  mode,
-  fedapaySecretKey,
-  fedapayBaseUrl,
-}: {
-  transactionId: string;
-  phoneNumber: string;
-  mode: string;
-  fedapaySecretKey: string;
-  fedapayBaseUrl: string;
-}): Promise<FedaPayUssdResult> {
-  const normalizedPhone = phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber;
-
-  try {
-    console.log('Triggering FedaPay USSD validation request', { transactionId, mode });
-    const response = await fetch(`${fedapayBaseUrl}/v1/transactions/${transactionId}/send_otp`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${fedapaySecretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        channel: 'ussd',
-        mode,
-        customer: {
-          phone_number: {
-            number: normalizedPhone,
-            country: 'bj',
-          },
-        },
-      }),
-    });
-
-    let data: unknown = null;
-    try {
-      data = await response.json();
-    } catch (error) {
-      console.warn('Unable to parse USSD trigger response', error);
-    }
-
-    if (!response.ok) {
-      console.error('FedaPay USSD trigger returned an error', data);
-      return {
-        attempted: true,
-        success: false,
-        error: `HTTP ${response.status}`,
-        payload: data,
-      };
-    }
-
-    console.log('FedaPay USSD validation successfully triggered');
-    return {
-      attempted: true,
-      success: true,
-      payload: data,
-    };
-  } catch (error) {
-    console.error('Unable to trigger FedaPay USSD validation', error);
-    return {
-      attempted: true,
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -111,28 +44,12 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get authenticated user
+    // Get authenticated user (ou vérifier si c'est un appel service role avec bypassAuth)
     const authHeader = req.headers.get('Authorization');
+    let user = null;
+    let bypassAuth = false;
 
-    if (!authHeader) {
-      console.error('Missing Authorization header');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
+    // Vérifier d'abord si le body contient bypassAuth (appel depuis handle-appointment-response)
     let payload: unknown;
     try {
       payload = await req.json();
@@ -144,8 +61,13 @@ serve(async (req) => {
       );
     }
 
-    // Validation Zod stricte
-    const validationResult = PaymentRequestSchema.safeParse(payload);
+    // Validation Zod étendue pour inclure bypassAuth et patientId
+    const PaymentRequestSchemaExtended = PaymentRequestSchema.extend({
+      bypassAuth: z.boolean().optional(),
+      patientId: z.string().uuid().optional()
+    });
+
+    const validationResult = PaymentRequestSchemaExtended.safeParse(payload);
     
     if (!validationResult.success) {
       const errors = validationResult.error.errors.map(err => ({
@@ -159,259 +81,393 @@ serve(async (req) => {
       );
     }
 
-    const { appointmentId, amount, paymentMethod, phoneNumber } = validationResult.data;
+    const { 
+      appointmentId, 
+      paymentMethod, 
+      phoneNumber, 
+      payerName,
+      payerEmail,
+      bypassAuth: requestBypassAuth, 
+      patientId: requestPatientId 
+    } = validationResult.data;
+    const requestedAmount = validationResult.data.amount ?? null;
+
+    // Si bypassAuth est true et qu'on a un patientId, on utilise le service role
+    if (requestBypassAuth && requestPatientId) {
+      bypassAuth = true;
+      console.log('Service role payment creation for patient:', requestPatientId);
+    } else {
+      // Sinon, authentification normale
+      if (!authHeader) {
+        console.error('Missing Authorization header');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+
+      if (authError || !authUser) {
+        console.error('Auth error:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      user = authUser;
+    }
 
     // Vérifier que l'appointment existe et appartient à l'utilisateur
     const { data: appointment, error: appointmentError } = await supabase
       .from('appointments')
-      .select('id, patient_id, status')
+      .select('id, patient_id, status, payment_amount, practitioner_id, specialty')
       .eq('id', appointmentId)
       .single();
 
     if (appointmentError || !appointment) {
       console.error('Appointment not found:', appointmentError);
       return new Response(
-        JSON.stringify({ error: 'Appointment not found' }),
+        JSON.stringify({ error: 'Rendez-vous non trouvé' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (appointment.patient_id !== user.id) {
-      console.error('Appointment does not belong to user');
+    // Vérifier les droits (sauf si bypassAuth)
+    const paymentUserId = requestBypassAuth && requestPatientId ? requestPatientId : user!.id;
+    if (!bypassAuth && appointment.patient_id !== paymentUserId) {
+      console.error('Unauthorized access to appointment');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized: Appointment does not belong to you' }),
+        JSON.stringify({ error: 'Vous n\'êtes pas autorisé à payer pour ce rendez-vous' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Générer une clé d'idempotence
-    const idempotencyKey = `${user.id}-${appointmentId}-${Date.now()}`;
-
-    // Vérifier si l'appointment a déjà été payé
-    const { data: existingPayment } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('appointment_id', appointmentId)
-      .in('status', ['pending', 'paid', 'initiated'])
-      .maybeSingle();
-
-    if (existingPayment) {
-      console.log('Payment already exists for this appointment:', existingPayment);
+    // Vérifier le statut de l'appointment
+    if (!['confirmed', 'pending_payment'].includes(appointment.status)) {
+      console.error('Appointment not in a payable state:', appointment.status);
       return new Response(
-        JSON.stringify({
-          paymentId: existingPayment.id,
-          transactionId: existingPayment.fedapay_transaction_id,
-          paymentUrl: existingPayment.fedapay_payment_url,
-          status: existingPayment.status,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          message: 'Payment already initiated'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Ce rendez-vous n\'est pas dans un état payable' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Creating payment:', { appointmentId, amount, paymentMethod, phoneNumber, idempotencyKey });
+    // Déterminer le montant à facturer
+    const amountToCharge = requestedAmount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
+    console.log('Payment initiated:', { appointmentId, amountToCharge, paymentMethod, phoneNumber });
 
-    // Map payment methods to FedaPay mode
-    const modeMap = {
-      'mtn': 'mtn_ci',
-      'orange': 'orange_ci',
-      'moov': 'moov_ci'
+    // ✅ CORRECTION CRITIQUE #3: Récupérer practitioner_id AVANT de créer la transaction FedaPay
+    let practitionerId: string | null = null;
+    
+    if (appointmentId.startsWith('group_session_')) {
+      // Format: group_session_{sessionId}_{participantId}
+      console.log('🏋️ Paiement de séance de groupe détecté');
+      const parts = appointmentId.split('_');
+      const sessionId = parts[2]; // group_session_{sessionId}_{participantId}
+      
+      // Récupérer le coach_id depuis group_sessions
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('group_sessions')
+        .select('coach_id')
+        .eq('id', sessionId)
+        .single();
+      
+      if (sessionError) {
+        console.error('Error fetching group session:', sessionError);
+        return new Response(
+          JSON.stringify({ error: 'Séance de groupe non trouvée' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!sessionData?.coach_id) {
+        console.error('Coach not found for group session:', sessionId);
+        return new Response(
+          JSON.stringify({ error: 'Coach non trouvé pour cette séance' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      practitionerId = sessionData.coach_id;
+      console.log('Coach ID récupéré:', practitionerId);
+    } else {
+      // Rendez-vous classique
+      const { data: appointmentData, error: appointmentError } = await supabase
+        .from('appointments')
+        .select('practitioner_id')
+        .eq('id', appointmentId)
+        .single();
+      
+      if (appointmentError) {
+        console.error('Error fetching appointment:', appointmentError);
+        return new Response(
+          JSON.stringify({ error: 'Rendez-vous non trouvé' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!appointmentData?.practitioner_id) {
+        console.error('Practitioner not found for appointment:', appointmentId);
+        return new Response(
+          JSON.stringify({ error: 'Praticien non trouvé pour ce rendez-vous' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      practitionerId = appointmentData.practitioner_id;
+      console.log('Practitioner ID récupéré:', practitionerId);
+    }
+    
+    if (!practitionerId) {
+      console.error('No practitioner_id found for payment');
+      return new Response(
+        JSON.stringify({ error: 'Praticien non trouvé, impossible de créer le paiement' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Créer l'idempotency key
+    const idempotencyKey = `${appointmentId}-${Date.now()}`;
+
+    // Vérifier si un paiement pending existe déjà pour ce rendez-vous
+    const { data: existingPayments } = await supabase
+      .from('payments')
+      .select('id, status, created_at')
+      .eq('appointment_id', appointmentId)
+      .in('status', ['initiated', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (existingPayments && existingPayments.length > 0) {
+      const existingPayment = existingPayments[0];
+      const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
+      const PAYMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+      
+      // Si le paiement a plus de 15 minutes, le marquer comme expiré
+      if (paymentAge > PAYMENT_TIMEOUT_MS) {
+        console.log('Existing payment expired, marking as failed:', existingPayment.id);
+        await supabase
+          .from('payments')
+          .update({ 
+            status: 'failed',
+            payout_status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPayment.id);
+        
+        // Mettre à jour l'appointment
+        await supabase
+          .from('appointments')
+          .update({ 
+            status: 'confirmed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', appointmentId);
+          
+        console.log('Expired payment cleaned up, proceeding with new payment');
+      } else {
+        // Paiement récent, bloquer la création
+        const remainingMinutes = Math.ceil((PAYMENT_TIMEOUT_MS - paymentAge) / 60000);
+        console.log('Existing pending payment found:', existingPayment);
+        return new Response(
+          JSON.stringify({ 
+            error: `Un paiement est déjà en cours pour ce rendez-vous. Veuillez réessayer dans ${remainingMinutes} minute(s).`,
+            paymentId: existingPayment.id,
+            retryAfter: remainingMinutes
+          }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Map payment methods to FedaPay modes
+    const modeMap: Record<string, string> = {
+      'mtn': 'mtn_benin',
+      'moov': 'moov_benin'
     };
 
     const selectedMode = modeMap[paymentMethod];
     if (!selectedMode) {
       console.error('Unsupported payment method requested:', paymentMethod);
       return new Response(
-        JSON.stringify({ error: 'Unsupported payment method' }),
+        JSON.stringify({ error: 'Méthode de paiement non supportée' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Étape 1: Créer la transaction FedaPay
-    let fedapayResponse: Response | null = null;
-    let lastError: Error | null = null;
-    const maxRetries = 3;
-    const timeoutMs = 10000;
+    console.log('💳 Méthode de paiement sélectionnée:', {
+      demandée: paymentMethod,
+      modeFedaPay: selectedMode,
+      montant: amountToCharge,
+      téléphone: phoneNumber
+    });
+
+    // FedaPay base URL
     const fedapayBaseUrl = Deno.env.get('FEDAPAY_MODE') === 'live' 
       ? 'https://api.fedapay.com' 
       : 'https://sandbox-api.fedapay.com';
 
     console.log(`Using FedaPay endpoint: ${fedapayBaseUrl}`);
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`FedaPay attempt ${attempt}/${maxRetries} - Creating transaction`);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        
-        fedapayResponse = await fetch(`${fedapayBaseUrl}/v1/transactions`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${fedapaySecretKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            description: `Paiement rendez-vous médical #${appointmentId}`,
-            amount: amount,
-            currency: {
-              iso: 'XOF'
-            },
-            callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
-            customer: {
-              firstname: 'Patient',
-              lastname: 'User',
-              email: `patient-${user.id}@santemada.app`,
-              phone_number: {
-                number: phoneNumber.startsWith('+') ? phoneNumber.slice(1) : phoneNumber,
-                country: 'bj'
-              }
-            },
-            mode: selectedMode
-          }),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        break; // Success, exit retry loop
-        
-      } catch (error) {
-        lastError = error as Error;
-        console.error(`FedaPay attempt ${attempt} failed:`, error);
-        
-        if (attempt === maxRetries) {
-          console.error('All FedaPay retry attempts failed');
-          return new Response(
-            JSON.stringify({ 
-              error: 'Impossible de contacter le service de paiement. Veuillez réessayer.',
-              details: lastError.message
-            }),
-            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        
-        // Wait before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      }
-    }
+    // Préparer les informations du client pour FedaPay
+    const nameParts = payerName.trim().split(/\s+/);
+    const firstname = nameParts[0] || 'Patient';
+    const lastname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Domicares';
+    const customerEmail = payerEmail || `patient-${paymentUserId}@domicares.app`;
 
-    if (!fedapayResponse) {
-      return new Response(
-        JSON.stringify({ error: 'Échec de la création de la transaction' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    let fedapayData: unknown;
-    try {
-      fedapayData = await fedapayResponse.json();
-    } catch (parseError) {
-      console.error('Unable to parse FedaPay response:', parseError);
-      return new Response(
-        JSON.stringify({ error: 'Réponse invalide du service de paiement' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!fedapayResponse.ok) {
-      console.error('FedaPay error response:', fedapayData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors de la création du paiement',
-          details: fedapayData
-        }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('FedaPay transaction created successfully:', fedapayData);
-
-    // Extraire l'ID de la transaction
-    const transactionData = parseFedaPayResponse(fedapayData);
-    if (!transactionData) {
-      console.error('Unexpected FedaPay payload structure:', fedapayData);
-      return new Response(
-        JSON.stringify({ error: 'Format de réponse invalide du service de paiement' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Étape 2: Générer le token pour obtenir l'URL de paiement
-    console.log(`Generating payment token for transaction ${transactionData.id}`);
+    // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
+    const isProduction = Deno.env.get('FEDAPAY_MODE') === 'live';
     
-    let tokenResponse: Response;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
-      tokenResponse = await fetch(`${fedapayBaseUrl}/v1/transactions/${transactionData.id}/token`, {
+    if (!isProduction) {
+      console.log('📝 Étape 1 : Création de la transaction FedaPay');
+      console.log('Détails transaction:', { 
+        montant: amountToCharge, 
+        mode: selectedMode,
+        client: { prenom: firstname, nom: lastname }
+      });
+    } else {
+      console.log('📝 Étape 1 : Création de la transaction FedaPay', { appointmentId });
+    }
+    
+    // ✅ CORRECTION CRITIQUE #2: Ajouter timeout de 30 secondes
+    const createTransactionResponse = await fetchWithTimeout(
+      `${fedapayBaseUrl}/v1/transactions`,
+      {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${fedapaySecretKey}`,
           'Content-Type': 'application/json',
         },
-        signal: controller.signal
+        body: JSON.stringify({
+          description: `Paiement rendez-vous médical #${appointmentId}`,
+          amount: amountToCharge,
+          currency: {
+            iso: 'XOF'
+          },
+          callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          customer: {
+            firstname,
+            lastname,
+            email: customerEmail,
+            phone_number: {
+              number: phoneNumber,
+              country: 'BJ'
+            }
+          },
+          custom_metadata: {
+            appointment_id: appointmentId,
+            user_id: paymentUserId,
+            payment_method: paymentMethod,
+            payer_name: payerName,
+            payer_email: payerEmail || null
+          }
+        }),
+      },
+      30000 // Timeout de 30 secondes
+    );
+
+    if (!createTransactionResponse.ok) {
+      const errorData = await createTransactionResponse.json();
+      console.error('FedaPay transaction creation failed:', errorData);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur lors de la création de la transaction de paiement',
+          details: errorData
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const fedapayData: any = await createTransactionResponse.json();
+    
+    // ✅ AMÉLIORATION #5: Logs sans données sensibles en production
+    if (isProduction) {
+      console.log('✅ Étape 1 Terminée : Transaction créée', {
+        transactionId: fedapayData.v1_transaction?.id || fedapayData['v1/transaction']?.id
       });
-      
-      clearTimeout(timeoutId);
-    } catch (error) {
-      console.error('Error generating token:', error);
+    } else {
+      console.log('FedaPay transaction created successfully:', fedapayData);
+      console.log('✅ Étape 1 Terminée : Transaction créée');
+    }
+
+    // Extract transaction from response (FedaPay peut utiliser v1_transaction OU v1/transaction)
+    const transaction = fedapayData.v1_transaction || fedapayData['v1/transaction'] || fedapayData.transaction || fedapayData;
+    if (!transaction || !transaction.id) {
+      console.error('Invalid transaction response structure:', fedapayData);
+      return new Response(
+        JSON.stringify({ error: 'Format de réponse invalide du service de paiement' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // ÉTAPE 2: Générer le token de paiement
+    if (!isProduction) {
+      console.log('🔑 Étape 2 : Génération du token de paiement');
+      console.log('Step 2: Generating payment token for transaction:', transaction.id);
+    } else {
+      console.log('🔑 Étape 2 : Génération du token', { transactionId: transaction.id });
+    }
+    
+    // ✅ CORRECTION CRITIQUE #2: Ajouter timeout de 30 secondes
+    const generateTokenResponse = await fetchWithTimeout(
+      `${fedapayBaseUrl}/v1/transactions/${transaction.id}/token`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: selectedMode
+        })
+      },
+      30000 // Timeout de 30 secondes
+    );
+
+    if (!generateTokenResponse.ok) {
+      const tokenError = await generateTokenResponse.json();
+      console.error('FedaPay token generation failed:', tokenError);
       return new Response(
         JSON.stringify({ 
-          error: 'Impossible de générer le lien de paiement',
-          details: error instanceof Error ? error.message : 'Unknown error'
+          error: 'Erreur lors de la génération du token de paiement',
+          details: tokenError
         }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let tokenData: unknown;
-    try {
-      tokenData = await tokenResponse.json();
-    } catch (parseError) {
-      console.error('Unable to parse token response:', parseError);
-      return new Response(
-        JSON.stringify({ error: 'Réponse invalide lors de la génération du lien de paiement' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const tokenData: any = await generateTokenResponse.json();
+    
+    // ✅ AMÉLIORATION #5: Logs sans données sensibles en production
+    if (isProduction) {
+      console.log('✅ Étape 2 Terminée : Token généré');
+    } else {
+      console.log('FedaPay token generated successfully:', tokenData);
+      console.log('✅ Étape 2 Terminée : Token généré avec succès');
     }
-
-    if (!tokenResponse.ok) {
-      console.error('FedaPay token generation error:', tokenData);
+    
+    // FedaPay retourne directement { token: "...", url: "..." }
+    const paymentToken = tokenData.token;
+    const paymentUrl = tokenData.url;
+    
+    if (!paymentToken || !paymentUrl) {
+      console.error('Payment token or URL not found in response');
       return new Response(
         JSON.stringify({ 
-          error: 'Erreur lors de la génération du lien de paiement',
-          details: tokenData
+          error: 'Token ou URL de paiement non disponible',
+          details: { hasToken: !!paymentToken, hasUrl: !!paymentUrl }
         }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log('Token generated successfully:', tokenData);
-
-    // Parser la réponse du token
-    const tokenInfo = parseFedaPayResponse(tokenData);
-    if (!tokenInfo || !tokenInfo.url) {
-      console.error('Invalid token response structure:', tokenData);
-      return new Response(
-        JSON.stringify({ error: 'URL de paiement non disponible' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    
+    if (!isProduction) {
+      console.log('Payment URL extracted:', paymentUrl);
     }
 
-    const paymentUrl = tokenInfo.url;
-    const ussdTriggerResult = await triggerFedapayUssdValidation({
-      transactionId: transactionData.id,
-      phoneNumber,
-      mode: selectedMode,
-      fedapaySecretKey,
-      fedapayBaseUrl,
-    });
-    if (!ussdTriggerResult.success) {
-      console.warn('FedaPay USSD trigger failed', ussdTriggerResult);
-    }
-    console.log('Payment URL generated:', paymentUrl);
+    // ÉTAPE 3: Le paiement est prêt, le patient recevra le lien par notification
+    console.log('✅ Étape 3 : Transaction et token créés, paiement prêt pour le patient');
 
     // Récupérer la configuration des frais
     const { data: configData } = await supabase
@@ -431,42 +487,34 @@ serve(async (req) => {
     
     // Calculer les frais
     const feeConfig = parseFeeConfig(systemConfig);
-    const feeBreakdown = calculateFees(amount, 'XOF', feeConfig);
-    
-    // Calculer la date de hold
+    const feeBreakdown = calculateFees(amountToCharge, 'XOF', feeConfig);
     const holdPeriodDays = systemConfig.payment_hold_period_days?.days || 2;
     const holdUntil = calculateHoldUntil(holdPeriodDays);
-    
-    // Normaliser le statut initial
-    const initialStatus = normalizeStatus(transactionData.status || 'pending');
 
-    // Store payment in database avec détails des frais
+    console.log('Fee breakdown:', feeBreakdown);
+
+    // Enregistrer le paiement dans la base de données
     const { data: payment, error: dbError } = await supabase
       .from('payments')
       .insert({
         appointment_id: appointmentId,
-        patient_id: user.id,
+        patient_id: paymentUserId,
         amount: feeBreakdown.amount,
         currency: feeBreakdown.currency,
         payment_method: paymentMethod,
-        status: initialStatus,
+        status: 'initiated',
+        payout_status: 'pending',
+        fedapay_transaction_id: transaction.id.toString(),
+        fedapay_payment_url: paymentUrl,
+        idempotency_key: idempotencyKey,
         commission_amount: feeBreakdown.commissionAmount,
         gateway_fees_amount: feeBreakdown.gatewayFeesAmount,
         fees_amount: feeBreakdown.feesAmount,
         net_amount: feeBreakdown.netAmount,
-        hold_until: holdUntil.toISOString(),
-        payout_status: 'pending',
-        fedapay_transaction_id: transactionData.id.toString(),
-        fedapay_payment_url: paymentUrl,
-        idempotency_key: idempotencyKey,
-        channel: 'mobile_money',
-        provider_ref: transactionData.id.toString(),
-        payment_session_data: {
-          transaction: fedapayData,
-          token: tokenData,
-          mode: selectedMode,
-          ussd: ussdTriggerResult
-        }
+        hold_until: holdUntil,
+        payer_name: payerName,
+        payer_email: payerEmail || null,
+        payer_phone: phoneNumber
       })
       .select()
       .single();
@@ -479,20 +527,14 @@ serve(async (req) => {
     console.log('Payment stored in database:', payment);
     console.log('Fee breakdown:', feeBreakdown);
 
-    // ✅ CORRECTION ERREUR #1: Initialiser le solde praticien
-    // Récupérer le practitioner_id depuis l'appointment
-    const { data: appointmentData } = await supabase
-      .from('appointments')
-      .select('practitioner_id')
-      .eq('id', appointmentId)
-      .single();
+    // ✅ practitioner_id déjà récupéré en début de fonction (ligne ~157)
 
-    if (appointmentData?.practitioner_id) {
-      console.log('Initializing practitioner balance:', appointmentData.practitioner_id, feeBreakdown.netAmount);
+    if (practitionerId) {
+      console.log('Initializing practitioner balance:', practitionerId, feeBreakdown.netAmount);
       
       const { error: balanceError } = await supabase.rpc('initialize_payment_balance', {
         p_payment_id: payment.id,
-        p_practitioner_id: appointmentData.practitioner_id,
+        p_practitioner_id: practitionerId,
         p_net_amount: feeBreakdown.netAmount
       });
 
@@ -502,6 +544,8 @@ serve(async (req) => {
       } else {
         console.log('Practitioner balance initialized successfully');
       }
+    } else {
+      console.warn('⚠️ Aucun practitioner_id trouvé pour ce paiement:', appointmentId);
     }
 
     // Émettre événement payment.intent.created
@@ -523,47 +567,45 @@ serve(async (req) => {
       supabase,
       supabaseUrl,
       serviceRoleKey: supabaseKey,
-      userId: user.id,
-      title: 'Paiement initialisé',
-      message: `Votre paiement de ${amount} XOF pour le rendez-vous a été créé. Confirmez sur votre mobile en entrant votre code PIN USSD ou cliquez pour ouvrir FedaPay.`,
+      title: 'Paiement initié',
+      message: 'Votre paiement a été initié. Veuillez suivre les instructions pour compléter la transaction.',
+      userId: paymentUserId,
       type: 'payment',
-      link: paymentUrl,
+      link: null
     });
 
-    // Calculer l'expiration (30 minutes pour FedaPay)
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
-    console.log('Payment created successfully:', {
-      paymentId: payment.id,
-      transactionId: transactionData.id,
-      paymentUrl: paymentUrl
-    });
+    // Mettre à jour le statut de l'appointment
+    await supabase
+      .from('appointments')
+      .update({ 
+        status: 'pending_payment',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', appointmentId);
 
     return new Response(
-      JSON.stringify({
+      JSON.stringify({ 
         success: true,
         paymentId: payment.id,
-        transactionId: transactionData.id,
-        paymentUrl: paymentUrl,
-        status: initialStatus,
-        expiresAt: expiresAt,
-        message: 'Paiement initialisé avec succès'
+        transactionId: transaction.id,
+        paymentUrl,
+        amount: feeBreakdown.amount,
+        currency: feeBreakdown.currency
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
 
   } catch (error) {
-    console.error('Error in create-payment function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Unexpected error in create-payment:', error);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ 
+        error: 'Une erreur inattendue est survenue',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

@@ -82,8 +82,8 @@ export function NotificationsSection() {
   };
 
   const handleNotificationClick = (notificationId: string, isRead: boolean) => {
-    if (!isRead) {
-      markAsRead.mutate(notificationId);
+    if (!isRead && user?.id) {
+      markAsRead.mutate({ notificationId, userId: user.id });
     }
   };
 

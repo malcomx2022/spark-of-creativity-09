@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
+import { dispatchNotification } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,7 +69,7 @@ serve(async (req) => {
           address: body.address,
           reason: body.reason,
           urgency_level: body.urgencyLevel || 'non-urgent',
-          status: 'pending',
+          status: 'awaiting_practitioner',
         })
         .select('id')
         .single();
@@ -122,6 +123,42 @@ serve(async (req) => {
       }
 
       console.log('✅ Transaction atomique réussie');
+
+      // 4. Envoyer une notification au praticien
+      try {
+        await dispatchNotification({
+          supabase,
+          supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
+          serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          userId: body.practitionerId,
+          title: '🩺 Nouvelle demande de rendez-vous',
+          message: `${body.patientName} souhaite prendre rendez-vous le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time}. Raison: ${body.reason}`,
+          type: 'appointment',
+          link: '/dashboard/practitioner',
+          channels: ['email', 'sms', 'push'],
+        });
+        console.log('✅ Notification envoyée au praticien');
+      } catch (notifError) {
+        console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
+      }
+
+      // 5. Envoyer une notification de confirmation au patient
+      try {
+        await dispatchNotification({
+          supabase,
+          supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
+          serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          userId: body.patientId,
+          title: '✅ Demande de rendez-vous envoyée',
+          message: `Votre demande de rendez-vous avec ${body.practitionerName} pour le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time} a été envoyée. Le praticien répondra généralement sous 30 minutes.`,
+          type: 'appointment',
+          link: '/dashboard/patient',
+          channels: ['email', 'push'],
+        });
+        console.log('✅ Notification de confirmation envoyée au patient');
+      } catch (notifError) {
+        console.error('⚠️ Erreur notification patient (non bloquant):', notifError);
+      }
 
       return new Response(
         JSON.stringify({

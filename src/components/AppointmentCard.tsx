@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, MapPin, FileText, Phone } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, FileText, Phone, Info } from 'lucide-react';
 import type { Appointment } from '@/types/appointment';
 import { ContactDialog } from '@/components/ContactDialog';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -15,15 +16,18 @@ interface AppointmentCardProps {
   onReject?: (id: string) => void;
   onComplete?: (id: string) => void;
   onPaymentRequired?: (appointmentId: string) => void;
+  disabled?: boolean;
 }
 
-export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired, disabled = false }: AppointmentCardProps) {
   const { data: user } = useSupabaseUser();
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'bg-green-500/10 text-green-500 border-green-500/20';
+        return 'bg-green-500/10 text-green-600 border-green-500/20';
+      case 'pending_payment':
+        return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
       case 'awaiting_practitioner':
         return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
       case 'pending':
@@ -45,10 +49,12 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
     switch (status) {
       case 'confirmed':
         return 'Confirmé';
+      case 'pending_payment':
+        return '💳 Paiement requis';
       case 'awaiting_practitioner':
         return 'En attente praticien';
       case 'pending':
-        return 'En attente paiement';
+        return 'En attente';
       case 'in-progress':
         return 'En cours';
       case 'completed':
@@ -108,20 +114,49 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
           </div>
         )}
 
+        {userRole === 'patient' && appointment.status === 'pending_payment' && (
+          <Alert className="bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800">
+            <Info className="h-4 w-4 text-green-600 dark:text-green-400" />
+            <AlertDescription className="text-sm text-green-700 dark:text-green-300">
+              ✅ {appointment.practitionerName} a accepté votre demande ! Veuillez effectuer le paiement pour confirmer définitivement votre rendez-vous.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {userRole === 'patient' && appointment.status === 'awaiting_practitioner' && (
+          <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-sm text-blue-700 dark:text-blue-300">
+              Votre demande a été envoyée à {appointment.practitionerName}. Le praticien répondra généralement sous 30 minutes. Vous recevrez une notification dès qu'il acceptera.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex gap-2 pt-2">
           {userRole === 'practitioner' && appointment.status === 'awaiting_practitioner' && onConfirm && onReject && (
             <>
-              <Button onClick={() => onConfirm(appointment.id)} size="sm" className="flex-1">
+              <Button 
+                onClick={() => onConfirm(appointment.id)} 
+                size="sm" 
+                className="flex-1"
+                disabled={disabled}
+              >
                 Accepter
               </Button>
-              <Button onClick={() => onReject(appointment.id)} size="sm" variant="destructive" className="flex-1">
+              <Button 
+                onClick={() => onReject(appointment.id)} 
+                size="sm" 
+                variant="destructive" 
+                className="flex-1"
+                disabled={disabled}
+              >
                 Refuser
               </Button>
             </>
           )}
-          {userRole === 'patient' && appointment.status === 'pending' && onPaymentRequired && (
+          {userRole === 'patient' && (appointment.status === 'confirmed' || appointment.status === 'pending_payment') && onPaymentRequired && (
             <Button onClick={() => onPaymentRequired(appointment.id)} size="sm" className="flex-1">
-              Payer
+              💳 Payer maintenant
             </Button>
           )}
           {userRole === 'practitioner' && appointment.status === 'confirmed' && onComplete && (

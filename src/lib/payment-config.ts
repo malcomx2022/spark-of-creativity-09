@@ -95,11 +95,6 @@ export const MOBILE_MONEY_PROVIDERS = {
     icon: '📱',
     color: '#FFCC00',
   },
-  orange: {
-    name: 'Orange Money',
-    icon: '🍊',
-    color: '#FF6600',
-  },
   moov: {
     name: 'Moov Money',
     icon: '💰',

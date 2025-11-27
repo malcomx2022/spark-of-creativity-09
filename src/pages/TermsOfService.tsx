@@ -83,7 +83,7 @@ export default function TermsOfService() {
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>5. Obligations des Praticiens</CardTitle>
+            <CardTitle id="charte-praticiens">5. Obligations des Praticiens</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-muted-foreground">
             <p>

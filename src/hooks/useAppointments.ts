@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import type { Appointment, AppointmentStatus, CreateAppointmentData } from '@/types/appointment';
+import { withTimeout } from '@/lib/network-timeout';
 
 function toAppointment(row: Tables<'appointments'>): Appointment {
   return {
@@ -19,6 +20,7 @@ function toAppointment(row: Tables<'appointments'>): Appointment {
     reason: row.reason ?? 'Motif non renseigné',
     notes: row.notes ?? undefined,
     urgencyLevel: row.urgency_level ?? undefined,
+    paymentAmount: row.payment_amount ?? null,
   };
 }
 
@@ -27,11 +29,13 @@ async function fetchAppointmentsByField(field: 'patient_id' | 'practitioner_id',
     return [];
   }
 
-  const { data, error } = await supabase
-    .from('appointments')
-    .select('*')
-    .eq(field, id)
-    .order('date', { ascending: true });
+  const { data, error } = await withTimeout(
+    supabase
+      .from('appointments')
+      .select('*')
+      .eq(field, id)
+      .order('date', { ascending: true })
+  );
 
   if (error) {
     throw error;
@@ -41,11 +45,13 @@ async function fetchAppointmentsByField(field: 'patient_id' | 'practitioner_id',
 }
 
 async function insertAppointment(payload: TablesInsert<'appointments'>) {
-  const { error, data } = await supabase
-    .from('appointments')
-    .insert(payload)
-    .select()
-    .single();
+  const { error, data } = await withTimeout(
+    supabase
+      .from('appointments')
+      .insert(payload)
+      .select()
+      .single()
+  );
 
   if (error) {
     throw error;
@@ -55,12 +61,14 @@ async function insertAppointment(payload: TablesInsert<'appointments'>) {
 }
 
 async function updateAppointment(id: string, payload: TablesUpdate<'appointments'>) {
-  const { error, data } = await supabase
-    .from('appointments')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
+  const { error, data } = await withTimeout(
+    supabase
+      .from('appointments')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single()
+  );
 
   if (error) {
     throw error;
@@ -97,18 +105,22 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       const currentUser = await supabase.auth.getUser();
       if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
       
-      const profile = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', currentUser.data.user.id)
-        .single();
+      const profile = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', currentUser.data.user.id)
+          .single()
+      );
 
-      const addresses = await supabase
-        .from('addresses')
-        .select('*')
-        .eq('user_id', currentUser.data.user.id)
-        .eq('is_default', true)
-        .maybeSingle();
+      const addresses = await withTimeout(
+        supabase
+          .from('addresses')
+          .select('*')
+          .eq('user_id', currentUser.data.user.id)
+          .eq('is_default', true)
+          .maybeSingle()
+      );
 
       return insertAppointment({
         patient_id: patientId,
@@ -121,7 +133,7 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
         reason: data.reason,
         urgency_level: data.urgencyLevel,
         status: 'awaiting_practitioner',
-        address: addresses.data?.address || 'Adresse à préciser',
+        address: data.addressOverride || addresses.data?.address || 'Adresse à préciser',
         duration: 60,
       });
     },

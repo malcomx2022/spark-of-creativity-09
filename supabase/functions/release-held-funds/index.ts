@@ -78,25 +78,64 @@ Deno.serve(async (req) => {
       try {
         console.log(`Processing payment ${payment.id}...`);
 
-        // Récupérer l'appointment pour trouver le practitioner
-        const { data: appointment, error: appointmentError } = await supabase
-          .from('appointments')
-          .select('practitioner_id')
-          .eq('id', payment.appointment_id)
-          .single();
+        // Déterminer le practitioner_id selon le type de paiement
+        let practitionerId: string | null = null;
+        
+        if (payment.appointment_id && payment.appointment_id.startsWith('group_session_')) {
+          // Séance de groupe: group_session_{sessionId}_{participantId}
+          console.log('🏋️ Paiement de séance de groupe détecté');
+          const parts = payment.appointment_id.split('_');
+          const sessionId = parts[2];
+          
+          const { data: sessionData, error: sessionError } = await supabase
+            .from('group_sessions')
+            .select('coach_id')
+            .eq('id', sessionId)
+            .single();
+          
+          if (sessionError || !sessionData) {
+            console.error(`Error fetching group session for payment ${payment.id}:`, sessionError);
+            results.failed++;
+            results.errors.push({
+              payment_id: payment.id,
+              error: 'Group session not found',
+              details: sessionError,
+            });
+            continue;
+          }
+          
+          practitionerId = sessionData.coach_id;
+        } else {
+          // Rendez-vous classique
+          const { data: appointment, error: appointmentError } = await supabase
+            .from('appointments')
+            .select('practitioner_id')
+            .eq('id', payment.appointment_id)
+            .single();
 
-        if (appointmentError || !appointment) {
-          console.error(`Error fetching appointment for payment ${payment.id}:`, appointmentError);
+          if (appointmentError || !appointment) {
+            console.error(`Error fetching appointment for payment ${payment.id}:`, appointmentError);
+            results.failed++;
+            results.errors.push({
+              payment_id: payment.id,
+              error: 'Appointment not found',
+              details: appointmentError,
+            });
+            continue;
+          }
+
+          practitionerId = appointment.practitioner_id;
+        }
+
+        if (!practitionerId) {
+          console.error(`No practitioner ID found for payment ${payment.id}`);
           results.failed++;
           results.errors.push({
             payment_id: payment.id,
-            error: 'Appointment not found',
-            details: appointmentError,
+            error: 'Practitioner ID not found'
           });
           continue;
         }
-
-        const practitionerId = appointment.practitioner_id;
         const releaseAmount = payment.net_amount || payment.amount;
 
         // Récupérer le solde actuel du praticien

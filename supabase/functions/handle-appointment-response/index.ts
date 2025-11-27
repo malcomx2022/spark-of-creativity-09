@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
 
+const DEFAULT_APPOINTMENT_AMOUNT = 10000;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -124,29 +126,147 @@ serve(async (req) => {
 
       // Le praticien accepte → passer en statut "confirmed" (en attente de paiement)
       // Utiliser le statut actuel comme condition pour éviter race condition
-      const { error: updateError } = await supabase
+      let paymentAmount = appointment.payment_amount ?? null;
+
+      if (paymentAmount === null) {
+        const { data: rate } = await supabase
+          .from('practitioner_rates')
+          .select('base_price')
+          .eq('practitioner_id', appointment.practitioner_id)
+          .eq('service_type', appointment.specialty)
+          .maybeSingle();
+
+        paymentAmount = rate?.base_price ?? null;
+
+        if (paymentAmount === null) {
+          const { data: service } = await supabase
+            .from('services')
+            .select('base_price')
+            .eq('name', appointment.specialty)
+            .maybeSingle();
+
+          paymentAmount = service?.base_price ?? DEFAULT_APPOINTMENT_AMOUNT;
+        }
+      }
+
+      // ✅ Récupérer le numéro de téléphone et le nom du patient
+      const { data: patientProfile } = await supabase
+        .from('profiles')
+        .select('phone, full_name')
+        .eq('id', appointment.patient_id)
+        .single();
+
+      if (!patientProfile?.phone) {
+        throw new Error('Le patient n\'a pas de numéro de téléphone enregistré');
+      }
+      
+      // Utiliser le nom du profile si disponible, sinon celui du rendez-vous
+      const patientName = patientProfile.full_name || appointment.patient_name || 'Patient';
+
+      // ✅ NETTOYER les paiements en attente pour ce rendez-vous (éviter les conflits 409)
+      console.log('🧹 Nettoyage des paiements en attente pour ce rendez-vous');
+      await supabase
+        .from('payments')
+        .update({ 
+          status: 'failed',
+          payout_status: 'failed'
+        })
+        .eq('appointment_id', appointmentId)
+        .in('status', ['initiated', 'pending']);
+
+      // ✅ Mettre à jour le statut du rendez-vous en 'confirmed' AVANT de créer le paiement
+      console.log('📝 Mise à jour du rendez-vous en statut confirmed');
+      const { error: preUpdateError } = await supabase
         .from('appointments')
-        .update({ status: 'confirmed' })
+        .update({ 
+          status: 'confirmed', 
+          payment_amount: paymentAmount
+        })
         .eq('id', appointmentId)
         .eq('status', 'awaiting_practitioner'); // Lock optimiste
 
-      if (updateError) throw updateError;
+      if (preUpdateError) {
+        console.error('❌ Erreur mise à jour pré-paiement:', preUpdateError);
+        throw new Error('Impossible de mettre à jour le rendez-vous');
+      }
 
-      // Créer une notification pour le patient
+      // ✅ Créer le paiement FedaPay avec service role
+      console.log('💳 Création du paiement FedaPay pour', paymentAmount, 'XOF');
+      
+      // Créer un client Supabase avec service role pour appeler create-payment
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        }
+      );
+      
+      const { data: paymentData, error: paymentError } = await supabaseAdmin.functions.invoke(
+        'create-payment',
+        {
+          body: {
+            appointmentId: appointmentId,
+            amount: paymentAmount,
+            paymentMethod: 'mtn',
+            phoneNumber: patientProfile.phone,
+            payerName: patientName,
+            // Indiquer qu'on crée le paiement pour le patient via service role
+            bypassAuth: true,
+            patientId: appointment.patient_id
+          }
+        }
+      );
+
+      if (paymentError || !paymentData?.success) {
+        console.error('❌ Erreur création paiement:', paymentError);
+        // Remettre le statut à awaiting_practitioner en cas d'erreur
+        await supabase
+          .from('appointments')
+          .update({ status: 'awaiting_practitioner' })
+          .eq('id', appointmentId);
+        throw new Error('Impossible de créer le lien de paiement');
+      }
+
+      console.log('✅ Paiement créé:', paymentData.paymentId);
+
+      // Mettre à jour le rendez-vous avec le statut pending_payment et la date d'expiration
+      const { error: updateError } = await supabase
+        .from('appointments')
+        .update({ 
+          status: 'pending_payment',
+          payment_expires_at: paymentData.expiresAt 
+        })
+        .eq('id', appointmentId)
+        .eq('status', 'confirmed'); // Lock optimiste
+
+      if (updateError) {
+        console.error('❌ Erreur mise à jour post-paiement:', updateError);
+      }
+
+      // Créer une notification avec le lien de paiement pour le patient
       await supabase
         .from('notifications')
         .insert({
           user_id: appointment.patient_id,
-          title: 'Rendez-vous confirmé - Paiement requis',
-          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Veuillez procéder au paiement pour finaliser la réservation.`,
+          title: '💳 Paiement requis - Rendez-vous confirmé',
+          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Cliquez pour payer ${paymentAmount} XOF et finaliser la réservation.`,
           type: 'payment_required',
-          link: `/patient/dashboard?tab=appointments`,
+          link: paymentData.paymentUrl, // Lien direct vers FedaPay
         });
 
-      console.log('✅ Rendez-vous confirmé, notification de paiement envoyée au patient');
+      console.log('✅ Rendez-vous confirmé, paiement créé et notification envoyée');
 
       return new Response(
-        JSON.stringify({ success: true, message: 'Rendez-vous confirmé, paiement requis' }),
+        JSON.stringify({ 
+          success: true, 
+          message: 'Rendez-vous confirmé, paiement créé',
+          paymentUrl: paymentData.paymentUrl,
+          paymentId: paymentData.paymentId
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -192,7 +312,7 @@ serve(async (req) => {
         specialty: appointment.specialty,
         appointmentDate: appointment.date,
         appointmentTime: appointment.time,
-        maxRadius: 10,
+        maxRadius: 100,
       };
 
       const { data: practitioners } = await supabase

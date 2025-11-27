@@ -105,61 +105,58 @@ serve(async (req) => {
       );
     }
 
-    // Check rate limiting: max 5 attempts per hour per phone number
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { data: recentAttempts, error: attemptsError } = await supabase
-      .from('otp_attempts')
-      .select('id, status')
-      .eq('phone_number', normalizedPhone)
-      .gte('created_at', oneHourAgo);
+    // Check rate limiting using new function
+    const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_otp_rate_limit', {
+      phone: normalizedPhone
+    });
 
-    if (attemptsError) {
-      console.error('Error checking OTP attempts:', attemptsError);
-    } else if (recentAttempts && recentAttempts.length >= 5) {
+    if (rateLimitError) {
+      console.error('Error checking rate limit:', rateLimitError);
+    } else if (rateLimitCheck && !rateLimitCheck.allowed) {
       await supabase.from('otp_attempts').insert({
         phone_number: normalizedPhone,
         channel,
         status: 'failed',
-        error_message: 'Rate limit exceeded',
+        error_message: rateLimitCheck.reason === 'blocked' 
+          ? 'Account temporarily blocked' 
+          : 'Rate limit exceeded',
       });
+
+      const message = rateLimitCheck.reason === 'blocked'
+        ? `Compte temporairement bloqué. Réessayez dans ${Math.ceil(rateLimitCheck.retry_after / 60)} minutes.`
+        : 'Trop de tentatives. Veuillez réessayer plus tard.';
 
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Trop de tentatives. Veuillez réessayer dans 1 heure.' 
+          error: message,
+          retry_after: rateLimitCheck.retry_after
         }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Notify admins after 3 failed attempts
-    if (recentAttempts) {
-      const failedAttempts = recentAttempts.filter(a => a.status === 'failed').length;
+    // Notify admins if approaching limit (4 attempts = warning)
+    if (rateLimitCheck && rateLimitCheck.remaining === 1) {
+      console.log('User approaching OTP limit, notifying admins:', normalizedPhone);
       
-      if (failedAttempts === 2) {
-        // This will be the 3rd failed attempt, notify admins
-        console.log('User has 3 failed OTP attempts, notifying admins:', normalizedPhone);
+      const { data: adminRoles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .in('role', ['admin', 'super_admin']);
+      
+      if (adminRoles && adminRoles.length > 0) {
+        const notifications = adminRoles.map(admin => ({
+          user_id: admin.user_id,
+          title: '⚠️ Utilisateur proche du blocage OTP',
+          message: `L'utilisateur ${normalizedPhone} approche de la limite OTP (1 tentative restante).`,
+          type: 'security',
+          link: '/admin?tab=otp',
+          is_read: false,
+        }));
         
-        // Get all admin users
-        const { data: adminRoles } = await supabase
-          .from('user_roles')
-          .select('user_id')
-          .in('role', ['admin', 'super_admin']);
-        
-        if (adminRoles && adminRoles.length > 0) {
-          // Create notifications for all admins
-          const notifications = adminRoles.map(admin => ({
-            user_id: admin.user_id,
-            title: '⚠️ Utilisateur bloqué - OTP',
-            message: `L'utilisateur ${normalizedPhone} a échoué 3 tentatives OTP et pourrait être bloqué.`,
-            type: 'security',
-            link: '/admin?tab=otp',
-            is_read: false,
-          }));
-          
-          await supabase.from('notifications').insert(notifications);
-          console.log(`Notified ${adminRoles.length} admin(s) about blocked user`);
-        }
+        await supabase.from('notifications').insert(notifications);
+        console.log(`Notified ${adminRoles.length} admin(s) about user approaching limit`);
       }
     }
 

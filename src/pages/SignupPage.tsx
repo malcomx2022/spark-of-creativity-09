@@ -1,65 +1,43 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, User, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+  const { data: user, isLoading } = useSupabaseUser();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Erreur",
-        description: "Les mots de passe ne correspondent pas",
-        variant: "destructive"
+  useEffect(() => {
+    if (!isLoading && user) {
+      getDashboardPathForUser(user.id).then((path) => {
+        navigate(path, { replace: true });
       });
-      setIsSubmitting(false);
-      return;
     }
+  }, [user, isLoading, navigate]);
 
-    if (!supabase) {
-      toast({
-        title: "Erreur de configuration",
-        description: "Le client Supabase n'est pas initialisé. Veuillez vérifier les variables d'environnement.",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    const { error } = await supabase.auth.signUp({
-      email: formData.email,
-      password: formData.password,
-    });
-
-    if (error) {
-      toast({
-        title: "Erreur lors de l'inscription",
-        description: error.message,
-        variant: "destructive"
-      });
-    } else {
-      toast({
-        title: "Inscription réussie !",
-        description: "Veuillez vérifier votre email pour confirmer votre compte.",
-      });
-      navigate("/login");
-    }
-
-    setIsSubmitting(false);
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center min-h-[80vh] p-4">
+          <div className="w-full max-w-4xl space-y-4">
+            <Skeleton className="h-12 w-3/4 mx-auto" />
+            <Skeleton className="h-6 w-2/3 mx-auto" />
+            <div className="grid md:grid-cols-2 gap-6 mt-12">
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10">

@@ -20,10 +20,10 @@ serve(async (req) => {
 
     console.log('Applying ledger entries for payment:', paymentId, 'status:', status);
 
-    // Get payment details
+    // Get payment details with practitioner_id
     const { data: payment, error: paymentError } = await supabase
       .from('payments')
-      .select('*, appointments(practitioner_id)')
+      .select('*, appointment_id')
       .eq('id', paymentId)
       .single();
 
@@ -31,7 +31,37 @@ serve(async (req) => {
       throw new Error('Payment not found');
     }
 
-    const practitionerId = payment.appointments?.practitioner_id;
+    // Déterminer le practitioner_id selon le type de paiement
+    let practitionerId: string | null = null;
+    
+    if (payment.appointment_id && payment.appointment_id.startsWith('group_session_')) {
+      // Séance de groupe: group_session_{sessionId}_{participantId}
+      console.log('🏋️ Paiement de séance de groupe pour ledger');
+      const parts = payment.appointment_id.split('_');
+      const sessionId = parts[2];
+      
+      const { data: sessionData } = await supabase
+        .from('group_sessions')
+        .select('coach_id')
+        .eq('id', sessionId)
+        .single();
+      
+      if (sessionData?.coach_id) {
+        practitionerId = sessionData.coach_id;
+      }
+    } else {
+      // Rendez-vous classique
+      const { data: appointmentData } = await supabase
+        .from('appointments')
+        .select('practitioner_id')
+        .eq('id', payment.appointment_id)
+        .single();
+      
+      if (appointmentData?.practitioner_id) {
+        practitionerId = appointmentData.practitioner_id;
+      }
+    }
+
     if (!practitionerId) {
       throw new Error('Practitioner not found for payment');
     }

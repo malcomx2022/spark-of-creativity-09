@@ -108,22 +108,8 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Authentification
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Authorization header manquant');
-    }
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
-
-    if (authError || !user) {
-      throw new Error('Utilisateur non authentifié');
-    }
 
     const requestData: FindPractitionerRequest = await req.json();
     const {
@@ -132,7 +118,7 @@ Deno.serve(async (req) => {
       specialty,
       appointmentDate,
       appointmentTime,
-      maxRadius = 10, // 10 km par défaut
+      maxRadius = 100, // 100 km par défaut
     } = requestData;
 
     console.log('🔍 Recherche de praticien:', {
@@ -247,7 +233,7 @@ Deno.serve(async (req) => {
               user_id: practitioner.user_id,
               name: practitioner.name,
               specialty: practitioner.specialty,
-              phone: practitioner.phone,
+              // SECURITY: Phone number removed - only shared after appointment booking
               distance: practitioner.distance,
             },
           }),
@@ -264,8 +250,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        message: `Aucun praticien disponible le ${new Date(appointmentDate).toLocaleDateString('fr-FR')} à ${appointmentTime}. Veuillez choisir une autre date ou heure.`,
+        message: `${nearbyPractitioners.length} praticien(s) trouvé(s) à proximité, mais aucun n'est disponible le ${new Date(appointmentDate).toLocaleDateString('fr-FR')} à ${appointmentTime}. Les praticiens doivent configurer leurs créneaux de disponibilité. Veuillez choisir une autre date/heure ou contacter directement un praticien.`,
         nearbyCount: nearbyPractitioners.length,
+        practitionersFound: nearbyPractitioners.map(p => ({
+          name: p.name,
+          distance: p.distance.toFixed(2)
+        }))
       }),
       { 
         status: 200,

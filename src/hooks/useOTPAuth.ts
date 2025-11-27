@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useToast } from '@/hooks/use-toast';
 import { Session } from '@supabase/supabase-js';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 const OTP_PHONE_KEY = 'otp_last_phone';
 
@@ -63,12 +65,14 @@ export function useOTPAuth() {
   // Mutation pour envoyer l'OTP
   const sendOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, channel = 'sms' }: SendOTPParams) => {
-      const { data, error } = await supabase.functions.invoke<SendOTPResponse>('send-otp', {
-        body: { 
-          phoneNumber, 
-          channel 
-        },
-      });
+      const { data, error } = await withTimeout(
+        invokeEdgeFunctionWithRetry<SendOTPResponse>('send-otp', {
+          body: {
+            phoneNumber,
+            channel
+          },
+        })
+      );
 
       if (error) {
         throw new Error(error.message || 'Failed to send OTP');
@@ -95,9 +99,10 @@ export function useOTPAuth() {
     },
     onError: (error: Error) => {
       console.error('Error sending OTP:', error);
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: "Erreur d'envoi",
-        description: error.message || "Impossible d'envoyer le code. Veuillez réessayer.",
+        description: isTimeoutError ? error.message : (error.message || "Impossible d'envoyer le code. Veuillez réessayer."),
         variant: "destructive",
       });
     },
@@ -106,12 +111,14 @@ export function useOTPAuth() {
   // Mutation pour vérifier l'OTP
   const verifyOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, code }: VerifyOTPParams) => {
-      const { data, error } = await supabase.functions.invoke<VerifyOTPResponse>('verify-otp', {
-        body: { 
-          phoneNumber, 
-          code 
-        },
-      });
+      const { data, error } = await withTimeout(
+        invokeEdgeFunctionWithRetry<VerifyOTPResponse>('verify-otp', {
+          body: {
+            phoneNumber,
+            code
+          },
+        })
+      );
 
       if (error) {
         throw new Error(error.message || 'Failed to verify OTP');
@@ -151,9 +158,10 @@ export function useOTPAuth() {
     },
     onError: (error: Error) => {
       console.error('Error verifying OTP:', error);
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: "Code invalide",
-        description: error.message || "Le code est invalide ou a expiré. Veuillez réessayer.",
+        description: isTimeoutError ? error.message : (error.message || "Le code est invalide ou a expiré. Veuillez réessayer."),
         variant: "destructive",
       });
     },

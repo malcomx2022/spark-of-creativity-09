@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import type { AdminManagementResponse } from "@/types/edge-function-responses";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +27,8 @@ const ROLE_LABELS: Record<AdminRole, string> = {
 export function AdminManagement() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [selectedRole, setSelectedRole] = useState<AdminRole>("support");
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -42,38 +46,46 @@ export function AdminManagement() {
       if (!roles) return [];
 
       // Récupérer les profils séparément
-      const userIds = roles.map(r => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name, phone')
-        .in('id', userIds);
+      const userIds = roles.map(r => r.user_id).filter(Boolean);
+      let profiles: { id: string; full_name: string | null; phone: string | null }[] = [];
 
-      if (profilesError) throw profilesError;
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, phone')
+          .in('id', userIds);
+
+        if (profilesError) throw profilesError;
+        profiles = profilesData ?? [];
+      }
 
       // Combiner les données
       return roles.map(role => ({
         ...role,
-        profile: profiles?.find(p => p.id === role.user_id)
+        profile: profiles.find(p => p.id === role.user_id)
       }));
     },
   });
 
   const createAdminMutation = useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: AdminRole }) => {
-      const { data, error } = await supabase.functions.invoke('admin-management', {
-        body: { action: 'create', email, role, fullName: email.split('@')[0] }
+    mutationFn: async ({ email, role, fullName, phone }: { email: string; role: AdminRole; fullName: string; phone: string }) => {
+      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
+        body: { action: 'create', email, role, fullName, phone }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
       
       return data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
-      setTempPassword(data.tempPassword);
+      queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
+      setTempPassword(data?.tempPassword || '');
       setShowPasswordDialog(true);
       setEmail("");
+      setFullName("");
+      setPhone("");
       toast({ title: "Admin créé avec succès" });
     },
     onError: (error: Error) => {
@@ -87,12 +99,12 @@ export function AdminManagement() {
 
   const deleteAdminMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await supabase.functions.invoke('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
         body: { action: 'disable', userId }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
@@ -109,16 +121,16 @@ export function AdminManagement() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await supabase.functions.invoke('admin-management', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
         body: { action: 'reset_password', userId }
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
       return data;
     },
     onSuccess: (data) => {
-      setTempPassword(data.newPassword);
+      setTempPassword(data?.newPassword || '');
       setShowPasswordDialog(true);
       toast({ title: "Mot de passe réinitialisé" });
     },
@@ -138,6 +150,18 @@ export function AdminManagement() {
       setTimeout(() => setCopiedPassword(false), 2000);
       toast({ title: "Mot de passe copié" });
     }
+  };
+
+  const handleCreateAdmin = () => {
+    if (!email || !selectedRole || !fullName) {
+      toast({ 
+        title: "Erreur", 
+        description: "Email, nom complet et rôle requis",
+        variant: "destructive" 
+      });
+      return;
+    }
+    createAdminMutation.mutate({ email, role: selectedRole, fullName, phone });
   };
 
   return (
@@ -179,40 +203,64 @@ export function AdminManagement() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="fullName">Nom complet *</Label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="Jean Dupont"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@example.com"
+                placeholder="admin@domicares.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="role">Rôle</Label>
+              <Label htmlFor="phone">Téléphone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+229 XX XX XX XX"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="role">Rôle *</Label>
               <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as AdminRole)}>
                 <SelectTrigger id="role">
-                  <SelectValue />
+                  <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  {(Object.entries(ROLE_LABELS) as [AdminRole, string][]).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
-              <Button
-                onClick={() => createAdminMutation.mutate({ email, role: selectedRole })}
-                disabled={!email || createAdminMutation.isPending}
-                className="w-full"
-              >
-                <Shield className="h-4 w-4 mr-2" />
-                Créer Admin
-              </Button>
-            </div>
+
+            <Button
+              onClick={handleCreateAdmin}
+              disabled={createAdminMutation.isPending}
+              className="w-full"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              {createAdminMutation.isPending ? "Création..." : "Créer l'administrateur"}
+            </Button>
           </div>
         </CardContent>
       </Card>

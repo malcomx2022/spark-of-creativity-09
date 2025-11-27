@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout } from '@/lib/network-timeout';
 
 export interface Review {
   id: string;
@@ -17,11 +18,13 @@ export function usePatientReviews(patientId?: string) {
     queryFn: async () => {
       if (!patientId) return [];
       
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('*')
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('reviews')
+          .select('*')
+          .eq('patient_id', patientId)
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return data || [];
@@ -41,9 +44,11 @@ export function useCreateReview() {
       rating: number;
       comment?: string;
     }) => {
-      const { error } = await supabase
-        .from('reviews')
-        .insert(data);
+      const { error } = await withTimeout(
+        supabase
+          .from('reviews')
+          .insert(data)
+      );
 
       if (error) throw error;
     },

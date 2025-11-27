@@ -145,23 +145,45 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
       if (!url) {
         throw new Error("URL non générée");
       }
+      
+      // Vérifier l'existence du fichier avant d'ouvrir la fenêtre
+      const checkResponse = await fetch(url, { method: 'HEAD' });
+      
+      if (!checkResponse.ok) {
+        toast({
+          title: "Document introuvable",
+          description: "Le document n'existe pas dans le système de stockage. Veuillez télécharger un nouveau document en mode édition.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       window.open(url, "_blank", "noopener,noreferrer");
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error("Erreur lors de l'accès au document:", error);
+      
       toast({
         title: "Impossible d'ouvrir le document",
-        description: "Veuillez réessayer plus tard.",
+        description: "Une erreur est survenue lors de l'accès au document. Veuillez réessayer ou télécharger un nouveau document.",
         variant: "destructive",
       });
     }
+  };
+
+  const isKYCValidated = () => {
+    const status = practitionerData?.kyc_status || "pending";
+    return status === "approved" || status === "validated";
   };
 
   const getKYCStatusBadge = () => {
     const status = practitionerData?.kyc_status || "pending";
     const config = {
       pending: { icon: Clock, variant: "secondary" as const, label: "En attente" },
+      approved: { icon: CheckCircle, variant: "default" as const, label: "Validé" },
       validated: { icon: CheckCircle, variant: "default" as const, label: "Validé" },
+      rejected: { icon: XCircle, variant: "destructive" as const, label: "Refusé" },
       refused: { icon: XCircle, variant: "destructive" as const, label: "Refusé" },
+      incomplete: { icon: AlertCircle, variant: "outline" as const, label: "Incomplet" },
       to_renew: { icon: AlertCircle, variant: "outline" as const, label: "À renouveler" },
     };
     const { icon: Icon, variant, label } = config[status as keyof typeof config] || config.pending;
@@ -188,13 +210,25 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
           </div>
         </CardHeader>
         <CardContent>
-          {!practitionerData?.can_accept_missions && (
+          {isKYCValidated() && (
+            <div className="bg-primary/10 text-primary p-4 rounded-lg flex items-start gap-3 mb-4">
+              <CheckCircle className="h-5 w-5 mt-0.5" />
+              <div>
+                <p className="font-medium">Dossier validé</p>
+                <p className="text-sm mt-1">
+                  Votre dossier a été validé. Vous ne pouvez plus modifier vos documents, uniquement les consulter.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!practitionerData?.can_accept_missions && !isKYCValidated() && (
             <div className="bg-destructive/10 text-destructive p-4 rounded-lg flex items-start gap-3">
               <AlertCircle className="h-5 w-5 mt-0.5" />
               <div>
                 <p className="font-medium">Acceptation de missions bloquée</p>
                 <p className="text-sm mt-1">
-                  Vous ne pouvez pas accepter de missions tant que votre profil n'est pas validé.
+                  Vous ne pouvez pas accepter de missions tant que votre profil n'est pas validé. Vous pouvez resoummettre votre dossier avec de nouveaux documents.
                 </p>
               </div>
             </div>
@@ -214,16 +248,19 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
-                  disabled={!isEditing}
+                  disabled={!isEditing || isKYCValidated()}
                   onChange={(e) => handleDocumentSelection("idDocument", e.target.files?.[0] || null)}
                 />
                 {documentState.idDocument && (
                   <Button
+                    type="button"
                     variant="outline"
-                    size="sm"
+                    size="default"
                     onClick={() => handleViewDocument(documentState.idDocument)}
+                    className="shrink-0"
                   >
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-4 w-4 mr-2" />
+                    Voir
                   </Button>
                 )}
               </div>
@@ -234,16 +271,19 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
-                  disabled={!isEditing}
+                  disabled={!isEditing || isKYCValidated()}
                   onChange={(e) => handleDocumentSelection("licenseDocument", e.target.files?.[0] || null)}
                 />
                 {documentState.licenseDocument && (
                   <Button
+                    type="button"
                     variant="outline"
-                    size="sm"
+                    size="default"
                     onClick={() => handleViewDocument(documentState.licenseDocument)}
+                    className="shrink-0"
                   >
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-4 w-4 mr-2" />
+                    Voir
                   </Button>
                 )}
               </div>
@@ -254,16 +294,19 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
-                  disabled={!isEditing}
+                  disabled={!isEditing || isKYCValidated()}
                   onChange={(e) => handleDocumentSelection("insuranceDocument", e.target.files?.[0] || null)}
                 />
                 {documentState.insuranceDocument && (
                   <Button
+                    type="button"
                     variant="outline"
-                    size="sm"
+                    size="default"
                     onClick={() => handleViewDocument(documentState.insuranceDocument)}
+                    className="shrink-0"
                   >
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-4 w-4 mr-2" />
+                    Voir
                   </Button>
                 )}
               </div>
@@ -280,31 +323,35 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
               <CardTitle>Profil professionnel</CardTitle>
               <CardDescription>Vos informations et compétences</CardDescription>
             </div>
-            {!isEditing ? (
-              <Button onClick={() => setIsEditing(true)}>Modifier</Button>
-            ) : (
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setIsEditing(false)}>
-                  Annuler
-                </Button>
-                <Button onClick={handleSave} disabled={loading}>
-                  Sauvegarder
-                </Button>
-              </div>
+            {!isKYCValidated() && (
+              <>
+                {!isEditing ? (
+                  <Button onClick={() => setIsEditing(true)}>Modifier</Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setIsEditing(false)}>
+                      Annuler
+                    </Button>
+                    <Button onClick={handleSave} disabled={loading}>
+                      Sauvegarder
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="bio">Biographie</Label>
-            <Textarea
-              id="bio"
-              value={formData.bio}
-              onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-              disabled={!isEditing}
-              rows={4}
-              placeholder="Présentez votre parcours et votre approche..."
-            />
+              <Textarea
+                id="bio"
+                value={formData.bio}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                disabled={!isEditing || isKYCValidated()}
+                rows={4}
+                placeholder="Présentez votre parcours et votre approche..."
+              />
           </div>
           
           <div className="grid gap-4 md:grid-cols-2">
@@ -314,7 +361,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 id="diplomas"
                 value={formData.diplomas}
                 onChange={(e) => setFormData({ ...formData, diplomas: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
                 placeholder="Master en Soins Infirmiers, ..."
               />
             </div>
@@ -324,7 +371,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 id="languages"
                 value={formData.languages}
                 onChange={(e) => setFormData({ ...formData, languages: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
                 placeholder="Français, Anglais, ..."
               />
             </div>
@@ -338,7 +385,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 type="number"
                 value={formData.years_experience}
                 onChange={(e) => setFormData({ ...formData, years_experience: parseInt(e.target.value) })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
               />
             </div>
             <div>
@@ -347,7 +394,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                 id="license"
                 value={formData.license_number}
                 onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditing || isKYCValidated()}
                 placeholder="N° d'agrément"
               />
             </div>
@@ -360,7 +407,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
               type="number"
               value={formData.intervention_radius}
               onChange={(e) => setFormData({ ...formData, intervention_radius: parseInt(e.target.value) })}
-              disabled={!isEditing}
+              disabled={!isEditing || isKYCValidated()}
             />
           </div>
 
@@ -370,7 +417,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
               id="communes"
               value={formData.communes_served}
               onChange={(e) => setFormData({ ...formData, communes_served: e.target.value })}
-              disabled={!isEditing}
+              disabled={!isEditing || isKYCValidated()}
               rows={2}
               placeholder="Paris 15e, Issy-les-Moulineaux, ..."
             />

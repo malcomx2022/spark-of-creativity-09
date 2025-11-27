@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 export function useGroupSessions(coachId?: string) {
   const { toast } = useToast();
@@ -9,21 +10,30 @@ export function useGroupSessions(coachId?: string) {
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['group-sessions', coachId],
     queryFn: async () => {
+      // Check if user is authenticated
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        // Return empty array for unauthenticated users
+        return [];
+      }
+
       let query = supabase
         .from('group_sessions')
         .select('*')
+        .in('status', ['confirmee', 'planifiee'])
         .order('scheduled_date', { ascending: true });
 
       if (coachId) {
         query = query.eq('coach_id', coachId);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await withTimeout(Promise.resolve(query));
       
       if (error) throw error;
       return data;
     },
-    enabled: !!coachId
+    enabled: true
   });
 
   const cancelSession = useMutation({

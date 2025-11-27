@@ -8,7 +8,8 @@ const corsHeaders = {
 interface CreateAdminRequest {
   email: string;
   role: 'super_admin' | 'ops' | 'finance' | 'compliance' | 'support' | 'analyst';
-  fullName?: string;
+  fullName: string;
+  phone?: string;
 }
 
 interface ResetPasswordRequest {
@@ -71,11 +72,11 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'create': {
-        const { email, role, fullName } = body as CreateAdminRequest & { action: string };
+        const { email, role, fullName, phone } = body as CreateAdminRequest & { action: string };
 
-        if (!email || !role) {
+        if (!email || !role || !fullName) {
           return new Response(
-            JSON.stringify({ error: 'Email et rôle requis' }),
+            JSON.stringify({ error: 'Email, nom complet et rôle requis' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -88,49 +89,96 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Générer un mot de passe temporaire
-        const tempPassword = crypto.randomUUID();
+        // Vérifier si l'utilisateur existe déjà
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = existingUsers?.users.find(u => u.email === email);
 
-        // Créer l'utilisateur
-        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-          email,
-          password: tempPassword,
-          email_confirm: true, // Auto-confirmer l'email
-        });
+        let userId: string;
+        let tempPassword: string | undefined;
+        let isNewUser = false;
 
-        if (createError || !newUser.user) {
-          console.error('Error creating user:', createError);
-          return new Response(
-            JSON.stringify({ error: createError?.message || 'Erreur lors de la création' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        if (existingUser) {
+          console.log('User already exists, checking role...');
+          
+          // Vérifier si l'utilisateur a déjà un rôle admin
+          const { data: existingRole } = await supabaseAdmin
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', existingUser.id)
+            .maybeSingle();
 
-        // Créer le profil
-        const { error: profileError } = await supabaseAdmin
-          .from('profiles')
-          .insert({
-            id: newUser.user.id,
-            full_name: fullName || email.split('@')[0],
+          if (existingRole) {
+            return new Response(
+              JSON.stringify({ error: 'Cet utilisateur est déjà administrateur' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          userId = existingUser.id;
+          
+          // Mettre à jour le profil existant avec les nouvelles infos
+          const { error: updateProfileError } = await supabaseAdmin
+            .from('profiles')
+            .update({
+              full_name: fullName,
+              phone: phone || null,
+            })
+            .eq('id', userId);
+
+          if (updateProfileError) {
+            console.error('Error updating profile:', updateProfileError);
+          }
+        } else {
+          // Générer un mot de passe temporaire
+          tempPassword = crypto.randomUUID();
+          isNewUser = true;
+
+          // Créer l'utilisateur
+          const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email,
+            password: tempPassword,
+            email_confirm: true,
           });
 
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
+          if (createError || !newUser.user) {
+            console.error('Error creating user:', createError);
+            return new Response(
+              JSON.stringify({ error: createError?.message || 'Erreur lors de la création' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          userId = newUser.user.id;
+
+          // Créer le profil complet
+          const { error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .insert({
+              id: userId,
+              full_name: fullName,
+              phone: phone || null,
+            });
+
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+          }
         }
 
         // Assigner le rôle admin
         const { error: roleInsertError } = await supabaseAdmin
           .from('user_roles')
           .insert({
-            user_id: newUser.user.id,
+            user_id: userId,
             role,
             created_by: user.id,
           });
 
         if (roleInsertError) {
           console.error('Error assigning role:', roleInsertError);
-          // Supprimer l'utilisateur en cas d'erreur
-          await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+          // Supprimer l'utilisateur seulement si on vient de le créer
+          if (isNewUser) {
+            await supabaseAdmin.auth.admin.deleteUser(userId);
+          }
           return new Response(
             JSON.stringify({ error: 'Erreur lors de l\'assignation du rôle' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -142,19 +190,26 @@ Deno.serve(async (req) => {
           admin_id: user.id,
           action: 'create_admin',
           entity_type: 'user',
-          entity_id: newUser.user.id,
+          entity_id: userId,
           details: { email, role },
         });
 
         console.log('Admin created successfully:', email);
 
+        const responseData: any = { 
+          success: true, 
+          userId: userId,
+          message: isNewUser 
+            ? 'Admin créé avec succès. Mot de passe temporaire généré.' 
+            : 'Rôle admin ajouté à l\'utilisateur existant'
+        };
+        
+        if (tempPassword) {
+          responseData.tempPassword = tempPassword;
+        }
+
         return new Response(
-          JSON.stringify({ 
-            success: true, 
-            userId: newUser.user.id,
-            tempPassword,
-            message: 'Admin créé avec succès. Mot de passe temporaire généré.' 
-          }),
+          JSON.stringify(responseData),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

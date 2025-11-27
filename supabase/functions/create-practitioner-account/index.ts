@@ -13,6 +13,168 @@ interface CreatePractitionerRequest {
   documents: Record<string, string>; // base64 encoded files
 }
 
+// Validation des données avec limites strictes
+function validatePractitionerData(practitionerData: any): string[] {
+  const errors: string[] = [];
+
+  // Nom - validation stricte
+  if (!practitionerData.name || typeof practitionerData.name !== 'string') {
+    errors.push('Nom requis');
+  } else {
+    const name = practitionerData.name.trim();
+    if (name.length < 2) {
+      errors.push('Nom invalide (minimum 2 caractères)');
+    } else if (name.length > 100) {
+      errors.push('Nom trop long (maximum 100 caractères)');
+    } else if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(name)) {
+      errors.push('Nom contient des caractères invalides');
+    }
+  }
+
+  // Téléphone - validation format international
+  if (!practitionerData.phone || typeof practitionerData.phone !== 'string') {
+    errors.push('Numéro de téléphone requis');
+  } else {
+    const cleanPhone = practitionerData.phone.replace(/\s/g, '');
+    if (!/^\+?[0-9]{8,15}$/.test(cleanPhone)) {
+      errors.push('Numéro de téléphone invalide (format: +229XXXXXXXX)');
+    }
+  }
+
+  // Vérification du type de praticien
+  const isCoachSportif = practitionerData.practitioner_type === 'coach_sportif';
+  
+  // Spécialité - requise pour tous (y compris les coachs sportifs)
+  if (!practitionerData.specialty || typeof practitionerData.specialty !== 'string') {
+    errors.push('Spécialité requise');
+  } else {
+    const specialty = practitionerData.specialty.trim();
+    if (specialty.length < 2) {
+      errors.push('Spécialité invalide (minimum 2 caractères)');
+    } else if (specialty.length > 100) {
+      errors.push('Spécialité trop longue (maximum 100 caractères)');
+    }
+  }
+
+  // Validation spécifique pour coach sportif
+  if (isCoachSportif) {
+    // Types de séances
+    if (!practitionerData.session_types || !Array.isArray(practitionerData.session_types)) {
+      errors.push('Types de séances requis pour les coachs sportifs');
+    } else if (practitionerData.session_types.length === 0) {
+      errors.push('Au moins un type de séance requis pour les coachs sportifs');
+    } else if (practitionerData.session_types.length > 10) {
+      errors.push('Trop de types de séances sélectionnés (maximum 10)');
+    }
+    
+    // Zone d'intervention
+    if (!practitionerData.intervention_zone || typeof practitionerData.intervention_zone !== 'string') {
+      errors.push('Zone d\'intervention requise pour les coachs sportifs');
+    } else {
+      const zone = practitionerData.intervention_zone.trim();
+      if (zone.length < 3) {
+        errors.push('Zone d\'intervention trop courte (minimum 3 caractères)');
+      } else if (zone.length > 200) {
+        errors.push('Zone d\'intervention trop longue (maximum 200 caractères)');
+      }
+    }
+    
+    // Rayon d'intervention
+    if (practitionerData.intervention_radius === undefined || practitionerData.intervention_radius === null) {
+      errors.push('Rayon d\'intervention requis pour les coachs sportifs');
+    } else {
+      const radius = Number(practitionerData.intervention_radius);
+      if (isNaN(radius) || radius < 1 || radius > 100) {
+        errors.push('Rayon d\'intervention invalide (doit être entre 1 et 100 km)');
+      }
+    }
+  }
+
+  // Années d'expérience
+  if (practitionerData.years_experience !== null && practitionerData.years_experience !== undefined) {
+    const years = Number(practitionerData.years_experience);
+    if (isNaN(years) || years < 0 || years > 70) {
+      errors.push('Années d\'expérience invalides (doit être entre 0 et 70)');
+    }
+  }
+
+  // Adresse - validation si présente
+  if (practitionerData.address) {
+    if (typeof practitionerData.address !== 'string') {
+      errors.push('Adresse invalide');
+    } else if (practitionerData.address.length > 200) {
+      errors.push('Adresse trop longue (maximum 200 caractères)');
+    }
+  }
+
+  // Certifications - validation si présentes
+  if (practitionerData.certifications && Array.isArray(practitionerData.certifications)) {
+    if (practitionerData.certifications.length > 20) {
+      errors.push('Trop de certifications (maximum 20)');
+    }
+  }
+
+  return errors;
+}
+
+// ✅ CORRECTION BUG #2: Validation améliorée avec magic bytes
+function validateDocument(base64Data: string, documentType: string): { valid: boolean; error?: string } {
+  const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) {
+    return { valid: false, error: `${documentType}: Format base64 invalide` };
+  }
+
+  const contentType = matches[1];
+  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+  
+  if (!allowedTypes.includes(contentType)) {
+    return { valid: false, error: `${documentType}: Type non supporté (PDF, JPG, PNG uniquement)` };
+  }
+
+  const base64Content = matches[2];
+  const sizeInBytes = (base64Content.length * 3) / 4;
+  const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+  if (sizeInBytes > MAX_SIZE) {
+    return { valid: false, error: `${documentType}: Fichier trop volumineux (max 5MB)` };
+  }
+
+  // ✅ Valider les magic bytes pour vérifier l'intégrité
+  try {
+    const binaryString = atob(base64Content.substring(0, 100)); // Premier 100 bytes suffisent
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Vérifier les magic bytes selon le type MIME
+    if (contentType === 'application/pdf') {
+      // PDF doit commencer par %PDF-
+      const pdfHeader = String.fromCharCode(...bytes.slice(0, 5));
+      if (pdfHeader !== '%PDF-') {
+        return { valid: false, error: `${documentType}: Fichier PDF corrompu ou invalide` };
+      }
+    } else if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
+      // JPEG doit commencer par FF D8 FF
+      if (bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF) {
+        return { valid: false, error: `${documentType}: Fichier JPEG corrompu ou invalide` };
+      }
+    } else if (contentType === 'image/png') {
+      // PNG doit commencer par 89 50 4E 47 0D 0A 1A 0A
+      const pngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+      for (let i = 0; i < pngMagic.length; i++) {
+        if (bytes[i] !== pngMagic[i]) {
+          return { valid: false, error: `${documentType}: Fichier PNG corrompu ou invalide` };
+        }
+      }
+    }
+  } catch (error) {
+    return { valid: false, error: `${documentType}: Impossible de valider le contenu du fichier` };
+  }
+
+  return { valid: true };
+}
+
 async function uploadDocument(
   supabase: any,
   base64Data: string,
@@ -27,37 +189,81 @@ async function uploadDocument(
 
   const contentType = matches[1];
   const base64Content = matches[2];
+
+  console.log(`Upload document ${fileName}...`);
   
-  // Decode base64
-  const binaryString = atob(base64Content);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  // Appel de l'edge function upload-to-wasabi avec userId pour service role
+  const { data, error } = await supabase.functions.invoke("upload-to-wasabi", {
+    body: {
+      fileName,
+      fileContent: base64Content, // Envoyer le contenu base64 sans le préfixe data:
+      contentType,
+      folder: "practitioner-documents",
+      userId: userId // Nécessaire pour les appels service role
+    }
+  });
+
+  if (error) {
+    console.error('Erreur upload Wasabi:', error);
+    throw error;
   }
 
-  const filePath = `practitioner-documents/${userId}/${fileName}`;
-
-  // Upload to Wasabi via Supabase edge function
-  const { data: uploadData, error: uploadError } = await supabase.functions.invoke(
-    'upload-to-wasabi',
-    {
-      body: {
-        file: Array.from(bytes),
-        fileName: filePath,
-        contentType,
-      }
-    }
-  );
-
-  if (uploadError) {
-    console.error('Erreur upload Wasabi:', uploadError);
-    throw uploadError;
+  if (!data || !data.success) {
+    throw new Error('Échec upload Wasabi');
   }
 
   return {
-    path: filePath,
-    url: uploadData.url,
+    path: data.filePath,
+    url: data.url,
   };
+}
+
+async function deleteWasabiDocument(supabase: any, filePath: string): Promise<void> {
+  try {
+    // Appeler l'edge function pour supprimer de Wasabi
+    // NOTE: Nécessite une fonction dédiée ou extension de upload-to-wasabi
+    console.log(`🗑️ Suppression document Wasabi: ${filePath}`);
+    // TODO: Implémenter fonction de suppression Wasabi quand disponible
+  } catch (error) {
+    console.error(`❌ Erreur suppression Wasabi ${filePath}:`, error);
+  }
+}
+
+async function sendKYCNotifications(supabase: any, practitionerName: string): Promise<void> {
+  const ADMIN_ROLES = ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst'];
+
+  const { data: adminUsers, error: adminRolesError } = await supabase
+    .from('user_roles')
+    .select('user_id, role')
+    .in('role', ADMIN_ROLES);
+
+  if (adminRolesError) {
+    throw new Error(`Erreur récupération admins: ${adminRolesError.message}`);
+  }
+
+  if (adminUsers && adminUsers.length > 0) {
+    const uniqueAdminIds = Array.from(new Set(adminUsers.map((admin: { user_id: string }) => admin.user_id)));
+
+    const notificationsPayload = uniqueAdminIds.map((adminId) => ({
+      user_id: adminId,
+      title: 'Nouveau dossier KYC à valider',
+      message: `Le praticien ${practitionerName} vient de s'inscrire et nécessite une validation KYC.`,
+      type: 'kyc_pending',
+      link: '/admin?tab=kyc',
+    }));
+
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .insert(notificationsPayload);
+
+    if (notificationError) {
+      throw new Error(`Erreur envoi notifications: ${notificationError.message}`);
+    }
+    
+    console.log(`✅ Notifications KYC envoyées à ${notificationsPayload.length} admin(s)`);
+  } else {
+    console.log('ℹ️ Aucun admin trouvé pour recevoir la notification KYC');
+  }
 }
 
 serve(async (req) => {
@@ -75,11 +281,92 @@ serve(async (req) => {
     const body: CreatePractitionerRequest = await req.json();
     const { userId, profileData, practitionerData, documents } = body;
 
-    console.log('🚀 Création compte praticien transactionnelle:', userId);
+    console.log('🚀 Création compte praticien atomique:', userId);
+
+    // Validation stricte des données praticien
+    const validationErrors = validatePractitionerData(practitionerData);
+    if (validationErrors.length > 0) {
+      console.error('❌ Erreurs validation:', validationErrors);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Données invalides',
+          details: validationErrors,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+
+    // Validation des documents obligatoires selon le type de praticien
+    const isCoachSportif = practitionerData.practitioner_type === 'coach_sportif';
+    
+    // Vérifier documents obligatoires
+    if (!documents.idDocument) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Pièce d\'identité requise',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+    
+    if (isCoachSportif && !documents.diploma) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Diplôme ou certification requis pour les coachs sportifs',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+    
+    if (!isCoachSportif && !documents.licenseDocument) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Autorisation d\'exercice requise',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+    
+    // Validation des documents
+    for (const [key, base64Data] of Object.entries(documents)) {
+      if (base64Data) {
+        const validation = validateDocument(base64Data, key);
+        if (!validation.valid) {
+          console.error('❌ Document invalide:', validation.error);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: validation.error,
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 400,
+            }
+          );
+        }
+      }
+    }
 
     // Variables pour rollback
     let profileCreated = false;
-    let uploadedDocuments: string[] = [];
+    let practitionerCreated = false;
+    let uploadedDocuments: Array<{ key: string; path: string }> = [];
 
     try {
       // 1. Créer le profil
@@ -95,19 +382,30 @@ serve(async (req) => {
       profileCreated = true;
       console.log('✅ Profil créé');
 
-      // 2. Upload des documents
       console.log('📤 Upload documents...');
       const uploadedDocs: Record<string, any> = {};
       
       for (const [key, base64Data] of Object.entries(documents)) {
         if (base64Data) {
           try {
-            const ext = base64Data.includes('pdf') ? 'pdf' : 'jpg';
+            // Détecter l'extension à partir du content-type
+            const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,/);
+            const contentType = matches ? matches[1] : 'application/octet-stream';
+            
+            let ext = 'jpg'; // Par défaut
+            if (contentType.includes('pdf')) {
+              ext = 'pdf';
+            } else if (contentType.includes('png')) {
+              ext = 'png';
+            } else if (contentType.includes('jpeg') || contentType.includes('jpg')) {
+              ext = 'jpg';
+            }
+            
             const fileName = `${key}_${Date.now()}.${ext}`;
             const result = await uploadDocument(supabase, base64Data, fileName, userId);
             uploadedDocs[key] = result;
-            uploadedDocuments.push(result.path);
-            console.log(`✅ ${key} uploadé`);
+            uploadedDocuments.push({ key, path: result.path });
+            console.log(`✅ ${key} uploadé: ${result.path}`);
           } catch (uploadError: any) {
             console.error(`❌ Erreur upload ${key}:`, uploadError);
             throw new Error(`Échec upload ${key}: ${uploadError?.message || 'Erreur inconnue'}`);
@@ -119,49 +417,42 @@ serve(async (req) => {
       console.log('👨‍⚕️ Création praticien...');
       const practitionerPayload = {
         ...practitionerData,
-        image: uploadedDocs.profilePhoto?.url || null,
+        image: uploadedDocs.profilePhoto?.path || null, // ✅ CORRECTION: Utiliser path au lieu de url pour cohérence
         id_document_url: uploadedDocs.idDocument?.path || null,
         license_document_url: uploadedDocs.licenseDocument?.path || null,
-        diplomas: uploadedDocs.diploma ? [uploadedDocs.diploma.path] : null,
+        insurance_document_url: uploadedDocs.diploma?.path || null, // Pour coach: diplôme/certification
+        kyc_status: 'pending',
+        can_accept_missions: false,
       };
+      
+      console.log('✅ Documents uploadés:', {
+        profilePhoto: !!uploadedDocs.profilePhoto,
+        idDocument: !!uploadedDocs.idDocument,
+        licenseDocument: !!uploadedDocs.licenseDocument,
+        diploma: !!uploadedDocs.diploma,
+      });
 
-      const { error: practitionerError } = await supabase
+      const { data: practitionerResult, error: practitionerError } = await supabase
         .from('practitioners')
-        .insert([practitionerPayload]);
+        .insert([practitionerPayload])
+        .select()
+        .single();
 
       if (practitionerError) {
         console.error('❌ Erreur praticien:', practitionerError);
         throw new Error(`Échec création praticien: ${practitionerError.message}`);
       }
 
-      console.log('🔔 Préparation des notifications admin pour le nouveau dossier KYC...');
-
-      const { data: adminUsers, error: adminRolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role');
-
-      if (adminRolesError) {
-        console.error('❌ Erreur récupération admins pour notification KYC:', adminRolesError);
-      } else if (adminUsers && adminUsers.length > 0) {
-        const notificationsPayload = adminUsers.map((admin: { user_id: string }) => ({
-          user_id: admin.user_id,
-          title: 'Nouveau dossier KYC à valider',
-          message: `Le praticien ${practitionerPayload.name} vient de s'inscrire et nécessite une validation KYC.`,
-          type: 'kyc_pending',
-          link: '/admin?tab=kyc',
-        }));
-
-        const { error: notificationError } = await supabase
-          .from('notifications')
-          .insert(notificationsPayload);
-
-        if (notificationError) {
-          console.error('❌ Erreur envoi notifications KYC:', notificationError);
-        } else {
-          console.log(`✅ Notifications KYC envoyées à ${notificationsPayload.length} admin(s)`);
-        }
-      } else {
-        console.log('ℹ️ Aucun admin trouvé pour recevoir la notification KYC');
+      practitionerCreated = true;
+      
+      // Envoyer les notifications KYC aux admins
+      console.log('🔔 Envoi notifications KYC aux admins...');
+      try {
+        await sendKYCNotifications(supabase, practitionerPayload.name);
+        console.log('✅ Notifications KYC envoyées');
+      } catch (notifError: any) {
+        console.error('❌ Erreur notifications KYC (non bloquant):', notifError);
+        // Non bloquant, on continue
       }
 
       console.log('✅ Compte praticien créé avec succès');

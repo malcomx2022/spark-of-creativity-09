@@ -4,10 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, User } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
+import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -22,59 +25,64 @@ export default function LoginPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    if (!supabase) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        })
+      );
+
+      if (error) {
+        toast({
+          ...AUTH_MESSAGES.LOGIN_ERROR,
+          description: error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Vérifier le rôle de l'utilisateur
+      const roleResult = await withTimeout<{ data: { role: string } | null }>(
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle() as unknown as Promise<any>
+      );
+
+      const practitionerResult = await withTimeout<{ data: { id: string } | null }>(
+        supabase
+          .from('practitioners')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .maybeSingle() as unknown as Promise<any>
+      );
+
+      toast(AUTH_MESSAGES.LOGIN_SUCCESS);
+
+      // Rediriger selon le rôle
+      if (roleResult.data?.role) {
+        navigateToDashboard(navigate, 'admin');
+      } else if (practitionerResult.data) {
+        navigateToDashboard(navigate, 'practitioner');
+      } else {
+        navigateToDashboard(navigate, 'patient');
+      }
+
+      setIsSubmitting(false);
+    } catch (error: any) {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
-        title: "Erreur de configuration",
-        description: "Le client Supabase n'est pas initialisé. Veuillez vérifier les variables d'environnement.",
+        ...AUTH_MESSAGES.LOGIN_ERROR,
+        description: isTimeoutError 
+          ? error.message 
+          : (error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription),
         variant: "destructive"
       });
       setIsSubmitting(false);
-      return;
     }
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: formData.email,
-      password: formData.password,
-    });
-
-    if (error) {
-      toast({
-        title: "Erreur lors de la connexion",
-        description: error.message,
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Vérifier le rôle de l'utilisateur
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    const { data: practitionerData } = await supabase
-      .from('practitioners')
-      .select('id')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    toast({
-      title: "Connexion réussie !",
-      description: "Vous allez être redirigé vers le tableau de bord.",
-    });
-
-    // Rediriger selon le rôle
-    if (roleData?.role) {
-      navigate('/admin');
-    } else if (practitionerData) {
-      navigate('/dashboard/practitioner');
-    } else {
-      navigate('/dashboard/patient');
-    }
-
-    setIsSubmitting(false);
   };
 
   return (
@@ -84,11 +92,11 @@ export default function LoginPage() {
       <main className="pt-24 pb-12">
         <div className="container mx-auto px-4 max-w-md">
           <div className="mb-6">
-            <Button
-              variant="ghost"
-              onClick={() => navigate("/")}
-              className="mb-4"
-            >
+          <Button
+            variant="ghost"
+            onClick={() => navigateToHome(navigate)}
+            className="mb-4"
+          >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
             </Button>
@@ -140,6 +148,15 @@ export default function LoginPage() {
                 >
                   {isSubmitting ? "Connexion en cours..." : "Se connecter"}
                 </Button>
+
+                <div className="text-center pt-4">
+                  <Link
+                    to="/login"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Se connecter avec numéro de téléphone (OTP)
+                  </Link>
+                </div>
               </form>
             </CardContent>
           </Card>

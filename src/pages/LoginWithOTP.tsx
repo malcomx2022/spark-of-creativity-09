@@ -3,12 +3,14 @@ import { useNavigate, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useOTPAuth } from '@/hooks/useOTPAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
 import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
+import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
 
@@ -30,9 +32,14 @@ export default function LoginWithOTP() {
   // Vérifier si l'utilisateur est déjà connecté
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await redirectToDashboard();
+      try {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession());
+        if (session) {
+          await redirectToDashboard();
+        }
+      } catch (error) {
+        // Silencieux - l'utilisateur n'est simplement pas connecté
+        console.error('Session check timeout:', error);
       }
     };
     void checkSession();
@@ -46,27 +53,14 @@ export default function LoginWithOTP() {
     }
   }, [countdown]);
 
-  // Format du numéro de téléphone pour l'affichage
-  const formatPhoneDisplay = (value: string) => {
-    // Remove all non-numeric characters
-    const numbers = value.replace(/\D/g, '');
-    
-    // Add + if not present and has digits
-    if (numbers && !value.startsWith('+')) {
-      return '+' + numbers;
-    }
-    return value;
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhoneDisplay(e.target.value);
-    setPhoneNumber(formatted);
+  const handlePhoneChange = (value: string) => {
+    setPhoneNumber(value);
   };
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!phoneNumber || phoneNumber.length < 8) {
+    if (!phoneNumber || phoneNumber.length !== 12) {
       return;
     }
 
@@ -88,17 +82,9 @@ export default function LoginWithOTP() {
 
     try {
       await verifyOTP(phoneNumber, code);
-      
+      // La session est définie automatiquement par verifyOTP
       // Rediriger vers le dashboard approprié
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        const destination = await getDashboardPathForUser(user.id);
-        navigate(destination);
-      } else {
-        const destination = await getDashboardPathFromAuth();
-        navigate(destination);
-      }
+      await redirectToDashboard();
     } catch (error) {
       console.error('Error verifying OTP:', error);
     }
@@ -150,60 +136,14 @@ export default function LoginWithOTP() {
                 <form onSubmit={handleSendOTP} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="phone">Numéro de téléphone</Label>
-                    <Input
+                    <PhoneInput
                       id="phone"
-                      type="tel"
-                      placeholder="+229 XX XX XX XX"
                       value={phoneNumber}
                       onChange={handlePhoneChange}
-                      required
-                      autoFocus
-                      autoComplete="tel"
-                      aria-label="Numéro de téléphone au format international"
+                      countryCode="+229"
+                      localNumberLength={8}
                       disabled={sendingOTP}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Format international (ex: +229 90 12 34 56)
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Canal d'envoi</Label>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant={channel === 'sms' ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setChannel('sms')}
-                        disabled={sendingOTP}
-                        aria-label="Envoyer par SMS"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        SMS
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={channel === 'whatsapp' ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setChannel('whatsapp')}
-                        disabled={sendingOTP}
-                        aria-label="Envoyer par WhatsApp"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        WhatsApp
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={channel === 'call' ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setChannel('call')}
-                        disabled={sendingOTP}
-                        aria-label="Recevoir par appel vocal"
-                      >
-                        <Phone className="w-4 h-4 mr-2" />
-                        Appel
-                      </Button>
-                    </div>
                   </div>
 
                   <Button
@@ -211,7 +151,7 @@ export default function LoginWithOTP() {
                     variant="patient"
                     size="xl"
                     className="w-full"
-                    disabled={sendingOTP || !phoneNumber || phoneNumber.length < 8}
+                    disabled={sendingOTP || !phoneNumber || phoneNumber.length !== 12}
                   >
                     {sendingOTP ? (
                       <>
@@ -225,7 +165,7 @@ export default function LoginWithOTP() {
 
                   <div className="text-center">
                     <Link
-                      to="/login"
+                      to="/login-email"
                       className="text-sm text-primary hover:underline"
                     >
                       Se connecter avec email/mot de passe

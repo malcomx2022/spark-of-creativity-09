@@ -1,20 +1,37 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
-import { MOBILE_MONEY_PROVIDERS } from '@/lib/payment-config';
+import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
+import {
+  clearPersistedPaymentState,
+  getPersistedPaymentState,
+  setPersistedPaymentState,
+} from '@/lib/payment-storage';
+import { normalizePhoneNumber } from '@/lib/phone-utils';
+import { PaymentAttemptsHistory } from '@/components/PaymentAttemptsHistory';
+import { withTimeout } from '@/lib/network-timeout';
+import { 
+  initFedaPayWidget, 
+  isFedaPayLoaded, 
+  CHECKOUT_COMPLETED, 
+  DIALOG_DISMISSED,
+  type FedaPayCheckoutWidget 
+} from '@/lib/fedapay-widget';
 
-type PaymentMethod = 'mtn' | 'orange' | 'moov';
+type PaymentMethod = 'mtn' | 'moov';
 
 interface PaymentResponse {
   success?: boolean;
@@ -29,37 +46,6 @@ interface PaymentResponse {
 
 const POLL_INTERVAL = 3000; // 3 seconds
 const MAX_POLL_TIME = 5 * 60 * 1000; // 5 minutes
-
-function normalizePhoneNumber(input: string): string | null {
-  const trimmed = input.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  let normalized = trimmed.replace(/[^0-9+]/g, '');
-
-  if ((normalized.match(/\+/g) ?? []).length > 1) {
-    return null;
-  }
-
-  if (normalized.startsWith('00')) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-
-  if (!normalized.startsWith('+')) {
-    normalized = `+${normalized.replace(/\+/g, '')}`;
-  }
-
-  const digits = normalized.slice(1);
-
-  if (!/^\d{8,15}$/.test(digits)) {
-    return null;
-  }
-
-  return `+${digits}`;
-}
-
 function isPaymentResponse(payload: unknown): payload is PaymentResponse {
   if (typeof payload !== 'object' || payload === null) {
     return false;
@@ -99,6 +85,8 @@ interface PaymentDialogProps {
 export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuccess }: PaymentDialogProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [payerName, setPayerName] = useState('');
+  const [payerEmail, setPayerEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
@@ -110,8 +98,166 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   const [useSavedMethod, setUseSavedMethod] = useState(false);
   const [selectedSavedMethod, setSelectedSavedMethod] = useState<string>('');
   const [autoPrefilled, setAutoPrefilled] = useState(false);
+  const [attemptNumber, setAttemptNumber] = useState(0);
+  const [existingPaymentChecked, setExistingPaymentChecked] = useState(false);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
+  const hasRehydratedRef = useRef(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollStartTimeRef = useRef<number>(0);
+  const widgetRef = useRef<any>(null);
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
+
+  // ✅ CORRECTION CRITIQUE #1: Charger la configuration FedaPay
+  useEffect(() => {
+    const loadFedaPayConfig = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
+        if (error) throw error;
+        setFedapayConfig(data);
+      } catch (error) {
+        console.error('Failed to load FedaPay config:', error);
+        toast({
+          title: 'Erreur de configuration',
+          description: 'Impossible de charger la configuration de paiement',
+          variant: 'destructive',
+        });
+      }
+    };
+    if (open) {
+      loadFedaPayConfig();
+    }
+  }, [open]);
+
+  // Cleanup widget on unmount
+  useEffect(() => {
+    return () => {
+      if (widgetRef.current) {
+        try {
+          widgetRef.current.close();
+        } catch (error) {
+          console.error('Error closing FedaPay widget:', error);
+        }
+      }
+    };
+  }, []);
+
+  // Charger le profil utilisateur pour pré-remplir les informations
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', user.id)
+          .single()
+      );
+
+      if (profile) {
+        if (profile.full_name && !payerName) {
+          setPayerName(profile.full_name);
+        }
+        if (profile.phone && !phoneNumber) {
+          setPhoneNumber(profile.phone);
+        }
+      }
+
+      // Essayer de récupérer l'email depuis auth
+      if (user.email && !payerEmail) {
+        setPayerEmail(user.email);
+      }
+    };
+
+    if (open) {
+      loadUserProfile();
+    }
+  }, [open]);
+
+  // ✅ Vérifier immédiatement à l'ouverture s'il existe un paiement en cours
+  useEffect(() => {
+    if (!open || existingPaymentChecked) return;
+
+    const checkExistingPayment = async () => {
+      console.log('🔍 Vérification d\'un paiement existant pour le rendez-vous:', appointmentId);
+      
+      const { data: existingPayment } = await withTimeout(
+        supabase
+          .from('payments')
+          .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
+          .eq('appointment_id', appointmentId)
+          .in('status', ['initiated', 'pending'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      );
+
+      if (existingPayment?.fedapay_payment_url) {
+        console.log('✅ Paiement existant trouvé:', existingPayment.id);
+        
+        // Utiliser directement le paiement existant
+        setPaymentId(existingPayment.id);
+        setPaymentUrl(existingPayment.fedapay_payment_url);
+        setTransactionId(existingPayment.fedapay_transaction_id || null);
+        setPaymentStatus('pending');
+        setPollCount(0);
+
+        toast({
+          title: 'Paiement en attente',
+          description: 'Un paiement est déjà en cours pour ce rendez-vous. Vous pouvez compléter le paiement en cliquant sur le lien ci-dessous.',
+        });
+
+        // Ouvrir automatiquement l'URL de paiement
+        window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+      } else {
+        console.log('ℹ️ Aucun paiement en cours trouvé, création possible');
+      }
+
+      setExistingPaymentChecked(true);
+    };
+
+    checkExistingPayment();
+  }, [open, appointmentId, existingPaymentChecked]);
+
+  // Réinitialiser l'état lors de la fermeture
+  useEffect(() => {
+    if (!open) {
+      setExistingPaymentChecked(false);
+    }
+  }, [open]);
+
+  // Enregistrer une tentative de paiement
+  const recordPaymentAttempt = async (
+    status: 'pending' | 'success' | 'failed' | 'timeout',
+    errorMessage?: string,
+    errorType?: string,
+    errorDetails?: Record<string, any>
+  ) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      await supabase.from('payment_attempts').insert({
+        appointment_id: appointmentId,
+        user_id: session.user.id,
+        attempt_number: attemptNumber + 1,
+        status,
+        error_type: errorType || null,
+        error_message: errorMessage || null,
+        error_details: errorDetails || null,
+        payment_method: paymentMethod,
+        amount,
+        payment_id: paymentId || null,
+      });
+
+      setAttemptNumber(prev => prev + 1);
+    } catch (error) {
+      console.error('Error recording payment attempt:', error);
+    }
+  };
 
   // Pré-sélectionner la méthode par défaut lorsqu'aucun numéro n'est fourni
   useEffect(() => {
@@ -141,7 +287,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
-    setPaymentMethod(method.provider);
+    // Valider que le provider est supporté (mtn ou moov)
+    const validProvider = method.provider === 'mtn' || method.provider === 'moov' ? method.provider : 'mtn';
+    setPaymentMethod(validProvider);
 
     let isActive = true;
 
@@ -178,6 +326,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   }, [useSavedMethod]);
 
   const handlePayment = async () => {
+    // ✅ CORRECTION BUG #1: Éviter les double-clics avec un flag
+    if (isCreatingPayment) {
+      console.log('⚠️ Création de paiement déjà en cours, ignorer');
+      return;
+    }
+    
+    setIsCreatingPayment(true);
+    
     // Si une méthode sauvegardée est sélectionnée, l'utiliser
     let resolvedPhoneNumber = phoneNumber;
 
@@ -187,7 +343,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         try {
           const decrypted = await getDecryptedPhone(method.id);
           resolvedPhoneNumber = decrypted;
-          setPaymentMethod(method.provider);
+          // Valider que le provider est supporté (mtn ou moov)
+          const validProvider = method.provider === 'mtn' || method.provider === 'moov' ? method.provider : 'mtn';
+          setPaymentMethod(validProvider);
           setPhoneNumber(decrypted);
         } catch (error) {
           console.error('Erreur lors du déchiffrement de la méthode sélectionnée:', error);
@@ -209,6 +367,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     const sanitizedPhoneNumber = normalizePhoneNumber(resolvedPhoneNumber);
 
     if (!sanitizedPhoneNumber) {
+      setIsCreatingPayment(false);
       toast({
         title: 'Erreur',
         description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX',
@@ -217,10 +376,23 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       return;
     }
 
-    if (!supabase) {
+    // Valider le nom du payeur
+    if (!payerName.trim()) {
+      setIsCreatingPayment(false);
       toast({
-        title: 'Erreur de configuration',
-        description: "Le client Supabase n'est pas initialisé.",
+        title: 'Erreur',
+        description: 'Veuillez saisir le nom du payeur',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Valider l'email si fourni
+    if (payerEmail && !payerEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      setIsCreatingPayment(false);
+      toast({
+        title: 'Erreur',
+        description: 'Adresse email invalide',
         variant: 'destructive',
       });
       return;
@@ -228,6 +400,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     setIsProcessing(true);
     setPaymentStatus('pending');
+    await recordPaymentAttempt('pending');
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -238,17 +411,75 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
 
-      const { data: result, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          appointmentId,
-          amount,
-          paymentMethod,
-          phoneNumber: sanitizedPhoneNumber,
+      // ✅ Vérifier une dernière fois qu'aucun paiement n'existe
+      const { data: existingPayment } = await withTimeout(
+        supabase
+          .from('payments')
+          .select('id, fedapay_payment_url, fedapay_transaction_id, status')
+          .eq('appointment_id', appointmentId)
+          .in('status', ['initiated', 'pending'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      );
+
+      // Si un paiement existe, l'utiliser au lieu d'en créer un nouveau
+      if (existingPayment?.fedapay_payment_url) {
+        console.log('✅ Paiement existant trouvé, réutilisation');
+        
+        setPaymentUrl(existingPayment.fedapay_payment_url);
+        setPaymentId(existingPayment.id);
+        setTransactionId(existingPayment.fedapay_transaction_id || null);
+        setPaymentStatus('pending');
+        setPollCount(0);
+        setIsCreatingPayment(false);
+
+        toast({
+          title: 'Paiement en cours',
+          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+        });
+
+        window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      // Sinon, créer un nouveau paiement
+      console.log('💳 Création d\'un nouveau paiement');
+
+      // Appel avec retry et notification à chaque tentative
+      const { data: result, error } = await invokeEdgeFunctionWithRetry(
+        'create-payment',
+        {
+          body: {
+            appointmentId,
+            amount,
+            paymentMethod,
+            phoneNumber: sanitizedPhoneNumber,
+            payerName: payerName.trim(),
+            payerEmail: payerEmail.trim() || undefined,
+          },
         },
-      });
+        3, // 3 tentatives max
+        (attempt, retryError) => {
+          // Toast d'information lors des retries
+          toast({
+            title: `Tentative ${attempt + 1}...`,
+            description: 'Nouvelle tentative de connexion au service de paiement.',
+            duration: 2000,
+          });
+          
+          // Enregistrer la tentative échouée
+          recordPaymentAttempt('failed', retryError.message, 'network_error', {
+            attempt: attempt + 1,
+            error: retryError.message,
+          });
+        }
+      );
 
       if (error) {
         console.error('Supabase function error:', error);
+        await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
+        setIsCreatingPayment(false);
         throw error;
       }
 
@@ -257,11 +488,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       if (isPaymentResponse(result)) {
         // Vérifier si une erreur est retournée
         if (result.error) {
+          setIsCreatingPayment(false);
           throw new Error(result.error);
         }
 
         // Vérifier que nous avons une URL de paiement
         if (!result.paymentUrl) {
+          setIsCreatingPayment(false);
           throw new Error('URL de paiement non reçue du serveur');
         }
 
@@ -271,6 +504,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         setExpiresAt(result.expiresAt || null);
         setPaymentStatus('pending');
         setPollCount(0);
+        setIsCreatingPayment(false);
 
         // Sauvegarder la méthode si demandé et consentement donné
         if (saveMethod && !useSavedMethod) {
@@ -286,60 +520,170 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           }
         }
 
-        toast({
-          title: 'Paiement initié',
-          description: result.message || 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-        });
-
-        // Ouvrir la page de paiement dans une nouvelle fenêtre
-        const paymentWindow = window.open(
-          result.paymentUrl,
-          '_blank',
-          'width=600,height=700,scrollbars=yes,location=yes'
-        );
-
-        if (!paymentWindow) {
+        // ✅ CORRECTION CRITIQUE #1: Utiliser le widget FedaPay au lieu d'ouvrir une simple URL
+        if (!isFedaPayLoaded()) {
           toast({
-            variant: "destructive",
-            title: "Popup bloqué",
-            description: "Veuillez autoriser les popups pour continuer le paiement.",
+            title: 'Erreur',
+            description: 'Le système de paiement n\'est pas encore chargé. Veuillez réessayer.',
+            variant: 'destructive',
           });
           setIsProcessing(false);
           setPaymentStatus('idle');
+          setIsCreatingPayment(false);
           return;
         }
 
-        // Monitor if window is closed
-        const windowCheckInterval = setInterval(() => {
-          if (paymentWindow.closed) {
-            clearInterval(windowCheckInterval);
-            if (paymentStatus === 'pending') {
+        if (!fedapayConfig) {
+          toast({
+            title: 'Erreur',
+            description: 'Configuration de paiement non disponible. Veuillez rafraîchir la page.',
+            variant: 'destructive',
+          });
+          setIsProcessing(false);
+          setPaymentStatus('idle');
+          setIsCreatingPayment(false);
+          return;
+        }
+
+        if (!result.transactionId) {
+          toast({
+            title: 'Erreur',
+            description: 'ID de transaction non reçu du serveur',
+            variant: 'destructive',
+          });
+          setIsProcessing(false);
+          setPaymentStatus('idle');
+          setIsCreatingPayment(false);
+          return;
+        }
+
+        const txId = parseInt(String(result.transactionId));
+
+        console.log('Initializing FedaPay widget with:', {
+          transactionId: txId,
+          environment: fedapayConfig.environment,
+          amount
+        });
+
+        // Initialiser le widget FedaPay
+        const widget = initFedaPayWidget({
+          public_key: fedapayConfig.publicKey,
+          environment: fedapayConfig.environment as 'sandbox' | 'live',
+          transaction: {
+            id: txId,
+            amount: amount,
+            description: `Paiement rendez-vous médical #${appointmentId}`,
+          },
+          customer: {
+            phone_number: {
+              number: sanitizedPhoneNumber,
+              country: 'BJ',
+            },
+          },
+          currency: {
+            iso: 'XOF',
+          },
+          locale: 'fr',
+          onComplete: async (payload) => {
+            console.log('Payment completed:', payload);
+
+            if (payload.reason === CHECKOUT_COMPLETED) {
+              // Paiement réussi
+              setPaymentStatus('success');
+              setIsProcessing(false);
+              await recordPaymentAttempt('success');
+
+              // Sauvegarder la méthode si demandé
+              if (saveMethod && !useSavedMethod) {
+                try {
+                  await addPaymentMethod({
+                    provider: paymentMethod,
+                    phoneNumber: sanitizedPhoneNumber,
+                    setAsDefault: paymentMethods.length === 0,
+                  });
+                } catch (saveError) {
+                  console.error('Error saving payment method:', saveError);
+                }
+              }
+
               toast({
-                title: "Fenêtre fermée",
-                description: "Vérification du statut du paiement en cours...",
+                title: 'Paiement réussi !',
+                description: 'Votre rendez-vous a été confirmé.',
+              });
+
+              if (onSuccess) {
+                onSuccess();
+              }
+
+              setTimeout(() => {
+                resetPaymentState();
+                onOpenChange(false);
+              }, 2000);
+            } else if (payload.reason === DIALOG_DISMISSED) {
+              // Utilisateur a fermé le dialog
+              setPaymentStatus('error');
+              setIsProcessing(false);
+              await recordPaymentAttempt('failed', 'Paiement annulé par l\'utilisateur', 'user_cancelled');
+
+              toast({
+                title: 'Paiement annulé',
+                description: 'Vous avez annulé le paiement.',
+                variant: 'destructive',
               });
             }
-          }
-        }, 1000);
+          },
+        });
+
+        if (!widget) {
+          throw new Error('Impossible d\'initialiser le widget de paiement');
+        }
+
+        widgetRef.current = widget;
+
+        // Ouvrir le widget de paiement
+        widget.open();
+
+        toast({
+          title: 'Paiement initié',
+          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+        });
       } else {
+        setIsCreatingPayment(false);
         throw new Error('Format de réponse invalide du serveur');
       }
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
       setIsProcessing(false);
+      setIsCreatingPayment(false);
       
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       
+      // Détecter l'erreur de paiement en cours (409)
+      const isPaymentInProgress = errorMessage.includes('paiement est déjà en cours');
+      const retryMatch = errorMessage.match(/réessayer dans (\d+) minute/);
+      const retryMinutes = retryMatch ? parseInt(retryMatch[1]) : null;
+      
+      // Enregistrer l'échec définitif
+      await recordPaymentAttempt('failed', errorMessage, isPaymentInProgress ? 'duplicate_payment' : 'payment_error', {
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+        isPaymentInProgress,
+      });
+      
       toast({
-        title: 'Erreur de paiement',
-        description: errorMessage,
+        title: isPaymentInProgress ? 'Paiement en cours' : 'Erreur de paiement',
+        description: isPaymentInProgress && retryMinutes 
+          ? `Un paiement est déjà en cours. Veuillez patienter ${retryMinutes} minute(s) ou vérifiez votre statut de paiement.`
+          : errorMessage,
         variant: 'destructive',
+        duration: isPaymentInProgress ? 8000 : 5000,
       });
     }
   };
 
   const resetPaymentState = useCallback(() => {
+    setIsProcessing(false);
     setPaymentStatus('idle');
     setPaymentUrl(null);
     setPaymentId(null);
@@ -347,10 +691,15 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     setExpiresAt(null);
     setPollCount(0);
     setPhoneNumber('');
+    setPayerName('');
+    setPayerEmail('');
     setSaveMethod(false);
     setUseSavedMethod(false);
     setSelectedSavedMethod('');
     setAutoPrefilled(false);
+    setAttemptNumber(0);
+    hasRehydratedRef.current = false;
+    clearPersistedPaymentState();
   }, []);
 
   const closeDialog = useCallback(() => {
@@ -358,23 +707,42 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     onOpenChange(false);
   }, [onOpenChange, resetPaymentState]);
 
-  // Poll payment status
+  // ✅ CORRECTION BUG #4: Poll payment status avec cleanup et timeout appropriés
   useEffect(() => {
-    if (!paymentId || paymentStatus !== 'pending') return;
+    if (!paymentId || paymentStatus !== 'pending') {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
 
-    const startTime = Date.now();
+    pollStartTimeRef.current = Date.now();
+    let isMounted = true;
+
     const checkPaymentStatus = async () => {
+      if (!isMounted) return;
+
       try {
-        // Check if max poll time exceeded
-        if (Date.now() - startTime > MAX_POLL_TIME) {
-          clearInterval(pollInterval);
-          setPaymentStatus('error');
-          setIsProcessing(false);
-          toast({
-            variant: "destructive",
-            title: "Délai dépassé",
-            description: "Le paiement prend trop de temps. Veuillez vérifier votre téléphone et contacter le support si nécessaire.",
-          });
+        // ✅ Vérifier le timeout
+        const elapsed = Date.now() - pollStartTimeRef.current;
+        if (elapsed > MAX_POLL_TIME) {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
+          if (isMounted) {
+            setPaymentStatus('error');
+            setIsProcessing(false);
+            await recordPaymentAttempt('timeout', 'Délai de paiement dépassé');
+            
+            toast({
+              variant: "destructive",
+              title: "Délai dépassé",
+              description: "Le paiement prend trop de temps. Vérifiez votre historique de paiements.",
+            });
+          }
           return;
         }
 
@@ -390,12 +758,20 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           return;
         }
 
+        if (!isMounted) return;
+
         setPollCount(prev => prev + 1);
 
         if (payment.status === 'paid') {
-          clearInterval(pollInterval);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
           setPaymentStatus('success');
           setIsProcessing(false);
+          await recordPaymentAttempt('success');
+          
           toast({
             title: "Paiement réussi !",
             description: "Votre rendez-vous a été confirmé.",
@@ -405,14 +781,23 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             onSuccess();
           }
           
-          // Close dialog after success
           setTimeout(() => {
-            closeDialog();
+            if (isMounted) {
+              closeDialog();
+            }
           }, 2000);
         } else if (['failed', 'canceled'].includes(payment.status)) {
-          clearInterval(pollInterval);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
           setPaymentStatus('error');
           setIsProcessing(false);
+          await recordPaymentAttempt('failed', `Paiement ${payment.status}`, 'payment_status_error', {
+            status: payment.status,
+          });
+          
           toast({
             variant: "destructive",
             title: "Paiement échoué",
@@ -424,10 +809,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       }
     };
 
-    const pollInterval = setInterval(checkPaymentStatus, POLL_INTERVAL);
+    pollIntervalRef.current = setInterval(checkPaymentStatus, POLL_INTERVAL);
 
     return () => {
-      clearInterval(pollInterval);
+      isMounted = false;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     };
   }, [paymentId, paymentStatus, onSuccess, closeDialog]);
 
@@ -437,6 +826,103 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     }
     onOpenChange(isOpen);
   }, [onOpenChange, resetPaymentState]);
+
+  // Persist payment state to allow hydration after reload
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (!paymentId || paymentStatus !== 'pending') {
+      clearPersistedPaymentState();
+      return;
+    }
+
+    setPersistedPaymentState({
+      appointmentId,
+      amount,
+      paymentMethod,
+      phoneNumber,
+      paymentStatus,
+      paymentUrl,
+      paymentId,
+      transactionId,
+      expiresAt,
+      useSavedMethod,
+      selectedSavedMethod,
+      payerName,
+      payerEmail,
+      lastUpdated: Date.now(),
+    });
+  }, [
+    open,
+    appointmentId,
+    amount,
+    paymentMethod,
+    phoneNumber,
+    paymentStatus,
+    paymentUrl,
+    paymentId,
+    transactionId,
+    expiresAt,
+    useSavedMethod,
+    selectedSavedMethod,
+    payerName,
+    payerEmail,
+  ]);
+
+  // Rehydrate state from localStorage when dialog opens
+  useEffect(() => {
+    if (!open || hasRehydratedRef.current) {
+      return;
+    }
+
+    const persisted = getPersistedPaymentState();
+    if (!persisted) {
+      hasRehydratedRef.current = true;
+      return;
+    }
+
+    if (persisted.appointmentId !== appointmentId) {
+      hasRehydratedRef.current = true;
+      return;
+    }
+
+    console.log('🔄 Réhydratation du paiement:', persisted);
+    
+    // Valider que la méthode de paiement est supportée (mtn ou moov)
+    const validMethod = persisted.paymentMethod === 'mtn' || persisted.paymentMethod === 'moov' ? persisted.paymentMethod : 'mtn';
+    setPaymentMethod(validMethod);
+    setPhoneNumber(persisted.phoneNumber);
+    setPaymentStatus(persisted.paymentStatus);
+    setPaymentUrl(persisted.paymentUrl);
+    setPaymentId(persisted.paymentId);
+    setTransactionId(persisted.transactionId);
+    setExpiresAt(persisted.expiresAt);
+    setUseSavedMethod(persisted.useSavedMethod);
+    setSelectedSavedMethod(persisted.selectedSavedMethod);
+    
+    // Restaurer les infos du payeur si disponibles
+    if (persisted.payerName) {
+      setPayerName(persisted.payerName);
+    }
+    if (persisted.payerEmail) {
+      setPayerEmail(persisted.payerEmail);
+    }
+    
+    setPollCount(0);
+    setIsProcessing(persisted.paymentStatus === 'pending');
+    hasRehydratedRef.current = true;
+
+    // Informer l'utilisateur de la réhydratation
+    if (persisted.paymentStatus === 'pending') {
+      toast({
+        title: 'Reprise du paiement',
+        description: 'Votre paiement en cours a été restauré. Vous pouvez compléter la transaction.',
+        duration: 6000,
+      });
+    }
+  }, [open, appointmentId]);
 
   const handleReopenPaymentWindow = () => {
     if (!paymentUrl) return;
@@ -463,14 +949,6 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
   };
 
   const selectedProvider = MOBILE_MONEY_PROVIDERS[paymentMethod];
-
-  const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const renderPaymentStatus = () => {
     switch (paymentStatus) {
@@ -534,13 +1012,19 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         );
       case 'error':
         return (
-          <div className="flex flex-col items-center justify-center py-8 space-y-4">
-            <XCircle className="h-16 w-16 text-destructive" />
-            <p className="text-lg font-semibold">Erreur de paiement</p>
-            <p className="text-sm text-muted-foreground text-center">
-              Une erreur s'est produite. Veuillez réessayer.
-            </p>
-            <Button onClick={() => setPaymentStatus('idle')} variant="outline">
+          <div className="space-y-4">
+            <div className="flex flex-col items-center justify-center py-8 space-y-4">
+              <XCircle className="h-16 w-16 text-destructive" />
+              <p className="text-lg font-semibold">Erreur de paiement</p>
+              <p className="text-sm text-muted-foreground text-center">
+                Une erreur s'est produite. Veuillez réessayer.
+              </p>
+            </div>
+            
+            {/* Afficher l'historique des tentatives en cas d'erreur */}
+            <PaymentAttemptsHistory appointmentId={appointmentId} />
+            
+            <Button onClick={() => setPaymentStatus('idle')} variant="outline" className="w-full">
               Réessayer
             </Button>
           </div>
@@ -564,13 +1048,23 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           renderPaymentStatus()
         ) : (
           <div className="space-y-4 py-4">
-            <Alert>
-              <ShieldCheck className="h-4 w-4" />
-              <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
-              <AlertDescription>
-                Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
-              </AlertDescription>
-            </Alert>
+            {paymentUrl ? (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Paiement en cours</AlertTitle>
+                <AlertDescription>
+                  Un paiement est déjà en attente pour ce rendez-vous. Cliquez sur "Ouvrir le paiement" pour le compléter.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert>
+                <ShieldCheck className="h-4 w-4" />
+                <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
+                <AlertDescription>
+                  Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Méthodes sauvegardées */}
             {paymentMethods.length > 0 && (
@@ -622,12 +1116,6 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="orange" id="orange" />
-                      <Label htmlFor="orange" className="font-normal cursor-pointer">
-                        {MOBILE_MONEY_PROVIDERS.orange.icon} {MOBILE_MONEY_PROVIDERS.orange.name}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
                       <RadioGroupItem value="moov" id="moov" />
                       <Label htmlFor="moov" className="font-normal cursor-pointer">
                         {MOBILE_MONEY_PROVIDERS.moov.icon} {MOBILE_MONEY_PROVIDERS.moov.name}
@@ -637,14 +1125,46 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Numéro de téléphone</Label>
+                  <Label htmlFor="payer-name">Nom complet du payeur *</Label>
                   <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="Ex: +229 12345678"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    id="payer-name"
+                    type="text"
+                    placeholder="Ex: Jean Dupont"
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    required
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Le nom du payeur sera enregistré dans FedaPay
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="payer-email">Email du payeur (optionnel)</Label>
+                  <Input
+                    id="payer-email"
+                    type="email"
+                    placeholder="Ex: jean@example.com"
+                    value={payerEmail}
+                    onChange={(e) => setPayerEmail(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    L'email permettra de recevoir les confirmations de paiement
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Numéro de téléphone *</Label>
+                  <PhoneInput
+                    id="phone"
+                    value={phoneNumber}
+                    onChange={(value) => setPhoneNumber(value)}
+                    countryCode="+229"
+                    localNumberLength={8}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Les deux formats sont acceptés : avec ou sans le préfixe 01
+                  </p>
                 </div>
 
                 {/* Consentement pour sauvegarder */}
@@ -691,16 +1211,38 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           </div>
         )}
 
+        {/* Historique des tentatives */}
+        {paymentStatus === 'idle' && (
+          <div className="mt-4">
+            <PaymentAttemptsHistory appointmentId={appointmentId} />
+          </div>
+        )}
+
         {paymentStatus === 'idle' && (
           <div className="flex gap-2">
             <Button variant="outline" onClick={closeDialog} className="flex-1">
               Annuler
             </Button>
-            <Button onClick={handlePayment} disabled={isProcessing} className="flex-1">
+            <Button 
+              onClick={() => {
+                if (paymentUrl) {
+                  window.open(paymentUrl, '_blank', 'noopener,noreferrer');
+                } else {
+                  handlePayment();
+                }
+              }} 
+              disabled={isProcessing} 
+              className="flex-1"
+            >
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Traitement...
+                </>
+              ) : paymentUrl ? (
+                <>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Ouvrir le paiement
                 </>
               ) : (
                 'Payer'

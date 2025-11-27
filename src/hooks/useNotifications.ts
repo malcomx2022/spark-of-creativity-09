@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Notification, NotificationPreferences } from '@/types/profile';
 import { toast } from '@/hooks/use-toast';
 import { playNotificationSound } from '@/lib/notification-sound';
+import { withTimeout } from '@/lib/network-timeout';
 
 export function useNotifications(userId?: string) {
   const queryClient = useQueryClient();
@@ -94,12 +95,14 @@ export function useNotifications(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
       
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50)
+      );
 
       if (error) throw error;
       return data || [];
@@ -112,16 +115,28 @@ export function useMarkNotificationAsRead() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId);
+    mutationFn: async ({
+      notificationId,
+      userId,
+    }: {
+      notificationId: string;
+      userId?: string;
+    }) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('id', notificationId)
+      );
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    onSuccess: (_data, variables) => {
+      if (variables?.userId) {
+        queryClient.invalidateQueries({ queryKey: ['notifications', variables.userId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      }
     },
   });
 }
@@ -132,11 +147,13 @@ export function useNotificationPreferences(userId?: string) {
     queryFn: async () => {
       if (!userId) return null;
       
-      const { data, error } = await supabase
-        .from('notification_preferences')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('notification_preferences')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle()
+      );
 
       if (error) throw error;
       return data;

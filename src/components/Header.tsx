@@ -1,43 +1,40 @@
 import { Button } from "@/components/ui/button";
-import { Menu, Phone, MapPin, LogIn, UserPlus, Shield } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Menu, Phone, MapPin, LogIn, UserPlus, Shield, Users, ChevronDown } from "lucide-react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import logo from "@/assets/logo.png";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const { data: user } = useSupabaseUser();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const handleLogout = async () => {
+    // Nettoyer complètement la session
     await supabase.auth.signOut();
-    navigate("/");
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.href = "/";
   };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
-      <div className="container mx-auto px-4 py-3">
+      <div className="container mx-auto px-3 sm:px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <button onClick={() => navigate("/")} className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-            <img src={logo} alt="DomiCares Logo" className="w-10 h-10" />
+          <button onClick={() => navigate("/")} className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
+            <img src={logo} alt="DomiCares Logo" className="w-8 h-8 sm:w-10 sm:h-10" />
             <div>
-              <h1 className="text-xl font-bold text-foreground">DomiCares</h1>
-              <p className="text-xs text-muted-foreground">Soins à domicile</p>
+              <h1 className="text-base sm:text-xl font-bold text-foreground">DomiCares</h1>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">Soins à domicile</p>
             </div>
           </button>
 
@@ -55,32 +52,49 @@ export default function Header() {
             >
               Services
             </button>
-            <button 
-              onClick={() => navigate("/dashboard/patient")}
-              className="text-foreground hover:text-primary transition-colors"
-            >
-              Patient
-            </button>
-            <button 
-              onClick={() => navigate("/dashboard/practitioner")}
-              className="text-foreground hover:text-primary transition-colors"
-            >
-              Praticien
-            </button>
-            <button 
-              onClick={() => navigate("/search-practitioners")}
-              className="text-foreground hover:text-primary transition-colors flex items-center gap-1"
-            >
-              <MapPin className="h-4 w-4" />
-              Recherche
-            </button>
+            {!user && (
+              <>
+                <button 
+                  onClick={() => navigate("/dashboard/patient")}
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  Patient
+                </button>
+                <button 
+                  onClick={() => navigate("/dashboard/practitioner")}
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  Praticien
+                </button>
+              </>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <MapPin className="h-4 w-4" />
+                Recherche
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate("/search-practitioners")}>
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Praticiens médicaux
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/search-coaches")}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Coachs sportifs
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
 
           {/* Emergency Button & Auth */}
-          <div className="flex items-center space-x-3">
-            <Button variant="urgent" size="sm" className="hidden sm:flex">
-              <Phone className="h-4 w-4" />
-              Urgence 112
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <Button variant="urgent" size="sm" className="hidden sm:flex min-h-[40px]" asChild>
+              <a href="tel:112" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                <span className="hidden md:inline">Urgence 112</span>
+                <span className="md:hidden">112</span>
+              </a>
             </Button>
             
             {user ? (
@@ -142,28 +156,41 @@ export default function Header() {
               >
                 Services
               </button>
-              <button 
-                onClick={() => navigate("/dashboard/patient")}
-                className="text-foreground hover:text-primary transition-colors text-left"
-              >
-                Espace Patient
-              </button>
-              <button 
-                onClick={() => navigate("/dashboard/practitioner")}
-                className="text-foreground hover:text-primary transition-colors text-left"
-              >
-                Espace Praticien
-              </button>
+              {!user && (
+                <>
+                  <button 
+                    onClick={() => navigate("/dashboard/patient")}
+                    className="text-foreground hover:text-primary transition-colors text-left"
+                  >
+                    Espace Patient
+                  </button>
+                  <button 
+                    onClick={() => navigate("/dashboard/practitioner")}
+                    className="text-foreground hover:text-primary transition-colors text-left"
+                  >
+                    Espace Praticien
+                  </button>
+                </>
+              )}
               <button 
                 onClick={() => navigate("/search-practitioners")}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
                 <MapPin className="h-4 w-4" />
-                Rechercher un praticien
+                Praticiens médicaux
               </button>
-              <Button variant="urgent" size="sm" className="w-full sm:hidden">
-                <Phone className="h-4 w-4" />
-                Urgence 112
+              <button 
+                onClick={() => navigate("/search-coaches")}
+                className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
+              >
+                <Users className="h-4 w-4" />
+                Coachs sportifs
+              </button>
+              <Button variant="urgent" size="sm" className="w-full sm:hidden" asChild>
+                <a href="tel:112" className="flex items-center gap-2">
+                  <Phone className="h-4 w-4" />
+                  Urgence 112
+                </a>
               </Button>
               
               {user ? (

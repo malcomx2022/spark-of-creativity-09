@@ -1,9 +1,27 @@
 import { useNavigate } from "react-router-dom";
 import logo from "@/assets/logo.png";
-import { Phone, Mail, MapPin } from "lucide-react";
+import { Phone, Mail } from "lucide-react";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Footer() {
   const navigate = useNavigate();
+  const { data: user } = useSupabaseUser();
+
+  const { data: isPractitioner } = useQuery({
+    queryKey: ['user-type', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase
+        .from('practitioners')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      return !!data;
+    },
+    enabled: !!user?.id,
+  });
 
   return (
     <footer className="bg-secondary/10 border-t border-border mt-auto">
@@ -61,7 +79,12 @@ export default function Footer() {
               <li>
                 <button
                   onClick={() => navigate("/dashboard/patient")}
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  disabled={isPractitioner === true}
+                  className={`text-sm transition-colors ${
+                    isPractitioner === true
+                      ? "text-muted-foreground/40 cursor-not-allowed"
+                      : "text-muted-foreground hover:text-primary"
+                  }`}
                 >
                   Espace Patient
                 </button>
@@ -69,7 +92,12 @@ export default function Footer() {
               <li>
                 <button
                   onClick={() => navigate("/dashboard/practitioner")}
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  disabled={user !== null && isPractitioner === false}
+                  className={`text-sm transition-colors ${
+                    user !== null && isPractitioner === false
+                      ? "text-muted-foreground/40 cursor-not-allowed"
+                      : "text-muted-foreground hover:text-primary"
+                  }`}
                 >
                   Espace Praticien
                 </button>
@@ -106,13 +134,13 @@ export default function Footer() {
             </p>
             <div className="flex gap-4">
               <button
-                onClick={() => navigate("/terms")}
+                onClick={() => navigate("/terms-of-service")}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Conditions d'utilisation
               </button>
               <button
-                onClick={() => navigate("/privacy")}
+                onClick={() => navigate("/privacy-policy")}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Politique de confidentialité

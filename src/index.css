@@ -120,7 +120,7 @@ All colors MUST be HSL.
     @apply bg-background text-foreground font-sans antialiased;
   }
 
-  /* Gradients for medical design */
+  /* Gradients for medical design - Responsive */
   .gradient-primary {
     background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-light)));
   }
@@ -139,6 +139,39 @@ All colors MUST be HSL.
 
   .shadow-glow {
     box-shadow: 0 0 30px hsl(var(--primary-glow) / 0.3);
+  }
+
+  /* Responsive backgrounds - prevent overflow on small screens */
+  @media (max-width: 640px) {
+    .gradient-hero,
+    .gradient-primary,
+    .gradient-secondary {
+      background-attachment: scroll;
+    }
+  }
+  
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    /* Prevent zoom on input focus iOS */
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+    
+    /* Optimize touch targets */
+    button, a {
+      min-height: 44px;
+    }
+  }
+  
+  /* Improve text rendering on mobile */
+  body, button, input, textarea {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Prevent tap highlight on mobile */
+  * {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
   }
 
   /* Animations */

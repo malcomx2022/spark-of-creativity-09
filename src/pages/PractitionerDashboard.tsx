@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Calendar, 
-  Clock, 
+import { Button } from '@/components/ui/button';
+import {
+  Calendar,
+  Clock,
   CheckCircle2,
   AlertCircle,
   TrendingUp,
@@ -17,13 +18,17 @@ import {
   HelpCircle,
   Shield,
   ClipboardCheck,
-  Wallet
+  Wallet,
+  RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
+import { useNotifications } from '@/hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import Header from '@/components/Header';
 import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
 import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
@@ -35,48 +40,91 @@ import { NotificationsSection } from '@/components/dashboard/NotificationsSectio
 import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
+import { LocationSection } from '@/components/dashboard/practitioner/LocationSection';
+import { DocumentsSection } from '@/components/dashboard/practitioner/DocumentsSection';
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
-  const practitionerId = user?.id;
+  const [retryCount, setRetryCount] = useState(0);
+  const practitionerUserId = user?.id;
+
+  // 🔔 Activer les notifications en temps réel
+  useNotifications(practitionerUserId);
   const practitionerName =
     (user?.user_metadata?.full_name as string | undefined) ||
     user?.email ||
     'Praticien';
 
-  // Récupérer les données du praticien
-  const { data: practitioner, isLoading: practitionerLoading } = useQuery({
-    queryKey: ["practitioner", user?.id],
+  // Récupérer les données du praticien avec retry automatique
+  const { data: practitioner, isLoading: practitionerLoading, refetch } = useQuery({
+    queryKey: ["practitioner", practitionerUserId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!practitionerUserId) return null;
+
+      console.log('🔄 Récupération du profil praticien...');
       const { data, error } = await supabase
         .from("practitioners")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", practitionerUserId)
         .single();
-      
-      if (error) throw error;
+
+      if (error) {
+        console.error('❌ Erreur récupération praticien:', error);
+        throw error;
+      }
+
+      console.log('✅ Profil praticien récupéré avec succès');
       return data;
     },
-    enabled: !!user?.id,
+    enabled: !!practitionerUserId,
+    retry: 3, // Retry automatique 3 fois
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000), // Backoff exponentiel: 1s, 2s, 4s
   });
+
+  // Retry automatique si praticien non trouvé (pour les nouveaux inscrits)
+  useEffect(() => {
+    if (!practitioner && !practitionerLoading && practitionerUserId && retryCount < 3) {
+      console.log(`⏳ Retry automatique ${retryCount + 1}/3 après 1.5s...`);
+
+      const timer = setTimeout(() => {
+        console.log('🔄 Retry manuel...');
+        refetch();
+        setRetryCount(prev => prev + 1);
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [practitioner, practitionerLoading, retryCount, refetch, practitionerUserId]);
+
+  const practitionerId = practitioner?.id;
 
   const {
     data: appointments = [],
     isLoading: isLoadingAppointments,
     isError,
-  } = usePractitionerAppointments(user?.id);
+  } = usePractitionerAppointments(practitionerId);
 
   const mutateAppointment = useMutateAppointment();
 
   const handleAccept = async (appointmentId: string) => {
     if (processingAppointment === appointmentId) return;
     
+    // Bloquer si le compte n'est pas validé
+    if (!practitioner?.can_accept_missions) {
+      toast({
+        title: 'Compte non activé',
+        description: 'Votre compte doit être validé avant d\'accepter des consultations.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
     setProcessingAppointment(appointmentId);
     try {
-      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
         body: { appointmentId, action: 'accept' }
       });
 
@@ -94,6 +142,12 @@ export default function PractitionerDashboard() {
         
         throw error;
       }
+
+      // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
+      await mutateAppointment.mutateAsync({
+        id: appointmentId,
+        data: { status: 'confirmed' }
+      });
 
       toast({
         title: 'Rendez-vous accepté',
@@ -114,9 +168,19 @@ export default function PractitionerDashboard() {
   const handleReject = async (appointmentId: string) => {
     if (processingAppointment === appointmentId) return;
     
+    // Bloquer si le compte n'est pas validé
+    if (!practitioner?.can_accept_missions) {
+      toast({
+        title: 'Compte non activé',
+        description: 'Votre compte doit être validé avant de refuser des consultations.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
     setProcessingAppointment(appointmentId);
     try {
-      const { data, error } = await supabase.functions.invoke('handle-appointment-response', {
+      const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
         body: { appointmentId, action: 'reject' }
       });
 
@@ -134,6 +198,12 @@ export default function PractitionerDashboard() {
         
         throw error;
       }
+
+      // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
+      await mutateAppointment.mutateAsync({
+        id: appointmentId,
+        data: { status: 'rejected' }
+      });
 
       toast({
         title: 'Rendez-vous refusé',
@@ -214,14 +284,72 @@ export default function PractitionerDashboard() {
   if (!practitioner) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20 p-6">
-        <div className="container mx-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profil praticien introuvable</CardTitle>
-              <CardDescription>
-                Veuillez compléter votre inscription en tant que praticien.
+        <Header />
+        <div className="container mx-auto max-w-2xl mt-20">
+          <Card className="border-2">
+            <CardHeader className="text-center space-y-4">
+              <div className="flex justify-center">
+                <div className="rounded-full bg-orange-100 dark:bg-orange-900/20 p-4">
+                  {retryCount < 3 ? (
+                    <Loader2 className="w-12 h-12 text-orange-600 dark:text-orange-400 animate-spin" />
+                  ) : (
+                    <AlertCircle className="w-12 h-12 text-orange-600 dark:text-orange-400" />
+                  )}
+                </div>
+              </div>
+
+              <CardTitle className="text-2xl">
+                {retryCount < 3 ? 'Chargement du profil...' : 'Profil praticien introuvable'}
+              </CardTitle>
+
+              <CardDescription className="text-base">
+                {retryCount < 3 ? (
+                  <>
+                    Synchronisation de votre profil en cours. Veuillez patienter...
+                    <br />
+                    <span className="text-xs text-muted-foreground mt-2 block">
+                      Tentative {retryCount + 1} sur 3
+                    </span>
+                  </>
+                ) : (
+                  'Impossible de charger votre profil praticien. Si vous venez de vous inscrire, veuillez vous reconnecter.'
+                )}
               </CardDescription>
             </CardHeader>
+
+            {retryCount >= 3 && (
+              <CardContent className="space-y-4">
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                  <h4 className="font-semibold text-sm">Que faire ?</h4>
+                  <ul className="text-sm text-muted-foreground space-y-1 ml-4">
+                    <li>• Si vous venez de vous inscrire, reconnectez-vous</li>
+                    <li>• Vérifiez votre connexion internet</li>
+                    <li>• Contactez le support si le problème persiste</li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setRetryCount(0);
+                      refetch();
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Réessayer
+                  </Button>
+
+                  <Button
+                    className="flex-1"
+                    onClick={() => navigate('/login')}
+                  >
+                    Se reconnecter
+                  </Button>
+                </div>
+              </CardContent>
+            )}
           </Card>
         </div>
       </div>
@@ -236,6 +364,73 @@ export default function PractitionerDashboard() {
           <h1 className="text-4xl font-bold mb-2">Tableau de bord Praticien</h1>
           <p className="text-muted-foreground">Bienvenue, {practitioner.name}</p>
         </div>
+
+        {/* Alerte pour les comptes non opérationnels */}
+        {!practitioner.can_accept_missions && (
+          <Card className="mb-8 border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                <AlertCircle className="h-5 w-5" />
+                ⚠️ Compte non opérationnel
+              </CardTitle>
+              <CardDescription className="text-orange-600 dark:text-orange-300">
+                {practitioner.kyc_status === 'pending' && (
+                  <>
+                    Votre dossier est en cours de vérification par notre équipe. Ce processus prend généralement 24 à 48 heures.
+                    Vous recevrez un email et un SMS dès que votre compte sera activé.
+                  </>
+                )}
+                {practitioner.kyc_status === 'incomplete' && (
+                  <>
+                    Des documents ou informations sont manquants dans votre dossier.
+                    {practitioner.kyc_comment && ` Détails : ${practitioner.kyc_comment}`}
+                  </>
+                )}
+                {practitioner.kyc_status === 'rejected' && (
+                  <>
+                    Votre dossier n'a pas été validé.
+                    {practitioner.kyc_comment && ` Raison : ${practitioner.kyc_comment}`}
+                  </>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-white/50 dark:bg-black/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                <p className="text-sm font-semibold text-orange-800 dark:text-orange-300 mb-2">
+                  🚫 Restrictions actuelles :
+                </p>
+                <ul className="list-disc list-inside text-sm text-orange-700 dark:text-orange-400 space-y-1">
+                  <li>Vous ne pouvez pas accepter de nouvelles consultations</li>
+                  <li>Vous ne pouvez pas refuser de consultations</li>
+                  <li>Vous pouvez consulter votre dashboard et compléter votre profil</li>
+                </ul>
+              </div>
+              {practitioner.kyc_status === 'pending' && (
+                <div className="mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    📋 Documents en cours de vérification :
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
+                    <li>Pièce d'identité</li>
+                    <li>Licence d'exercice</li>
+                    <li>Diplômes et certifications</li>
+                  </ul>
+                </div>
+              )}
+              {practitioner.kyc_status === 'incomplete' && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  Veuillez compléter votre dossier dans l'onglet "Profil" ou contactez le support : support@domicares.life
+                </p>
+              )}
+              {practitioner.kyc_status === 'rejected' && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  Veuillez contacter le support pour plus d'informations : support@domicares.life
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
 
         {/* Cartes de résumé */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -287,52 +482,54 @@ export default function PractitionerDashboard() {
         </div>
 
         <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
-            <TabsTrigger value="appointments" className="gap-2">
-              <Calendar className="h-4 w-4" />
-              <span className="hidden sm:inline">RDV</span>
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="gap-2">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">Profil</span>
-            </TabsTrigger>
-            <TabsTrigger value="availability" className="gap-2">
-              <Clock className="h-4 w-4" />
-              <span className="hidden sm:inline">Disponibilités</span>
-            </TabsTrigger>
-            <TabsTrigger value="payment-info" className="gap-2">
-              <Wallet className="h-4 w-4" />
-              <span className="hidden sm:inline">Coordonnées paiement</span>
-            </TabsTrigger>
-            <TabsTrigger value="payouts" className="gap-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="hidden sm:inline">Revenus</span>
-            </TabsTrigger>
-            <TabsTrigger value="notes" className="gap-2">
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Notes</span>
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              <span className="hidden sm:inline">Rapports</span>
-            </TabsTrigger>
-            <TabsTrigger value="reviews" className="gap-2">
-              <Star className="h-4 w-4" />
-              <span className="hidden sm:inline">Avis</span>
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Messages</span>
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Notifications</span>
-            </TabsTrigger>
-            <TabsTrigger value="support" className="gap-2">
-              <HelpCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Support</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-10 gap-1 sm:gap-2">
+              <TabsTrigger value="appointments" className="gap-2 whitespace-nowrap">
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline">RDV</span>
+              </TabsTrigger>
+              <TabsTrigger value="profile" className="gap-2 whitespace-nowrap">
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">Profil</span>
+              </TabsTrigger>
+              <TabsTrigger value="availability" className="gap-2 whitespace-nowrap">
+                <Clock className="h-4 w-4" />
+                <span className="hidden sm:inline">Disponibilités</span>
+              </TabsTrigger>
+              <TabsTrigger value="payment-info" className="gap-2 whitespace-nowrap">
+                <Wallet className="h-4 w-4" />
+                <span className="hidden sm:inline">Coordonnées paiement</span>
+              </TabsTrigger>
+              <TabsTrigger value="payouts" className="gap-2 whitespace-nowrap">
+                <DollarSign className="h-4 w-4" />
+                <span className="hidden sm:inline">Revenus</span>
+              </TabsTrigger>
+              <TabsTrigger value="notes" className="gap-2 whitespace-nowrap">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Notes</span>
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="gap-2 whitespace-nowrap">
+                <ClipboardCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">Rapports</span>
+              </TabsTrigger>
+              <TabsTrigger value="reviews" className="gap-2 whitespace-nowrap">
+                <Star className="h-4 w-4" />
+                <span className="hidden sm:inline">Avis</span>
+              </TabsTrigger>
+              <TabsTrigger value="messages" className="gap-2 whitespace-nowrap">
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">Messages</span>
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="gap-2 whitespace-nowrap">
+                <Shield className="h-4 w-4" />
+                <span className="hidden sm:inline">Notifications</span>
+              </TabsTrigger>
+              <TabsTrigger value="support" className="gap-2 whitespace-nowrap">
+                <HelpCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Support</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Onglet Rendez-vous */}
           <TabsContent value="appointments" className="space-y-6">
@@ -378,6 +575,7 @@ export default function PractitionerDashboard() {
                         userRole="practitioner"
                         onConfirm={() => handleAccept(appointment.id)}
                         onReject={() => handleReject(appointment.id)}
+                        disabled={!practitioner.can_accept_missions}
                       />
                     </div>
                   ))
@@ -427,10 +625,17 @@ export default function PractitionerDashboard() {
           </TabsContent>
 
           <TabsContent value="profile">
-            <ProfessionalProfileSection
-              practitionerId={practitioner.id}
-              practitionerData={practitioner}
-            />
+            <div className="space-y-6">
+              <ProfessionalProfileSection
+                practitionerId={practitioner.id}
+                practitionerData={practitioner}
+              />
+              <LocationSection
+                practitionerId={practitioner.id}
+                practitionerData={practitioner}
+              />
+              <DocumentsSection practitionerData={practitioner} />
+            </div>
           </TabsContent>
 
           <TabsContent value="availability">
@@ -440,11 +645,14 @@ export default function PractitionerDashboard() {
             />
           </TabsContent>
 
-          <TabsContent value="payouts" className="space-y-6">
+          <TabsContent value="payment-info">
             <PaymentInfoSection
               practitionerId={practitioner.id}
               practitionerName={practitioner.name}
             />
+          </TabsContent>
+
+          <TabsContent value="payouts" className="space-y-6">
             <PayoutsSection practitionerId={practitioner.id} />
           </TabsContent>
 

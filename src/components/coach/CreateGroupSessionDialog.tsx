@@ -8,14 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { AddressSearchInput } from "@/components/AddressSearchInput";
 
 interface CreateGroupSessionDialogProps {
   coachId: string;
-  onSuccess?: () => void;
 }
 
-export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSessionDialogProps) {
+export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -50,6 +52,8 @@ export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSess
         description: "La séance de groupe a été créée avec succès",
       });
 
+      queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
+      
       setOpen(false);
       setFormData({
         session_name: "",
@@ -63,7 +67,6 @@ export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSess
         location: "",
         description: ""
       });
-      onSuccess?.();
     } catch (error: any) {
       toast({
         title: "Erreur",
@@ -193,12 +196,16 @@ export function CreateGroupSessionDialog({ coachId, onSuccess }: CreateGroupSess
             </div>
 
             <div className="col-span-2 space-y-2">
-              <Label htmlFor="location">Lieu *</Label>
-              <Input
-                id="location"
-                placeholder="Ex: Parc de Hann, Plage de Ngor..."
+              <AddressSearchInput
+                label="Lieu *"
                 value={formData.location}
-                onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                onChange={(locationData) => {
+                  const fullAddress = locationData.city 
+                    ? `${locationData.address}, ${locationData.city}`
+                    : locationData.address;
+                  setFormData(prev => ({ ...prev, location: fullAddress }));
+                }}
+                placeholder="Rechercher un lieu (ex: Parc de Hann, Plage de Ngor...)"
                 required
               />
             </div>

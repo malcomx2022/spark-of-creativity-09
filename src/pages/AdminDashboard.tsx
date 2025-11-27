@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
-import { useEffect } from "react";
-import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { AdminManagement } from "@/components/admin/AdminManagement";
 import { KYCQueue } from "@/components/admin/KYCQueue";
@@ -15,23 +15,49 @@ import { OperationsSection } from "@/components/admin/OperationsSection";
 import { ComplianceSection } from "@/components/admin/ComplianceSection";
 import { UsersManagementSection } from "@/components/admin/UsersManagementSection";
 import { OTPManagementSection } from "@/components/admin/OTPManagementSection";
+import { ApiManagementSection } from "@/components/admin/ApiManagementSection";
 import { useAdminStats } from "@/hooks/useAdminStats";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
-import { useNotifications } from "@/hooks/useNotifications";
+import { useNotifications, useMarkNotificationAsRead } from "@/hooks/useNotifications";
+import { Badge } from "@/components/ui/badge";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { isAdmin, isLoading } = useIsAdmin();
+  const { isAdmin, isLoading, role } = useIsAdmin();
   const { data: stats } = useAdminStats();
   const { data: user } = useSupabaseUser();
+  const userId = user?.id;
+  const { data: notifications = [] } = useNotifications(isAdmin ? userId : undefined);
+  const markNotificationAsRead = useMarkNotificationAsRead();
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const processedKycNotifications = useRef(new Set<string>());
+  const canManageAdmins = role === "super_admin";
+
+  const unreadKycNotifications = notifications.filter((notification) =>
+    notification.type === 'kyc_pending' && !notification.is_read
+  );
+  const pendingKycNotifications = unreadKycNotifications.length;
 
   useEffect(() => {
-    const fetchUser = async () => {
-      if (supabase) {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
+    if (activeTab !== "kyc" || unreadKycNotifications.length === 0 || !userId) {
+      return;
+    }
+
+    unreadKycNotifications.forEach((notification) => {
+      if (processedKycNotifications.current.has(notification.id)) {
+        return;
       }
-    };
+
+      processedKycNotifications.current.add(notification.id);
+      markNotificationAsRead.mutate({ notificationId: notification.id, userId });
+    });
+  }, [activeTab, unreadKycNotifications, markNotificationAsRead, userId]);
+
+  useEffect(() => {
+    if (!canManageAdmins && activeTab === "admins") {
+      setActiveTab("dashboard");
+    }
+  }, [canManageAdmins, activeTab]);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -40,10 +66,8 @@ export default function AdminDashboard() {
   }, [isAdmin, isLoading, navigate]);
 
   const handleLogout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
-    navigate("/login");
+    await supabase.auth.signOut();
+    navigate("/");
   };
 
   if (isLoading) {
@@ -61,11 +85,13 @@ export default function AdminDashboard() {
     return null;
   }
 
+  const totalRevenueValue = stats?.totalRevenue ?? 0;
+
   const statsCards = [
     { title: "Patients", value: stats?.patientsCount || 0, icon: Users, color: "text-primary" },
     { title: "Praticiens", value: stats?.practitionersCount || 0, icon: Stethoscope, color: "text-secondary" },
     { title: "Rendez-vous", value: stats?.appointmentsCount || 0, icon: Calendar, color: "text-primary" },
-    { title: "Revenus", value: `${stats?.totalRevenue.toLocaleString() || 0} XOF`, icon: DollarSign, color: "text-secondary" },
+    { title: "Revenus", value: `${totalRevenueValue.toLocaleString("fr-FR")} XOF`, icon: DollarSign, color: "text-secondary" },
   ];
 
   return (
@@ -113,53 +139,68 @@ export default function AdminDashboard() {
         </div>
 
         {/* Main Admin Interface */}
-        <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9 gap-1">
-            <TabsTrigger value="dashboard">
-              <Activity className="h-4 w-4 mr-2" />
-              Vue d'ensemble
-            </TabsTrigger>
-            <TabsTrigger value="admins">
-              <Shield className="h-4 w-4 mr-2" />
-              Admins
-            </TabsTrigger>
-            <TabsTrigger value="kyc">
-              <FileCheck className="h-4 w-4 mr-2" />
-              KYC
-            </TabsTrigger>
-            <TabsTrigger value="operations">
-              <Calendar className="h-4 w-4 mr-2" />
-              Opérations
-            </TabsTrigger>
-            <TabsTrigger value="finance">
-              <DollarSign className="h-4 w-4 mr-2" />
-              Finance
-            </TabsTrigger>
-            <TabsTrigger value="support">
-              <MessageSquare className="h-4 w-4 mr-2" />
-              Support
-            </TabsTrigger>
-            <TabsTrigger value="otp">
-              <Phone className="h-4 w-4 mr-2" />
-              OTP
-            </TabsTrigger>
-            <TabsTrigger value="compliance">
-              <BookOpen className="h-4 w-4 mr-2" />
-              Conformité
-            </TabsTrigger>
-            <TabsTrigger value="audit">
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Audit
-            </TabsTrigger>
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-10 gap-1">
+              <TabsTrigger value="dashboard" className="whitespace-nowrap">
+                <Activity className="h-4 w-4 mr-2" />
+                Vue d'ensemble
+              </TabsTrigger>
+              {canManageAdmins && (
+                <TabsTrigger value="admins" className="whitespace-nowrap">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Admins
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="kyc" className="flex items-center gap-2 whitespace-nowrap">
+                <FileCheck className="h-4 w-4" />
+                <span>KYC</span>
+                {pendingKycNotifications > 0 && (
+                  <Badge variant="destructive" className="ml-1">
+                    {pendingKycNotifications > 99 ? '99+' : pendingKycNotifications}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="operations" className="whitespace-nowrap">
+                <Calendar className="h-4 w-4 mr-2" />
+                Opérations
+              </TabsTrigger>
+              <TabsTrigger value="finance" className="whitespace-nowrap">
+                <DollarSign className="h-4 w-4 mr-2" />
+                Finance
+              </TabsTrigger>
+              <TabsTrigger value="support" className="whitespace-nowrap">
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Support
+              </TabsTrigger>
+              <TabsTrigger value="otp" className="whitespace-nowrap">
+                <Phone className="h-4 w-4 mr-2" />
+                OTP
+              </TabsTrigger>
+              <TabsTrigger value="api" className="whitespace-nowrap">
+                <Settings className="h-4 w-4 mr-2" />
+                API
+              </TabsTrigger>
+              <TabsTrigger value="compliance" className="whitespace-nowrap">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Conformité
+              </TabsTrigger>
+              <TabsTrigger value="audit" className="whitespace-nowrap">
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                Audit
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="dashboard" className="space-y-4">
             <UsersManagementSection />
           </TabsContent>
 
-          <TabsContent value="admins">
-            <AdminManagement />
-          </TabsContent>
+          {canManageAdmins && (
+            <TabsContent value="admins">
+              <AdminManagement />
+            </TabsContent>
+          )}
 
           <TabsContent value="kyc">
             <KYCQueue />
@@ -179,6 +220,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="otp">
             <OTPManagementSection />
+          </TabsContent>
+
+          <TabsContent value="api">
+            <ApiManagementSection />
           </TabsContent>
 
           <TabsContent value="compliance">

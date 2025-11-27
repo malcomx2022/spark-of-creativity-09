@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LazyPractitionerMap from '@/components/LazyPractitionerMap';
@@ -14,6 +15,11 @@ import { usePractitioners } from '@/hooks/usePractitioners';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Star, Phone, Navigation } from 'lucide-react';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -28,13 +34,63 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function PractitionerSearch() {
-  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+  const navigate = useNavigate();
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
-  const [searchRadius, setSearchRadius] = useState<string>('15');
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [searchRadius, setSearchRadius] = useState<string>('100');
+  const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
+  const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
+
+  const { data: user } = useSupabaseUser();
+  
+  // Utiliser le hook de géolocalisation amélioré
+  const { position, requestPosition, loading: geoLoading, error: geoError, quality, isRefining } = useGeolocation();
+
+  // Récupérer le token Mapbox via l'edge function
+  const { data: mapboxData, isLoading: isLoadingMapbox } = useQuery({
+    queryKey: ['mapbox-token'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('get-mapbox-token');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const mapboxToken = mapboxData?.token || '';
+
+  const {
+    data: practitionersData = [],
+    isLoading: isLoadingPractitioners,
+    isError: isPractitionerError,
+    error: practitionerError,
+  } = usePractitioners();
+
+  // Demander automatiquement la géolocalisation au chargement de la page
+  useEffect(() => {
+    // Ne demander qu'une seule fois au montage
+    requestPosition();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionnellement vide - on ne veut déclencher qu'une fois
+
+  // Mettre à jour userLocation quand position change
+  useEffect(() => {
+    if (position) {
+      setUserLocation({
+        latitude: position.latitude,
+        longitude: position.longitude,
+      });
+      
+      // Afficher un toast uniquement si la qualité est bonne
+      if (quality && quality.level !== 'poor') {
+        toast({
+          title: '📍 Position obtenue',
+          description: quality.message,
+        });
+      }
+    }
+  }, [position, quality]);
 
   useEffect(() => {
     if (practitionersData.length === 0) {
@@ -43,7 +99,14 @@ export default function PractitionerSearch() {
       return;
     }
 
-    const enriched = practitionersData.map(practitioner => {
+    // Filtrer les praticiens avec des coordonnées GPS valides pour la carte
+    const validPractitioners = practitionersData.filter(
+      p => p.latitude != null && p.longitude != null && 
+           !isNaN(p.latitude) && !isNaN(p.longitude) &&
+           p.latitude !== 0 && p.longitude !== 0
+    );
+
+    const enriched = validPractitioners.map(practitioner => {
       if (!userLocation) {
         return practitioner;
       }
@@ -73,6 +136,8 @@ export default function PractitionerSearch() {
       filtered = filtered.filter(p => p.specialty === selectedSpecialty);
     }
 
+    // Si l'utilisateur a une position, filtrer par rayon
+    // Sinon, afficher tous les praticiens valides
     const radius = parseFloat(searchRadius);
     if (!Number.isNaN(radius) && userLocation) {
       filtered = filtered.filter(p => (p.distance ?? Infinity) <= radius);
@@ -87,40 +152,7 @@ export default function PractitionerSearch() {
   );
 
   const getUserLocation = () => {
-    setIsLoadingLocation(true);
-
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        position => {
-          setUserLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-          toast({
-            title: 'Position obtenue',
-            description: 'Votre position a été localisée avec succès.'
-          });
-          setIsLoadingLocation(false);
-        },
-        error => {
-          console.error('Erreur de géolocalisation:', error);
-          toast({
-            title: 'Erreur',
-            description: 'Impossible d\'obtenir votre position.',
-            variant: 'destructive'
-          });
-          setIsLoadingLocation(false);
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      toast({
-        title: 'Non supporté',
-        description: 'La géolocalisation n\'est pas supportée par votre navigateur.',
-        variant: 'destructive'
-      });
-      setIsLoadingLocation(false);
-    }
+    requestPosition();
   };
 
   const specialties = Array.from(new Set(mockPractitioners.map(p => p.specialty)));
@@ -128,17 +160,18 @@ export default function PractitionerSearch() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       <Header />
-      <main className="container mx-auto px-4 py-8 pt-24">
-        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <h1 className="text-3xl font-bold">Trouver un praticien</h1>
+      <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 pt-20 sm:pt-24">
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between">
+              <h1 className="text-2xl sm:text-3xl font-bold">Trouver un praticien</h1>
               <div className="flex items-center gap-2">
-                <Button onClick={getUserLocation} disabled={isLoadingLocation}>
-                  {isLoadingLocation ? (
+                <Button onClick={getUserLocation} disabled={geoLoading || isRefining} className="min-h-[44px]">
+                  {geoLoading || isRefining ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Localisation en cours...
+                      <span className="hidden sm:inline">{isRefining ? 'Affinage...' : 'Localisation en cours...'}</span>
+                      <span className="sm:hidden">Position...</span>
                     </>
                   ) : (
                     <>
@@ -149,6 +182,47 @@ export default function PractitionerSearch() {
                 </Button>
               </div>
             </div>
+
+            {position && quality && (
+              <Alert className={cn(
+                "border-2",
+                quality.level === 'excellent' ? "bg-green-50 border-green-300 dark:bg-green-950 dark:border-green-700" :
+                quality.level === 'good' ? "bg-blue-50 border-blue-300 dark:bg-blue-950 dark:border-blue-700" :
+                quality.level === 'fair' ? "bg-yellow-50 border-yellow-300 dark:bg-yellow-950 dark:border-yellow-700" :
+                "bg-orange-50 border-orange-300 dark:bg-orange-950 dark:border-orange-700"
+              )}>
+                <MapPin className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <div className={cn("font-medium", quality.color)}>
+                      {quality.message}
+                    </div>
+                    {quality.level === 'poor' && (
+                      <p className="text-xs text-muted-foreground">
+                        Les résultats sont affichés mais la distance peut être imprécise. 
+                        Essayez de vous rapprocher d'une fenêtre ou d'un lieu ouvert pour une meilleure précision.
+                      </p>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {geoError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <div className="font-medium">{geoError}</div>
+                    {geoError.includes('Permission') && (
+                      <p className="text-xs mt-1">
+                        Pour activer la géolocalisation: Menu navigateur → Paramètres du site → Localisation → Autoriser
+                      </p>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <Card>
               <CardContent className="p-6 space-y-4">
@@ -177,7 +251,7 @@ export default function PractitionerSearch() {
                       <SelectValue placeholder="Rayon" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['5', '10', '15'].map(radius => (
+                      {['5', '10', '25', '40', '55', '70', '85', '100'].map(radius => (
                         <SelectItem key={radius} value={radius}>
                           {radius} km
                         </SelectItem>
@@ -191,21 +265,56 @@ export default function PractitionerSearch() {
             <div className="space-y-4">
               {isPractitionerError ? (
                 <Card>
-                  <CardContent className="flex items-center gap-2 text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    Impossible de charger les praticiens.
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3 text-destructive">
+                      <AlertCircle className="h-12 w-12" />
+                      <div className="text-center">
+                        <p className="font-semibold">Impossible de charger les praticiens</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {practitionerError?.message || 'Erreur de connexion'}
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-4"
+                          onClick={() => window.location.reload()}
+                        >
+                          Réessayer
+                        </Button>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ) : isLoadingPractitioners ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Chargement des praticiens...</span>
-                </div>
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Chargement des praticiens...</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : practitionersData.length === 0 ? (
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <AlertCircle className="h-12 w-12" />
+                      <p>Aucun praticien disponible pour le moment.</p>
+                    </div>
+                  </CardContent>
+                </Card>
               ) : filteredPractitioners.length === 0 ? (
                 <Card>
-                  <CardContent className="flex items-center gap-2 text-muted-foreground">
-                    <AlertCircle className="h-4 w-4" />
-                    Aucun praticien ne correspond à votre recherche.
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <AlertCircle className="h-12 w-12" />
+                      <div className="text-center">
+                        <p className="font-semibold">Aucun praticien trouvé</p>
+                        <p className="text-sm mt-1">
+                          Essayez d'élargir votre rayon de recherche ou de changer la spécialité
+                        </p>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
@@ -235,9 +344,15 @@ export default function PractitionerSearch() {
                           )}
                         </p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <Button onClick={() => toast({ title: 'Contact', description: `Appel en cours vers ${practitioner.phone}` })}>
-                          Contacter
+                       <div className="flex items-center justify-between">
+                        <Button 
+                          asChild
+                          disabled={!practitioner.phone}
+                        >
+                          <a href={practitioner.phone ? `tel:${practitioner.phone}` : undefined}>
+                            <Phone className="h-4 w-4 mr-2" />
+                            Contacter
+                          </a>
                         </Button>
                         <Button 
                           variant="outline" 
@@ -264,76 +379,210 @@ export default function PractitionerSearch() {
             </div>
           </div>
 
-          <Card className="lg:col-span-2 h-[600px] flex items-center justify-center bg-muted">
-            {mapboxToken ? (
-              <PractitionerMap
-                practitioners={filteredPractitioners}
-                userLocation={userLocation}
-                mapboxToken={mapboxToken}
-                onPractitionerSelect={(practitioner) => {
-                  toast({
-                    title: 'Praticien sélectionné',
-                    description: `${practitioner.name} - ${practitioner.specialty}`
-                  });
-                }}
-              />
-            ) : (
-              <div className="text-center p-4">
-                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
-                <h3 className="mt-4 text-lg font-semibold">Carte non disponible</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Le token Mapbox n'est pas configuré. Veuillez contacter l'administrateur.
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  (Variable d'environnement VITE_MAPBOX_TOKEN manquante)
-                </p>
-              </div>
-            )}
-          </Card>
+          <div>
+            <Card className="sticky top-24">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Carte des praticiens
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[500px]">
+                  {isLoadingMapbox ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : !mapboxToken ? (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      <div className="text-center">
+                        <MapPin className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Carte non disponible</p>
+                        <p className="text-xs mt-1">Configuration Mapbox requise</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <LazyPractitionerMap
+                      practitioners={filteredPractitioners}
+                      userLocation={userLocation}
+                      onPractitionerSelect={setViewedPractitioner}
+                      mapboxToken={mapboxToken}
+                    />
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
 
       {selectedPractitioner && user && (
         <NewAppointmentDialog
           onSubmit={async (data) => {
-            const { data: session } = await supabase.auth.getSession();
-            if (!session?.session?.user) {
-              throw new Error('Utilisateur non authentifié');
+            try {
+              const { data: session } = await supabase.auth.getSession();
+              if (!session?.session?.user) {
+                throw new Error('Utilisateur non authentifié');
+              }
+
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('id', session.session.user.id)
+                .single();
+
+              const appointmentData = {
+                patient_id: session.session.user.id,
+                patient_name: profile?.full_name || 'Patient',
+                practitioner_id: selectedPractitioner.id,
+                practitioner_name: selectedPractitioner.name,
+                specialty: data.specialty,
+                date: new Date(data.date).toISOString().split('T')[0],
+                time: data.time,
+                status: 'awaiting_practitioner',
+                address: selectedPractitioner.address,
+                reason: data.reason,
+                urgency_level: data.urgencyLevel,
+              };
+
+              const { data: appointment, error } = await supabase
+                .from('appointments')
+                .insert([appointmentData])
+                .select()
+                .single();
+
+              if (error) throw error;
+
+              toast({
+                title: 'Demande envoyée',
+                description: 'Votre demande de rendez-vous a été envoyée avec succès.',
+              });
+
+              setSelectedPractitioner(null);
+              return appointment;
+            } catch (error) {
+              console.error('Erreur création RDV:', error);
+              toast({
+                title: 'Erreur',
+                description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous',
+                variant: 'destructive'
+              });
+              throw error;
             }
-
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', session.session.user.id)
-              .single();
-
-            const appointmentData = {
-              patient_id: session.session.user.id,
-              patient_name: profile?.full_name || 'Patient',
-              practitioner_id: selectedPractitioner.id,
-              practitioner_name: selectedPractitioner.name,
-              specialty: data.specialty,
-              date: new Date(data.date).toISOString().split('T')[0],
-              time: data.time,
-              status: 'awaiting_practitioner',
-              address: selectedPractitioner.address,
-              reason: data.reason,
-              urgency_level: data.urgencyLevel,
-            };
-
-            const { data: appointment, error } = await supabase
-              .from('appointments')
-              .insert([appointmentData])
-              .select()
-              .single();
-
-            if (error) throw error;
-
-            setSelectedPractitioner(null);
-            return appointment;
           }}
         />
       )}
+
+      {viewedPractitioner && (
+        <Dialog open={!!viewedPractitioner} onOpenChange={() => setViewedPractitioner(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl flex items-center gap-2">
+                {viewedPractitioner.name}
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({viewedPractitioner.specialty})
+                </span>
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Détails du praticien {viewedPractitioner.name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              {viewedPractitioner.image && (
+                <img 
+                  src={viewedPractitioner.image} 
+                  alt={viewedPractitioner.name}
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+              )}
+              
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`h-5 w-5 ${
+                        i < Math.round(viewedPractitioner.rating || 0)
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    ({viewedPractitioner.rating?.toFixed(1)})
+                  </span>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-sm ${
+                  viewedPractitioner.available 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  {viewedPractitioner.available ? 'Disponible' : 'Indisponible'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm">
+                  <MapPin className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Adresse</p>
+                    <p className="text-muted-foreground">{viewedPractitioner.address}</p>
+                    {typeof viewedPractitioner.distance === 'number' && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        À {viewedPractitioner.distance.toFixed(1)} km de vous
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {viewedPractitioner.phone && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Téléphone</p>
+                      <p className="text-muted-foreground">{viewedPractitioner.phone}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button 
+                  className="flex-1"
+                  onClick={() => {
+                    if (!user) {
+                      toast({
+                        title: 'Connexion requise',
+                        description: 'Veuillez vous connecter pour demander un rendez-vous.',
+                        variant: 'destructive'
+                      });
+                      navigate('/login');
+                      return;
+                    }
+                    setSelectedPractitioner(viewedPractitioner);
+                    setViewedPractitioner(null);
+                  }}
+                >
+                  Demander un rendez-vous
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    window.open(
+                      `https://www.google.com/maps/dir/?api=1&destination=${viewedPractitioner.latitude},${viewedPractitioner.longitude}`,
+                      '_blank'
+                    );
+                  }}
+                >
+                  <Navigation className="h-4 w-4 mr-2" />
+                  Itinéraire
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+      
       <Footer />
     </div>
   );

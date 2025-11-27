@@ -14,20 +14,43 @@ function mapPractitioner(row: any): PractitionerLocation {
     rating: row.rating ?? 0,
     phone: row.phone ?? '',
     image: row.image ?? undefined,
+    practitioner_type: row.practitioner_type ?? undefined,
   };
 }
 
 async function fetchPractitioners() {
-  const { data, error } = await supabase
-    .from('practitioners')
-    .select('*')
-    .order('name', { ascending: true });
+  // Check if user is authenticated
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (session) {
+    // Authenticated users can access full practitioner data
+    const { data, error } = await supabase
+      .from('practitioners')
+      .select('*')
+      .eq('available', true)
+      .eq('kyc_status', 'approved')
+      .order('name', { ascending: true });
 
-  if (error) {
-    throw error;
+    if (error) {
+      console.error('Erreur chargement praticiens:', error);
+      throw error;
+    }
+
+    return (data ?? []).map(mapPractitioner);
+  } else {
+    // Unauthenticated users use the public view with limited data
+    const { data, error } = await supabase
+      .from('practitioners_public_view')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('Erreur chargement praticiens publics:', error);
+      throw error;
+    }
+
+    return (data ?? []).map(mapPractitioner);
   }
-
-  return (data ?? []).map(mapPractitioner);
 }
 
 export function usePractitioners() {
@@ -35,5 +58,7 @@ export function usePractitioners() {
     queryKey: ['practitioners'],
     queryFn: fetchPractitioners,
     staleTime: 5 * 60 * 1000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }

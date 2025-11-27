@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
+import { withTimeout } from '@/lib/network-timeout';
 
 export type CareNote = Tables<'care_notes'>;
 
@@ -10,11 +11,13 @@ export function useCareNotes(practitionerId?: string) {
     queryFn: async () => {
       if (!practitionerId) return [];
       
-      const { data, error } = await supabase
-        .from('care_notes')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('care_notes')
+          .select('*')
+          .eq('practitioner_id', practitionerId)
+          .order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       return data || [];
@@ -28,11 +31,13 @@ export function useCreateCareNote() {
 
   return useMutation({
     mutationFn: async (data: TablesInsert<'care_notes'>) => {
-      const { data: inserted, error } = await supabase
-        .from('care_notes')
-        .insert(data)
-        .select()
-        .single();
+      const { data: inserted, error } = await withTimeout(
+        supabase
+          .from('care_notes')
+          .insert(data)
+          .select()
+          .single()
+      );
 
       if (error) throw error;
       return inserted as CareNote;
@@ -51,12 +56,14 @@ export function useUpdateCareNote() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: TablesUpdate<'care_notes'> }) => {
-      const { data: updated, error } = await supabase
-        .from('care_notes')
-        .update(data)
-        .eq('id', id)
-        .select()
-        .single();
+      const { data: updated, error } = await withTimeout(
+        supabase
+          .from('care_notes')
+          .update(data)
+          .eq('id', id)
+          .select()
+          .single()
+      );
 
       if (error) throw error;
       return updated as CareNote;
@@ -76,11 +83,13 @@ export function useCareNoteByAppointment(appointmentId?: string) {
     queryFn: async () => {
       if (!appointmentId) return null;
       
-      const { data, error } = await supabase
-        .from('care_notes')
-        .select('*')
-        .eq('appointment_id', appointmentId)
-        .maybeSingle();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('care_notes')
+          .select('*')
+          .eq('appointment_id', appointmentId)
+          .maybeSingle()
+      );
 
       if (error) throw error;
       return data;

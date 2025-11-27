@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle } from 'lucide-react';
+import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
@@ -20,21 +21,57 @@ import { ReviewsSection } from '@/components/dashboard/ReviewsSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
-import { PaymentDialog } from '@/components/PaymentDialog';
+import { PatientGroupSessionsSection } from '@/components/dashboard/PatientGroupSessionsSection';
+import { FedaPayWidget } from '@/components/FedaPayWidget';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { completePatientOnboardingFromMetadata } from '@/lib/patient-onboarding';
+import { formatAmount } from '@/lib/payment-config';
+import { getPersistedPaymentState } from '@/lib/payment-storage';
 
 export default function PatientDashboard() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  const queryClient = useQueryClient();
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const patientId = user?.id;
   const patientName =
     (user?.user_metadata?.full_name as string | undefined) ||
     user?.email ||
     'Patient';
+
+  useEffect(() => {
+    const persisted = getPersistedPaymentState();
+
+    if (persisted?.paymentStatus !== 'pending') {
+      return;
+    }
+
+    // Vérifier si le paiement n'est pas expiré (5 minutes)
+    const elapsed = Date.now() - persisted.lastUpdated;
+    const MAX_AGE = 5 * 60 * 1000; // 5 minutes
+
+    if (elapsed > MAX_AGE) {
+      console.log('⚠️ Paiement en attente expiré, abandon de la réhydratation');
+      return;
+    }
+
+    console.log('🔄 Réhydratation d\'un paiement en cours:', persisted.appointmentId);
+    
+    setAppointmentIdForPayment(persisted.appointmentId);
+    setPaymentAmount(persisted.amount);
+    setPaymentDialogOpen(true);
+
+    // Informer l'utilisateur avec un toast
+    toast({
+      title: '💳 Paiement en attente',
+      description: 'Vous avez un paiement en cours. Veuillez le compléter pour confirmer votre rendez-vous.',
+      duration: 8000,
+    });
+  }, []);
 
   const {
     data: appointments = [],
@@ -58,6 +95,38 @@ export default function PatientDashboard() {
     },
     enabled: !!patientId,
   });
+
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await completePatientOnboardingFromMetadata(user);
+        if (!cancelled && result.completed) {
+          toast({
+            title: 'Profil patient mis à jour',
+            description: 'Vos informations ont été synchronisées avec succès.',
+          });
+          queryClient.invalidateQueries({ queryKey: ['supabase', 'auth', 'user'] });
+        }
+      } catch (error) {
+        console.error('Erreur lors de la finalisation du profil patient', error);
+        if (!cancelled) {
+          toast({
+            title: 'Synchronisation du profil impossible',
+            description: 'Réessayez après avoir actualisé la page.',
+            variant: 'destructive',
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, queryClient]);
 
   const handleNewAppointment = async (data: CreateAppointmentData) => {
     console.log('🟢 handleNewAppointment appelé avec:', data);
@@ -84,16 +153,87 @@ export default function PatientDashboard() {
     }
   };
 
-  const handlePaymentRequired = (appointmentId: string) => {
-    console.log('💳 Ouverture du dialogue de paiement pour:', appointmentId);
-    setAppointmentIdForPayment(appointmentId);
-    setPaymentDialogOpen(true);
+  const handlePaymentRequired = async (appointmentId: string) => {
+    try {
+      console.log('💳 Ouverture du dialogue de paiement pour:', appointmentId);
+      const appointment = appointments.find((apt) => apt.id === appointmentId);
+
+      if (!appointment) {
+        throw new Error('Rendez-vous introuvable');
+      }
+
+      let amount = appointment.paymentAmount ?? null;
+
+      if (amount === null) {
+        const { data: refreshed, error: refreshError } = await supabase
+          .from('appointments')
+          .select('payment_amount, practitioner_id, specialty')
+          .eq('id', appointmentId)
+          .maybeSingle();
+
+        if (refreshError) throw refreshError;
+
+        amount = refreshed?.payment_amount ?? null;
+
+        if (amount === null && refreshed?.practitioner_id) {
+          const { data: rate, error: rateError } = await supabase
+            .from('practitioner_rates')
+            .select('base_price')
+            .eq('practitioner_id', refreshed.practitioner_id)
+            .eq('service_type', refreshed.specialty)
+            .maybeSingle();
+
+          if (rateError) throw rateError;
+
+          amount = rate?.base_price ?? null;
+
+          if (amount === null) {
+            const { data: service, error: serviceError } = await supabase
+              .from('services')
+              .select('base_price')
+              .eq('name', refreshed.specialty)
+              .maybeSingle();
+
+            if (serviceError) throw serviceError;
+
+            amount = service?.base_price ?? null;
+          }
+        }
+      }
+
+      if (amount === null) {
+        throw new Error('Impossible de déterminer le montant à payer pour ce rendez-vous');
+      }
+
+      setPaymentAmount(amount);
+      setAppointmentIdForPayment(appointmentId);
+      setPaymentDialogOpen(true);
+    } catch (error) {
+      console.error('Erreur lors de la préparation du paiement', error);
+      toast({
+        title: 'Montant indisponible',
+        description: error instanceof Error ? error.message : 'Veuillez réessayer ultérieurement.',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = useCallback(() => {
     console.log('✅ Paiement réussi');
     setPaymentDialogOpen(false);
     setAppointmentIdForPayment(null);
+    setPaymentAmount(null);
+
+    queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
+    queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
+  }, [patientId, queryClient]);
+
+  const handlePaymentDialogOpenChange = (open: boolean) => {
+    setPaymentDialogOpen(open);
+    if (!open) {
+      setAppointmentIdForPayment(null);
+      setPaymentAmount(null);
+    }
   };
 
   const handleCancel = async (id: string) => {
@@ -165,16 +305,16 @@ export default function PatientDashboard() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">En attente</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {appointments.filter(apt => apt.status === 'pending').length}
-              </div>
-            </CardContent>
-          </Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">En attente</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length}
+                </div>
+              </CardContent>
+            </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -189,6 +329,31 @@ export default function PatientDashboard() {
           </Card>
         </div>
 
+        {/* Bannière de paiement en attente */}
+        {confirmedAwaitingPayment.length > 0 && (
+          <Alert className="mb-6 border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+            <AlertCircle className="h-5 w-5 text-orange-600" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-2">
+              <div>
+                <h3 className="font-semibold text-orange-900 dark:text-orange-100">
+                  Paiement en attente
+                </h3>
+                <p className="text-sm text-orange-800 dark:text-orange-200 mt-1">
+                  Vous avez {confirmedAwaitingPayment.length} rendez-vous confirmé(s) en attente de paiement. 
+                  Complétez le paiement pour finaliser votre réservation.
+                </p>
+              </div>
+              <Button 
+                onClick={() => handlePaymentRequired(confirmedAwaitingPayment[0].id)}
+                className="shrink-0"
+                variant="default"
+              >
+                Payer maintenant
+              </Button>
+            </div>
+          </Alert>
+        )}
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Mes rendez-vous</h2>
           {patientId && (
@@ -199,52 +364,58 @@ export default function PatientDashboard() {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid grid-cols-3 lg:grid-cols-11 gap-2">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              <span className="hidden sm:inline">Accueil</span>
-            </TabsTrigger>
-            <TabsTrigger value="appointments" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              <span className="hidden sm:inline">RDV</span>
-            </TabsTrigger>
-            <TabsTrigger value="triage" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Triage</span>
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              <span className="hidden sm:inline">Rapports</span>
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">Profil</span>
-            </TabsTrigger>
-            <TabsTrigger value="medical" className="flex items-center gap-2">
-              <Heart className="h-4 w-4" />
-              <span className="hidden sm:inline">Médical</span>
-            </TabsTrigger>
-            <TabsTrigger value="payments" className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              <span className="hidden sm:inline">Paiements</span>
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
-              <Bell className="h-4 w-4" />
-              <span className="hidden sm:inline">Notifs</span>
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Messages</span>
-            </TabsTrigger>
-            <TabsTrigger value="reviews" className="flex items-center gap-2">
-              <Star className="h-4 w-4" />
-              <span className="hidden sm:inline">Avis</span>
-            </TabsTrigger>
-            <TabsTrigger value="support" className="flex items-center gap-2">
-              <HelpCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Aide</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:grid-cols-12 gap-1 sm:gap-2">
+              <TabsTrigger value="overview" className="flex items-center gap-2 whitespace-nowrap">
+                <Activity className="h-4 w-4" />
+                <span className="hidden sm:inline">Accueil</span>
+              </TabsTrigger>
+              <TabsTrigger value="appointments" className="flex items-center gap-2 whitespace-nowrap">
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline">RDV</span>
+              </TabsTrigger>
+              <TabsTrigger value="group-sessions" className="flex items-center gap-2 whitespace-nowrap">
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Séances</span>
+              </TabsTrigger>
+              <TabsTrigger value="triage" className="flex items-center gap-2 whitespace-nowrap">
+                <Shield className="h-4 w-4" />
+                <span className="hidden sm:inline">Triage</span>
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="flex items-center gap-2 whitespace-nowrap">
+                <ClipboardCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">Rapports</span>
+              </TabsTrigger>
+              <TabsTrigger value="profile" className="flex items-center gap-2 whitespace-nowrap">
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">Profil</span>
+              </TabsTrigger>
+              <TabsTrigger value="medical" className="flex items-center gap-2 whitespace-nowrap">
+                <Heart className="h-4 w-4" />
+                <span className="hidden sm:inline">Médical</span>
+              </TabsTrigger>
+              <TabsTrigger value="payments" className="flex items-center gap-2 whitespace-nowrap">
+                <CreditCard className="h-4 w-4" />
+                <span className="hidden sm:inline">Paiements</span>
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="flex items-center gap-2 whitespace-nowrap">
+                <Bell className="h-4 w-4" />
+                <span className="hidden sm:inline">Notifs</span>
+              </TabsTrigger>
+              <TabsTrigger value="messages" className="flex items-center gap-2 whitespace-nowrap">
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">Messages</span>
+              </TabsTrigger>
+              <TabsTrigger value="reviews" className="flex items-center gap-2 whitespace-nowrap">
+                <Star className="h-4 w-4" />
+                <span className="hidden sm:inline">Avis</span>
+              </TabsTrigger>
+              <TabsTrigger value="support" className="flex items-center gap-2 whitespace-nowrap">
+                <HelpCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Aide</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -265,7 +436,7 @@ export default function PatientDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {appointments.filter(apt => apt.status === 'pending').length}
+                    {appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length}
                   </div>
                 </CardContent>
               </Card>
@@ -341,6 +512,9 @@ export default function PatientDashboard() {
                         </div>
                         <Badge variant="destructive">Paiement requis</Badge>
                       </div>
+                      {typeof appointment.paymentAmount === 'number' && (
+                        <p className="text-sm font-semibold">{formatAmount(appointment.paymentAmount)}</p>
+                      )}
                       <div className="flex items-center gap-2 text-sm">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         <span>{new Date(appointment.date).toLocaleDateString('fr-FR')} à {appointment.time}</span>
@@ -435,6 +609,10 @@ export default function PatientDashboard() {
             </Tabs>
           </TabsContent>
 
+          <TabsContent value="group-sessions">
+            <PatientGroupSessionsSection />
+          </TabsContent>
+
           <TabsContent value="triage">
             <TriageForm />
           </TabsContent>
@@ -474,12 +652,12 @@ export default function PatientDashboard() {
       </main>
 
       {/* Payment Dialog - géré au niveau du dashboard */}
-      {appointmentIdForPayment && (
-        <PaymentDialog
+      {appointmentIdForPayment && paymentAmount !== null && (
+        <FedaPayWidget
           open={paymentDialogOpen}
-          onOpenChange={setPaymentDialogOpen}
+          onOpenChange={handlePaymentDialogOpenChange}
           appointmentId={appointmentIdForPayment}
-          amount={10000}
+          amount={paymentAmount}
           onSuccess={handlePaymentSuccess}
         />
       )}

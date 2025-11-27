@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import type { ReleaseHeldFundsResponse } from '@/types/edge-function-responses';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Play, RefreshCw, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { withTimeout } from '@/lib/network-timeout';
 
 export function FundsReleaseSection() {
   const [lastRunResult, setLastRunResult] = useState<any>(null);
@@ -14,20 +17,22 @@ export function FundsReleaseSection() {
   const { data: heldPayments = [], isLoading, refetch } = useQuery({
     queryKey: ['held-payments'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          id,
-          amount,
-          net_amount,
-          hold_until,
-          created_at,
-          appointment_id,
-          appointments!inner(practitioner_id, practitioner_name)
-        `)
-        .eq('payout_status', 'held')
-        .eq('status', 'paid')
-        .order('hold_until', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('payments')
+          .select(`
+            id,
+            amount,
+            net_amount,
+            hold_until,
+            created_at,
+            appointment_id,
+            appointments!inner(practitioner_id, practitioner_name)
+          `)
+          .eq('payout_status', 'held')
+          .eq('status', 'paid')
+          .order('hold_until', { ascending: true })
+      );
 
       if (error) throw error;
       return data || [];
@@ -36,7 +41,7 @@ export function FundsReleaseSection() {
 
   const releaseMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('release-held-funds', {
+      const { data, error } = await invokeEdgeFunctionWithRetry<ReleaseHeldFundsResponse>('release-held-funds', {
         body: { manual_trigger: true },
       });
 
@@ -46,7 +51,7 @@ export function FundsReleaseSection() {
     onSuccess: (data) => {
       setLastRunResult(data);
       toast.success(
-        `Release terminé: ${data.results?.released || 0} paiements libérés, ${data.results?.failed || 0} échecs`
+        `Release terminé: ${data?.results?.released || data?.released_count || 0} paiements libérés, ${data?.results?.failed || 0} échecs`
       );
       refetch();
     },

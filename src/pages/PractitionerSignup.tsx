@@ -1,17 +1,27 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Stethoscope, Shield, Upload, FileText } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowLeft, Stethoscope, Shield, Upload, FileText, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
 import { uploadUserDocument } from "@/lib/file-upload";
+import { AUTH_MESSAGES } from "@/lib/auth-constants";
+import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AddressSearchInput } from "@/components/AddressSearchInput";
+import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 
 interface SignupFormData {
   firstName: string;
@@ -19,6 +29,8 @@ interface SignupFormData {
   dateOfBirth: string;
   gender: string;
   address: string;
+  latitude: number | null;
+  longitude: number | null;
   phone: string;
   email: string;
   password: string;
@@ -43,12 +55,26 @@ export default function PractitionerSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: user, isLoading } = useSupabaseUser();
+
+  useEffect(() => {
+    const redirectAuthenticatedUser = async () => {
+      if (!isLoading && user) {
+        const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
+        const dashboardPath = await getDashboardPathForUser(user.id);
+        navigate(dashboardPath, { replace: true });
+      }
+    };
+    redirectAuthenticatedUser();
+  }, [user, isLoading, navigate]);
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
     lastName: "",
     dateOfBirth: "",
     gender: "",
     address: "",
+    latitude: null,
+    longitude: null,
     phone: "",
     email: "",
     password: "",
@@ -63,18 +89,13 @@ export default function PractitionerSignup() {
     diploma: null,
     licenseDocument: null,
     acceptTerms: false,
-    // Coach sportif specific fields
     sessionTypes: [] as string[],
     interventionZone: "",
     interventionRadius: "",
     certifications: "",
   });
-  const [documentUploads, setDocumentUploads] = useState({
-    profilePhoto: null as File | null,
-    idDocument: null as File | null,
-    diploma: null as File | null,
-    licenseDocument: null as File | null,
-  });
+
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const professionToType = useMemo<Record<string, string>>(() => ({
     "Médecin généraliste": "medecin",
@@ -100,112 +121,320 @@ export default function PractitionerSignup() {
 
   const sessionTypes = ["individuelle", "duo", "groupe"];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const isCoachSportif = formData.profession === "Coach sportif";
 
-    // Validation
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Erreur",
-        description: "Les mots de passe ne correspondent pas",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.acceptTerms) {
-      toast({
-        title: "Erreur", 
-        description: "Vous devez accepter la charte d'engagement",
-        variant: "destructive"
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      // Validation des documents obligatoires
-      if (!documentUploads.idDocument) {
-        toast({
-          title: "Document manquant",
-          description: "La pièce d'identité est obligatoire",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
+  // Validation en temps réel
+  const validateField = (name: string, value: unknown): string => {
+    switch (name) {
+      case 'firstName':
+      case 'lastName':
+        if (typeof value !== 'string' || !value.trim()) return name === 'firstName' ? "Prénom requis" : "Nom requis";
+        if (value.trim().length < 2) return "Minimum 2 caractères requis";
+        return !/^[a-zA-ZÀ-ÿ\s'-]+$/.test(value.trim()) ? "Caractères invalides" : "";
+      case 'address':
+        if (typeof value !== 'string' || !value.trim()) return "Adresse requise";
+        if (value.trim().length < 5) return "Adresse trop courte (min. 5 caractères)";
+        return value.trim().length > 200 ? "Adresse trop longue (max 200 caractères)" : "";
+      case 'email':
+        return typeof value === 'string' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "Email invalide" : "";
+      case 'phone':
+        return typeof value === 'string' && !/^\+?[0-9]{8,15}$/.test(value.replace(/\s/g, '')) ? "Numéro invalide (8-15 chiffres)" : "";
+      case 'password':
+        return typeof value === 'string' && value.length < 8 ? "Minimum 8 caractères requis" : "";
+      case 'confirmPassword':
+        return typeof value === 'string' && value !== formData.password ? "Les mots de passe ne correspondent pas" : "";
+      case 'gender':
+        return !value ? "Genre requis" : "";
+      case 'dateOfBirth': {
+        if (typeof value !== 'string' || !value) return "Date de naissance requise";
+        const age = new Date().getFullYear() - new Date(value).getFullYear();
+        return age < 18 || age > 100 ? "Âge invalide (18-100 ans)" : "";
       }
-
-      if (!documentUploads.licenseDocument) {
-        toast({
-          title: "Document manquant",
-          description: "Le document d'autorisation d'exercice est obligatoire",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
+      case 'profession':
+        return !value ? "Profession requise" : "";
+      case 'specialty': {
+        const specialtyValue = (value || '').toString().trim();
+        if (!specialtyValue) return isCoachSportif ? "Spécialité sportive requise" : "Spécialité requise";
+        if (specialtyValue.length < 2) return "La spécialité doit contenir au moins 2 caractères";
+        return specialtyValue.length > 100 ? "La spécialité ne peut pas dépasser 100 caractères" : "";
       }
+      case 'experience': {
+        if (!value) return "Expérience requise";
+        const exp = parseInt(String(value), 10);
+        return isNaN(exp) || exp < 0 || exp > 70 ? "L'expérience doit être entre 0 et 70 ans" : "";
+      }
+      case 'interventionZone': {
+        if (!isCoachSportif) return "";
+        const zone = (value || '').toString().trim();
+        if (!zone) return "Zone d'intervention requise";
+        if (zone.length < 3) return "Zone d'intervention trop courte (min 3 caractères)";
+        return zone.length > 200 ? "Zone d'intervention ne peut pas dépasser 200 caractères" : "";
+      }
+      case 'interventionRadius':
+        if (isCoachSportif && value) {
+          const radius = parseInt(String(value), 10);
+          return isNaN(radius) || radius < 1 || radius > 100 ? "Rayon entre 1 et 100 km" : "";
+        } else if (isCoachSportif && !value) {
+          return "Rayon d'intervention requis";
+        }
+        return "";
+      case 'sessionTypes':
+        return isCoachSportif && (!value || !Array.isArray(value) || value.length === 0)
+          ? "Au moins un type de séance requis"
+          : "";
+      case 'acceptTerms':
+        return value !== true ? "Vous devez accepter la charte d'engagement" : "";
+      default:
+        return "";
+    }
+  };
 
-      // Validation taille et type des fichiers
-      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const handleInputChange = (name: string, value: unknown) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    const error = validateField(name, value);
+    setFieldErrors(prev => ({ ...prev, [name]: error }));
+  };
+
+  const handleFileChange = (key: keyof typeof formData, file: File | null) => {
+    setFormData(prev => ({ ...prev, [key]: file }));
+    
+    if (file) {
+      // Validation fichier
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
       const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+      
+      if (file.size > MAX_FILE_SIZE) {
+        setFieldErrors(prev => ({ ...prev, [key]: "Fichier trop volumineux (max 5MB)" }));
+        return;
+      }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setFieldErrors(prev => ({ ...prev, [key]: "Format non supporté (PDF, JPG, PNG)" }));
+        return;
+      }
+      setFieldErrors(prev => ({ ...prev, [key]: "" }));
+    }
+  };
 
-      for (const [key, file] of Object.entries(documentUploads)) {
-        if (file) {
-          if (file.size > MAX_FILE_SIZE) {
-            toast({
-              title: "Fichier trop volumineux",
-              description: `${key}: Maximum 5MB autorisé`,
-              variant: "destructive"
-            });
-            setIsSubmitting(false);
-            return;
-          }
-
-          if (!ALLOWED_TYPES.includes(file.type)) {
-            toast({
-              title: "Type de fichier non supporté",
-              description: `${key}: Seuls PDF, JPG et PNG sont autorisés`,
-              variant: "destructive"
-            });
-            setIsSubmitting(false);
-            return;
-          }
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    
+    // ✅ Validation stricte avec limites de longueur
+    const firstName = formData.firstName.trim();
+    const lastName = formData.lastName.trim();
+    const address = formData.address.trim();
+    const phone = formData.phone.trim();
+    const email = formData.email.trim().toLowerCase();
+    
+    // Prénom
+    if (!firstName) {
+      errors.firstName = "Prénom requis";
+    } else if (firstName.length < 2) {
+      errors.firstName = "Le prénom doit contenir au moins 2 caractères";
+    } else if (firstName.length > 50) {
+      errors.firstName = "Le prénom ne peut pas dépasser 50 caractères";
+    } else if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(firstName)) {
+      errors.firstName = "Le prénom contient des caractères invalides";
+    }
+    
+    // Nom
+    if (!lastName) {
+      errors.lastName = "Nom requis";
+    } else if (lastName.length < 2) {
+      errors.lastName = "Le nom doit contenir au moins 2 caractères";
+    } else if (lastName.length > 50) {
+      errors.lastName = "Le nom ne peut pas dépasser 50 caractères";
+    } else if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(lastName)) {
+      errors.lastName = "Le nom contient des caractères invalides";
+    }
+    
+    // Date de naissance
+    if (!formData.dateOfBirth) {
+      errors.dateOfBirth = "Date de naissance requise";
+    } else {
+      const birthDate = new Date(formData.dateOfBirth);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      if (age < 18 || age > 100) {
+        errors.dateOfBirth = "Vous devez avoir entre 18 et 100 ans";
+      }
+    }
+    
+    // Genre
+    if (!formData.gender) errors.gender = "Genre requis";
+    
+    // Adresse
+    if (!address) {
+      errors.address = "Adresse requise";
+    } else if (address.length < 5) {
+      errors.address = "L'adresse doit contenir au moins 5 caractères";
+    } else if (address.length > 200) {
+      errors.address = "L'adresse ne peut pas dépasser 200 caractères";
+    }
+    
+    // Téléphone
+    if (!phone) {
+      errors.phone = "Téléphone requis";
+    } else if (!/^\+?[0-9]{8,15}$/.test(phone.replace(/\s/g, ''))) {
+      errors.phone = "Numéro de téléphone invalide (format: +229XXXXXXXX)";
+    }
+    
+    // Email
+    if (!email) {
+      errors.email = "Email requis";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Format d'email invalide";
+    } else if (email.length > 255) {
+      errors.email = "L'email ne peut pas dépasser 255 caractères";
+    }
+    
+    // Mot de passe
+    if (!formData.password) {
+      errors.password = "Mot de passe requis";
+    } else if (formData.password.length < 8) {
+      errors.password = "Le mot de passe doit contenir au moins 8 caractères";
+    } else if (formData.password.length > 100) {
+      errors.password = "Le mot de passe ne peut pas dépasser 100 caractères";
+    }
+    
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = "Les mots de passe ne correspondent pas";
+    }
+    
+    // Profession
+    if (!formData.profession) errors.profession = "Profession requise";
+    
+    // Spécialité (requise pour tous, y compris les coachs)
+    const specialty = formData.specialty.trim();
+    if (!specialty) {
+      errors.specialty = isCoachSportif ? "Spécialité sportive requise" : "Spécialité requise";
+    } else if (specialty.length < 2) {
+      errors.specialty = "La spécialité doit contenir au moins 2 caractères";
+    } else if (specialty.length > 100) {
+      errors.specialty = "La spécialité ne peut pas dépasser 100 caractères";
+    }
+    
+    // Expérience
+    if (!formData.experience) {
+      errors.experience = "Expérience requise";
+    } else {
+      const exp = parseInt(formData.experience);
+      if (isNaN(exp) || exp < 0 || exp > 70) {
+        errors.experience = "L'expérience doit être entre 0 et 70 ans";
+      }
+    }
+    
+    // Lieu de travail (optionnel mais avec limite)
+    if (formData.currentWorkplace && formData.currentWorkplace.length > 200) {
+      errors.currentWorkplace = "Le lieu de travail ne peut pas dépasser 200 caractères";
+    }
+    
+    // Documents obligatoires
+    if (!formData.idDocument) errors.idDocument = "Pièce d'identité requise";
+    
+    if (isCoachSportif) {
+      // Pour coach sportif: diplôme obligatoire
+      if (!formData.diploma) {
+        errors.diploma = "Diplôme ou certification requis";
+      }
+      
+      // Types de séances
+      if (formData.sessionTypes.length === 0) {
+        errors.sessionTypes = "Au moins un type de séance requis";
+      }
+      
+      // Zone d'intervention
+      const zone = formData.interventionZone.trim();
+      if (!zone) {
+        errors.interventionZone = "Zone d'intervention requise";
+      } else if (zone.length < 3) {
+        errors.interventionZone = "Zone d'intervention trop courte (min 3 caractères)";
+      } else if (zone.length > 200) {
+        errors.interventionZone = "Zone d'intervention ne peut pas dépasser 200 caractères";
+      }
+      
+      // Rayon d'intervention
+      if (!formData.interventionRadius) {
+        errors.interventionRadius = "Rayon d'intervention requis";
+      } else {
+        const radius = parseInt(formData.interventionRadius);
+        if (isNaN(radius) || radius < 1 || radius > 100) {
+          errors.interventionRadius = "Rayon entre 1 et 100 km";
         }
       }
+      
+      // Certifications (optionnel mais avec limite)
+      if (formData.certifications && formData.certifications.length > 500) {
+        errors.certifications = "Les certifications ne peuvent pas dépasser 500 caractères";
+      }
+    } else {
+      // Pour autres praticiens: autorisation d'exercice obligatoire
+      if (!formData.licenseDocument) {
+        errors.licenseDocument = "Autorisation d'exercice requise";
+      }
+    }
+    
+    // Acceptation CGU
+    if (!formData.acceptTerms) {
+      errors.acceptTerms = "Vous devez accepter la charte d'engagement";
+    }
+    
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
-      const { data, error } = await supabase.auth.signUp({
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      toast({
+        title: "Erreur de validation",
+        description: "Veuillez corriger les erreurs dans le formulaire",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+
+      // Déterminer le dashboard selon le type de praticien
+      const practitionerTypeForSignup = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
+      const dashboardPath = practitionerTypeForSignup === 'coach_sportif' ? '/dashboard/coach' : '/dashboard/practitioner';
+
+      const { data, error } = await withTimeout(
+        supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard/practitioner`,
+          emailRedirectTo: `${window.location.origin}${dashboardPath}`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`.trim(),
             role: "practitioner",
             phone: formData.phone,
           },
         },
-      });
+      })
+      );
 
       if (error) {
         // Gestion erreurs spécifiques
         if (error.message.includes('already registered') || error.message.includes('already been registered')) {
           toast({
-            title: "Email déjà utilisé",
+            ...AUTH_MESSAGES.SIGNUP_ERROR,
             description: "Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.",
             variant: "destructive"
           });
         } else if (error.message.includes('password') || error.message.includes('Password')) {
           toast({
-            title: "Mot de passe trop faible",
+            ...AUTH_MESSAGES.SIGNUP_ERROR,
             description: "Le mot de passe doit contenir au moins 8 caractères.",
             variant: "destructive"
           });
         } else {
           toast({
-            title: "Erreur d'inscription",
-            description: error.message,
+            ...AUTH_MESSAGES.SIGNUP_ERROR,
+            description: error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
             variant: "destructive"
           });
         }
@@ -213,13 +442,16 @@ export default function PractitionerSignup() {
         return;
       }
 
-      if (!data.user) {
-        toast({
-          title: "Confirmez votre adresse email",
-          description: "Un lien de confirmation vous a été envoyé. Veuillez confirmer avant de finaliser votre inscription.",
-        });
+      // Vérifier si l'email nécessite une confirmation
+      if (data.user && !data.user.confirmed_at && !data.session) {
+        toast(AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION);
+        navigateToEmailConfirmation(navigate, formData.email, 'practitioner');
         setIsSubmitting(false);
         return;
+      }
+
+      if (!data.user) {
+        throw new Error("Échec de création du compte");
       }
 
       const userId = data.user.id;
@@ -243,6 +475,8 @@ export default function PractitionerSignup() {
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         phone: formData.phone,
         address: formData.address,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
         specialty: formData.specialty || formData.profession,
         practitioner_type: practitionerType,
         years_experience: yearsExperience,
@@ -260,7 +494,10 @@ export default function PractitionerSignup() {
 
       // Convertir les fichiers en base64 pour l'edge function
       const documentsBase64: Record<string, string> = {};
-      for (const [key, file] of Object.entries(documentUploads)) {
+      const fileKeys: (keyof SignupFormData)[] = ['profilePhoto', 'idDocument', 'diploma', 'licenseDocument'];
+      
+      for (const key of fileKeys) {
+        const file = formData[key] as File | null;
         if (file) {
           const base64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
@@ -272,7 +509,7 @@ export default function PractitionerSignup() {
       }
 
       // Appeler l'edge function transactionnelle
-      const { data: createResult, error: createError } = await supabase.functions.invoke(
+      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
         'create-practitioner-account',
         {
           body: {
@@ -285,53 +522,105 @@ export default function PractitionerSignup() {
       );
 
       if (createError || !createResult?.success) {
-        throw new Error(createError?.message || createResult?.error || "Échec de création du compte");
+        const errorMessage = createError?.message || createResult?.error || "Échec de création du compte";
+        console.error('❌ Erreur création compte praticien:', { 
+          createError, 
+          createResult
+        });
+        
+        // Messages d'erreur contextuels et explicites
+        let userMessage = errorMessage;
+        let errorDetails = '';
+        
+        if (errorMessage.includes('Document invalide') || errorMessage.includes('document')) {
+          userMessage = "Un ou plusieurs documents sont invalides.";
+          errorDetails = "Vérifiez le format (PDF, JPG, PNG uniquement) et la taille (maximum 5MB par fichier).";
+        } else if (errorMessage.includes('validation') || errorMessage.includes('invalide')) {
+          userMessage = "Certaines informations du formulaire sont invalides.";
+          errorDetails = "Vérifiez que tous les champs obligatoires sont correctement remplis.";
+        } else if (errorMessage.includes('upload') || errorMessage.includes('Wasabi') || errorMessage.includes('storage')) {
+          userMessage = "Erreur lors de l'upload des documents.";
+          errorDetails = "Veuillez vérifier votre connexion internet et réessayer.";
+        } else if (errorMessage.includes('phone') || errorMessage.includes('téléphone')) {
+          userMessage = "Numéro de téléphone invalide.";
+          errorDetails = "Utilisez le format international (+229... pour le Bénin).";
+        } else if (errorMessage.includes('email')) {
+          userMessage = "Email invalide ou déjà utilisé.";
+          errorDetails = "Vérifiez votre adresse email ou utilisez-en une autre.";
+        }
+        
+        throw new Error(`${userMessage}${errorDetails ? ' ' + errorDetails : ''}`);
+      }
+      
+      console.log('✅ Compte praticien créé avec succès');
+
+      // Finaliser l'inscription et envoyer notification via edge function centralisée
+      try {
+        const { data: completeResult, error: completeError } = await withTimeout(
+          supabase.functions.invoke('complete-user-registration', {
+          body: {
+            userId: userId,
+            data: {
+              userType: 'practitioner',
+              email: formData.email,
+              phone: formData.phone,
+              fullName: `${formData.firstName} ${formData.lastName}`
+            }
+          }
+        })
+        );
+
+        if (completeError) {
+          console.error('⚠️ Erreur notification (non bloquante):', completeError);
+        } else {
+          console.log('✅ Notification envoyée avec succès');
+        }
+      } catch (notifError) {
+        console.error('⚠️ Erreur notification (non bloquante):', notifError);
       }
 
-      toast({
-        title: "Demande d'inscription soumise !",
-        description: "Votre dossier est en cours de validation par notre équipe",
-      });
+      // Attendre que la session soit bien synchronisée avant de rediriger
+      console.log('🔄 Vérification de la session...');
+      let sessionVerified = false;
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      setFormData({
-        firstName: "",
-        lastName: "",
-        dateOfBirth: "",
-        gender: "",
-        address: "",
-        phone: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        profession: "",
-        specialty: "",
-        registrationNumber: "",
-        experience: "",
-        currentWorkplace: "",
-        profilePhoto: null,
-        idDocument: null,
-        diploma: null,
-        licenseDocument: null,
-        acceptTerms: false,
-        sessionTypes: [],
-        interventionZone: "",
-        interventionRadius: "",
-        certifications: "",
-      });
-      setDocumentUploads({
-        profilePhoto: null,
-        idDocument: null,
-        diploma: null,
-        licenseDocument: null,
-      });
+      while (!sessionVerified && retryCount < maxRetries) {
+        const { data: sessionData } = await supabase.auth.getSession();
 
-      await supabase.auth.signOut();
-      navigate("/login");
+        if (sessionData.session) {
+          console.log('✅ Session vérifiée');
+          sessionVerified = true;
+        } else {
+          console.log(`⚠️ Session non trouvée (tentative ${retryCount + 1}/${maxRetries})`);
+          retryCount++;
+
+          if (retryCount < maxRetries) {
+            // Attendre un peu avant de réessayer
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Tenter un refresh de session
+            const { data: refreshed } = await supabase.auth.refreshSession();
+            if (refreshed.session) {
+              console.log('✅ Session rafraîchie avec succès');
+              sessionVerified = true;
+            }
+          }
+        }
+      }
+
+      if (!sessionVerified) {
+        console.warn('⚠️ Session non synchronisée après plusieurs tentatives');
+      }
+
+      // Rediriger vers la page de confirmation avec le type de praticien
+      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
     } catch (err) {
+      const isTimeoutError = err instanceof NetworkTimeoutError;
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
       toast({
-        title: "Impossible de finaliser l'inscription",
-        description: message,
+        ...AUTH_MESSAGES.SIGNUP_ERROR,
+        description: isTimeoutError ? message : message,
         variant: "destructive",
       });
     } finally {
@@ -339,22 +628,17 @@ export default function PractitionerSignup() {
     }
   };
 
-  const handleFileUpload = (field: string, file: File | null) => {
-    setFormData(prev => ({ ...prev, [field]: file }));
-    setDocumentUploads(prev => ({ ...prev, [field]: file }));
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-secondary/20 to-primary-glow/10">
       <Header />
       
-      <main className="pt-24 pb-12">
-        <div className="container mx-auto px-4 max-w-2xl">
-          <div className="mb-6">
+      <main className="pt-20 sm:pt-24 pb-8 sm:pb-12">
+        <div className="container mx-auto px-3 sm:px-4 max-w-2xl">
+          <div className="mb-4 sm:mb-6">
             <Button
               variant="ghost"
-              onClick={() => navigate("/")}
-              className="mb-4"
+              onClick={() => navigateToHome(navigate)}
+              className="mb-3 sm:mb-4 min-h-[44px]"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
@@ -362,18 +646,18 @@ export default function PractitionerSignup() {
           </div>
 
           <Card className="shadow-medical">
-            <CardHeader className="text-center">
-              <div className="w-16 h-16 mx-auto bg-secondary rounded-full flex items-center justify-center mb-4">
-                <Stethoscope className="h-8 w-8 text-white" />
+            <CardHeader className="text-center px-4 sm:px-6">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto bg-secondary rounded-full flex items-center justify-center mb-3 sm:mb-4">
+                <Stethoscope className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">Inscription Praticien</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-xl sm:text-2xl font-bold">Inscription Praticien</CardTitle>
+              <CardDescription className="text-sm sm:text-base">
                 Rejoignez notre réseau de professionnels de santé certifiés
               </CardDescription>
             </CardHeader>
 
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
+            <CardContent className="px-4 sm:px-6">
+              <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                 {/* Informations personnelles */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold flex items-center">
@@ -388,20 +672,30 @@ export default function PractitionerSignup() {
                         id="firstName"
                         placeholder="Votre prénom"
                         value={formData.firstName}
-                        onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                        onChange={(e) => handleInputChange('firstName', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.firstName}
+                        className={fieldErrors.firstName ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.firstName && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.firstName}</p>
+                      )}
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="lastName">Nom de famille *</Label>
                       <Input
                         id="lastName"
                         placeholder="Votre nom"
                         value={formData.lastName}
-                        onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                        onChange={(e) => handleInputChange('lastName', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.lastName}
+                        className={fieldErrors.lastName ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.lastName && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.lastName}</p>
+                      )}
                     </div>
                   </div>
 
@@ -412,15 +706,20 @@ export default function PractitionerSignup() {
                         id="dateOfBirth"
                         type="date"
                         value={formData.dateOfBirth}
-                        onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                        onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.dateOfBirth}
+                        className={fieldErrors.dateOfBirth ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.dateOfBirth && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.dateOfBirth}</p>
+                      )}
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="gender">Sexe *</Label>
-                      <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
-                        <SelectTrigger>
+                      <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
+                        <SelectTrigger className={fieldErrors.gender ? 'border-destructive' : ''}>
                           <SelectValue placeholder="Sélectionnez" />
                         </SelectTrigger>
                         <SelectContent>
@@ -428,33 +727,43 @@ export default function PractitionerSignup() {
                           <SelectItem value="femme">Femme</SelectItem>
                         </SelectContent>
                       </Select>
+                      {fieldErrors.gender && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.gender}</p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="address">Adresse complète *</Label>
-                    <Textarea
-                      id="address"
-                      placeholder="Votre adresse complète"
-                      value={formData.address}
-                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                      required
-                    />
-                  </div>
+                  <AddressSearchInput
+                    label="Adresse complète"
+                    value={formData.address}
+                    onChange={(location) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        address: location.address,
+                        latitude: location.latitude ?? null,
+                        longitude: location.longitude ?? null,
+                      }));
+                      const error = validateField('address', location.address);
+                      setFieldErrors(prev => ({ ...prev, address: error }));
+                    }}
+                    placeholder="Rechercher votre adresse au Bénin..."
+                    required
+                    error={fieldErrors.address}
+                  />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="phone">Téléphone *</Label>
-                      <Input
+                      <PhoneInput
                         id="phone"
-                        type="tel"
-                        placeholder="+221 77 xxx xx xx"
                         value={formData.phone}
-                        onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                        required
+                        onChange={(value) => handleInputChange('phone', value)}
+                        countryCode="+229"
+                        localNumberLength={8}
+                        error={fieldErrors.phone}
                       />
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="email">Email professionnel *</Label>
                       <Input
@@ -462,9 +771,14 @@ export default function PractitionerSignup() {
                         type="email"
                         placeholder="votre@email.com"
                         value={formData.email}
-                        onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
                         required
+                        aria-invalid={!!fieldErrors.email}
+                        className={fieldErrors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
                       />
+                      {fieldErrors.email && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.email}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -478,9 +792,14 @@ export default function PractitionerSignup() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="profession">Profession *</Label>
-                      <Select value={formData.profession} onValueChange={(value) => setFormData(prev => ({ ...prev, profession: value }))}>
-                        <SelectTrigger>
+                      <Label htmlFor="profession" className="text-sm sm:text-base">
+                        Profession <span className="text-destructive">*</span>
+                      </Label>
+                      <Select 
+                        value={formData.profession} 
+                        onValueChange={(value) => handleInputChange('profession', value)}
+                      >
+                        <SelectTrigger className={`h-11 sm:h-12 ${fieldErrors.profession ? 'border-destructive' : ''}`}>
                           <SelectValue placeholder="Sélectionnez votre profession" />
                         </SelectTrigger>
                         <SelectContent>
@@ -489,55 +808,103 @@ export default function PractitionerSignup() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {fieldErrors.profession && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.profession}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="specialty">Spécialité</Label>
-                      <Input
-                        id="specialty"
-                        placeholder="Ex: Cardiologie, Pédiatrie..."
-                        value={formData.specialty}
-                        onChange={(e) => setFormData(prev => ({ ...prev, specialty: e.target.value }))}
-                      />
+                      <Label htmlFor="specialty" className="text-sm sm:text-base">
+                        {isCoachSportif ? 'Spécialité sportive' : 'Spécialité'} <span className="text-destructive">*</span>
+                      </Label>
+                      {isCoachSportif ? (
+                        <Select
+                          value={formData.specialty}
+                          onValueChange={(value) => handleInputChange('specialty', value)}
+                        >
+                          <SelectTrigger className={`h-11 sm:h-12 ${fieldErrors.specialty ? 'border-destructive' : ''}`}>
+                            <SelectValue placeholder="Sélectionnez votre spécialité sportive" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Fitness">Fitness</SelectItem>
+                            <SelectItem value="Musculation">Musculation</SelectItem>
+                            <SelectItem value="Cardio-training">Cardio-training</SelectItem>
+                            <SelectItem value="Yoga">Yoga</SelectItem>
+                            <SelectItem value="Pilates">Pilates</SelectItem>
+                            <SelectItem value="CrossFit">CrossFit</SelectItem>
+                            <SelectItem value="Sport santé">Sport santé</SelectItem>
+                            <SelectItem value="Préparation physique">Préparation physique</SelectItem>
+                            <SelectItem value="Coaching nutritionnel sportif">Coaching nutritionnel sportif</SelectItem>
+                            <SelectItem value="Remise en forme">Remise en forme</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          id="specialty"
+                          placeholder="Ex: Cardiologie, Pédiatrie..."
+                          value={formData.specialty}
+                          onChange={(e) => handleInputChange('specialty', e.target.value)}
+                          required
+                          className={`h-11 sm:h-12 ${fieldErrors.specialty ? 'border-destructive' : ''}`}
+                        />
+                      )}
+                      {fieldErrors.specialty && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.specialty}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="registrationNumber">N° d'inscription Ordre *</Label>
-                      <Input
-                        id="registrationNumber"
-                        placeholder="Numéro d'inscription"
-                        value={formData.registrationNumber}
-                        onChange={(e) => setFormData(prev => ({ ...prev, registrationNumber: e.target.value }))}
-                        required
-                      />
-                    </div>
+                    {!isCoachSportif && (
+                      <div className="space-y-2">
+                        <Label htmlFor="registrationNumber" className="text-sm sm:text-base">
+                          N° d'inscription Ordre
+                        </Label>
+                        <Input
+                          id="registrationNumber"
+                          placeholder="Numéro d'inscription"
+                          value={formData.registrationNumber}
+                          onChange={(e) => handleInputChange('registrationNumber', e.target.value)}
+                          className="h-11 sm:h-12"
+                        />
+                      </div>
+                    )}
 
                     <div className="space-y-2">
-                      <Label htmlFor="experience">Années d'expérience *</Label>
+                      <Label htmlFor="experience" className="text-sm sm:text-base">
+                        Années d'expérience <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="experience"
                         type="number"
-                        min="1"
+                        min="0"
+                        max="70"
                         placeholder="Ex: 5"
                         value={formData.experience}
-                        onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
+                        onChange={(e) => handleInputChange('experience', e.target.value)}
                         required
+                        className={`h-11 sm:h-12 ${fieldErrors.experience ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.experience && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.experience}</p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="currentWorkplace">Structure d'exercice actuelle *</Label>
-                    <Input
-                      id="currentWorkplace"
-                      placeholder="Ex: Hôpital Principal, Cabinet Médical..."
-                      value={formData.currentWorkplace}
-                      onChange={(e) => setFormData(prev => ({ ...prev, currentWorkplace: e.target.value }))}
-                      required
-                    />
-                  </div>
+                  {!isCoachSportif && (
+                    <div className="space-y-2">
+                      <Label htmlFor="currentWorkplace" className="text-sm sm:text-base">
+                        Structure d'exercice actuelle
+                      </Label>
+                      <Input
+                        id="currentWorkplace"
+                        placeholder="Ex: Hôpital Principal, Cabinet Médical..."
+                        value={formData.currentWorkplace}
+                        onChange={(e) => handleInputChange('currentWorkplace', e.target.value)}
+                        className="h-11 sm:h-12"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Coach Sportif Specific Fields */}
@@ -546,71 +913,83 @@ export default function PractitionerSignup() {
                     <h4 className="font-semibold text-primary">Informations spécifiques Coach Sportif</h4>
                     
                     <div className="space-y-2">
-                      <Label>Types de séances proposées *</Label>
-                      <div className="flex gap-4">
+                      <Label className="text-sm sm:text-base">
+                        Types de séances proposées <span className="text-destructive">*</span>
+                      </Label>
+                      <div className="flex flex-wrap gap-4">
                         {sessionTypes.map((type) => (
                           <div key={type} className="flex items-center space-x-2">
                             <Checkbox
                               id={`session-${type}`}
                               checked={formData.sessionTypes.includes(type)}
                               onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    sessionTypes: [...prev.sessionTypes, type] 
-                                  }));
-                                } else {
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    sessionTypes: prev.sessionTypes.filter(t => t !== type) 
-                                  }));
-                                }
+                                const newSessionTypes = checked
+                                  ? [...formData.sessionTypes, type]
+                                  : formData.sessionTypes.filter(t => t !== type);
+                                handleInputChange('sessionTypes', newSessionTypes);
                               }}
                             />
-                            <Label htmlFor={`session-${type}`} className="capitalize cursor-pointer">
+                            <Label htmlFor={`session-${type}`} className="capitalize cursor-pointer text-sm sm:text-base">
                               {type}
                             </Label>
                           </div>
                         ))}
                       </div>
+                      {fieldErrors.sessionTypes && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.sessionTypes}</p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="interventionZone">Zone d'intervention *</Label>
+                        <Label htmlFor="interventionZone" className="text-sm sm:text-base">
+                          Zone d'intervention <span className="text-destructive">*</span>
+                        </Label>
                         <Input
                           id="interventionZone"
-                          placeholder="Ex: Dakar, Thiès..."
+                          placeholder="Ex: Cotonou, Porto-Novo, Abomey-Calavi..."
                           value={formData.interventionZone}
-                          onChange={(e) => setFormData(prev => ({ ...prev, interventionZone: e.target.value }))}
+                          onChange={(e) => handleInputChange('interventionZone', e.target.value)}
                           required
+                          className={`h-11 sm:h-12 ${fieldErrors.interventionZone ? 'border-destructive' : ''}`}
                         />
+                        {fieldErrors.interventionZone && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.interventionZone}</p>
+                        )}
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="interventionRadius">Rayon d'intervention (km) *</Label>
+                        <Label htmlFor="interventionRadius" className="text-sm sm:text-base">
+                          Rayon d'intervention (km) <span className="text-destructive">*</span>
+                        </Label>
                         <Input
                           id="interventionRadius"
                           type="number"
                           min="1"
-                          max="50"
-                          placeholder="Ex: 15"
+                          max="100"
+                          placeholder="Ex: 100"
                           value={formData.interventionRadius}
-                          onChange={(e) => setFormData(prev => ({ ...prev, interventionRadius: e.target.value }))}
+                          onChange={(e) => handleInputChange('interventionRadius', e.target.value)}
                           required
+                          className={`h-11 sm:h-12 ${fieldErrors.interventionRadius ? 'border-destructive' : ''}`}
                         />
+                        {fieldErrors.interventionRadius && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.interventionRadius}</p>
+                        )}
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="certifications">Certifications / Diplômes en coaching sportif *</Label>
+                      <Label htmlFor="certifications" className="text-sm sm:text-base">
+                        Certifications / Diplômes
+                      </Label>
                       <Textarea
                         id="certifications"
                         placeholder="Listez vos certifications (fitness, kinésithérapie sportive, etc.)"
                         value={formData.certifications}
-                        onChange={(e) => setFormData(prev => ({ ...prev, certifications: e.target.value }))}
-                        required
+                        onChange={(e) => handleInputChange('certifications', e.target.value)}
                         rows={3}
+                        className="min-h-[80px]"
                       />
                     </div>
                   </div>
@@ -625,48 +1004,97 @@ export default function PractitionerSignup() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="profilePhoto">Photo de profil *</Label>
+                      <Label htmlFor="profilePhoto" className="text-sm sm:text-base">
+                        Photo de profil
+                      </Label>
                       <Input
                         id="profilePhoto"
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleFileUpload('profilePhoto', e.target.files?.[0] || null)}
-                        required
+                        onChange={(e) => handleFileChange('profilePhoto', e.target.files?.[0] || null)}
+                        className={`h-11 ${fieldErrors.profilePhoto ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.profilePhoto && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.profilePhoto}</p>
+                      )}
+                      {formData.profilePhoto && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          {formData.profilePhoto.name}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="idDocument">Pièce d'identité *</Label>
+                      <Label htmlFor="idDocument" className="text-sm sm:text-base">
+                        Pièce d'identité <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="idDocument"
                         type="file"
                         accept="image/*,.pdf"
-                        onChange={(e) => handleFileUpload('idDocument', e.target.files?.[0] || null)}
+                        onChange={(e) => handleFileChange('idDocument', e.target.files?.[0] || null)}
                         required
+                        className={`h-11 ${fieldErrors.idDocument ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.idDocument && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.idDocument}</p>
+                      )}
+                      {formData.idDocument && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          {formData.idDocument.name}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="diploma">Diplôme/Certificat *</Label>
+                      <Label htmlFor="diploma" className="text-sm sm:text-base">
+                        Diplôme/Certificat {isCoachSportif && <span className="text-destructive">*</span>}
+                      </Label>
                       <Input
                         id="diploma"
                         type="file"
                         accept="image/*,.pdf"
-                        onChange={(e) => handleFileUpload('diploma', e.target.files?.[0] || null)}
-                        required
+                        onChange={(e) => handleFileChange('diploma', e.target.files?.[0] || null)}
+                        required={isCoachSportif}
+                        className={`h-11 ${fieldErrors.diploma ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.diploma && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.diploma}</p>
+                      )}
+                      {formData.diploma && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          {formData.diploma.name}
+                        </p>
+                      )}
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="licenseDocument">Attestation d'inscription *</Label>
-                      <Input
-                        id="licenseDocument"
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileUpload('licenseDocument', e.target.files?.[0] || null)}
-                        required
-                      />
-                    </div>
+                    {!isCoachSportif && (
+                      <div className="space-y-2">
+                        <Label htmlFor="licenseDocument" className="text-sm sm:text-base">
+                          Autorisation d'exercice <span className="text-destructive">*</span>
+                        </Label>
+                        <Input
+                          id="licenseDocument"
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFileChange('licenseDocument', e.target.files?.[0] || null)}
+                          required
+                          className={`h-11 ${fieldErrors.licenseDocument ? 'border-destructive' : ''}`}
+                        />
+                        {fieldErrors.licenseDocument && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.licenseDocument}</p>
+                        )}
+                        {formData.licenseDocument && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            {formData.licenseDocument.name}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-muted/50 p-4 rounded-lg">
@@ -674,6 +1102,12 @@ export default function PractitionerSignup() {
                       <strong>Note:</strong> Tous les documents seront vérifiés par notre équipe. 
                       L'activation de votre compte peut prendre 24 à 48 heures.
                     </p>
+                    {isCoachSportif && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        <strong>Coach sportif :</strong> Le diplôme ou certificat est obligatoire. L'autorisation d'exercice n'est pas requise. 
+                        Vos certifications seront vérifiées à partir des informations fournies.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -686,58 +1120,82 @@ export default function PractitionerSignup() {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="password">Mot de passe *</Label>
+                      <Label htmlFor="password" className="text-sm sm:text-base">
+                        Mot de passe <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="password"
                         type="password"
                         placeholder="Min. 8 caractères"
                         value={formData.password}
-                        onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
                         required
+                        className={`h-11 sm:h-12 ${fieldErrors.password ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.password && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.password}</p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Confirmer le mot de passe *</Label>
+                      <Label htmlFor="confirmPassword" className="text-sm sm:text-base">
+                        Confirmer le mot de passe <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="confirmPassword"
                         type="password"
                         placeholder="Répétez le mot de passe"
                         value={formData.confirmPassword}
-                        onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
                         required
+                        className={`h-11 sm:h-12 ${fieldErrors.confirmPassword ? 'border-destructive' : ''}`}
                       />
+                      {fieldErrors.confirmPassword && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.confirmPassword}</p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Conditions */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="terms"
-                    checked={formData.acceptTerms}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, acceptTerms: checked as boolean }))}
-                  />
-                  <Label htmlFor="terms" className="text-sm">
-                    J'accepte la{" "}
-                    <a href="#" className="text-secondary hover:underline">
-                      Charte d'engagement des praticiens DomiCares
-                    </a>{" "}
-                    et les{" "}
-                    <a href="#" className="text-secondary hover:underline">
-                      CGU
-                    </a>
-                  </Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="terms"
+                      checked={formData.acceptTerms}
+                      onCheckedChange={(checked) => handleInputChange('acceptTerms', checked as boolean)}
+                      className={fieldErrors.acceptTerms ? 'border-destructive' : ''}
+                    />
+                    <Label htmlFor="terms" className="text-sm sm:text-base font-normal leading-relaxed cursor-pointer">
+                      J'accepte la{" "}
+                      <a href="/terms-of-service#charte-praticiens" className="text-primary hover:underline">
+                        Charte d'engagement des praticiens DomiCares
+                      </a>{" "}
+                      et les{" "}
+                      <a href="/terms-of-service" className="text-primary hover:underline">
+                        CGU
+                      </a>
+                    </Label>
+                  </div>
+                  {fieldErrors.acceptTerms && (
+                    <p className="text-xs text-destructive">{fieldErrors.acceptTerms}</p>
+                  )}
                 </div>
 
                 <Button
                   type="submit"
-                  variant="practitioner"
-                  size="xl"
-                  className="w-full"
+                  size="lg"
+                  className="w-full h-12 sm:h-14 text-base"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Soumission en cours..." : "Soumettre ma candidature"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Soumission en cours...
+                    </>
+                  ) : (
+                    "Soumettre ma candidature"
+                  )}
                 </Button>
               </form>
             </CardContent>

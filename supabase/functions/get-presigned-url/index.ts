@@ -58,8 +58,53 @@ serve(async (req) => {
       );
     }
 
-    // Verify user has access to this file (check if file path starts with their user ID)
-    if (!filePath.includes(user.id)) {
+    // Check if user is admin
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id);
+
+    const isAdmin = !roleError && roleData && roleData.length > 0;
+    
+    console.log('User access check:', {
+      userId: user.id,
+      filePath,
+      isAdmin,
+      roleDataCount: roleData?.length || 0
+    });
+
+    // Verify user has access to this file
+    // 1. Admins can access all files
+    // 2. Users can access files in paths containing their user ID
+    // 3. Practitioners can access their KYC documents
+    let hasAccess = isAdmin || filePath.includes(user.id);
+    
+    if (!hasAccess) {
+      // Check if user is a practitioner and the file is one of their documents
+      const { data: practitioner } = await supabase
+        .from('practitioners')
+        .select('id_document_url, license_document_url, insurance_document_url')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (practitioner) {
+        const practitionerDocs = [
+          practitioner.id_document_url,
+          practitioner.license_document_url,
+          practitioner.insurance_document_url
+        ].filter(Boolean);
+        
+        hasAccess = practitionerDocs.some(doc => doc === filePath);
+        console.log('Practitioner document check:', {
+          filePath,
+          practitionerDocs,
+          hasAccess
+        });
+      }
+    }
+    
+    if (!hasAccess) {
+      console.log('Access denied: User does not have permission to access this file');
       return new Response(
         JSON.stringify({ error: 'Unauthorized access to this file' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -134,7 +179,13 @@ serve(async (req) => {
     queryParams.append('X-Amz-Signature', signature);
     const presignedUrl = `https://${wasabiEndpoint}/${wasabiBucketName}/${filePath}?${queryParams.toString()}`;
 
-    console.log('Presigned URL generated successfully');
+    console.log('Presigned URL generated successfully:', {
+      filePath,
+      urlLength: presignedUrl.length,
+      expiresIn,
+      userId: user.id,
+      isAdmin
+    });
 
     return new Response(
       JSON.stringify({
@@ -142,6 +193,7 @@ serve(async (req) => {
         url: presignedUrl,
         expiresAt: new Date(expirationTime * 1000).toISOString(),
         expiresIn,
+        filePath,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

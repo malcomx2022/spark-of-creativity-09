@@ -13,6 +13,43 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    // Optional authentication check: If user is authenticated, verify they are super_admin
+    // This allows both unauthenticated access (for initial setup) and authenticated super_admin access
+    const authHeader = req.headers.get('Authorization');
+    
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false },
+      });
+
+      const { data: { user }, error: userError } = await supabaseUser.auth.getUser(token);
+      
+      if (user) {
+        // User is authenticated, verify they are super_admin
+        const { data: roles, error: roleError } = await supabaseUser
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('role', 'super_admin')
+          .single();
+
+        if (roleError || !roles) {
+          return new Response(
+            JSON.stringify({ error: 'Forbidden: Super admin access required' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        console.log(`Admin ${user.email} is creating test users`);
+      } else {
+        console.log('Unauthenticated request - allowing for initial setup');
+      }
+    } else {
+      console.log('No auth header - allowing for initial setup');
+    }
     
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -130,8 +167,12 @@ Deno.serve(async (req) => {
           rating: 4.5,
           years_experience: 10,
           bio: 'Médecin généraliste expérimenté disponible pour consultations à domicile',
-          kyc_status: 'validated',
+          practitioner_type: 'autre',
+          kyc_status: 'approved',
           can_accept_missions: true,
+          id_document_url: 'test-documents/id_test.pdf',
+          license_document_url: 'test-documents/license_test.pdf',
+          insurance_document_url: 'test-documents/insurance_test.pdf',
         }, { onConflict: 'user_id' });
         if (practError) console.error('Practitioner entry error:', practError);
       }
@@ -199,7 +240,7 @@ Deno.serve(async (req) => {
           intervention_zone: 'Cotonou et environs',
           intervention_radius: 15,
           certifications: ['Certificat de coach sportif', 'Nutrition sportive'],
-          kyc_status: 'validated',
+          kyc_status: 'approved',
           can_accept_missions: true,
         }, { onConflict: 'user_id' });
         if (coachError) console.error('Coach practitioner entry error:', coachError);
