@@ -39,7 +39,7 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
     queryFn: async () => {
       if (!userId) return [];
       
-      // Get appointments with their last message (optimized query)
+      // ✅ Limiter à 50 conversations récentes pour améliorer les performances
       const { data: appointments, error: aptError } = await withTimeout(
         supabase
           .from('appointments')
@@ -59,6 +59,7 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
               : `practitioner_id.eq.${userId}`
           )
           .order('created_at', { ascending: false })
+          .limit(50) // ✅ Limiter les conversations chargées
       );
 
       if (aptError) throw aptError;
@@ -96,7 +97,8 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
     },
     enabled: !!userId,
     refetchOnWindowFocus: true,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
+    staleTime: 10000, // ✅ Cache pendant 10 secondes
   });
 
   // Set up realtime subscription for new messages to update conversations list
@@ -136,18 +138,21 @@ export function useConversationMessages(appointmentId?: string, userId?: string)
     queryFn: async () => {
       if (!appointmentId) return [];
       
+      // ✅ Limiter à 200 derniers messages par conversation
       const { data, error } = await withTimeout(
         supabase
           .from('messages')
           .select('*')
           .eq('appointment_id', appointmentId)
           .order('created_at', { ascending: true })
+          .limit(200)
       );
 
       if (error) throw error;
       return data || [];
     },
     enabled: !!appointmentId,
+    staleTime: 5000, // ✅ Cache pendant 5 secondes
   });
 
   // Set up realtime subscription for new messages

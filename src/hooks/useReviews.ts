@@ -18,18 +18,21 @@ export function usePatientReviews(patientId?: string) {
     queryFn: async () => {
       if (!patientId) return [];
       
+      // ✅ Limiter à 50 derniers avis
       const { data, error } = await withTimeout(
         supabase
           .from('reviews')
           .select('*')
           .eq('patient_id', patientId)
           .order('created_at', { ascending: false })
+          .limit(50)
       );
 
       if (error) throw error;
       return data || [];
     },
     enabled: !!patientId,
+    staleTime: 60000, // ✅ Cache pendant 1 minute
   });
 }
 

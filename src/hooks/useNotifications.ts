@@ -108,6 +108,7 @@ export function useNotifications(userId?: string) {
       return data || [];
     },
     enabled: !!userId,
+    staleTime: 10000, // ✅ Cache pendant 10 secondes
   });
 }
 

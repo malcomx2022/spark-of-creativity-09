@@ -11,18 +11,21 @@ export function useSupportTickets(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
       
+      // ✅ Limiter à 50 derniers tickets
       const { data, error } = await withTimeout(
         supabase
           .from('support_tickets')
           .select('*')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
+          .limit(50)
       );
 
       if (error) throw error;
       return data || [];
     },
     enabled: !!userId,
+    staleTime: 30000, // ✅ Cache pendant 30 secondes
   });
 }
 
