@@ -119,47 +119,6 @@ serve(async (req) => {
       user = authUser;
     }
 
-    // ✅ RATE LIMITING : Vérifier le nombre de paiements créés par l'utilisateur dans la dernière heure
-    const paymentUserId = requestBypassAuth && requestPatientId ? requestPatientId : user!.id;
-    console.log('🔒 Vérification du rate limiting pour l\'utilisateur:', paymentUserId);
-
-    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
-    const { data: recentPayments, error: rateLimitError } = await supabase
-      .from('payments')
-      .select('id, created_at, status')
-      .eq('patient_id', paymentUserId)
-      .gte('created_at', oneHourAgo)
-      .order('created_at', { ascending: false });
-
-    if (rateLimitError) {
-      console.error('Erreur lors de la vérification du rate limiting:', rateLimitError);
-      // Ne pas bloquer en cas d'erreur de vérification, continuer
-    } else if (recentPayments && recentPayments.length >= 10) {
-      // Calculer le temps restant avant l'expiration du plus ancien paiement
-      const oldestPayment = recentPayments[recentPayments.length - 1];
-      const oldestPaymentTime = new Date(oldestPayment.created_at).getTime();
-      const timeUntilReset = Math.ceil((oldestPaymentTime + 3600000 - Date.now()) / 60000);
-
-      console.warn('⚠️ Rate limit atteint:', {
-        utilisateur: paymentUserId,
-        paiements_dernière_heure: recentPayments.length,
-        temps_avant_reset: timeUntilReset
-      });
-
-      return new Response(
-        JSON.stringify({
-          error: 'Limite de paiements atteinte',
-          message: `Vous avez atteint la limite de 10 paiements par heure. Veuillez réessayer dans ${timeUntilReset} minute(s).`,
-          retryAfter: timeUntilReset,
-          paymentsCount: recentPayments.length,
-          limit: 10
-        }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': String(timeUntilReset * 60) } }
-      );
-    }
-
-    console.log('✅ Rate limiting OK:', recentPayments ? recentPayments.length : 0, '/ 10 paiements dans la dernière heure');
-
     // Vérifier que l'appointment existe et appartient à l'utilisateur
     const { data: appointment, error: appointmentError } = await supabase
       .from('appointments')
@@ -176,6 +135,7 @@ serve(async (req) => {
     }
 
     // Vérifier les droits (sauf si bypassAuth)
+    const paymentUserId = requestBypassAuth && requestPatientId ? requestPatientId : user!.id;
     if (!bypassAuth && appointment.patient_id !== paymentUserId) {
       console.error('Unauthorized access to appointment');
       return new Response(
@@ -266,68 +226,6 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // ✅ VALIDATION DU MONTANT CONTRE LE PRIX DU SERVICE
-    console.log('🔍 Validation du montant de paiement...');
-
-    // 1. Récupérer le prix du service depuis practitioner_rates (tarif personnalisé)
-    const { data: practitionerRate } = await supabase
-      .from('practitioner_rates')
-      .select('base_price')
-      .eq('practitioner_id', practitionerId)
-      .eq('service_type', appointment.specialty)
-      .maybeSingle();
-
-    // 2. Si pas de tarif personnalisé, récupérer le prix du service par défaut
-    let expectedAmount: number;
-
-    if (practitionerRate?.base_price) {
-      expectedAmount = practitionerRate.base_price;
-      console.log('💰 Prix trouvé dans practitioner_rates:', expectedAmount, 'XOF');
-    } else {
-      // Fallback: chercher dans services table
-      const { data: service } = await supabase
-        .from('services')
-        .select('base_price')
-        .eq('name', appointment.specialty)
-        .maybeSingle();
-
-      if (service?.base_price) {
-        expectedAmount = service.base_price;
-        console.log('💰 Prix trouvé dans services:', expectedAmount, 'XOF');
-      } else {
-        expectedAmount = DEFAULT_APPOINTMENT_AMOUNT;
-        console.log('💰 Prix par défaut utilisé:', expectedAmount, 'XOF');
-      }
-    }
-
-    // 3. Validation du montant demandé contre le prix attendu
-    // Tolérance de 100 XOF pour gérer les arrondis et variations minimes
-    const AMOUNT_TOLERANCE = 100;
-    const amountDifference = Math.abs(amountToCharge - expectedAmount);
-
-    if (amountDifference > AMOUNT_TOLERANCE) {
-      console.error('❌ Montant invalide détecté:', {
-        demandé: amountToCharge,
-        attendu: expectedAmount,
-        différence: amountDifference,
-        service: appointment.specialty,
-        praticien: practitionerId
-      });
-
-      return new Response(
-        JSON.stringify({
-          error: 'Le montant du paiement ne correspond pas au prix du service',
-          expected: expectedAmount,
-          provided: amountToCharge,
-          service: appointment.specialty,
-          message: `Le montant attendu pour ce service est de ${expectedAmount} XOF (±${AMOUNT_TOLERANCE} XOF)`
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('✅ Montant validé:', amountToCharge, 'XOF (attendu:', expectedAmount, 'XOF)');
 
     // Créer l'idempotency key
     const idempotencyKey = `${appointmentId}-${Date.now()}`;

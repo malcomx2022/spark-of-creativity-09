@@ -1,54 +1,68 @@
-import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { Session } from '@supabase/supabase-js';
-import { Loader2 } from 'lucide-react';
+import { Navigate, useLocation } from 'react-router-dom';
+import type { Session } from '@supabase/supabase-js';
 
-export type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
+
+function ProtectedRouteSkeleton() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/10 p-6">
+      <div className="w-full max-w-sm space-y-4">
+        <Skeleton className="h-6 w-1/3" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    </div>
+  );
+}
+
+type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: AppRole[];
 }
 
-function ProtectedRouteSkeleton() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
-  );
-}
-
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [roleStatus, setRoleStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
+  const location = useLocation();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
+    let isMounted = true;
+
+    const syncSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (!isMounted) return;
+
+      if (error) {
+        console.error('Unable to retrieve current session:', error);
+        setSession(null);
         setStatus('unauthenticated');
         return;
       }
 
-      setSession(session);
-      setStatus('authenticated');
+      setSession(data.session ?? null);
+      setStatus(data.session ? 'authenticated' : 'unauthenticated');
     };
 
-    checkAuth();
+    void syncSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setStatus(session ? 'authenticated' : 'unauthenticated');
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return;
+
+      setSession(nextSession ?? null);
+      setStatus(nextSession ? 'authenticated' : 'unauthenticated');
     });
 
     return () => {
-      subscription.unsubscribe();
+      isMounted = false;
+      authListener.subscription.unsubscribe();
     };
   }, []);
 

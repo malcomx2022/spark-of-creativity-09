@@ -160,7 +160,7 @@ export default function PractitionerSignup() {
       }
       case 'experience': {
         if (!value) return "Expérience requise";
-        const exp = parseInt(String(value), 10);
+        const exp = parseInt(value, 10);
         return isNaN(exp) || exp < 0 || exp > 70 ? "L'expérience doit être entre 0 et 70 ans" : "";
       }
       case 'interventionZone': {
@@ -172,14 +172,14 @@ export default function PractitionerSignup() {
       }
       case 'interventionRadius':
         if (isCoachSportif && value) {
-          const radius = parseInt(String(value), 10);
+          const radius = parseInt(value);
           return isNaN(radius) || radius < 1 || radius > 100 ? "Rayon entre 1 et 100 km" : "";
         } else if (isCoachSportif && !value) {
           return "Rayon d'intervention requis";
         }
         return "";
       case 'sessionTypes':
-        return isCoachSportif && (!value || !Array.isArray(value) || value.length === 0)
+        return isCoachSportif && (!value || value.length === 0)
           ? "Au moins un type de séance requis"
           : "";
       case 'acceptTerms':
@@ -569,7 +569,7 @@ export default function PractitionerSignup() {
           }
         })
         );
-
+        
         if (completeError) {
           console.error('⚠️ Erreur notification (non bloquante):', completeError);
         } else {
@@ -577,40 +577,6 @@ export default function PractitionerSignup() {
         }
       } catch (notifError) {
         console.error('⚠️ Erreur notification (non bloquante):', notifError);
-      }
-
-      // Attendre que la session soit bien synchronisée avant de rediriger
-      console.log('🔄 Vérification de la session...');
-      let sessionVerified = false;
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      while (!sessionVerified && retryCount < maxRetries) {
-        const { data: sessionData } = await supabase.auth.getSession();
-
-        if (sessionData.session) {
-          console.log('✅ Session vérifiée');
-          sessionVerified = true;
-        } else {
-          console.log(`⚠️ Session non trouvée (tentative ${retryCount + 1}/${maxRetries})`);
-          retryCount++;
-
-          if (retryCount < maxRetries) {
-            // Attendre un peu avant de réessayer
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Tenter un refresh de session
-            const { data: refreshed } = await supabase.auth.refreshSession();
-            if (refreshed.session) {
-              console.log('✅ Session rafraîchie avec succès');
-              sessionVerified = true;
-            }
-          }
-        }
-      }
-
-      if (!sessionVerified) {
-        console.warn('⚠️ Session non synchronisée après plusieurs tentatives');
       }
 
       // Rediriger vers la page de confirmation avec le type de praticien
