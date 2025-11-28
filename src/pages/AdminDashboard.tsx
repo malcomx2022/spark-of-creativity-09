@@ -28,7 +28,9 @@ export default function AdminDashboard() {
   const { data: stats } = useAdminStats();
   const { data: user } = useSupabaseUser();
   const userId = user?.id;
-  const { data: notifications = [] } = useNotifications(isAdmin ? userId : undefined);
+  // Limiter les notifications à 100 pour éviter surcharge
+  const { data: allNotifications = [] } = useNotifications(isAdmin ? userId : undefined);
+  const notifications = allNotifications.slice(0, 100);
   const markNotificationAsRead = useMarkNotificationAsRead();
   const [activeTab, setActiveTab] = useState("dashboard");
   const processedKycNotifications = useRef(new Set<string>());

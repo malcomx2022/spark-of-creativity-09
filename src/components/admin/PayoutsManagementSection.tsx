@@ -22,12 +22,12 @@ export function PayoutsManagementSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('practitioner_balances')
-        .select('*, practitioners(id, name, phone)')
+        .select('*, practitioners!inner(id, name, phone)')
         .gt('balance_available', 0)
         .order('balance_available', { ascending: false });
       
       if (error) throw error;
-      return data;
+      return data?.filter(b => b.practitioners) || [];
     }
   });
 
