@@ -195,33 +195,11 @@ serve(async (req) => {
         throw entriesError;
       }
 
-      // Update or create practitioner balance
-      const { data: balance } = await supabase
-        .from('practitioner_balances')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .single();
-
-      if (balance) {
-        await supabase
-          .from('practitioner_balances')
-          .update({
-            balance_pending: balance.balance_pending + payment.net_amount,
-            balance_on_hold: balance.balance_on_hold + payment.net_amount
-          })
-          .eq('practitioner_id', practitionerId);
-      } else {
-        await supabase
-          .from('practitioner_balances')
-          .insert({
-            practitioner_id: practitionerId,
-            balance_pending: payment.net_amount,
-            balance_on_hold: payment.net_amount,
-            currency: payment.currency
-          });
-      }
-
-      console.log('Ledger entries created successfully');
+      // ✅ CORRECTION: Ne pas mettre à jour les balances ici
+      // Les balances sont gérées par la RPC update_payment_with_balance appelée depuis le webhook
+      // Cette fonction ne fait QUE les écritures comptables (ledger)
+      
+      console.log('Ledger entries created successfully (balance managed by RPC)');
     }
 
     return new Response(
