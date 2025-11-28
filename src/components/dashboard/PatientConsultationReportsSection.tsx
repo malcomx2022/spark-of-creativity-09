@@ -1,16 +1,22 @@
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { usePatientConsultationReports } from '@/hooks/useConsultationReports';
-import { FileText, Calendar, User, AlertCircle } from 'lucide-react';
+import { FileText, Calendar, User, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Loader2 } from 'lucide-react';
 
 export function PatientConsultationReportsSection() {
   const { data: user } = useSupabaseUser();
-  const { data: reports, isLoading } = usePatientConsultationReports(user?.id);
+  const [page, setPage] = useState(0);
+  const { data: reportsResult, isLoading } = usePatientConsultationReports(user?.id, page, 20);
+  const reports = reportsResult?.data || [];
+  const totalCount = reportsResult?.count || 0;
+  const totalPages = Math.ceil(totalCount / 20);
 
   const getSeverityBadge = (level: string) => {
     switch (level) {
@@ -187,6 +193,32 @@ export function PatientConsultationReportsSection() {
           </CardContent>
         </Card>
       ))}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-6">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Précédent
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page + 1} sur {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+          >
+            Suivant
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

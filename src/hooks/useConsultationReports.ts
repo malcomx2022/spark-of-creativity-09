@@ -70,11 +70,11 @@ export const useConsultationReportByAppointment = (appointmentId?: string) => {
   });
 };
 
-export const usePatientConsultationReports = (patientId?: string) => {
+export const usePatientConsultationReports = (patientId?: string, page = 0, pageSize = 20) => {
   return useQuery({
-    queryKey: ['patient-consultation-reports', patientId],
+    queryKey: ['patient-consultation-reports', patientId, page],
     queryFn: async () => {
-      if (!patientId) return [];
+      if (!patientId) return { data: [], count: 0 };
       
       // Get all appointments for the patient
       const { data: appointments, error: appointmentsError } = await withTimeout(
@@ -85,21 +85,22 @@ export const usePatientConsultationReports = (patientId?: string) => {
       );
       
       if (appointmentsError) throw appointmentsError;
-      if (!appointments || appointments.length === 0) return [];
+      if (!appointments || appointments.length === 0) return { data: [], count: 0 };
       
       const appointmentIds = appointments.map(apt => apt.id);
       
-      // Get all consultation reports for those appointments
-      const { data, error } = await withTimeout(
+      // Get consultation reports with pagination
+      const { data, error, count } = await withTimeout(
         supabase
           .from('consultation_reports')
-          .select('*, appointments(patient_name, practitioner_name, date, time)')
+          .select('*, appointments(patient_name, practitioner_name, date, time)', { count: 'exact' })
           .in('appointment_id', appointmentIds)
           .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
       );
       
       if (error) throw error;
-      return data as ConsultationReport[];
+      return { data: (data as ConsultationReport[]) || [], count: count || 0 };
     },
     enabled: !!patientId,
   });

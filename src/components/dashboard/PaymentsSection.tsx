@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock, Trash2, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock, Trash2, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -40,6 +40,8 @@ import { normalizePhoneNumber } from '@/lib/phone-utils';
 
 export function PaymentsSection() {
   const { data: user } = useSupabaseUser();
+  const [page, setPage] = useState(0);
+  const pageSize = 20;
   const [isPaymentMethodDialogOpen, setIsPaymentMethodDialogOpen] = useState(false);
   const [paymentProvider, setPaymentProvider] = useState('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -53,22 +55,27 @@ export function PaymentsSection() {
     setDefaultPaymentMethod,
   } = useSavedPaymentMethods();
 
-  const { data: payments = [], isLoading } = useQuery<Payment[]>({
-    queryKey: ['payments', user?.id],
+  const { data: paymentsResult, isLoading } = useQuery({
+    queryKey: ['payments', user?.id, page],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) return { data: [], count: 0 };
       
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('payments')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('patient_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (error) throw error;
-      return data || [];
+      return { data: data || [], count: count || 0 };
     },
     enabled: !!user?.id,
   });
+
+  const payments = paymentsResult?.data || [];
+  const totalCount = paymentsResult?.count || 0;
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   const resolveStatusVariant = (status: string) => {
     if (status in PAYMENT_STATUS_VARIANTS) {
@@ -271,6 +278,31 @@ export function PaymentsSection() {
                   </div>
                 </div>
               ))}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Précédent
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {page + 1} sur {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    Suivant
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              )}
                <div className="mt-4">
                  <Button variant="outline" onClick={handleExportPayments} className="w-full">
                    <Download className="h-4 w-4 mr-2" />

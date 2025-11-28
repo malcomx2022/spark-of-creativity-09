@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, Users, User, CheckCircle, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Calendar, Clock, MapPin, Users, User, CheckCircle, XCircle, AlertCircle, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, isPast, isFuture } from "date-fns";
 import { fr } from "date-fns/locale";
 import { usePatientGroupSessions } from "@/hooks/usePatientGroupSessions";
@@ -11,7 +11,11 @@ import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog"
 
 export function PatientGroupSessionsSection() {
   const { data: user } = useSupabaseUser();
-  const { data: sessions, isLoading } = usePatientGroupSessions(user?.id);
+  const [page, setPage] = useState(0);
+  const { data: sessionsResult, isLoading } = usePatientGroupSessions(user?.id, page, 20);
+  const sessions = sessionsResult?.data || [];
+  const totalCount = sessionsResult?.count || 0;
+  const totalPages = Math.ceil(totalCount / 20);
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
 
@@ -278,6 +282,32 @@ export function PatientGroupSessionsSection() {
             start_time: selectedSession.session.start_time
           }}
         />
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-6">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Précédent
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page + 1} sur {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+          >
+            Suivant
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
       )}
     </div>
   );
