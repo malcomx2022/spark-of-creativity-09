@@ -79,21 +79,25 @@ Deno.serve(async (req) => {
         },
       });
 
-      if (patientError) {
-        console.error('Patient creation error:', patientError);
-        if (patientError.message.includes('already been registered')) {
-          console.log('Patient already exists, updating...');
-          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-          const existingUser = users.users.find(u => u.email === 'patient@test.com');
-          if (existingUser) {
-            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-              password: 'Patient123!',
-              email_confirm: true,
-            });
-            results.patient = existingUser.id;
-          }
+      // Si l'utilisateur existe déjà, mettre à jour ses metadata
+      if (patientError && patientError.message.includes('already been registered')) {
+        console.log('Patient already exists, updating metadata...');
+        const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = users.users.find(u => u.email === 'patient@test.com');
+        if (existingUser) {
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Patient123!',
+            email_confirm: true,
+            user_metadata: {
+              full_name: 'Patient Test',
+              user_type: 'patient',
+            },
+          });
+          results.patient = existingUser.id;
         }
-      } else {
+      }
+
+      if (!patientError) {
         console.log('Patient created:', patientData.user.id);
         results.patient = patientData.user.id;
       }
@@ -126,21 +130,25 @@ Deno.serve(async (req) => {
         },
       });
 
-      if (practitionerError) {
-        console.error('Practitioner creation error:', practitionerError);
-        if (practitionerError.message.includes('already been registered')) {
-          console.log('Practitioner already exists, updating...');
-          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-          const existingUser = users.users.find(u => u.email === 'praticien@test.com');
-          if (existingUser) {
-            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-              password: 'Praticien123!',
-              email_confirm: true,
-            });
-            results.praticien = existingUser.id;
-          }
+      // Si l'utilisateur existe déjà, mettre à jour ses metadata
+      if (practitionerError && practitionerError.message.includes('already been registered')) {
+        console.log('Practitioner already exists, updating metadata...');
+        const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = users.users.find(u => u.email === 'praticien@test.com');
+        if (existingUser) {
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Praticien123!',
+            email_confirm: true,
+            user_metadata: {
+              full_name: 'Dr. Praticien Test',
+              user_type: 'practitioner',
+            },
+          });
+          results.praticien = existingUser.id;
         }
-      } else {
+      }
+
+      if (!practitionerError) {
         console.log('Practitioner created:', practitionerData.user.id);
         results.praticien = practitionerData.user.id;
       }
@@ -219,21 +227,26 @@ Deno.serve(async (req) => {
         },
       });
 
-      if (coachError) {
-        console.error('Coach creation error:', coachError);
-        if (coachError.message.includes('already been registered')) {
-          console.log('Coach already exists, updating...');
-          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-          const existingUser = users.users.find(u => u.email === 'coach@test.com');
-          if (existingUser) {
-            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-              password: 'Coach123!',
-              email_confirm: true,
-            });
-            results.coach = existingUser.id;
-          }
+      // Si l'utilisateur existe déjà, mettre à jour ses metadata
+      if (coachError && coachError.message.includes('already been registered')) {
+        console.log('Coach already exists, updating metadata...');
+        const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = users.users.find(u => u.email === 'coach@test.com');
+        if (existingUser) {
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Coach123!',
+            email_confirm: true,
+            user_metadata: {
+              full_name: 'Coach Sportif Test',
+              user_type: 'practitioner',
+              practitioner_type: 'coach_sportif',
+            },
+          });
+          results.coach = existingUser.id;
         }
-      } else {
+      }
+
+      if (!coachError) {
         console.log('Coach created:', coachData.user.id);
         results.coach = coachData.user.id;
       }
@@ -306,24 +319,29 @@ Deno.serve(async (req) => {
         email_confirm: true,
         user_metadata: {
           full_name: 'Admin Test',
+          user_type: 'admin',
         },
       });
 
-      if (adminError) {
-        console.error('Admin creation error:', adminError);
-        if (adminError.message.includes('already been registered')) {
-          console.log('Admin already exists, updating...');
-          const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-          const existingUser = users.users.find(u => u.email === 'admin@test.com');
-          if (existingUser) {
-            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-              password: 'Admin123!',
-              email_confirm: true,
-            });
-            results.admin = existingUser.id;
-          }
+      // Si l'utilisateur existe déjà, mettre à jour ses metadata
+      if (adminError && adminError.message.includes('already been registered')) {
+        console.log('Admin already exists, updating metadata...');
+        const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = users.users.find(u => u.email === 'admin@test.com');
+        if (existingUser) {
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password: 'Admin123!',
+            email_confirm: true,
+            user_metadata: {
+              full_name: 'Admin Test',
+              user_type: 'admin',
+            },
+          });
+          results.admin = existingUser.id;
         }
-      } else {
+      }
+
+      if (!adminError) {
         console.log('Admin created:', adminData.user.id);
         results.admin = adminData.user.id;
       }

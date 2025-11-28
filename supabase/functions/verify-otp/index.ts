@@ -186,6 +186,11 @@ serve(async (req) => {
       .eq('phone', normalizedPhone)
       .maybeSingle();
 
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Error checking existing profile:', profileError);
+      throw new Error('Database error while checking user profile');
+    }
+
     let user;
     let session;
     let isNewUser = false;
@@ -254,17 +259,26 @@ serve(async (req) => {
 
       user = newUserData.user;
 
-      // Create profile
+      // Create profile - use upsert to handle edge case where profile might exist
       const { error: profileInsertError } = await supabase
         .from('profiles')
-        .insert({
+        .upsert({
           id: user.id,
           phone: normalizedPhone,
           full_name: normalizedPhone, // Default to phone number
+        }, {
+          onConflict: 'id',
+          ignoreDuplicates: false
         });
 
       if (profileInsertError) {
         console.error('Error creating profile:', profileInsertError);
+        
+        // Si c'est une erreur de contrainte d'unicité sur le téléphone, c'est grave
+        if (profileInsertError.code === '23505' && profileInsertError.message?.includes('phone')) {
+          throw new Error('This phone number is already registered with another account');
+        }
+        
         // Continue anyway as the user was created in auth
       }
 
