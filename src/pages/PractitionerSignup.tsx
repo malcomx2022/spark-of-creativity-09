@@ -413,7 +413,8 @@ export default function PractitionerSignup() {
           emailRedirectTo: `${window.location.origin}${dashboardPath}`,
           data: {
             full_name: `${formData.firstName} ${formData.lastName}`.trim(),
-            role: "practitioner",
+            user_type: "practitioner",
+            practitioner_type: practitionerTypeForSignup,
             phone: formData.phone,
           },
         },
@@ -441,14 +442,6 @@ export default function PractitionerSignup() {
             variant: "destructive"
           });
         }
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Vérifier si l'email nécessite une confirmation
-      if (data.user && !data.user.confirmed_at && !data.session) {
-        toast(AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION);
-        navigateToEmailConfirmation(navigate, formData.email, 'practitioner');
         setIsSubmitting(false);
         return;
       }

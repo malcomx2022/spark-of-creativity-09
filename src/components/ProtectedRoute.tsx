@@ -86,14 +86,21 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         const metadata = userData.user?.user_metadata ?? {};
         let resolvedRole: AppRole | null = null;
 
+        // Vérifier le user_type dans les métadonnées (uniformisé pour patient et practitioner)
         if (metadata.user_type === 'patient') {
           resolvedRole = 'patient';
         }
 
-        if (metadata.role === 'practitioner') {
-          resolvedRole = 'practitioner';
+        if (metadata.user_type === 'practitioner') {
+          // Vérifier si c'est un coach sportif directement dans les métadonnées
+          if (metadata.practitioner_type === 'coach_sportif') {
+            resolvedRole = 'coach';
+          } else {
+            resolvedRole = 'practitioner';
+          }
         }
 
+        // Pour les admins, vérifier la table user_roles (car non stocké dans metadata)
         if (allowedRoles?.includes('admin')) {
           const { data: adminRole, error: adminError } = await supabase
             .from('user_roles')
@@ -107,25 +114,6 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
 
           if (adminRole?.role) {
             resolvedRole = 'admin';
-          }
-        }
-
-        if (
-          resolvedRole === 'practitioner' &&
-          allowedRoles?.some(role => role === 'coach')
-        ) {
-          const { data: practitioner, error: practitionerError } = await supabase
-            .from('practitioners')
-            .select('practitioner_type')
-            .eq('user_id', userData.user?.id)
-            .maybeSingle();
-
-          if (practitionerError && practitionerError.code !== 'PGRST116') {
-            throw practitionerError;
-          }
-
-          if (practitioner?.practitioner_type === 'coach_sportif') {
-            resolvedRole = 'coach';
           }
         }
 
