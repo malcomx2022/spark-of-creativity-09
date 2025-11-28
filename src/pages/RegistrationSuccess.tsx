@@ -14,41 +14,6 @@ export default function RegistrationSuccess() {
   const practitionerType = searchParams.get("practitionerType");
   const [countdown, setCountdown] = useState(10);
   const [dashboardPath, setDashboardPath] = useState<string>("/dashboard/patient");
-  const [isSessionReady, setIsSessionReady] = useState(false);
-
-  // Vérifier que la session existe et est bien synchronisée
-  useEffect(() => {
-    const checkSession = async () => {
-      console.log('🔄 RegistrationSuccess: Vérification de la session...');
-
-      // Attendre un court délai pour laisser la session se propager
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const { data } = await supabase.auth.getSession();
-
-      if (data.session) {
-        console.log('✅ RegistrationSuccess: Session trouvée');
-        setIsSessionReady(true);
-      } else {
-        console.log('⚠️ RegistrationSuccess: Session non trouvée, tentative de refresh...');
-
-        // Tenter un refresh de session
-        const { data: refreshed } = await supabase.auth.refreshSession();
-
-        if (refreshed.session) {
-          console.log('✅ RegistrationSuccess: Session rafraîchie avec succès');
-          setIsSessionReady(true);
-        } else {
-          console.warn('❌ RegistrationSuccess: Impossible de récupérer la session');
-          // La session n'est pas prête, mais on permet quand même de continuer
-          // L'utilisateur sera redirigé vers login par ProtectedRoute si nécessaire
-          setIsSessionReady(true);
-        }
-      }
-    };
-
-    checkSession();
-  }, []);
 
   useEffect(() => {
     const determineDashboardPath = async () => {
@@ -58,7 +23,7 @@ export default function RegistrationSuccess() {
       }
 
       let targetPath = "/dashboard/patient";
-
+      
       if (userType === "practitioner") {
         // Si on a le practitionerType dans l'URL, on l'utilise directement
         if (practitionerType === "coach_sportif") {
@@ -75,16 +40,15 @@ export default function RegistrationSuccess() {
           }
         }
       }
-
+      
       setDashboardPath(targetPath);
     };
 
     determineDashboardPath();
   }, [userType, practitionerType, navigate]);
 
-  // Ne démarrer le countdown que si la session est prête
   useEffect(() => {
-    if (!userType || !isSessionReady) return;
+    if (!userType) return;
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -98,7 +62,7 @@ export default function RegistrationSuccess() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [userType, dashboardPath, navigate, isSessionReady]);
+  }, [userType, dashboardPath, navigate]);
 
   if (!userType) return null;
 

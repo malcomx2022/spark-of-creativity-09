@@ -19,28 +19,38 @@ function mapPractitioner(row: any): PractitionerLocation {
 }
 
 async function fetchPractitioners() {
-  // RLS policies automatically handle access control:
-  // - Anonymous users: see only approved + available practitioners (limited fields)
-  // - Authenticated users: see approved + available practitioners + their own profile + appointments
-  // - Admins: see all practitioners
+  // Check if user is authenticated
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (session) {
+    // Authenticated users can access full practitioner data
+    const { data, error } = await supabase
+      .from('practitioners')
+      .select('*')
+      .eq('available', true)
+      .eq('kyc_status', 'approved')
+      .order('name', { ascending: true });
 
-  if (!supabase) {
-    throw new Error('Client Supabase non initialisé');
+    if (error) {
+      console.error('Erreur chargement praticiens:', error);
+      throw error;
+    }
+
+    return (data ?? []).map(mapPractitioner);
+  } else {
+    // Unauthenticated users use the public view with limited data
+    const { data, error } = await supabase
+      .from('practitioners_public_view')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('Erreur chargement praticiens publics:', error);
+      throw error;
+    }
+
+    return (data ?? []).map(mapPractitioner);
   }
-
-  const { data, error } = await supabase
-    .from('practitioners')
-    .select('id, name, specialty, address, latitude, longitude, available, rating, phone, image, practitioner_type')
-    .eq('available', true)
-    .eq('kyc_status', 'approved')
-    .order('name', { ascending: true });
-
-  if (error) {
-    console.error('Erreur chargement praticiens:', error);
-    throw error;
-  }
-
-  return (data ?? []).map(mapPractitioner);
 }
 
 export function usePractitioners() {

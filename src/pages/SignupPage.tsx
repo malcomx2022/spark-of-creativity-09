@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import UserTypeCard from "@/components/UserTypeCard";
 
 export default function SignupPage() {
   const navigate = useNavigate();

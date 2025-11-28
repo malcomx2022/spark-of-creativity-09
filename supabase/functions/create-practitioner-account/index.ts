@@ -283,6 +283,31 @@ serve(async (req) => {
 
     console.log('🚀 Création compte praticien atomique:', userId);
 
+    // ✅ CONTRÔLE D'UNICITÉ: Vérifier si un praticien existe déjà avec cet email ou téléphone
+    const { data: existingPractitioner, error: checkError } = await supabase
+      .from('practitioners')
+      .select('user_id, phone')
+      .or(`phone.eq.${practitionerData.phone},user_id.eq.${userId}`)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('❌ Erreur vérification unicité:', checkError);
+    }
+
+    if (existingPractitioner && existingPractitioner.user_id !== userId) {
+      console.error('❌ Compte praticien déjà existant:', existingPractitioner);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Un compte praticien existe déjà avec ce numéro de téléphone',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 409, // Conflict
+        }
+      );
+    }
+
     // Validation stricte des données praticien
     const validationErrors = validatePractitionerData(practitionerData);
     if (validationErrors.length > 0) {
