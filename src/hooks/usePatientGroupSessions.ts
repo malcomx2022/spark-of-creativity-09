@@ -32,13 +32,13 @@ export interface PatientGroupSession {
   };
 }
 
-export function usePatientGroupSessions(patientId?: string) {
+export function usePatientGroupSessions(patientId?: string, page = 0, pageSize = 20) {
   const query = useQuery({
-    queryKey: ['patient-group-sessions', patientId],
+    queryKey: ['patient-group-sessions', patientId, page],
     queryFn: async () => {
-      if (!patientId) return [];
+      if (!patientId) return { data: [], count: 0 };
 
-      const { data, error } = await withTimeout(
+      const { data, error, count } = await withTimeout(
         supabase
           .from('group_session_participants')
           .select(`
@@ -68,9 +68,10 @@ export function usePatientGroupSessions(patientId?: string) {
                 specialty
               )
             )
-          `)
+          `, { count: 'exact' })
           .eq('patient_id', patientId)
           .order('joined_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
       );
 
       if (error) {
@@ -79,7 +80,7 @@ export function usePatientGroupSessions(patientId?: string) {
       }
 
       // Transformer les données pour avoir une structure plus propre
-      return data.map(item => ({
+      const transformedData = data.map(item => ({
         id: item.id,
         session_id: item.session_id,
         patient_id: item.patient_id,
@@ -92,6 +93,8 @@ export function usePatientGroupSessions(patientId?: string) {
             : (Array.isArray(item.session?.coach) ? item.session.coach[0] : item.session?.coach)
         }
       })) as PatientGroupSession[];
+
+      return { data: transformedData, count: count || 0 };
     },
     enabled: !!patientId
   });
