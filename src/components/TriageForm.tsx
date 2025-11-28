@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AlertCircle, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, AlertTriangle, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -10,6 +10,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { triageQuestions, calculateTriageScore, type TriageResult } from '@/types/triage';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { TriageHistory } from '@/components/TriageHistory';
 
 const formSchema = z.object({
   consciousness: z.string().min(1, 'Veuillez sélectionner une option'),
@@ -23,8 +26,10 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export function TriageForm() {
+  const { data: user } = useSupabaseUser();
   const [result, setResult] = useState<TriageResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -46,6 +51,27 @@ export function TriageForm() {
     
     const triageResult = calculateTriageScore(data);
     setResult(triageResult);
+
+    // Sauvegarder dans la base de données
+    if (user?.id) {
+      try {
+        const { error } = await supabase.from('triage_results').insert({
+          user_id: user.id,
+          score: triageResult.score,
+          urgency_level: triageResult.urgencyLevel,
+          message: triageResult.message,
+          recommendations: triageResult.recommendations,
+          answers: data,
+        });
+
+        if (error) {
+          console.error('Erreur lors de la sauvegarde du triage:', error);
+        }
+      } catch (err) {
+        console.error('Erreur lors de la sauvegarde:', err);
+      }
+    }
+
     setIsSubmitting(false);
 
     toast({
@@ -113,6 +139,13 @@ export function TriageForm() {
               className="flex-1"
             >
               Nouvelle évaluation
+            </Button>
+            <Button 
+              onClick={() => setShowHistory(true)}
+              variant="secondary"
+              className="flex-1"
+            >
+              Voir l'historique
             </Button>
             {result.urgencyLevel === 'immediate' && (
               <Button 
@@ -208,9 +241,21 @@ export function TriageForm() {
             >
               {isSubmitting ? 'Analyse en cours...' : 'Calculer le niveau d\'urgence'}
             </Button>
+
+            <Button 
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowHistory(true)}
+            >
+              <History className="h-4 w-4 mr-2" />
+              Voir l'historique des évaluations
+            </Button>
           </form>
         </Form>
       </CardContent>
+
+      <TriageHistory open={showHistory} onOpenChange={setShowHistory} />
     </Card>
   );
 }
