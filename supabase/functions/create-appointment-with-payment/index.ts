@@ -125,11 +125,16 @@ serve(async (req) => {
       console.log('✅ Transaction atomique réussie');
 
       // 4. Récupérer le user_id et practitioner_type du praticien
-      const { data: practitionerData } = await supabase
+      const { data: practitionerData, error: practitionerError } = await supabase
         .from('practitioners')
         .select('user_id, practitioner_type')
         .eq('id', body.practitionerId)
         .single();
+
+      if (practitionerError || !practitionerData?.user_id) {
+        console.error('❌ Praticien non trouvé pour notifications:', practitionerError);
+        // Non-bloquant: on continue sans notifier le praticien
+      }
 
       const practitionerUserId = practitionerData?.user_id;
       const dashboardLink = practitionerData?.practitioner_type === 'coach_sportif' 

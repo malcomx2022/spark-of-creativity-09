@@ -187,22 +187,8 @@ async function handleTransactionEvent(
 
   console.log(`Payment ${transactionId} updated to status: ${paymentStatus}`);
 
-  // ✅ CORRECTION ERREUR #3: Appeler apply-ledger-entries pour les écritures comptables
-  if (paymentStatus === 'paid' && payment) {
-    console.log('Applying ledger entries for payment:', payment.id);
-    
-    const { error: ledgerError } = await supabase.functions.invoke('apply-ledger-entries', {
-      body: {
-        paymentId: payment.id,
-        status: 'paid'
-      }
-    });
-
-    if (ledgerError) {
-      console.error('Warning: Failed to apply ledger entries:', ledgerError);
-      // Non-bloquant, on continue
-    }
-  }
+  // ✅ CORRECTION: Les écritures ledger sont appelées APRÈS la mise à jour du paiement
+  // pour éviter les conflits avec la RPC update_payment_with_balance
 
   if (payment) {
     // Émettre événement selon le statut
@@ -326,8 +312,22 @@ async function handleTransactionEvent(
         }
       });
 
-    // ✅ CORRECTION CRITIQUE #5: Supprimé le double appel à apply-ledger-entries
-    // (Déjà appelé ligne 173-183 via supabase.functions.invoke)
+    // ✅ CORRECTION: Appeler apply-ledger-entries APRÈS toutes les mises à jour
+    if (paymentStatus === 'paid') {
+      console.log('Applying ledger entries for payment:', payment.id);
+      
+      const { error: ledgerError } = await supabase.functions.invoke('apply-ledger-entries', {
+        body: {
+          paymentId: payment.id,
+          status: 'paid'
+        }
+      });
+
+      if (ledgerError) {
+        console.error('Warning: Failed to apply ledger entries:', ledgerError);
+        // Non-bloquant, on continue
+      }
+    }
   }
 }
 
