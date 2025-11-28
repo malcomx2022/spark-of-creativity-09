@@ -52,10 +52,10 @@ export default function LoginPage() {
           .maybeSingle() as unknown as Promise<any>
       );
 
-      const practitionerResult = await withTimeout<{ data: { id: string } | null }>(
+      const practitionerResult = await withTimeout<{ data: { id: string; practitioner_type: string } | null }>(
         supabase
           .from('practitioners')
-          .select('id')
+          .select('id, practitioner_type')
           .eq('user_id', data.user.id)
           .maybeSingle() as unknown as Promise<any>
       );
@@ -66,7 +66,12 @@ export default function LoginPage() {
       if (roleResult.data?.role) {
         navigateToDashboard(navigate, 'admin');
       } else if (practitionerResult.data) {
-        navigateToDashboard(navigate, 'practitioner');
+        // Différencier les coachs sportifs
+        if (practitionerResult.data.practitioner_type === 'coach_sportif') {
+          navigateToDashboard(navigate, 'coach');
+        } else {
+          navigateToDashboard(navigate, 'practitioner');
+        }
       } else {
         navigateToDashboard(navigate, 'patient');
       }

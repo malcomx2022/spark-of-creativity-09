@@ -124,17 +124,29 @@ serve(async (req) => {
 
       console.log('✅ Transaction atomique réussie');
 
-      // 4. Envoyer une notification au praticien
+      // 4. Récupérer le user_id et practitioner_type du praticien
+      const { data: practitionerData } = await supabase
+        .from('practitioners')
+        .select('user_id, practitioner_type')
+        .eq('id', body.practitionerId)
+        .single();
+
+      const practitionerUserId = practitionerData?.user_id;
+      const dashboardLink = practitionerData?.practitioner_type === 'coach_sportif' 
+        ? '/dashboard/coach' 
+        : '/dashboard/practitioner';
+
+      // 5. Envoyer une notification au praticien
       try {
         await dispatchNotification({
           supabase,
           supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
           serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-          userId: body.practitionerId,
+          userId: practitionerUserId,
           title: '🩺 Nouvelle demande de rendez-vous',
           message: `${body.patientName} souhaite prendre rendez-vous le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time}. Raison: ${body.reason}`,
           type: 'appointment',
-          link: '/dashboard/practitioner',
+          link: dashboardLink,
           channels: ['email', 'sms', 'push'],
         });
         console.log('✅ Notification envoyée au praticien');
@@ -142,7 +154,7 @@ serve(async (req) => {
         console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
       }
 
-      // 5. Envoyer une notification de confirmation au patient
+      // 6. Envoyer une notification de confirmation au patient
       try {
         await dispatchNotification({
           supabase,
