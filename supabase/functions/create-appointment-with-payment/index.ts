@@ -69,7 +69,7 @@ serve(async (req) => {
           address: body.address,
           reason: body.reason,
           urgency_level: body.urgencyLevel || 'non-urgent',
-          status: 'awaiting_practitioner',
+          status: 'pending_payment',
         })
         .select('id')
         .single();
@@ -142,21 +142,25 @@ serve(async (req) => {
         : '/dashboard/practitioner';
 
       // 5. Envoyer une notification au praticien
-      try {
-        await dispatchNotification({
-          supabase,
-          supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
-          serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-          userId: practitionerUserId,
-          title: '🩺 Nouvelle demande de rendez-vous',
+      if (practitionerUserId) {
+        try {
+          await dispatchNotification({
+            supabase,
+            supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
+            serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+            userId: practitionerUserId,
+            title: '🩺 Nouvelle demande de rendez-vous',
           message: `${body.patientName} souhaite prendre rendez-vous le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time}. Raison: ${body.reason}`,
           type: 'appointment',
           link: dashboardLink,
           channels: ['email', 'sms', 'push'],
         });
-        console.log('✅ Notification envoyée au praticien');
-      } catch (notifError) {
-        console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
+          console.log('✅ Notification envoyée au praticien');
+        } catch (notifError) {
+          console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
+        }
+      } else {
+        console.log('⚠️ Notification praticien ignorée (practitionerUserId absent)');
       }
 
       // 6. Envoyer une notification de confirmation au patient
