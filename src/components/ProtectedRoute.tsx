@@ -86,12 +86,27 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         const metadata = userData.user?.user_metadata ?? {};
         let resolvedRole: AppRole | null = null;
 
-        // Vérifier le user_type dans les métadonnées (uniformisé pour patient et practitioner)
-        if (metadata.user_type === 'patient') {
+        // PRIORITÉ 1: Vérifier d'abord si c'est un admin (car les admins peuvent avoir d'autres metadata)
+        const { data: adminRole, error: adminError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userData.user?.id)
+          .maybeSingle();
+
+        if (adminError && adminError.code !== 'PGRST116') {
+          throw adminError;
+        }
+
+        if (adminRole?.role) {
+          resolvedRole = 'admin';
+        }
+
+        // PRIORITÉ 2: Vérifier le user_type dans les métadonnées (seulement si pas admin)
+        if (!resolvedRole && metadata.user_type === 'patient') {
           resolvedRole = 'patient';
         }
 
-        if (metadata.user_type === 'practitioner') {
+        if (!resolvedRole && metadata.user_type === 'practitioner') {
           // Vérifier si c'est un coach sportif directement dans les métadonnées
           if (metadata.practitioner_type === 'coach_sportif') {
             resolvedRole = 'coach';
@@ -100,7 +115,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
           }
         }
 
-        // Fallback: si pas de user_type dans metadata, vérifier la table practitioners
+        // PRIORITÉ 3: Fallback - vérifier la table practitioners
         if (!resolvedRole) {
           const { data: practitionerData, error: practitionerError } = await supabase
             .from('practitioners')
@@ -117,23 +132,6 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
           } else if (!resolvedRole) {
             // Si toujours pas de rôle trouvé, considérer comme patient par défaut
             resolvedRole = 'patient';
-          }
-        }
-
-        // Pour les admins, vérifier la table user_roles (car non stocké dans metadata)
-        if (allowedRoles?.includes('admin')) {
-          const { data: adminRole, error: adminError } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', userData.user?.id)
-            .maybeSingle();
-
-          if (adminError && adminError.code !== 'PGRST116') {
-            throw adminError;
-          }
-
-          if (adminRole?.role) {
-            resolvedRole = 'admin';
           }
         }
 
