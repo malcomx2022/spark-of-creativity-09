@@ -8,6 +8,7 @@ import type { CreateTestAccountsResponse } from "@/types/edge-function-responses
 import { useNavigate } from "react-router-dom";
 import { Loader2, LogOut, RefreshCw } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
+import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 
 export default function CreateTestAccounts() {
   const { toast } = useToast();
@@ -96,16 +97,9 @@ export default function CreateTestAccounts() {
 
       sonnerToast.success(`Connecté en tant que ${email}`);
 
-      // Rediriger selon le type de compte
-      if (email.includes('admin')) {
-        navigate('/admin');
-      } else if (email.includes('coach')) {
-        navigate('/dashboard/coach');
-      } else if (email.includes('praticien')) {
-        navigate('/dashboard/practitioner');
-      } else {
-        navigate('/dashboard/patient');
-      }
+      // Utiliser la logique de redirection cohérente avec le reste de l'app
+      const dashboardPath = await getDashboardPathForUser(data.user.id);
+      navigate(dashboardPath);
     } catch (error: any) {
       toast({
         title: "Erreur",
