@@ -19,15 +19,14 @@ function mapPractitioner(row: any): PractitionerLocation {
 }
 
 async function fetchPractitioners() {
-  // RLS policies automatically handle access control:
-  // - Anonymous users: see only approved + available practitioners (limited fields)
-  // - Authenticated users: see approved + available practitioners + their own profile + appointments
-  // - Admins: see all practitioners
-
   if (!supabase) {
     throw new Error('Client Supabase non initialisé');
   }
 
+  // RLS policies automatically handle access control:
+  // - Anonymous users: see only approved + available practitioners (limited fields)
+  // - Authenticated users: see approved + available practitioners + their own profile + appointments
+  // - Admins: see all practitioners
   const { data, error } = await supabase
     .from('practitioners')
     .select('id, name, specialty, address, latitude, longitude, available, rating, phone, image, practitioner_type')
