@@ -3,6 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 const COACH_TYPE = "coach_sportif";
 
 export async function getDashboardPathForUser(userId: string) {
+  // PRIORITÉ 1: Vérifier si l'utilisateur est un admin
+  const { data: adminRole, error: adminError } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!adminError && adminRole?.role) {
+    return "/admin";
+  }
+
+  // PRIORITÉ 2: Vérifier si c'est un praticien ou coach
   const { data: practitioner, error } = await supabase
     .from("practitioners")
     .select("practitioner_type")
@@ -21,6 +33,7 @@ export async function getDashboardPathForUser(userId: string) {
     return "/dashboard/practitioner";
   }
 
+  // PRIORITÉ 3: Par défaut, c'est un patient
   return "/dashboard/patient";
 }
 
