@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useConversations } from '@/hooks/useConversations';
 import { ConversationsList } from '@/components/messaging/ConversationsList';
@@ -9,13 +9,15 @@ export function MessagesSection() {
   const { data: user } = useSupabaseUser();
   const { data: conversations = [], isLoading } = useConversations(user?.id, 'patient');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
+  const hasAutoSelected = useRef(false);
 
   // Auto-select first conversation when loaded (only once)
   useEffect(() => {
-    if (!selectedConversation && conversations.length > 0) {
+    if (!selectedConversation && conversations.length > 0 && !hasAutoSelected.current) {
       setSelectedConversation(conversations[0]);
+      hasAutoSelected.current = true;
     }
-  }, [conversations.length]);
+  }, [conversations]);
 
   if (isLoading) {
     return (
