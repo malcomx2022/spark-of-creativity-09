@@ -258,9 +258,22 @@ export default function PatientDashboard() {
     }
   };
 
-  const confirmedAwaitingPayment = appointments?.filter(
-    apt => apt.status === 'confirmed' && !payments?.some(p => p.appointment_id === apt.id && p.status === 'paid')
-  ) || [];
+  // Rendez-vous en attente de paiement : status = 'pending_payment' OU (confirmed sans paiement réussi)
+  const confirmedAwaitingPayment = appointments?.filter(apt => {
+    // Si le statut est déjà pending_payment, c'est clair
+    if (apt.status === 'pending_payment') return true;
+    
+    // Si le statut est confirmed, vérifier s'il y a déjà un paiement réussi
+    if (apt.status === 'confirmed') {
+      const hasSuccessfulPayment = payments?.some(p => 
+        p.appointment_id === apt.id && 
+        (p.status === 'paid' || p.status === 'authorized' || p.payout_status === 'paid' || p.payout_status === 'ready')
+      );
+      return !hasSuccessfulPayment;
+    }
+    
+    return false;
+  }) || [];
 
   const upcomingAppointments = appointments.filter(
     apt => apt.status !== 'completed' && apt.status !== 'cancelled' && apt.status !== 'rejected'

@@ -154,7 +154,7 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
               </Button>
             </>
           )}
-          {userRole === 'patient' && (appointment.status === 'confirmed' || appointment.status === 'pending_payment') && onPaymentRequired && (
+          {userRole === 'patient' && appointment.status === 'pending_payment' && onPaymentRequired && (
             <Button onClick={() => onPaymentRequired(appointment.id)} size="sm" className="flex-1">
               💳 Payer maintenant
             </Button>
