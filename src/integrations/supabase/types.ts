@@ -231,13 +231,6 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "care_notes_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
-            referencedColumns: ["id"]
-          },
         ]
       }
       consent_versions: {
@@ -693,13 +686,6 @@ export type Database = {
             columns: ["coach_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "group_sessions_coach_id_fkey"
-            columns: ["coach_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1326,13 +1312,6 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "practitioner_availability_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
-            referencedColumns: ["id"]
-          },
         ]
       }
       practitioner_balances: {
@@ -1371,13 +1350,6 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "practitioner_balances_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: true
-            referencedRelation: "practitioners_public_view"
-            referencedColumns: ["id"]
-          },
         ]
       }
       practitioner_exceptions: {
@@ -1411,13 +1383,6 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "practitioner_exceptions_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1465,13 +1430,6 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "practitioner_payment_info_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1546,13 +1504,6 @@ export type Database = {
             referencedRelation: "practitioners"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "practitioner_payouts_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
-            referencedColumns: ["id"]
-          },
         ]
       }
       practitioner_rates: {
@@ -1589,13 +1540,6 @@ export type Database = {
             columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "practitioner_rates_practitioner_id_fkey"
-            columns: ["practitioner_id"]
-            isOneToOne: false
-            referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
           },
         ]
@@ -2187,69 +2131,7 @@ export type Database = {
       }
     }
     Views: {
-      practitioners_public_view: {
-        Row: {
-          available: boolean | null
-          bio: string | null
-          certifications: string[] | null
-          communes_served: string[] | null
-          created_at: string | null
-          id: string | null
-          image: string | null
-          intervention_zone: string | null
-          languages: string[] | null
-          name: string | null
-          practitioner_type:
-            | Database["public"]["Enums"]["practitioner_type"]
-            | null
-          primary_commune: string | null
-          rating: number | null
-          session_types: string[] | null
-          specialty: string | null
-          years_experience: number | null
-        }
-        Insert: {
-          available?: boolean | null
-          bio?: string | null
-          certifications?: string[] | null
-          communes_served?: string[] | null
-          created_at?: string | null
-          id?: string | null
-          image?: string | null
-          intervention_zone?: string | null
-          languages?: string[] | null
-          name?: string | null
-          practitioner_type?:
-            | Database["public"]["Enums"]["practitioner_type"]
-            | null
-          primary_commune?: never
-          rating?: number | null
-          session_types?: string[] | null
-          specialty?: string | null
-          years_experience?: number | null
-        }
-        Update: {
-          available?: boolean | null
-          bio?: string | null
-          certifications?: string[] | null
-          communes_served?: string[] | null
-          created_at?: string | null
-          id?: string | null
-          image?: string | null
-          intervention_zone?: string | null
-          languages?: string[] | null
-          name?: string | null
-          practitioner_type?:
-            | Database["public"]["Enums"]["practitioner_type"]
-            | null
-          primary_commune?: never
-          rating?: number | null
-          session_types?: string[] | null
-          specialty?: string | null
-          years_experience?: number | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       approve_practitioner_kyc: {
