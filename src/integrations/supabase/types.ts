@@ -2270,6 +2270,10 @@ export type Database = {
       cleanup_old_otp_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_payment_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
+      get_practitioner_id_for_user: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
