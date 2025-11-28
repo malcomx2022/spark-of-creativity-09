@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
         email_confirm: true,
         user_metadata: {
           full_name: 'Patient Test',
+          user_type: 'patient',
         },
       });
 
@@ -121,6 +122,7 @@ Deno.serve(async (req) => {
         email_confirm: true,
         user_metadata: {
           full_name: 'Dr. Praticien Test',
+          user_type: 'practitioner',
         },
       });
 
@@ -155,7 +157,7 @@ Deno.serve(async (req) => {
         if (profileError) console.error('Practitioner profile error:', profileError);
 
         console.log('Creating practitioner entry...');
-        const { error: practError } = await supabaseAdmin.from('practitioners').upsert({
+        const { data: practData, error: practError } = await supabaseAdmin.from('practitioners').upsert({
           user_id: results.praticien,
           name: 'Dr. Praticien Test',
           specialty: 'Médecine Générale',
@@ -167,14 +169,37 @@ Deno.serve(async (req) => {
           rating: 4.5,
           years_experience: 10,
           bio: 'Médecin généraliste expérimenté disponible pour consultations à domicile',
-          practitioner_type: 'autre',
+          practitioner_type: 'medecin',
+          intervention_zone: 'Cotonou et environs',
+          intervention_radius: 10,
           kyc_status: 'approved',
           can_accept_missions: true,
           id_document_url: 'test-documents/id_test.pdf',
           license_document_url: 'test-documents/license_test.pdf',
           insurance_document_url: 'test-documents/insurance_test.pdf',
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id', ignoreDuplicates: false }).select('id').single();
         if (practError) console.error('Practitioner entry error:', practError);
+
+        if (practData?.id) {
+          console.log('Creating practitioner rates...');
+          const { error: ratesError } = await supabaseAdmin.from('practitioner_rates').upsert({
+            practitioner_id: practData.id,
+            service_type: 'Consultation à domicile',
+            base_price: 15000,
+            duration_minutes: 60,
+          }, { onConflict: 'practitioner_id,service_type' });
+          if (ratesError) console.error('Practitioner rates error:', ratesError);
+
+          console.log('Creating practitioner balance...');
+          const { error: balanceError } = await supabaseAdmin.from('practitioner_balances').upsert({
+            practitioner_id: practData.id,
+            balance_available: 0,
+            balance_pending: 0,
+            balance_on_hold: 0,
+            currency: 'XOF',
+          }, { onConflict: 'practitioner_id' });
+          if (balanceError) console.error('Practitioner balance error:', balanceError);
+        }
       }
     } catch (e) {
       console.error('Practitioner creation exception:', e);
@@ -189,6 +214,8 @@ Deno.serve(async (req) => {
         email_confirm: true,
         user_metadata: {
           full_name: 'Coach Sportif Test',
+          user_type: 'practitioner',
+          practitioner_type: 'coach_sportif',
         },
       });
 
@@ -223,7 +250,7 @@ Deno.serve(async (req) => {
         if (profileError) console.error('Coach profile error:', profileError);
 
         console.log('Creating coach practitioner entry...');
-        const { error: coachError } = await supabaseAdmin.from('practitioners').upsert({
+        const { data: coachPractData, error: coachError } = await supabaseAdmin.from('practitioners').upsert({
           user_id: results.coach,
           name: 'Coach Sportif Test',
           specialty: 'Coaching Sportif',
@@ -242,8 +269,29 @@ Deno.serve(async (req) => {
           certifications: ['Certificat de coach sportif', 'Nutrition sportive'],
           kyc_status: 'approved',
           can_accept_missions: true,
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id', ignoreDuplicates: false }).select('id').single();
         if (coachError) console.error('Coach practitioner entry error:', coachError);
+
+        if (coachPractData?.id) {
+          console.log('Creating coach rates...');
+          const { error: coachRatesError } = await supabaseAdmin.from('practitioner_rates').upsert({
+            practitioner_id: coachPractData.id,
+            service_type: 'Séance de coaching individuel',
+            base_price: 10000,
+            duration_minutes: 60,
+          }, { onConflict: 'practitioner_id,service_type' });
+          if (coachRatesError) console.error('Coach rates error:', coachRatesError);
+
+          console.log('Creating coach balance...');
+          const { error: coachBalanceError } = await supabaseAdmin.from('practitioner_balances').upsert({
+            practitioner_id: coachPractData.id,
+            balance_available: 0,
+            balance_pending: 0,
+            balance_on_hold: 0,
+            currency: 'XOF',
+          }, { onConflict: 'practitioner_id' });
+          if (coachBalanceError) console.error('Coach balance error:', coachBalanceError);
+        }
       }
     } catch (e) {
       console.error('Coach creation exception:', e);
