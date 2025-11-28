@@ -67,6 +67,7 @@ export default function CreateTestAccounts() {
       sessionStorage.clear();
       setAccounts(null);
       sonnerToast.success("Session nettoyée avec succès!");
+      window.location.href = "/";
     } catch (error: any) {
       console.error('Logout error:', error);
       sonnerToast.error("Erreur lors du nettoyage de session");
