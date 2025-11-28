@@ -2303,6 +2303,15 @@ export type Database = {
         }
         Returns: Json
       }
+      update_practitioner_balance_atomic: {
+        Args: {
+          p_delta_available?: number
+          p_delta_on_hold?: number
+          p_delta_pending?: number
+          p_practitioner_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role:
