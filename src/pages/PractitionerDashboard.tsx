@@ -575,9 +575,9 @@ export default function PractitionerDashboard() {
             <CareNotesSection />
           </TabsContent>
 
-          <TabsContent value="reports">
-            <ConsultationReportSection />
-          </TabsContent>
+            <TabsContent value="reports">
+              <ConsultationReportSection practitionerId={practitionerId || ''} />
+            </TabsContent>
 
           <TabsContent value="reviews">
             <ReviewsSection practitionerId={practitioner.id} />

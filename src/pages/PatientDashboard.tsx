@@ -74,10 +74,12 @@ export default function PatientDashboard() {
   }, []);
 
   const {
-    data: appointments = [],
+    data: appointmentsResult,
     isLoading: isLoadingAppointments,
     isError,
   } = usePatientAppointments(patientId);
+  
+  const appointments = appointmentsResult?.data || [];
 
   const createAppointment = useCreateAppointment(patientId, patientName);
   const mutateAppointment = useMutateAppointment();

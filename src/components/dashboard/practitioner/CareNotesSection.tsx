@@ -39,7 +39,8 @@ export default function CareNotesSection() {
     enabled: !!user?.id,
   });
 
-  const { data: appointments = [] } = usePractitionerAppointments(practitioner?.id);
+  const { data: appointmentsResult } = usePractitionerAppointments(practitioner?.id, 0, 100);
+  const appointments = appointmentsResult?.data || [];
   const completedAppointments = appointments.filter(a => a.status === 'completed');
 
   const { data: currentNote } = useCareNoteByAppointment(selectedAppointmentId || undefined);
