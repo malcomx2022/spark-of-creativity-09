@@ -77,18 +77,48 @@ async function updateAppointment(id: string, payload: TablesUpdate<'appointments
   return toAppointment(data);
 }
 
-export function usePatientAppointments(patientId?: string) {
+export function usePatientAppointments(patientId?: string, page = 0, pageSize = 100) {
   return useQuery({
-    queryKey: ['appointments', 'patient', patientId],
-    queryFn: () => fetchAppointmentsByField('patient_id', patientId),
+    queryKey: ['appointments', 'patient', patientId, page],
+    queryFn: async () => {
+      if (!patientId) return { data: [], count: 0 };
+
+      const { data, error, count } = await withTimeout(
+        supabase
+          .from('appointments')
+          .select('*', { count: 'exact' })
+          .eq('patient_id', patientId)
+          .order('date', { ascending: false })
+          .order('time', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+      );
+
+      if (error) throw error;
+      return { data: (data ?? []).map(toAppointment), count: count || 0 };
+    },
     enabled: !!patientId,
   });
 }
 
-export function usePractitionerAppointments(practitionerId?: string) {
+export function usePractitionerAppointments(practitionerId?: string, page = 0, pageSize = 100) {
   return useQuery({
-    queryKey: ['appointments', 'practitioner', practitionerId],
-    queryFn: () => fetchAppointmentsByField('practitioner_id', practitionerId),
+    queryKey: ['appointments', 'practitioner', practitionerId, page],
+    queryFn: async () => {
+      if (!practitionerId) return { data: [], count: 0 };
+
+      const { data, error, count } = await withTimeout(
+        supabase
+          .from('appointments')
+          .select('*', { count: 'exact' })
+          .eq('practitioner_id', practitionerId)
+          .order('date', { ascending: false })
+          .order('time', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+      );
+
+      if (error) throw error;
+      return { data: (data ?? []).map(toAppointment), count: count || 0 };
+    },
     enabled: !!practitionerId,
   });
 }

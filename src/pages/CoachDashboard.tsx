@@ -59,13 +59,15 @@ export default function CoachDashboard() {
     enabled: !!user?.id,
   });
 
-  const { sessions, isLoading: isLoadingSessions, cancelSession, confirmSession } = useGroupSessions(coach?.id);
+  const { sessions, count: sessionsCount, isLoading: isLoadingSessions, cancelSession, confirmSession } = useGroupSessions(coach?.id, 0, 100);
 
   // Fetch individual appointments for coach
   const {
-    data: appointments = [],
+    data: appointmentsResult,
     isLoading: isLoadingAppointments,
-  } = usePractitionerAppointments(coach?.id);
+  } = usePractitionerAppointments(coach?.id, 0, 100);
+  
+  const appointments = appointmentsResult?.data || [];
 
   const mutateAppointment = useMutateAppointment();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
@@ -83,10 +85,11 @@ export default function CoachDashboard() {
     sum + (s.current_participants || 0), 0
   ) || 0;
 
-  const totalRevenue = sessions?.filter(s => s.status === 'terminee')
+  // Calculate revenue only on first 100 visible items
+  const totalRevenue = sessions.filter(s => s.status === 'terminee')
     .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * 0.63), 0) || 0;
 
-  const appointmentsRevenue = appointments?.filter(a => a.status === 'completed')
+  const appointmentsRevenue = appointments.filter(a => a.status === 'completed')
     .reduce((sum, a) => sum + ((a.paymentAmount || 0) * 0.63), 0) || 0;
 
   const handleEditSession = (sessionId: string) => {
@@ -280,7 +283,7 @@ export default function CoachDashboard() {
             <Card className="shadow-medical">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Revenus (net)
+                  Revenus (net, 100 derniers)
                 </CardTitle>
               </CardHeader>
               <CardContent>

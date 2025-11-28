@@ -5,22 +5,23 @@ import { withTimeout } from '@/lib/network-timeout';
 
 export type ConsultationReport = Tables<'consultation_reports'>;
 
-export const useConsultationReports = (practitionerId?: string) => {
+export const useConsultationReports = (practitionerId?: string, page = 0, pageSize = 50) => {
   return useQuery({
-    queryKey: ['consultation-reports', practitionerId],
+    queryKey: ['consultation-reports', practitionerId, page],
     queryFn: async () => {
-      if (!practitionerId) return [];
+      if (!practitionerId) return { data: [], count: 0 };
       
-      const { data, error } = await withTimeout(
-        supabase
-          .from('consultation_reports')
-          .select('*')
-          .eq('practitioner_id', practitionerId)
-          .order('created_at', { ascending: false })
-      );
+      const query = supabase
+        .from('consultation_reports')
+        .select('*', { count: 'exact' })
+        .eq('practitioner_id', practitionerId)
+        .order('created_at', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+      
+      const { data, error, count } = await withTimeout(query);
       
       if (error) throw error;
-      return data as ConsultationReport[];
+      return { data: (data as ConsultationReport[]) || [], count: count || 0 };
     },
     enabled: !!practitionerId,
   });
