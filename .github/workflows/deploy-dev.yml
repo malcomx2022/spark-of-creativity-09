@@ -29,6 +29,19 @@ jobs:
       - name: Run tests
         run: npm test || true
       
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+      
+      - name: Run Payment E2E Tests
+        run: |
+          cd supabase/functions
+          deno test --allow-net --allow-env payment-workflow.e2e.test.ts || true
+        env:
+          SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_SUPABASE_SERVICE_ROLE_KEY }}
+      
       - name: Build application
         run: npm run build
         env:
