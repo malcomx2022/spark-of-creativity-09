@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
       .eq('specialty', specialty)
       .eq('available', true)
       .eq('can_accept_missions', true)
-      .eq('kyc_status', 'validated')
+      .eq('kyc_status', 'approved')
       .eq('is_online', true)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);

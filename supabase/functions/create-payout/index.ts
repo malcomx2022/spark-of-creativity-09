@@ -92,7 +92,7 @@ serve(async (req) => {
     }
 
     // Check KYC status
-    if (practitioner.kyc_status !== 'validated') {
+    if (practitioner.kyc_status !== 'approved') {
       return new Response(
         JSON.stringify({ 
           error: 'KYC not completed',
