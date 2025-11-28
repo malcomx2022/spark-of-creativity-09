@@ -38,6 +38,18 @@ import {
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 
+// Helper pour échapper les valeurs CSV
+const escapeCSV = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  // Si la valeur contient des virgules, guillemets ou sauts de ligne, on l'encadre de guillemets
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    // Doubler les guillemets pour l'échappement
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
 export function PaymentsSection() {
   const { data: user } = useSupabaseUser();
   const [page, setPage] = useState(0);
@@ -141,44 +153,82 @@ export function PaymentsSection() {
     }
   };
 
-  const handleExportPayments = () => {
-    if (payments.length === 0) {
+  const handleExportPayments = async () => {
+    try {
+      if (payments.length === 0) {
+        toast({
+          title: 'Aucune donnée',
+          description: 'Aucun paiement à exporter',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Récupérer tous les paiements (max 1000)
+      const { data: allPayments, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('patient_id', user?.id)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+
+      if (!allPayments || allPayments.length === 0) {
+        toast({
+          title: 'Aucune donnée',
+          description: 'Aucun paiement à exporter',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Avertissement si limite atteinte
+      if (allPayments.length === 1000) {
+        toast({
+          title: 'Export limité',
+          description: 'Export limité aux 1000 paiements les plus récents',
+        });
+      }
+
+      // Créer un CSV avec échappement correct
+      const headers = ['Date', 'Montant', 'Devise', 'Mode de paiement', 'Statut', 'Transaction ID'];
+      const csvContent = [
+        headers.map(escapeCSV).join(','),
+        ...allPayments.map(payment => [
+          escapeCSV(new Date(payment.created_at).toLocaleDateString('fr-FR')),
+          escapeCSV(payment.amount ?? ''),
+          escapeCSV(payment.currency ?? ''),
+          escapeCSV(payment.payment_method?.toUpperCase() ?? ''),
+          escapeCSV(resolveStatusLabel(payment.status ?? '')),
+          escapeCSV(payment.fedapay_transaction_id ?? ''),
+        ].join(',')),
+      ].join('\n');
+
+      // Télécharger le fichier
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `paiements_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
       toast({
-        title: 'Aucune donnée',
-        description: 'Aucun paiement à exporter',
+        title: 'Export réussi',
+        description: `${allPayments.length} paiement(s) exporté(s)`,
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'export CSV:', error);
+      toast({
+        title: 'Erreur d\'export',
+        description: error instanceof Error ? error.message : 'Impossible d\'exporter les paiements',
         variant: 'destructive',
       });
-      return;
     }
-
-    // Créer un CSV
-    const headers = ['Date', 'Montant', 'Devise', 'Mode de paiement', 'Statut'];
-    const csvContent = [
-      headers.join(','),
-      ...payments.map(payment => [
-        new Date(payment.created_at).toLocaleDateString('fr-FR'),
-        payment.amount,
-        payment.currency,
-        payment.payment_method.toUpperCase(),
-        resolveStatusLabel(payment.status),
-      ].join(',')),
-    ].join('\n');
-
-    // Télécharger le fichier
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `paiements_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast({
-      title: 'Export réussi',
-      description: 'Vos paiements ont été exportés',
-    });
   };
 
   return (
