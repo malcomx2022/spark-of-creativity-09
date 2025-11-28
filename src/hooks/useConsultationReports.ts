@@ -24,6 +24,7 @@ export const useConsultationReports = (practitionerId?: string, page = 0, pageSi
       return { data: (data as ConsultationReport[]) || [], count: count || 0 };
     },
     enabled: !!practitionerId,
+    staleTime: 30000, // ✅ Cache pendant 30 secondes
   });
 };
 
@@ -67,6 +68,7 @@ export const useConsultationReportByAppointment = (appointmentId?: string) => {
       return data;
     },
     enabled: !!appointmentId,
+    staleTime: 60000, // ✅ Cache pendant 1 minute
   });
 };
 
@@ -76,12 +78,13 @@ export const usePatientConsultationReports = (patientId?: string, page = 0, page
     queryFn: async () => {
       if (!patientId) return { data: [], count: 0 };
       
-      // Get all appointments for the patient
+      // ✅ Optimiser en ne récupérant que les IDs d'abord
       const { data: appointments, error: appointmentsError } = await withTimeout(
         supabase
           .from('appointments')
           .select('id')
           .eq('patient_id', patientId)
+          .limit(100) // ✅ Limiter aux 100 derniers rendez-vous
       );
       
       if (appointmentsError) throw appointmentsError;
@@ -89,11 +92,11 @@ export const usePatientConsultationReports = (patientId?: string, page = 0, page
       
       const appointmentIds = appointments.map(apt => apt.id);
       
-      // Get consultation reports with pagination
+      // ✅ Récupérer les rapports de consultation
       const { data, error, count } = await withTimeout(
         supabase
           .from('consultation_reports')
-          .select('*, appointments(patient_name, practitioner_name, date, time)', { count: 'exact' })
+          .select('*', { count: 'exact' })
           .in('appointment_id', appointmentIds)
           .order('created_at', { ascending: false })
           .range(page * pageSize, (page + 1) * pageSize - 1)
@@ -103,5 +106,6 @@ export const usePatientConsultationReports = (patientId?: string, page = 0, page
       return { data: (data as ConsultationReport[]) || [], count: count || 0 };
     },
     enabled: !!patientId,
+    staleTime: 30000, // ✅ Cache pendant 30 secondes
   });
 };

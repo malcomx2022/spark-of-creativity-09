@@ -73,29 +73,34 @@ export default function PatientDashboard() {
     });
   }, []);
 
+  // ✅ Limiter à 100 derniers rendez-vous pour les performances
   const {
     data: appointmentsResult,
     isLoading: isLoadingAppointments,
     isError,
-  } = usePatientAppointments(patientId);
+  } = usePatientAppointments(patientId, 0, 100);
   
   const appointments = appointmentsResult?.data || [];
 
   const createAppointment = useCreateAppointment(patientId, patientName);
   const mutateAppointment = useMutateAppointment();
 
+  // ✅ Optimiser la requête payments pour charger uniquement les colonnes nécessaires
   const { data: payments } = useQuery({
     queryKey: ['payments', patientId],
     queryFn: async () => {
       if (!patientId) return [];
       const { data, error } = await supabase
         .from('payments')
-        .select('*')
-        .eq('patient_id', patientId);
+        .select('id, appointment_id, status, payout_status, amount, created_at')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false })
+        .limit(100); // ✅ Limiter à 100 derniers paiements
       if (error) throw error;
       return data;
     },
     enabled: !!patientId,
+    staleTime: 30000, // ✅ Cache pendant 30 secondes
   });
 
   useEffect(() => {
