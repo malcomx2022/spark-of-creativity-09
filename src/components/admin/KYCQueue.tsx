@@ -203,13 +203,15 @@ export function KYCQueue() {
       }
 
       console.log('[KYC Update] Inserting audit log...');
-      const { error: auditError } = await supabase.from('admin_audit_logs').insert({
-        admin_id: user.id,
-        action: `KYC ${status}`,
-        entity_type: 'practitioner',
-        entity_id: id,
-        details: { comment },
-      });
+      const { error: auditError } = await withTimeout(
+        supabase.from('admin_audit_logs').insert({
+          admin_id: user.id,
+          action: `KYC ${status}`,
+          entity_type: 'practitioner',
+          entity_id: id,
+          details: { comment },
+        })
+      );
 
       if (auditError) {
         console.error('[KYC Update] Audit log error:', auditError);
@@ -268,42 +270,41 @@ export function KYCQueue() {
     }
   });
 
-  // Load signed URLs for documents
+  // Load signed URLs for documents (lazy loading + parallel)
   useEffect(() => {
     const loadDocumentUrls = async () => {
-      if (!practitioners) return;
+      if (!practitioners || practitioners.length === 0) return;
 
-      for (const practitioner of practitioners) {
-        if (documentUrls[practitioner.id]) continue;
+      // Ne charger que les URLs qui manquent, en parallèle
+      const pendingLoads = practitioners
+        .filter(p => !documentUrls[p.id])
+        .map(async (practitioner) => {
+          setLoadingUrls(prev => ({ ...prev, [practitioner.id]: true }));
 
-        setLoadingUrls(prev => ({ ...prev, [practitioner.id]: true }));
+          try {
+            const [idUrl, licenseUrl, insuranceUrl] = await Promise.all([
+              getSignedFileUrl(practitioner.id_document_url),
+              getSignedFileUrl(practitioner.license_document_url),
+              getSignedFileUrl(practitioner.insurance_document_url),
+            ]);
 
-        try {
-          const [idUrl, licenseUrl, insuranceUrl] = await Promise.all([
-            getSignedFileUrl(practitioner.id_document_url),
-            getSignedFileUrl(practitioner.license_document_url),
-            getSignedFileUrl(practitioner.insurance_document_url),
-          ]);
+            setDocumentUrls(prev => ({
+              ...prev,
+              [practitioner.id]: {
+                id_document_url: idUrl,
+                license_document_url: licenseUrl,
+                insurance_document_url: insuranceUrl,
+              },
+            }));
+          } catch (error) {
+            console.error(`Error loading documents for ${practitioner.id}:`, error);
+          } finally {
+            setLoadingUrls(prev => ({ ...prev, [practitioner.id]: false }));
+          }
+        });
 
-          setDocumentUrls(prev => ({
-            ...prev,
-            [practitioner.id]: {
-              id_document_url: idUrl,
-              license_document_url: licenseUrl,
-              insurance_document_url: insuranceUrl,
-            },
-          }));
-        } catch (error) {
-          console.error("Error loading document URLs:", error);
-          toast({
-            title: "Erreur",
-            description: "Impossible de charger les documents",
-            variant: "destructive",
-          });
-        } finally {
-          setLoadingUrls(prev => ({ ...prev, [practitioner.id]: false }));
-        }
-      }
+      // Exécuter tous les chargements en parallèle
+      await Promise.all(pendingLoads);
     };
 
     loadDocumentUrls();

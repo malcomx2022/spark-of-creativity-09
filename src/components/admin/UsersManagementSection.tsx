@@ -13,6 +13,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 export function UsersManagementSection() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [profilesPage, setProfilesPage] = useState(0);
+  const [practitionersPage, setPractitionersPage] = useState(0);
+  const pageSize = 50;
   const queryClient = useQueryClient();
 
   const cleanupMutation = useMutation({
@@ -38,59 +41,64 @@ export function UsersManagementSection() {
     },
   });
 
-  const { data: profiles = [], isLoading: profilesLoading } = useQuery({
-    queryKey: ['admin-profiles'],
+  const { data: profilesData, isLoading: profilesLoading } = useQuery({
+    queryKey: ['admin-profiles', profilesPage, searchTerm],
     queryFn: async () => {
-      // Récupérer tous les profils
-      const { data: allProfiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (profilesError) throw profilesError;
-      if (!allProfiles) return [];
-
       // Récupérer les IDs des utilisateurs avec un rôle admin
       const { data: adminRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id');
 
       if (rolesError) throw rolesError;
-      
-      const adminUserIds = new Set(adminRoles?.map(r => r.user_id) || []);
+      const adminUserIds = adminRoles?.map(r => r.user_id) || [];
 
-      // Filtrer les profils pour exclure les admins
-      return allProfiles.filter(profile => !adminUserIds.has(profile.id));
-    },
-  });
+      // Requête paginée avec filtrage
+      let query = supabase
+        .from('profiles')
+        .select('*', { count: 'exact' })
+        .not('id', 'in', `(${adminUserIds.join(',') || 'null'})`)
+        .order('created_at', { ascending: false })
+        .range(profilesPage * pageSize, (profilesPage + 1) * pageSize - 1);
 
-  const { data: practitioners = [], isLoading: practitionersLoading } = useQuery({
-    queryKey: ['admin-practitioners'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (searchTerm) {
+        query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+      }
 
+      const { data, error, count } = await query;
       if (error) throw error;
-      return data || [];
+      
+      return { profiles: data || [], total: count || 0 };
     },
   });
 
-  const filteredProfiles = profiles.filter(
-    (p) =>
-      !searchTerm ||
-      p.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.phone?.includes(searchTerm)
-  );
+  const profiles = profilesData?.profiles || [];
+  const profilesTotal = profilesData?.total || 0;
+  const profilesHasMore = profilesTotal > (profilesPage + 1) * pageSize;
 
-  const filteredPractitioners = practitioners.filter(
-    (p) =>
-      !searchTerm ||
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.phone?.includes(searchTerm) ||
-      p.specialty?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const { data: practitionersData, isLoading: practitionersLoading } = useQuery({
+    queryKey: ['admin-practitioners', practitionersPage, searchTerm],
+    queryFn: async () => {
+      let query = supabase
+        .from('practitioners')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(practitionersPage * pageSize, (practitionersPage + 1) * pageSize - 1);
+
+      if (searchTerm) {
+        query = query.or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,specialty.ilike.%${searchTerm}%`);
+      }
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+      
+      return { practitioners: data || [], total: count || 0 };
+    },
+  });
+
+  const practitioners = practitionersData?.practitioners || [];
+  const practitionersTotal = practitionersData?.total || 0;
+  const practitionersHasMore = practitionersTotal > (practitionersPage + 1) * pageSize;
+
 
   return (
     <div className="space-y-6">
@@ -146,49 +154,70 @@ export function UsersManagementSection() {
                 Liste des patients
               </CardTitle>
               <CardDescription>
-                {filteredProfiles.length} patient(s) enregistré(s)
+                {profilesTotal} patient(s) enregistré(s) • Page {profilesPage + 1}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {profilesLoading ? (
                 <div className="text-center py-8">Chargement...</div>
-              ) : filteredProfiles.length === 0 ? (
+              ) : profiles.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Aucun patient trouvé
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nom</TableHead>
-                      <TableHead>Téléphone</TableHead>
-                      <TableHead>Sexe</TableHead>
-                      <TableHead>Date de naissance</TableHead>
-                      <TableHead>Inscrit le</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProfiles.map((profile) => (
-                      <TableRow key={profile.id}>
-                        <TableCell className="font-medium">
-                          {profile.full_name || 'N/A'}
-                        </TableCell>
-                        <TableCell>{profile.phone || 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{profile.gender || 'N/A'}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {profile.date_of_birth
-                            ? new Date(profile.date_of_birth).toLocaleDateString('fr-FR')
-                            : 'N/A'}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(profile.created_at).toLocaleDateString('fr-FR')}
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nom</TableHead>
+                        <TableHead>Téléphone</TableHead>
+                        <TableHead>Sexe</TableHead>
+                        <TableHead>Date de naissance</TableHead>
+                        <TableHead>Inscrit le</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {profiles.map((profile) => (
+                        <TableRow key={profile.id}>
+                          <TableCell className="font-medium">
+                            {profile.full_name || 'N/A'}
+                          </TableCell>
+                          <TableCell>{profile.phone || 'N/A'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{profile.gender || 'N/A'}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {profile.date_of_birth
+                              ? new Date(profile.date_of_birth).toLocaleDateString('fr-FR')
+                              : 'N/A'}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(profile.created_at).toLocaleDateString('fr-FR')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="flex justify-between items-center mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => setProfilesPage(p => Math.max(0, p - 1))}
+                      disabled={profilesPage === 0}
+                    >
+                      Précédent
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Affichage de {profilesPage * pageSize + 1} à {Math.min((profilesPage + 1) * pageSize, profilesTotal)} sur {profilesTotal}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => setProfilesPage(p => p + 1)}
+                      disabled={!profilesHasMore}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -202,66 +231,87 @@ export function UsersManagementSection() {
                 Liste des praticiens
               </CardTitle>
               <CardDescription>
-                {filteredPractitioners.length} praticien(s) enregistré(s)
+                {practitionersTotal} praticien(s) enregistré(s) • Page {practitionersPage + 1}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {practitionersLoading ? (
                 <div className="text-center py-8">Chargement...</div>
-              ) : filteredPractitioners.length === 0 ? (
+              ) : practitioners.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Aucun praticien trouvé
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nom</TableHead>
-                      <TableHead>Spécialité</TableHead>
-                      <TableHead>Téléphone</TableHead>
-                      <TableHead>KYC</TableHead>
-                      <TableHead>Missions</TableHead>
-                      <TableHead>Note</TableHead>
-                      <TableHead>Inscrit le</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPractitioners.map((practitioner) => (
-                      <TableRow key={practitioner.id}>
-                        <TableCell className="font-medium">{practitioner.name}</TableCell>
-                        <TableCell>{practitioner.specialty}</TableCell>
-                        <TableCell>{practitioner.phone || 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              practitioner.kyc_status === 'approved'
-                                ? 'default'
-                                : practitioner.kyc_status === 'rejected'
-                                ? 'destructive'
-                                : 'secondary'
-                            }
-                          >
-                            {practitioner.kyc_status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={practitioner.can_accept_missions ? 'default' : 'outline'}
-                          >
-                            {practitioner.can_accept_missions ? 'Actif' : 'Inactif'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="flex items-center gap-1">
-                          {practitioner.rating || 0}
-                          <span className="text-yellow-400">★</span>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(practitioner.created_at).toLocaleDateString('fr-FR')}
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nom</TableHead>
+                        <TableHead>Spécialité</TableHead>
+                        <TableHead>Téléphone</TableHead>
+                        <TableHead>KYC</TableHead>
+                        <TableHead>Missions</TableHead>
+                        <TableHead>Note</TableHead>
+                        <TableHead>Inscrit le</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {practitioners.map((practitioner) => (
+                        <TableRow key={practitioner.id}>
+                          <TableCell className="font-medium">{practitioner.name}</TableCell>
+                          <TableCell>{practitioner.specialty}</TableCell>
+                          <TableCell>{practitioner.phone || 'N/A'}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                practitioner.kyc_status === 'approved'
+                                  ? 'default'
+                                  : practitioner.kyc_status === 'rejected'
+                                  ? 'destructive'
+                                  : 'secondary'
+                              }
+                            >
+                              {practitioner.kyc_status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={practitioner.can_accept_missions ? 'default' : 'outline'}
+                            >
+                              {practitioner.can_accept_missions ? 'Actif' : 'Inactif'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="flex items-center gap-1">
+                            {practitioner.rating || 0}
+                            <span className="text-yellow-400">★</span>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(practitioner.created_at).toLocaleDateString('fr-FR')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="flex justify-between items-center mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => setPractitionersPage(p => Math.max(0, p - 1))}
+                      disabled={practitionersPage === 0}
+                    >
+                      Précédent
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Affichage de {practitionersPage * pageSize + 1} à {Math.min((practitionersPage + 1) * pageSize, practitionersTotal)} sur {practitionersTotal}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => setPractitionersPage(p => p + 1)}
+                      disabled={!practitionersHasMore}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

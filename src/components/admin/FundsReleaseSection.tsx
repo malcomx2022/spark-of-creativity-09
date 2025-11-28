@@ -27,7 +27,7 @@ export function FundsReleaseSection() {
             hold_until,
             created_at,
             appointment_id,
-            appointments!inner(practitioner_id, practitioner_name)
+            appointments(practitioner_id, practitioner_name)
           `)
           .eq('payout_status', 'held')
           .eq('status', 'paid')

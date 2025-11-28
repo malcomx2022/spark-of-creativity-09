@@ -89,9 +89,21 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Vérifier si l'utilisateur existe déjà
-        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-        const existingUser = existingUsers?.users.find(u => u.email === email);
+        // Vérifier si l'utilisateur existe déjà (paginated search)
+        let existingUser = null;
+        let page = 0;
+        let hasMore = true;
+        
+        while (hasMore && !existingUser) {
+          const { data: usersPage } = await supabaseAdmin.auth.admin.listUsers({
+            page: page,
+            perPage: 1000
+          });
+          
+          existingUser = usersPage?.users.find(u => u.email === email);
+          hasMore = (usersPage?.users.length ?? 0) === 1000;
+          page++;
+        }
 
         let userId: string;
         let tempPassword: string | undefined;
