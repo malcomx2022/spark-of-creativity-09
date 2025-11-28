@@ -3,35 +3,36 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
-export function useGroupSessions(coachId?: string) {
+export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: sessions, isLoading } = useQuery({
-    queryKey: ['group-sessions', coachId],
+    queryKey: ['group-sessions', coachId, page],
     queryFn: async () => {
       // Check if user is authenticated
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        // Return empty array for unauthenticated users
-        return [];
+        // Return empty result for unauthenticated users
+        return { data: [], count: 0 };
       }
 
       let query = supabase
         .from('group_sessions')
-        .select('*')
+        .select('*', { count: 'exact' })
         .in('status', ['confirmee', 'planifiee'])
-        .order('scheduled_date', { ascending: true });
+        .order('scheduled_date', { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (coachId) {
         query = query.eq('coach_id', coachId);
       }
 
-      const { data, error } = await withTimeout(Promise.resolve(query));
+      const { data, error, count } = await withTimeout(Promise.resolve(query));
       
       if (error) throw error;
-      return data;
+      return { data: data || [], count: count || 0 };
     },
     enabled: true
   });
@@ -87,7 +88,8 @@ export function useGroupSessions(coachId?: string) {
   });
 
   return {
-    sessions: sessions || [],
+    sessions: sessions?.data || [],
+    count: sessions?.count || 0,
     isLoading,
     cancelSession: cancelSession.mutate,
     confirmSession: confirmSession.mutate,
