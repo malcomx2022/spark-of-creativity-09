@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useProfile, useUpdateProfile, useEmergencyContacts, useAddresses } from '@/hooks/useProfile';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { User, MapPin, Phone } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { AddEmergencyContactDialog } from '@/components/AddEmergencyContactDialog';
 import { AddAddressDialog } from '@/components/AddAddressDialog';
@@ -19,11 +19,23 @@ export function ProfileSection() {
   const updateProfile = useUpdateProfile();
 
   const [formData, setFormData] = useState({
-    full_name: profile?.full_name || '',
-    phone: profile?.phone || '',
-    gender: profile?.gender || 'non_specifie',
-    date_of_birth: profile?.date_of_birth || '',
+    full_name: '',
+    phone: '',
+    gender: 'non_specifie' as const,
+    date_of_birth: '',
   });
+
+  // ✅ Mettre à jour le formulaire quand le profil charge
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        full_name: profile.full_name || '',
+        phone: profile.phone || '',
+        gender: (profile.gender as any) || 'non_specifie',
+        date_of_birth: profile.date_of_birth || '',
+      });
+    }
+  }, [profile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
