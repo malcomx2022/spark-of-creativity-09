@@ -160,26 +160,29 @@ export default function PractitionerSignup() {
       }
       case 'experience': {
         if (!value) return "Expérience requise";
-        const exp = parseInt(value, 10);
+        const valueStr = typeof value === 'string' ? value : String(value);
+        const exp = parseInt(valueStr, 10);
         return isNaN(exp) || exp < 0 || exp > 70 ? "L'expérience doit être entre 0 et 70 ans" : "";
       }
       case 'interventionZone': {
         if (!isCoachSportif) return "";
-        const zone = (value || '').toString().trim();
+        const zoneValue = typeof value === 'string' ? value : String(value || '');
+        const zone = zoneValue.trim();
         if (!zone) return "Zone d'intervention requise";
         if (zone.length < 3) return "Zone d'intervention trop courte (min 3 caractères)";
         return zone.length > 200 ? "Zone d'intervention ne peut pas dépasser 200 caractères" : "";
       }
       case 'interventionRadius':
         if (isCoachSportif && value) {
-          const radius = parseInt(value);
+          const valueStr = typeof value === 'string' ? value : String(value);
+          const radius = parseInt(valueStr);
           return isNaN(radius) || radius < 1 || radius > 100 ? "Rayon entre 1 et 100 km" : "";
         } else if (isCoachSportif && !value) {
           return "Rayon d'intervention requis";
         }
         return "";
       case 'sessionTypes':
-        return isCoachSportif && (!value || value.length === 0)
+        return isCoachSportif && (!value || (Array.isArray(value) && value.length === 0))
           ? "Au moins un type de séance requis"
           : "";
       case 'acceptTerms':
@@ -525,31 +528,58 @@ export default function PractitionerSignup() {
         const errorMessage = createError?.message || createResult?.error || "Échec de création du compte";
         console.error('❌ Erreur création compte praticien:', { 
           createError, 
-          createResult
+          createResult,
+          details: createResult?.details
         });
         
         // Messages d'erreur contextuels et explicites
         let userMessage = errorMessage;
-        let errorDetails = '';
+        let errorDetails: string[] = [];
         
-        if (errorMessage.includes('Document invalide') || errorMessage.includes('document')) {
+        // Gestion des erreurs de validation détaillées
+        if (createResult?.details && Array.isArray(createResult.details)) {
+          errorDetails = createResult.details;
+          userMessage = "Erreurs de validation détectées :";
+        } else if (errorMessage.includes('existe déjà') || errorMessage.includes('already')) {
+          userMessage = "Un compte praticien existe déjà avec ces informations.";
+          errorDetails = ["Vérifiez votre numéro de téléphone ou connectez-vous si vous avez déjà un compte."];
+        } else if (errorMessage.includes('Document invalide') || errorMessage.includes('document')) {
           userMessage = "Un ou plusieurs documents sont invalides.";
-          errorDetails = "Vérifiez le format (PDF, JPG, PNG uniquement) et la taille (maximum 5MB par fichier).";
+          errorDetails = ["Vérifiez le format (PDF, JPG, PNG uniquement) et la taille (maximum 5MB par fichier)."];
         } else if (errorMessage.includes('validation') || errorMessage.includes('invalide')) {
           userMessage = "Certaines informations du formulaire sont invalides.";
-          errorDetails = "Vérifiez que tous les champs obligatoires sont correctement remplis.";
+          errorDetails = ["Vérifiez que tous les champs obligatoires sont correctement remplis."];
         } else if (errorMessage.includes('upload') || errorMessage.includes('Wasabi') || errorMessage.includes('storage')) {
           userMessage = "Erreur lors de l'upload des documents.";
-          errorDetails = "Veuillez vérifier votre connexion internet et réessayer.";
+          errorDetails = ["Veuillez vérifier votre connexion internet et réessayer."];
         } else if (errorMessage.includes('phone') || errorMessage.includes('téléphone')) {
           userMessage = "Numéro de téléphone invalide.";
-          errorDetails = "Utilisez le format international (+229... pour le Bénin).";
+          errorDetails = ["Utilisez le format international (+229... pour le Bénin)."];
         } else if (errorMessage.includes('email')) {
           userMessage = "Email invalide ou déjà utilisé.";
-          errorDetails = "Vérifiez votre adresse email ou utilisez-en une autre.";
+          errorDetails = ["Vérifiez votre adresse email ou utilisez-en une autre."];
         }
         
-        throw new Error(`${userMessage}${errorDetails ? ' ' + errorDetails : ''}`);
+        // Afficher toast avec les détails
+        toast({
+          title: "Erreur d'inscription",
+          description: (
+            <div className="space-y-2">
+              <p className="font-semibold">{userMessage}</p>
+              {errorDetails.length > 0 && (
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  {errorDetails.map((detail, idx) => (
+                    <li key={idx}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ),
+          variant: "destructive",
+        });
+        
+        setIsSubmitting(false);
+        return;
       }
       
       console.log('✅ Compte praticien créé avec succès');
@@ -579,8 +609,18 @@ export default function PractitionerSignup() {
         console.error('⚠️ Erreur notification (non bloquante):', notifError);
       }
 
-      // Rediriger vers la page de confirmation avec le type de praticien
-      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
+      // ✅ Succès : rediriger vers le dashboard approprié
+      toast({
+        title: "Inscription réussie !",
+        description: "Votre compte a été créé avec succès. Redirection en cours...",
+      });
+
+      // Utiliser getDashboardPathForUser pour cohérence
+      const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
+      const finalDashboardPath = await getDashboardPathForUser(userId);
+      
+      console.log('✅ Redirection vers:', finalDashboardPath);
+      navigate(finalDashboardPath, { replace: true });
     } catch (err) {
       const isTimeoutError = err instanceof NetworkTimeoutError;
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";

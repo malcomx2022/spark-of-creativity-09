@@ -55,5 +55,6 @@ export interface CreateTestAccountsResponse {
 export interface CreatePractitionerResponse {
   success: boolean;
   error?: string;
+  details?: string[];
   practitionerId?: string;
 }
