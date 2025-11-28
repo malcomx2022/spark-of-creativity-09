@@ -92,3 +92,6 @@ verify_jwt = true
 
 [functions.cleanup-non-test-accounts]
 verify_jwt = true
+
+[functions.auto-sync-pending-payments]
+verify_jwt = false
