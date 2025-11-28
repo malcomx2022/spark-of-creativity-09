@@ -151,7 +151,7 @@ export default function LoginPage() {
 
                 <div className="text-center pt-4">
                   <Link
-                    to="/login"
+                    to="/login-otp"
                     className="text-sm text-primary hover:underline"
                   >
                     Se connecter avec numéro de téléphone (OTP)

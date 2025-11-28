@@ -243,6 +243,7 @@ serve(async (req) => {
         user_metadata: {
           phone: normalizedPhone,
           phone_verified: true,
+          user_type: 'patient', // Par défaut, les utilisateurs OTP sont des patients
         },
       });
 
