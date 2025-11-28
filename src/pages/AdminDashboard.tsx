@@ -69,8 +69,11 @@ export default function AdminDashboard() {
   }, [isAdmin, isLoading, navigate]);
 
   const handleLogout = async () => {
+    // Nettoyer complètement la session
     await supabase.auth.signOut();
-    navigate("/");
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.href = "/";
   };
 
   if (isLoading) {
