@@ -100,6 +100,26 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
           }
         }
 
+        // Fallback: si pas de user_type dans metadata, vérifier la table practitioners
+        if (!resolvedRole) {
+          const { data: practitionerData, error: practitionerError } = await supabase
+            .from('practitioners')
+            .select('practitioner_type')
+            .eq('user_id', userData.user?.id)
+            .maybeSingle();
+
+          if (!practitionerError && practitionerData) {
+            if (practitionerData.practitioner_type === 'coach_sportif') {
+              resolvedRole = 'coach';
+            } else {
+              resolvedRole = 'practitioner';
+            }
+          } else if (!resolvedRole) {
+            // Si toujours pas de rôle trouvé, considérer comme patient par défaut
+            resolvedRole = 'patient';
+          }
+        }
+
         // Pour les admins, vérifier la table user_roles (car non stocké dans metadata)
         if (allowedRoles?.includes('admin')) {
           const { data: adminRole, error: adminError } = await supabase
