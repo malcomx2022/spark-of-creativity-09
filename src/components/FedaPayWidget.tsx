@@ -21,6 +21,7 @@ import {
   DIALOG_DISMISSED,
   type FedaPayCheckoutWidget 
 } from '@/lib/fedapay-widget';
+import { clearPersistedPaymentState } from '@/lib/payment-storage';
 
 type PaymentMethod = 'mtn' | 'moov';
 
@@ -268,6 +269,9 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               }
             }
 
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
+
             toast({
               title: 'Paiement réussi !',
               description: 'Votre rendez-vous a été confirmé.',
@@ -285,6 +289,9 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             // User closed the dialog
             setPaymentStatus('error');
             setIsProcessing(false);
+
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
 
             toast({
               title: 'Paiement annulé',
@@ -313,6 +320,9 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       setPaymentStatus('error');
       setIsProcessing(false);
 
+      // ✅ Nettoyer l'état de paiement persisté en cas d'erreur
+      clearPersistedPaymentState();
+
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
 
       toast({
@@ -332,6 +342,10 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPayerName('');
     setPayerEmail('');
     setSaveMethod(false);
+    
+    // ✅ Nettoyer l'état de paiement persisté
+    clearPersistedPaymentState();
+    
     if (widgetRef.current) {
       try {
         widgetRef.current.close();
