@@ -80,9 +80,16 @@ export function PatientConsultationReportsSection() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2">Mes rapports de consultation</h2>
-        <p className="text-muted-foreground">Historique de vos consultations et rapports médicaux</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold mb-2">Mes rapports de consultation</h2>
+          <p className="text-muted-foreground">Historique de vos consultations et rapports médicaux</p>
+        </div>
+        {totalCount > 0 && (
+          <p className="text-sm text-muted-foreground">
+            Affichage {page * 20 + 1}-{Math.min((page + 1) * 20, totalCount)} sur {totalCount} rapport{totalCount > 1 ? 's' : ''}
+          </p>
+        )}
       </div>
 
       {reports.map((report: any) => (

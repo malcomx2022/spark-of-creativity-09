@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Loader2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,15 @@ export function NotificationsSection() {
     push: preferences?.push_enabled ?? true,
   });
 
+  const [isUpdating, setIsUpdating] = useState({
+    email: false,
+    sms: false,
+    whatsapp: false,
+    push: false,
+  });
+
+  const debounceTimers = useRef<{ [key: string]: NodeJS.Timeout }>({});
+
   // Synchroniser localPrefs avec les préférences chargées
   useEffect(() => {
     if (preferences) {
@@ -37,49 +47,68 @@ export function NotificationsSection() {
     }
   }, [preferences]);
 
-  const handlePreferenceChange = async (key: keyof typeof localPrefs, value: boolean) => {
+  const handlePreferenceChange = useCallback(async (key: keyof typeof localPrefs, value: boolean) => {
     if (!user?.id) return;
     
     // Optimistic update
     setLocalPrefs(prev => ({ ...prev, [key]: value }));
 
-    try {
-      const columnMap = {
-        email: 'email_enabled',
-        sms: 'sms_enabled',
-        whatsapp: 'whatsapp_enabled',
-        push: 'push_enabled',
-      };
-      
-      const updateData: any = { 
-        user_id: user.id,
-        [columnMap[key]]: value 
-      };
-
-      const { error } = await supabase
-        .from('notification_preferences')
-        .upsert(updateData, { 
-          onConflict: 'user_id',
-          ignoreDuplicates: false 
-        });
-
-      if (error) throw error;
-      
-      toast({ 
-        title: 'Préférences mises à jour',
-        description: 'Vos préférences de notification ont été enregistrées.'
-      });
-    } catch (error: any) {
-      console.error('Error updating preferences:', error);
-      toast({ 
-        title: 'Erreur lors de la mise à jour',
-        description: error.message || 'Impossible de mettre à jour vos préférences.',
-        variant: 'destructive' 
-      });
-      // Revert optimistic update
-      setLocalPrefs(prev => ({ ...prev, [key]: !value }));
+    // Annuler le timer précédent pour cette préférence
+    if (debounceTimers.current[key]) {
+      clearTimeout(debounceTimers.current[key]);
     }
-  };
+
+    // Debounce de 300ms
+    debounceTimers.current[key] = setTimeout(async () => {
+      setIsUpdating(prev => ({ ...prev, [key]: true }));
+
+      try {
+        const columnMap = {
+          email: 'email_enabled',
+          sms: 'sms_enabled',
+          whatsapp: 'whatsapp_enabled',
+          push: 'push_enabled',
+        };
+        
+        const updateData: any = { 
+          user_id: user.id,
+          [columnMap[key]]: value 
+        };
+
+        const { error } = await supabase
+          .from('notification_preferences')
+          .upsert(updateData, { 
+            onConflict: 'user_id',
+            ignoreDuplicates: false 
+          });
+
+        if (error) throw error;
+        
+        toast({ 
+          title: 'Préférences mises à jour',
+          description: 'Vos préférences de notification ont été enregistrées.'
+        });
+      } catch (error: any) {
+        console.error('Error updating preferences:', error);
+        toast({ 
+          title: 'Erreur lors de la mise à jour',
+          description: error.message || 'Impossible de mettre à jour vos préférences.',
+          variant: 'destructive' 
+        });
+        // Revert optimistic update
+        setLocalPrefs(prev => ({ ...prev, [key]: !value }));
+      } finally {
+        setIsUpdating(prev => ({ ...prev, [key]: false }));
+      }
+    }, 300);
+  }, [user?.id]);
+
+  // Nettoyer les timers au démontage
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach(timer => clearTimeout(timer));
+    };
+  }, []);
 
   const handleNotificationClick = (notificationId: string, isRead: boolean) => {
     if (!isRead && user?.id) {
@@ -158,7 +187,16 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={localPrefs.email} onCheckedChange={(v) => handlePreferenceChange('email', v)} />
+            <div className="relative">
+              <Switch 
+                checked={localPrefs.email} 
+                onCheckedChange={(v) => handlePreferenceChange('email', v)}
+                disabled={isUpdating.email}
+              />
+              {isUpdating.email && (
+                <Loader2 className="h-4 w-4 animate-spin absolute -right-6 top-1/2 -translate-y-1/2" />
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -171,7 +209,16 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={localPrefs.sms} onCheckedChange={(v) => handlePreferenceChange('sms', v)} />
+            <div className="relative">
+              <Switch 
+                checked={localPrefs.sms} 
+                onCheckedChange={(v) => handlePreferenceChange('sms', v)}
+                disabled={isUpdating.sms}
+              />
+              {isUpdating.sms && (
+                <Loader2 className="h-4 w-4 animate-spin absolute -right-6 top-1/2 -translate-y-1/2" />
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -184,7 +231,16 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={localPrefs.whatsapp} onCheckedChange={(v) => handlePreferenceChange('whatsapp', v)} />
+            <div className="relative">
+              <Switch 
+                checked={localPrefs.whatsapp} 
+                onCheckedChange={(v) => handlePreferenceChange('whatsapp', v)}
+                disabled={isUpdating.whatsapp}
+              />
+              {isUpdating.whatsapp && (
+                <Loader2 className="h-4 w-4 animate-spin absolute -right-6 top-1/2 -translate-y-1/2" />
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between p-3 border rounded-lg">
@@ -197,7 +253,16 @@ export function NotificationsSection() {
                 </p>
               </div>
             </div>
-            <Switch checked={localPrefs.push} onCheckedChange={(v) => handlePreferenceChange('push', v)} />
+            <div className="relative">
+              <Switch 
+                checked={localPrefs.push} 
+                onCheckedChange={(v) => handlePreferenceChange('push', v)}
+                disabled={isUpdating.push}
+              />
+              {isUpdating.push && (
+                <Loader2 className="h-4 w-4 animate-spin absolute -right-6 top-1/2 -translate-y-1/2" />
+              )}
+            </div>
           </div>
 
           {/* Push Notifications Browser */}
