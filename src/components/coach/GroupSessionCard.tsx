@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, Users } from "lucide-react";
+import { Calendar, Clock, MapPin, Users, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { RegisterSessionDialog } from "./RegisterSessionDialog";
@@ -31,6 +31,7 @@ interface GroupSessionCardProps {
 
 export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoachView = false }: GroupSessionCardProps) {
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const statusColors = {
     planifiee: "bg-blue-500",
@@ -45,9 +46,35 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
     groupe: "bg-accent"
   };
 
-  const spotsRemaining = session.max_participants - session.current_participants;
+  // Protection against negative or overbooking
+  const spotsRemaining = Math.max(0, session.max_participants - session.current_participants);
   const isAlmostFull = spotsRemaining <= 2;
   const canConfirm = session.current_participants >= session.min_participants;
+  const isOverbooking = session.current_participants > session.max_participants;
+
+  // Safe color accessors with defaults
+  const sessionTypeColor = sessionTypeColors[session.session_type as keyof typeof sessionTypeColors] || "bg-gray-500";
+  const statusColor = statusColors[session.status as keyof typeof statusColors] || "bg-gray-500";
+
+  const handleConfirm = async () => {
+    if (!onConfirm) return;
+    setIsProcessing(true);
+    try {
+      await onConfirm(session.id);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!onCancel) return;
+    setIsProcessing(true);
+    try {
+      await onCancel(session.id);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
     <Card className="shadow-medical hover:shadow-glow transition-all">
@@ -58,10 +85,10 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
             <CardDescription>{session.description}</CardDescription>
           </div>
           <div className="flex gap-2">
-            <Badge className={sessionTypeColors[session.session_type as keyof typeof sessionTypeColors]}>
+            <Badge className={sessionTypeColor}>
               {session.session_type}
             </Badge>
-            <Badge className={statusColors[session.status as keyof typeof statusColors]}>
+            <Badge className={statusColor}>
               {session.status}
             </Badge>
           </div>
@@ -93,6 +120,12 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
           </div>
         </div>
 
+        {isOverbooking && (
+          <Badge variant="destructive" className="w-full justify-center">
+            ⚠️ Overbooking: {session.current_participants - session.max_participants} participants en trop
+          </Badge>
+        )}
+
         <div className="flex justify-between items-center pt-4 border-t">
           <div>
             <p className="text-2xl font-bold text-primary">
@@ -109,25 +142,42 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => onConfirm?.(session.id)}
+                      onClick={handleConfirm}
+                      disabled={isProcessing}
                       className="bg-green-600 hover:bg-green-700"
                     >
-                      Confirmer
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Confirmation...
+                        </>
+                      ) : (
+                        "Confirmer"
+                      )}
                     </Button>
                   )}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => onEdit?.(session.id)}
+                    disabled={isProcessing}
                   >
                     Modifier
                   </Button>
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => onCancel?.(session.id)}
+                    onClick={handleCancel}
+                    disabled={isProcessing}
                   >
-                    Annuler
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Annulation...
+                      </>
+                    ) : (
+                      "Annuler"
+                    )}
                   </Button>
                 </>
               )}
