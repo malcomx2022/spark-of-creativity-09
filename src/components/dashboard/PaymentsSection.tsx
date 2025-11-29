@@ -144,7 +144,9 @@ export function PaymentsSection() {
       setPhoneNumber('');
       setPaymentProvider('mtn');
     } catch (error) {
-      console.error('Erreur lors de la sauvegarde du moyen de paiement', error);
+      if (import.meta.env.DEV) {
+        console.error('Payment method save error:', error);
+      }
       toast({
         title: 'Erreur',
         description: error instanceof Error ? error.message : 'Impossible d’enregistrer ce numéro pour le moment.',
@@ -222,7 +224,9 @@ export function PaymentsSection() {
         description: `${allPayments.length} paiement(s) exporté(s)`,
       });
     } catch (error) {
-      console.error('Erreur lors de l\'export CSV:', error);
+      if (import.meta.env.DEV) {
+        console.error('CSV export error:', error);
+      }
       toast({
         title: 'Erreur d\'export',
         description: error instanceof Error ? error.message : 'Impossible d\'exporter les paiements',

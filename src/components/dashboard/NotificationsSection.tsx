@@ -131,14 +131,14 @@ export function NotificationsSection() {
           ) : (
             <div className="space-y-3">
               {notifications.map((notification) => {
-                const notificationWithAnimation = notification as typeof notification & { isNew?: boolean };
+                const isNew = 'isNew' in notification && notification.isNew === true;
                 return (
                   <div
                     key={notification.id}
                     className={`p-4 border rounded-lg cursor-pointer transition-all duration-300 ${
                       !notification.is_read ? 'bg-primary/5 border-primary/20' : ''
                     } ${
-                      notificationWithAnimation.isNew ? 'animate-scale-in shadow-lg ring-2 ring-primary/50' : ''
+                      isNew ? 'animate-scale-in shadow-lg ring-2 ring-primary/50' : ''
                     }`}
                     onClick={() => handleNotificationClick(notification.id, notification.is_read)}
                   >
@@ -147,7 +147,7 @@ export function NotificationsSection() {
                     {!notification.is_read && (
                       <Badge 
                         variant="default" 
-                        className={`ml-2 ${notificationWithAnimation.isNew ? 'animate-pulse' : ''}`}
+                        className={`ml-2 ${isNew ? 'animate-pulse' : ''}`}
                       >
                         Nouveau
                       </Badge>

@@ -10,6 +10,8 @@ import { Heart, AlertCircle, Pill } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
 
+type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'inconnu';
+
 export function MedicalSection() {
   const { data: user } = useSupabaseUser();
   const { data: medicalProfile } = useMedicalProfile(user?.id);
@@ -74,7 +76,7 @@ export function MedicalSection() {
               <Label htmlFor="blood_type">Groupe sanguin</Label>
               <Select
                 value={formData.blood_type}
-                onValueChange={(value) => setFormData({ ...formData, blood_type: value as any })}
+                onValueChange={(value) => setFormData({ ...formData, blood_type: value as BloodType })}
               >
                 <SelectTrigger>
                   <SelectValue />

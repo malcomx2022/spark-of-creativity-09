@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Star } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Star, User } from 'lucide-react';
 import { usePatientReviews } from '@/hooks/useReviews';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 
@@ -37,12 +38,24 @@ export function ReviewsSection() {
           <div className="space-y-4">
             {reviews.map((review) => (
               <div key={review.id} className="p-4 border rounded-lg space-y-2">
+                {review.practitioner && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="h-4 w-4" />
+                    <span className="font-medium">{review.practitioner.name}</span>
+                    <Badge variant="outline">{review.practitioner.specialty}</Badge>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   {renderStars(review.rating)}
                   <span className="text-sm text-muted-foreground">
                     {new Date(review.created_at).toLocaleDateString('fr-FR')}
                   </span>
                 </div>
+                {review.appointment?.specialty && (
+                  <p className="text-xs text-muted-foreground">
+                    Type de consultation : {review.appointment.specialty}
+                  </p>
+                )}
                 {review.comment && (
                   <p className="text-sm">{review.comment}</p>
                 )}
