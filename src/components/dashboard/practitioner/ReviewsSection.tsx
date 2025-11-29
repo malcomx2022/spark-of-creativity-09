@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,8 +11,15 @@ interface ReviewsSectionProps {
 }
 
 export default function ReviewsSection({ practitionerId }: ReviewsSectionProps) {
-  const { data: reviews = [], isLoading } = usePractitionerReviews(practitionerId);
+  const [page, setPage] = useState(1);
+  const limit = 10;
+  const { data: reviews = [], isLoading } = usePractitionerReviews(practitionerId, page, limit);
   const { data: stats } = useReviewStats(practitionerId);
+
+  const distributionMemo = useMemo(() => {
+    if (!stats || !stats.distribution) return [];
+    return stats.distribution;
+  }, [stats]);
 
   const renderStars = (rating: number) => {
     return (
@@ -90,7 +98,7 @@ export default function ReviewsSection({ practitionerId }: ReviewsSectionProps) 
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {stats.distribution.map((item) => (
+              {distributionMemo.map((item) => (
                 <div key={item.stars} className="flex items-center gap-3">
                   <div className="w-16 text-sm">{item.stars} étoiles</div>
                   <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
@@ -137,6 +145,28 @@ export default function ReviewsSection({ practitionerId }: ReviewsSectionProps) 
                   {review.comment && <p className="text-sm mb-3">{review.comment}</p>}
                 </div>
               ))}
+              
+              {reviews.length >= limit && (
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    Précédent
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {page}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => p + 1)}
+                    disabled={reviews.length < limit}
+                  >
+                    Suivant
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
