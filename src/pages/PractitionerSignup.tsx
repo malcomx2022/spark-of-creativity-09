@@ -390,6 +390,50 @@ export default function PractitionerSignup() {
     return Object.keys(errors).length === 0;
   };
 
+  // Fonction de retry manuel de l'edge function
+  const handleRetryEdgeFunction = async (
+    userId: string,
+    profileData: any,
+    practitionerData: any,
+    documents: any
+  ) => {
+    setIsSubmitting(true);
+
+    try {
+      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
+        'create-practitioner-account',
+        { body: { userId, profileData, practitionerData, documents } }
+      );
+
+      if (createError || !createResult?.success) {
+        toast({
+          title: "Échec du retry",
+          description: "Veuillez contacter le support avec votre email d'inscription",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Continuer avec le succès...
+      toast({ 
+        title: "Inscription réussie !", 
+        description: "Redirection en cours..." 
+      });
+
+      const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
+      const finalDashboardPath = await getDashboardPathForUser(userId);
+      navigate(finalDashboardPath, { replace: true });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Une erreur est survenue",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -576,12 +620,45 @@ export default function PractitionerSignup() {
           });
         }
         
+        // Déterminer si c'est un timeout ou une erreur de validation
+        const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('timed out') || errorMessage.includes('TimeoutError');
+        const isValidation = createResult?.details && Array.isArray(createResult.details);
+
+        if (isTimeout) {
+          // Proposer de réessayer pour les timeouts
+          toast({
+            title: "Temps d'attente dépassé",
+            description: (
+              <div className="space-y-2">
+                <p>La création du compte prend plus de temps que prévu.</p>
+                <p className="text-sm">Cliquez sur 'Réessayer' pour finaliser.</p>
+              </div>
+            ),
+            variant: "destructive",
+            action: (
+              <Button 
+                size="sm"
+                onClick={() => {
+                  // Réessayer l'edge function sans recréer le compte
+                  handleRetryEdgeFunction(userId, profileData, practitionerData, documentsBase64);
+                }}
+              >
+                Réessayer
+              </Button>
+            ),
+            duration: 30000,
+          });
+
+          setIsSubmitting(false);
+          return;
+        }
+        
         // Messages d'erreur contextuels et explicites
         let userMessage = errorMessage;
         let errorDetails: string[] = [];
         
         // Gestion des erreurs de validation détaillées
-        if (createResult?.details && Array.isArray(createResult.details)) {
+        if (isValidation) {
           errorDetails = createResult.details;
           userMessage = "Erreurs de validation détectées :";
         } else if (errorMessage.includes('existe déjà') || errorMessage.includes('already')) {
