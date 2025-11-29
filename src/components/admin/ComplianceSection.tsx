@@ -14,10 +14,13 @@ import { BookOpen, Shield, Settings, FileText } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
 
+type ConsentType = 'cgu' | 'charte' | 'partage_donnees' | 'marketing';
+type SystemConfigValue = string | number | boolean | object | null;
+
 export function ComplianceSection() {
   const queryClient = useQueryClient();
   const [newConsentForm, setNewConsentForm] = useState({
-    consent_type: 'cgu' as 'cgu' | 'charte' | 'partage_donnees' | 'marketing',
+    consent_type: 'cgu' as ConsentType,
     version: '',
     content: '',
   });
@@ -85,15 +88,36 @@ export function ComplianceSection() {
     mutationFn: async ({ key, value }: { key: string; value: any }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      const { error } = await supabase
+      // Chercher si la config existe
+      const { data: existing } = await supabase
         .from('system_config')
-        .upsert({
-          key,
-          value,
-          updated_by: user?.id,
-        });
+        .select('id')
+        .eq('key', key)
+        .single();
 
-      if (error) throw error;
+      if (existing) {
+        // Update existant
+        const { error } = await supabase
+          .from('system_config')
+          .update({
+            value,
+            updated_by: user?.id,
+          })
+          .eq('key', key);
+        
+        if (error) throw error;
+      } else {
+        // Insert nouveau
+        const { error } = await supabase
+          .from('system_config')
+          .insert({
+            key,
+            value,
+            updated_by: user?.id,
+          });
+        
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-system-config'] });
@@ -143,8 +167,8 @@ export function ComplianceSection() {
                         <Label htmlFor="consent-type">Type</Label>
                         <Select
                           value={newConsentForm.consent_type}
-                          onValueChange={(value: any) =>
-                            setNewConsentForm({ ...newConsentForm, consent_type: value })
+                          onValueChange={(value) =>
+                            setNewConsentForm({ ...newConsentForm, consent_type: value as ConsentType })
                           }
                         >
                           <SelectTrigger>

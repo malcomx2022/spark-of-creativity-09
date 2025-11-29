@@ -37,27 +37,21 @@ export function AdminManagement() {
   const { data: admins, isLoading } = useQuery({
     queryKey: ['admins'],
     queryFn: async () => {
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('id, user_id, role, created_at')
-        .order('created_at', { ascending: false });
-      
-      if (rolesError) throw rolesError;
-      if (!roles) return [];
-
-      // Récupérer les profils séparément
-      const userIds = roles.map(r => r.user_id).filter(Boolean);
-      let profiles: { id: string; full_name: string | null; phone: string | null }[] = [];
-
-      if (userIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
+      const [rolesResult, profilesResult] = await Promise.all([
+        supabase
+          .from('user_roles')
+          .select('id, user_id, role, created_at')
+          .order('created_at', { ascending: false }),
+        supabase
           .from('profiles')
           .select('id, full_name, phone')
-          .in('id', userIds);
+      ]);
 
-        if (profilesError) throw profilesError;
-        profiles = profilesData ?? [];
-      }
+      if (rolesResult.error) throw rolesResult.error;
+      if (profilesResult.error) throw profilesResult.error;
+
+      const roles = rolesResult.data || [];
+      const profiles = profilesResult.data || [];
 
       // Combiner les données
       return roles.map(role => ({

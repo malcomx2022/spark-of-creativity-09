@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Search } from "lucide-react";
 import { useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export function AuditLogs() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const searchTerm = useDebouncedValue(searchInput, 300);
   const [filterEntity, setFilterEntity] = useState<string>("all");
   const [page, setPage] = useState(1);
   const limit = 20;
@@ -93,8 +95,8 @@ export function AuditLogs() {
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Rechercher une action..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="pl-9"
             />
           </div>
