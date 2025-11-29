@@ -57,31 +57,6 @@ export default function PractitionerSignup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: user, isLoading } = useSupabaseUser();
 
-  useEffect(() => {
-    const redirectAuthenticatedUser = async () => {
-      if (!isLoading && user) {
-        // Vérifier si c'est un compte orphelin (métadonnées practitioner mais pas de profil praticien)
-        if (user.user_metadata?.user_type === 'practitioner') {
-          const { data: practitioner } = await supabase
-            .from('practitioners')
-            .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          
-          // Si pas de praticien trouvé, c'est un compte orphelin
-          if (!practitioner) {
-            navigate('/complete-registration', { replace: true });
-            return;
-          }
-        }
-        
-        const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
-        const dashboardPath = await getDashboardPathForUser(user.id);
-        navigate(dashboardPath, { replace: true });
-      }
-    };
-    redirectAuthenticatedUser();
-  }, [user, isLoading, navigate]);
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
     lastName: "",
@@ -111,6 +86,43 @@ export default function PractitionerSignup() {
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+  const [phoneCheckTimeout, setPhoneCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const redirectAuthenticatedUser = async () => {
+      if (!isLoading && user) {
+        // Vérifier si c'est un compte orphelin (métadonnées practitioner mais pas de profil praticien)
+        if (user.user_metadata?.user_type === 'practitioner') {
+          const { data: practitioner } = await supabase
+            .from('practitioners')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          
+          // Si pas de praticien trouvé, c'est un compte orphelin
+          if (!practitioner) {
+            navigate('/complete-registration', { replace: true });
+            return;
+          }
+        }
+        
+        const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
+        const dashboardPath = await getDashboardPathForUser(user.id);
+        navigate(dashboardPath, { replace: true });
+      }
+    };
+    redirectAuthenticatedUser();
+  }, [user, isLoading, navigate]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (phoneCheckTimeout) {
+        clearTimeout(phoneCheckTimeout);
+      }
+    };
+  }, [phoneCheckTimeout]);
 
   const professionToType = useMemo<Record<string, string>>(() => ({
     "Médecin généraliste": "medecin",
@@ -207,10 +219,81 @@ export default function PractitionerSignup() {
     }
   };
 
+  // Vérification en temps réel du numéro de téléphone
+  const checkPhoneAvailability = async (phone: string) => {
+    if (!phone || phone.length < 8) {
+      return;
+    }
+
+    setIsCheckingPhone(true);
+    
+    try {
+      // Vérifier dans profiles
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('phone', phone)
+        .maybeSingle();
+
+      if (profileData) {
+        setFieldErrors(prev => ({
+          ...prev,
+          phone: "Ce numéro est déjà utilisé par un autre utilisateur"
+        }));
+        setIsCheckingPhone(false);
+        return;
+      }
+
+      // Vérifier dans practitioners
+      const { data: practitionerData } = await supabase
+        .from('practitioners')
+        .select('id')
+        .eq('phone', phone)
+        .maybeSingle();
+
+      if (practitionerData) {
+        setFieldErrors(prev => ({
+          ...prev,
+          phone: "Ce numéro est déjà utilisé par un autre praticien"
+        }));
+      } else {
+        // Numéro disponible - enlever l'erreur si elle existe
+        setFieldErrors(prev => {
+          const newErrors = { ...prev };
+          if (newErrors.phone === "Ce numéro est déjà utilisé par un autre utilisateur" ||
+              newErrors.phone === "Ce numéro est déjà utilisé par un autre praticien") {
+            delete newErrors.phone;
+          }
+          return newErrors;
+        });
+      }
+    } catch (error) {
+      console.warn('Erreur vérification téléphone en temps réel:', error);
+    } finally {
+      setIsCheckingPhone(false);
+    }
+  };
+
   const handleInputChange = (name: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [name]: value }));
     const error = validateField(name, value);
     setFieldErrors(prev => ({ ...prev, [name]: error }));
+
+    // Vérification en temps réel pour le téléphone avec debounce
+    if (name === 'phone' && typeof value === 'string') {
+      // Annuler le timeout précédent
+      if (phoneCheckTimeout) {
+        clearTimeout(phoneCheckTimeout);
+      }
+
+      // Si le numéro a une longueur valide, vérifier après 1 seconde
+      if (value.length >= 8 && !error) {
+        const timeout = setTimeout(() => {
+          checkPhoneAvailability(value);
+        }, 1000);
+        setPhoneCheckTimeout(timeout);
+      }
+    }
   };
 
   const handleFileChange = (key: keyof typeof formData, file: File | null) => {
@@ -1084,14 +1167,32 @@ export default function PractitionerSignup() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="phone">Téléphone *</Label>
-                      <PhoneInput
-                        id="phone"
-                        value={formData.phone}
-                        onChange={(value) => handleInputChange('phone', value)}
-                        countryCode="+229"
-                        localNumberLength={8}
-                        error={fieldErrors.phone}
-                      />
+                      <div className="relative">
+                        <PhoneInput
+                          id="phone"
+                          value={formData.phone}
+                          onChange={(value) => handleInputChange('phone', value)}
+                          countryCode="+229"
+                          localNumberLength={8}
+                          error={fieldErrors.phone}
+                        />
+                        {isCheckingPhone && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                        {!isCheckingPhone && formData.phone.length >= 8 && !fieldErrors.phone && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <CheckCircle2 className="h-4 w-4 text-success" />
+                          </div>
+                        )}
+                      </div>
+                      {isCheckingPhone && (
+                        <p className="text-xs text-muted-foreground mt-1">Vérification du numéro...</p>
+                      )}
+                      {!isCheckingPhone && formData.phone.length >= 8 && !fieldErrors.phone && (
+                        <p className="text-xs text-success mt-1">✓ Numéro disponible</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
