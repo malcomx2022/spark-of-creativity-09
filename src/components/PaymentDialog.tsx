@@ -522,23 +522,51 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       if (error) {
         console.error('Supabase function error:', error);
+        console.log('Full error object:', JSON.stringify(error, null, 2));
         await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
         setIsCreatingPayment(false);
         
         // Parse l'erreur pour récupérer les détails du paiement en cours (409)
         let errorDetails: any = null;
+        const errorMessage = error.message || String(error);
+        
         try {
-          // Essayer de parser le message d'erreur comme JSON
-          const errorMatch = error.message.match(/\{.*\}/);
-          if (errorMatch) {
-            errorDetails = JSON.parse(errorMatch[0]);
+          // Essayer plusieurs patterns de parsing
+          // Pattern 1: JSON direct dans le message
+          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
+          if (jsonMatch) {
+            errorDetails = JSON.parse(jsonMatch[0]);
+            console.log('Parsed error details (pattern 1):', errorDetails);
+          }
+          
+          // Pattern 2: Après "Error, "
+          if (!errorDetails && errorMessage.includes('Error, {')) {
+            const afterError = errorMessage.substring(errorMessage.indexOf('Error, {') + 7);
+            const jsonEnd = afterError.indexOf('}') + 1;
+            if (jsonEnd > 0) {
+              errorDetails = JSON.parse(afterError.substring(0, jsonEnd));
+              console.log('Parsed error details (pattern 2):', errorDetails);
+            }
+          }
+          
+          // Pattern 3: Parse tout le message comme JSON
+          if (!errorDetails) {
+            try {
+              errorDetails = JSON.parse(errorMessage);
+              console.log('Parsed error details (pattern 3):', errorDetails);
+            } catch (e) {
+              // Pas JSON valide
+            }
           }
         } catch (parseError) {
           console.error('Could not parse error details:', parseError);
         }
         
         // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
-        if (errorDetails && errorDetails.paymentId && errorDetails.retryAfter) {
+        const is409Error = errorDetails && (errorDetails.paymentId || errorDetails.existingPaymentStatus);
+        
+        if (is409Error) {
+          console.log('409 error detected, showing cancel button');
           setIsProcessing(false);
           setPaymentStatus('error');
           

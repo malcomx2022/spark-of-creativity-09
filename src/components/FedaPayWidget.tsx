@@ -217,74 +217,55 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       // Gérer les erreurs
       if (error) {
         const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la création du paiement';
+        console.error('Payment creation error:', errorMessage);
+        console.log('Full error object:', JSON.stringify(error, null, 2));
         
         // Parse l'erreur pour récupérer les détails du paiement en cours (409)
         let errorDetails: any = null;
+        
         try {
-          // Essayer de parser le message d'erreur comme JSON
-          const errorMatch = errorMessage.match(/\{.*\}/);
-          if (errorMatch) {
-            errorDetails = JSON.parse(errorMatch[0]);
+          // Essayer plusieurs patterns de parsing
+          // Pattern 1: JSON direct dans le message
+          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
+          if (jsonMatch) {
+            errorDetails = JSON.parse(jsonMatch[0]);
+            console.log('Parsed error details (pattern 1):', errorDetails);
+          }
+          
+          // Pattern 2: Après "Error, "
+          if (!errorDetails && errorMessage.includes('Error, {')) {
+            const afterError = errorMessage.substring(errorMessage.indexOf('Error, {') + 7);
+            const jsonEnd = afterError.indexOf('}') + 1;
+            if (jsonEnd > 0) {
+              errorDetails = JSON.parse(afterError.substring(0, jsonEnd));
+              console.log('Parsed error details (pattern 2):', errorDetails);
+            }
+          }
+          
+          // Pattern 3: Parse tout le message comme JSON
+          if (!errorDetails) {
+            try {
+              errorDetails = JSON.parse(errorMessage);
+              console.log('Parsed error details (pattern 3):', errorDetails);
+            } catch (e) {
+              // Pas JSON valide
+            }
           }
         } catch (parseError) {
           console.error('Could not parse error details:', parseError);
         }
         
-        // Vérifier si c'est une erreur 409 (paiement en attente)
-        if (errorDetails && errorDetails.paymentId && errorDetails.retryAfter) {
+        // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
+        const is409Error = errorDetails && (errorDetails.paymentId || errorDetails.existingPaymentStatus);
+        
+        if (is409Error) {
+          console.log('409 error detected, showing cancel button');
           setIsProcessing(false);
           setPaymentStatus('error');
           
           toast({
             title: 'Paiement en cours',
             description: errorDetails.error || 'Un paiement est déjà en attente',
-            variant: 'destructive',
-            duration: 10000,
-            action: (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-                      body: { appointmentId }
-                    });
-                    
-                    if (cancelError) throw cancelError;
-                    
-                    toast({
-                      title: 'Paiement annulé',
-                      description: 'Vous pouvez maintenant créer un nouveau paiement.',
-                    });
-                    
-                    // Réinitialiser le formulaire
-                    resetState();
-                    
-                    // Rafraîchir la page après 1 seconde
-                    setTimeout(() => window.location.reload(), 1000);
-                  } catch (e) {
-                    console.error('Cancel error:', e);
-                    toast({
-                      title: 'Erreur',
-                      description: 'Impossible d\'annuler le paiement. Veuillez réessayer.',
-                      variant: 'destructive',
-                    });
-                  }
-                }}
-              >
-                Annuler et réessayer
-              </Button>
-            ),
-          });
-          return;
-        } else if (errorMessage.includes('Un paiement est déjà en cours')) {
-          // Fallback pour ancienne détection textuelle
-          setIsProcessing(false);
-          setPaymentStatus('error');
-          
-          toast({
-            title: 'Paiement en cours',
-            description: 'Un paiement est déjà en attente. Cliquez sur le bouton ci-dessous pour l\'annuler et recommencer.',
             variant: 'destructive',
             duration: 10000,
             action: (
@@ -462,15 +443,20 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
 
-      toast({
-        title: 'Erreur de paiement',
-        description: errorMessage,
-        variant: 'destructive',
-        duration: 5000,
-      });
+      // Ne pas afficher de toast si c'est une erreur 409 déjà gérée
+      const is409Handled = errorMessage.includes('paymentId') || errorMessage.includes('existingPaymentStatus');
+      
+      if (!is409Handled) {
+        toast({
+          title: 'Erreur de paiement',
+          description: errorMessage,
+          variant: 'destructive',
+          duration: 5000,
+        });
 
-      if (onError) {
-        onError(error instanceof Error ? error : new Error(errorMessage));
+        if (onError) {
+          onError(error instanceof Error ? error : new Error(errorMessage));
+        }
       }
     }
   };
