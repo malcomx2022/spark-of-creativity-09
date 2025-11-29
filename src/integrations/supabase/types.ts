@@ -1078,6 +1078,53 @@ export type Database = {
           },
         ]
       }
+      payment_reconciliations: {
+        Row: {
+          fedapay_status: string
+          fedapay_transaction_data: Json | null
+          id: string
+          new_status: string
+          notes: string | null
+          old_status: string
+          payment_id: string | null
+          reconciled_at: string | null
+          reconciled_by: string | null
+          reconciliation_type: string
+        }
+        Insert: {
+          fedapay_status: string
+          fedapay_transaction_data?: Json | null
+          id?: string
+          new_status: string
+          notes?: string | null
+          old_status: string
+          payment_id?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          reconciliation_type: string
+        }
+        Update: {
+          fedapay_status?: string
+          fedapay_transaction_data?: Json | null
+          id?: string
+          new_status?: string
+          notes?: string | null
+          old_status?: string
+          payment_id?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          reconciliation_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_reconciliations_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_refunds: {
         Row: {
           created_at: string
