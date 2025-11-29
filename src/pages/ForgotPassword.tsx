@@ -8,6 +8,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import Header from "@/components/Header";
+import { z } from "zod";
+
+const emailSchema = z.object({
+  email: z.string().email("Email invalide").max(255, "Email trop long"),
+});
 
 export default function ForgotPassword() {
   const { toast } = useToast();
@@ -17,9 +22,21 @@ export default function ForgotPassword() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation avec Zod
+    const validation = emailSchema.safeParse({ email: email.trim().toLowerCase() });
+    if (!validation.success) {
+      toast({
+        title: "Erreur de validation",
+        description: validation.error.issues[0].message,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
       redirectTo: `${window.location.origin}/reset-password`,
     });
 
@@ -29,15 +46,15 @@ export default function ForgotPassword() {
         description: error.message,
         variant: "destructive"
       });
+      setIsSubmitting(false);
     } else {
       setEmailSent(true);
       toast({
         title: "Email envoyé",
         description: "Vérifiez votre boîte mail pour réinitialiser votre mot de passe"
       });
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   return (

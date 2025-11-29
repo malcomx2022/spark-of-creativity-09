@@ -11,6 +11,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email("Email invalide").max(255, "Email trop long"),
+  password: z.string().min(1, "Mot de passe requis"),
+});
 
 export default function PatientLogin() {
   const navigate = useNavigate();
@@ -23,12 +29,24 @@ export default function PatientLogin() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation des données
+    const validation = loginSchema.safeParse(formData);
+    if (!validation.success) {
+      toast({
+        title: "Erreur de validation",
+        description: validation.error.issues[0].message,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
 
     try {
       const { data, error } = await withTimeout(
         supabase.auth.signInWithPassword({
-          email: formData.email,
+          email: formData.email.trim().toLowerCase(),
           password: formData.password,
         })
       );
@@ -43,15 +61,7 @@ export default function PatientLogin() {
         return;
       }
 
-      // Vérifier que l'utilisateur a bien un profil patient (peut aussi avoir un profil praticien)
-      const { data: profileData } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', data.user.id)
-          .maybeSingle()
-      );
-
+      // Vérifier si l'utilisateur est admin
       const { data: roleData } = await withTimeout(
         supabase
           .from('user_roles')
@@ -60,6 +70,19 @@ export default function PatientLogin() {
           .maybeSingle()
       );
 
+      // Si l'utilisateur est admin uniquement, bloquer
+      if (roleData?.role && !['patient', 'practitioner', 'coach'].includes(roleData.role as string)) {
+        toast({
+          title: "Erreur de connexion",
+          description: "Ce compte n'est pas un compte patient. Veuillez utiliser la connexion appropriée.",
+          variant: "destructive"
+        });
+        await supabase.auth.signOut();
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Vérifier si l'utilisateur est praticien uniquement
       const { data: practitionerData } = await withTimeout(
         supabase
           .from('practitioners')
@@ -68,11 +91,19 @@ export default function PatientLogin() {
           .maybeSingle()
       );
 
-      // Si l'utilisateur n'a QUE un profil praticien/admin (pas de profil patient)
-      if ((roleData?.role || practitionerData) && !profileData) {
+      const { data: profileData } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', data.user.id)
+          .maybeSingle()
+      );
+
+      // Si l'utilisateur a un profil praticien mais pas de profil patient, le rediriger
+      if (practitionerData && !profileData) {
         toast({
           title: "Erreur de connexion",
-          description: "Ce compte n'est pas un compte patient. Veuillez utiliser la connexion praticien.",
+          description: "Ce compte est un compte praticien. Veuillez utiliser la connexion praticien.",
           variant: "destructive"
         });
         await supabase.auth.signOut();

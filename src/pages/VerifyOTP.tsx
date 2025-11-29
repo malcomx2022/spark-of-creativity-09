@@ -17,6 +17,8 @@ export default function VerifyOTP() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otp, setOtp] = useState("");
+  const [attempts, setAttempts] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
   
   const phone = location.state?.phone;
   const email = location.state?.email;
@@ -29,7 +31,19 @@ export default function VerifyOTP() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Limiter les tentatives
+    if (attempts >= 5) {
+      toast({
+        title: "Trop de tentatives",
+        description: "Veuillez demander un nouveau code",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
+    setAttempts(prev => prev + 1);
 
     try {
       const verifyOptions = type === "sms" 
@@ -56,6 +70,15 @@ export default function VerifyOTP() {
   };
 
   const handleResendCode = async () => {
+    if (resendCooldown > 0) {
+      toast({
+        title: "Veuillez patienter",
+        description: `Vous pourrez renvoyer le code dans ${resendCooldown} secondes`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
       if (type === "sms") {
         const { error } = await supabase.auth.signInWithOtp({ phone });
@@ -69,6 +92,20 @@ export default function VerifyOTP() {
         });
         if (error) throw error;
       }
+
+      setAttempts(0); // Réinitialiser les tentatives
+      setResendCooldown(60); // Démarrer un cooldown de 60 secondes
+      
+      // Countdown
+      const interval = setInterval(() => {
+        setResendCooldown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
 
       toast({
         ...AUTH_MESSAGES.OTP_RESENT,
@@ -146,8 +183,12 @@ export default function VerifyOTP() {
                     variant="ghost"
                     onClick={handleResendCode}
                     className="text-sm"
+                    disabled={resendCooldown > 0}
                   >
-                    Renvoyer le code
+                    {resendCooldown > 0 
+                      ? `Renvoyer le code dans ${resendCooldown}s`
+                      : "Renvoyer le code"
+                    }
                   </Button>
                 </div>
               </form>
