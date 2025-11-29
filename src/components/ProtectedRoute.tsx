@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { type AppRole, resolveUserRole, getDashboardPathForRole } from '@/lib/userRoleResolver';
 
 function ProtectedRouteSkeleton() {
   return (
@@ -17,8 +18,6 @@ function ProtectedRouteSkeleton() {
     </div>
   );
 }
-
-type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -73,70 +72,14 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
 
     let isMounted = true;
 
-    const resolveRole = async () => {
+    const fetchUserRole = async () => {
       setRoleStatus('loading');
 
       try {
-        const { data: userData, error: userError } = await supabase.auth.getUser();
-
-        if (userError) {
-          throw userError;
-        }
-
-        const metadata = userData.user?.user_metadata ?? {};
-        let resolvedRole: AppRole | null = null;
-
-        // PRIORITÉ 1: Vérifier d'abord si c'est un admin (car les admins peuvent avoir d'autres metadata)
-        const { data: adminRole, error: adminError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', userData.user?.id)
-          .maybeSingle();
-
-        if (adminError && adminError.code !== 'PGRST116') {
-          throw adminError;
-        }
-
-        if (adminRole?.role) {
-          resolvedRole = 'admin';
-        }
-
-        // PRIORITÉ 2: Vérifier le user_type dans les métadonnées (seulement si pas admin)
-        if (!resolvedRole && metadata.user_type === 'patient') {
-          resolvedRole = 'patient';
-        }
-
-        if (!resolvedRole && metadata.user_type === 'practitioner') {
-          // Vérifier si c'est un coach sportif directement dans les métadonnées
-          if (metadata.practitioner_type === 'coach_sportif') {
-            resolvedRole = 'coach';
-          } else {
-            resolvedRole = 'practitioner';
-          }
-        }
-
-        // PRIORITÉ 3: Fallback - vérifier la table practitioners
-        if (!resolvedRole) {
-          const { data: practitionerData, error: practitionerError } = await supabase
-            .from('practitioners')
-            .select('practitioner_type')
-            .eq('user_id', userData.user?.id)
-            .maybeSingle();
-
-          if (!practitionerError && practitionerData) {
-            if (practitionerData.practitioner_type === 'coach_sportif') {
-              resolvedRole = 'coach';
-            } else {
-              resolvedRole = 'practitioner';
-            }
-          } else if (!resolvedRole) {
-            // Si toujours pas de rôle trouvé, considérer comme patient par défaut
-            resolvedRole = 'patient';
-          }
-        }
+        const { role } = await resolveUserRole(session.user.id);
 
         if (isMounted) {
-          setUserRole(resolvedRole);
+          setUserRole(role);
           setRoleStatus('ready');
         }
       } catch (error) {
@@ -147,18 +90,17 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       }
     };
 
-    void resolveRole();
+    void fetchUserRole();
 
     return () => {
       isMounted = false;
     };
-  }, [allowedRoles, session, status]);
+  }, [session, status]);
 
   const redirectForRole = () => {
-    if (userRole === 'patient') return '/dashboard/patient';
-    if (userRole === 'coach') return '/dashboard/coach';
-    if (userRole === 'practitioner') return '/dashboard/practitioner';
-    if (userRole === 'admin') return '/admin';
+    if (userRole) {
+      return getDashboardPathForRole(userRole);
+    }
     return '/';
   };
 
