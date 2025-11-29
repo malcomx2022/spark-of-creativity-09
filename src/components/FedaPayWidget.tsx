@@ -45,7 +45,6 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
   const widgetRef = useRef<FedaPayCheckoutWidget | null>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
@@ -291,39 +290,29 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         amount
       });
 
-      // Show payment form first
-      setShowPaymentForm(true);
+      // Show pending status
       setPaymentStatus('pending');
 
-      // Wait for DOM to be ready before initializing widget
-      setTimeout(() => {
-        const container = document.getElementById('fedapay-container');
-        if (!container) {
-          console.error('FedaPay container not found');
-          throw new Error('Container de paiement non disponible');
-        }
-
-        // Initialize FedaPay widget in embedded mode
-        const widget = initFedaPayWidget({
-          public_key: fedapayConfig.publicKey,
-          environment: fedapayConfig.environment as 'sandbox' | 'live',
-          transaction: {
-            id: txId,
-            amount: amount,
-            description: `Paiement rendez-vous médical #${appointmentId}`,
+      // Initialize FedaPay widget in popup mode (recommended)
+      const widget = initFedaPayWidget({
+        public_key: fedapayConfig.publicKey,
+        environment: fedapayConfig.environment as 'sandbox' | 'live',
+        transaction: {
+          id: txId,
+          amount: amount,
+          description: `Paiement rendez-vous médical #${appointmentId}`,
+        },
+        customer: {
+          phone_number: {
+            number: sanitizedPhoneNumber,
+            country: 'BJ',
           },
-          customer: {
-            phone_number: {
-              number: sanitizedPhoneNumber,
-              country: 'BJ',
-            },
-          },
-          currency: {
-            iso: 'XOF',
-          },
-          locale: 'fr',
-          container: '#fedapay-container',
-          onComplete: async (payload) => {
+        },
+        currency: {
+          iso: 'XOF',
+        },
+        locale: 'fr',
+        onComplete: async (payload) => {
             console.log('Payment completed:', payload);
 
             if (payload.reason === CHECKOUT_COMPLETED) {
@@ -385,17 +374,19 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           },
         });
 
-        if (!widget) {
-          throw new Error('Impossible d\'initialiser le widget de paiement');
-        }
+      if (!widget) {
+        throw new Error('Impossible d\'initialiser le widget de paiement');
+      }
 
-        widgetRef.current = widget;
+      widgetRef.current = widget;
 
-        toast({
-          title: 'Paiement initié',
-          description: 'Complétez le paiement dans le formulaire ci-dessous.',
-        });
-      }, 200); // Attendre que le DOM soit prêt
+      // Open the popup
+      widget.open();
+
+      toast({
+        title: 'Paiement initié',
+        description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+      });
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
@@ -427,7 +418,6 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPayerName('');
     setPayerEmail('');
     setSaveMethod(false);
-    setShowPaymentForm(false);
     
     // ✅ Nettoyer l'état de paiement persisté
     clearPersistedPaymentState();
@@ -564,7 +554,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Le formulaire de paiement s'affichera ci-dessous pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}.
+                Une fenêtre pop-up s'ouvrira pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}.
               </AlertDescription>
             </Alert>
 
@@ -586,15 +576,14 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           </form>
         )}
 
-        {paymentStatus === 'pending' && showPaymentForm && (
+        {paymentStatus === 'pending' && (
           <div className="space-y-4">
-            <div className="text-center text-sm text-muted-foreground mb-4">
-              Complétez le paiement dans le formulaire ci-dessous
-            </div>
-            <div 
-              id="fedapay-container" 
-              className="w-full min-h-[420px] rounded-lg overflow-hidden border border-border"
-            />
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                Complétez le paiement dans la fenêtre qui vient de s'ouvrir. Si la fenêtre ne s'affiche pas, veuillez autoriser les pop-ups pour ce site.
+              </AlertDescription>
+            </Alert>
           </div>
         )}
       </DialogContent>
