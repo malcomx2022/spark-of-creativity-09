@@ -356,13 +356,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         },
         customer: {
           phone_number: {
-<<<<<<< HEAD
-            number: sanitizedPhoneNumber,
-            country: 'BJ',
-=======
             number: formatPhoneForFedaPay(sanitizedPhoneNumber),
-            country: 'bj', // ✅ CORRECTION: Minuscules requis par FedaPay
->>>>>>> 06bc5c8 (Fix: Résoudre la page blanche lors du lancement du paiement)
+            country: 'bj', // Minuscules requis par FedaPay
           },
         },
         currency: {
@@ -389,29 +384,28 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                   console.error('Error saving payment method:', saveError);
                 }
               }
-            }
 
-            // ✅ Nettoyer l'état de paiement persisté
-            clearPersistedPaymentState();
+              // ✅ Nettoyer l'état de paiement persisté
+              clearPersistedPaymentState();
 
-            toast({
-              title: 'Paiement réussi !',
-              description: 'Votre rendez-vous a été confirmé.',
-            });
+              toast({
+                title: 'Paiement réussi !',
+                description: 'Votre rendez-vous a été confirmé.',
+              });
 
-            if (onSuccess) {
-              onSuccess();
-            }
+              if (onSuccess) {
+                onSuccess();
+              }
 
-            if (onComplete) {
-              onComplete();
-            }
+              if (onComplete) {
+                onComplete();
+              }
 
-            setTimeout(() => {
-              resetState();
-              onOpenChange(false);
-            }, 2000);
-          } else if (payload.reason === DIALOG_DISMISSED) {
+              setTimeout(() => {
+                resetState();
+                onOpenChange(false);
+              }, 2000);
+            } else if (payload.reason === DIALOG_DISMISSED) {
             // User closed the dialog
             setPaymentStatus('error');
             setIsProcessing(false);
