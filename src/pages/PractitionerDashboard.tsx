@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -27,18 +27,20 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import Header from '@/components/Header';
-import { ProfessionalProfileSection } from '@/components/dashboard/practitioner/ProfessionalProfileSection';
-import AvailabilitySection from '@/components/dashboard/practitioner/AvailabilitySection';
-import PayoutsSection from '@/components/dashboard/practitioner/PayoutsSection';
-import { PaymentInfoSection } from '@/components/dashboard/practitioner/PaymentInfoSection';
-import CareNotesSection from '@/components/dashboard/practitioner/CareNotesSection';
-import ReviewsSection from '@/components/dashboard/practitioner/ReviewsSection';
-import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
-import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
-import { SupportSection } from '@/components/dashboard/SupportSection';
-import { ConsultationReportSection } from '@/components/dashboard/practitioner/ConsultationReportSection';
-import { LocationSection } from '@/components/dashboard/practitioner/LocationSection';
-import { DocumentsSection } from '@/components/dashboard/practitioner/DocumentsSection';
+
+// Lazy load dashboard tabs
+const ProfessionalProfileSection = lazy(() => import('@/components/dashboard/practitioner/ProfessionalProfileSection').then(m => ({ default: m.ProfessionalProfileSection })));
+const AvailabilitySection = lazy(() => import('@/components/dashboard/practitioner/AvailabilitySection'));
+const PayoutsSection = lazy(() => import('@/components/dashboard/practitioner/PayoutsSection'));
+const PaymentInfoSection = lazy(() => import('@/components/dashboard/practitioner/PaymentInfoSection').then(m => ({ default: m.PaymentInfoSection })));
+const CareNotesSection = lazy(() => import('@/components/dashboard/practitioner/CareNotesSection'));
+const ReviewsSection = lazy(() => import('@/components/dashboard/practitioner/ReviewsSection'));
+const NotificationsSection = lazy(() => import('@/components/dashboard/NotificationsSection').then(m => ({ default: m.NotificationsSection })));
+const PractitionerMessagesSection = lazy(() => import('@/components/dashboard/practitioner/PractitionerMessagesSection').then(m => ({ default: m.PractitionerMessagesSection })));
+const SupportSection = lazy(() => import('@/components/dashboard/SupportSection').then(m => ({ default: m.SupportSection })));
+const ConsultationReportSection = lazy(() => import('@/components/dashboard/practitioner/ConsultationReportSection').then(m => ({ default: m.ConsultationReportSection })));
+const LocationSection = lazy(() => import('@/components/dashboard/practitioner/LocationSection').then(m => ({ default: m.LocationSection })));
+const DocumentsSection = lazy(() => import('@/components/dashboard/practitioner/DocumentsSection').then(m => ({ default: m.DocumentsSection })));
 
 export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -127,7 +129,9 @@ export default function PractitionerDashboard() {
         description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
       });
     } catch (error) {
-      console.error('Erreur lors de l\'acceptation', error);
+      if (import.meta.env.DEV) {
+        console.error('Appointment accept error:', error);
+      }
       toast({
         title: 'Erreur',
         description: 'Impossible d\'accepter le rendez-vous.',
@@ -183,7 +187,9 @@ export default function PractitionerDashboard() {
         description: 'Le système recherche un praticien alternatif pour le patient.'
       });
     } catch (error) {
-      console.error('Erreur lors du refus', error);
+      if (import.meta.env.DEV) {
+        console.error('Appointment reject error:', error);
+      }
       toast({
         title: 'Erreur',
         description: 'Impossible de refuser le rendez-vous.',
@@ -228,7 +234,9 @@ export default function PractitionerDashboard() {
 
       toast(messages[status]);
     } catch (error) {
-      console.error('Erreur lors de la mise à jour du rendez-vous', error);
+      if (import.meta.env.DEV) {
+        console.error('Appointment status update error:', error);
+      }
       toast({
         title: 'Erreur',
         description: 'Impossible de mettre à jour le rendez-vous.',
@@ -237,10 +245,13 @@ export default function PractitionerDashboard() {
     }
   };
 
-  const awaitingAppointments = appointments.filter(apt => apt.status === 'awaiting_practitioner');
-  const pendingAppointments = appointments.filter(apt => apt.status === 'pending');
-  const confirmedAppointments = appointments.filter(apt => apt.status === 'confirmed');
-  const completedAppointments = appointments.filter(apt => apt.status === 'completed');
+  const categorizedAppointments = useMemo(() => ({
+    awaiting: appointments.filter(apt => apt.status === 'awaiting_practitioner'),
+    pending: appointments.filter(apt => apt.status === 'pending'),
+    confirmed: appointments.filter(apt => apt.status === 'confirmed'),
+    completed: appointments.filter(apt => apt.status === 'completed'),
+  }), [appointments]);
+
   const isLoading = isLoadingUser || isLoadingAppointments || practitionerLoading;
 
   if (isLoading) {
@@ -355,7 +366,7 @@ export default function PractitionerDashboard() {
               <AlertCircle className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{awaitingAppointments.length}</div>
+              <div className="text-2xl font-bold">{categorizedAppointments.awaiting.length}</div>
               <p className="text-xs text-muted-foreground">Demandes</p>
             </CardContent>
           </Card>
@@ -366,7 +377,7 @@ export default function PractitionerDashboard() {
               <Calendar className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{confirmedAppointments.length}</div>
+              <div className="text-2xl font-bold">{categorizedAppointments.confirmed.length}</div>
               <p className="text-xs text-muted-foreground">À venir</p>
             </CardContent>
           </Card>
@@ -377,7 +388,7 @@ export default function PractitionerDashboard() {
               <CheckCircle2 className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{completedAppointments.length}</div>
+              <div className="text-2xl font-bold">{categorizedAppointments.completed.length}</div>
               <p className="text-xs text-muted-foreground">Ce mois</p>
             </CardContent>
           </Card>
@@ -456,18 +467,18 @@ export default function PractitionerDashboard() {
             <Tabs defaultValue="awaiting">
               <TabsList>
                 <TabsTrigger value="awaiting">
-                  À traiter ({awaitingAppointments.length})
+                  À traiter ({categorizedAppointments.awaiting.length})
                 </TabsTrigger>
                 <TabsTrigger value="confirmed">
-                  Confirmés ({confirmedAppointments.length})
+                  Confirmés ({categorizedAppointments.confirmed.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
-                  Terminés ({completedAppointments.length})
+                  Terminés ({categorizedAppointments.completed.length})
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="awaiting" className="space-y-4 mt-4">
-                {awaitingAppointments.length === 0 ? (
+                {categorizedAppointments.awaiting.length === 0 ? (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
@@ -475,7 +486,7 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  awaitingAppointments.map(appointment => (
+                  categorizedAppointments.awaiting.map(appointment => (
                     <div key={appointment.id} className="relative">
                       {processingAppointment === appointment.id && (
                         <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
@@ -498,7 +509,7 @@ export default function PractitionerDashboard() {
               </TabsContent>
 
               <TabsContent value="confirmed" className="space-y-4 mt-4">
-                {confirmedAppointments.length === 0 ? (
+                {categorizedAppointments.confirmed.length === 0 ? (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
@@ -506,7 +517,7 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  confirmedAppointments.map(appointment => (
+                  categorizedAppointments.confirmed.map(appointment => (
                     <AppointmentCard
                       key={appointment.id}
                       appointment={appointment}
@@ -519,7 +530,7 @@ export default function PractitionerDashboard() {
               </TabsContent>
 
               <TabsContent value="completed" className="space-y-4 mt-4">
-                {completedAppointments.length === 0 ? (
+                {categorizedAppointments.completed.length === 0 ? (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
@@ -527,7 +538,7 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  completedAppointments.map(appointment => (
+                  categorizedAppointments.completed.map(appointment => (
                     <AppointmentCard
                       key={appointment.id}
                       appointment={appointment}
@@ -540,59 +551,79 @@ export default function PractitionerDashboard() {
           </TabsContent>
 
           <TabsContent value="profile">
-            <div className="space-y-6">
-              <ProfessionalProfileSection
-                practitionerId={practitioner.id}
-                practitionerData={practitioner}
-              />
-              <LocationSection
-                practitionerId={practitioner.id}
-                practitionerData={practitioner}
-              />
-              <DocumentsSection practitionerData={practitioner} />
-            </div>
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <div className="space-y-6">
+                <ProfessionalProfileSection
+                  practitionerId={practitioner.id}
+                  practitionerData={practitioner}
+                />
+                <LocationSection
+                  practitionerId={practitioner.id}
+                  practitionerData={practitioner}
+                />
+                <DocumentsSection practitionerData={practitioner} />
+              </div>
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="availability">
-            <AvailabilitySection
-              practitionerId={practitioner.id}
-              practitionerData={practitioner}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <AvailabilitySection
+                practitionerId={practitioner.id}
+                practitionerData={practitioner}
+              />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="payment-info">
-            <PaymentInfoSection
-              practitionerId={practitioner.id}
-              practitionerName={practitioner.name}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <PaymentInfoSection
+                practitionerId={practitioner.id}
+                practitionerName={practitioner.name}
+              />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="payouts" className="space-y-6">
-            <PayoutsSection practitionerId={practitioner.id} />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <PayoutsSection practitionerId={practitioner.id} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="notes">
-            <CareNotesSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <CareNotesSection />
+            </Suspense>
           </TabsContent>
 
-            <TabsContent value="reports">
+          <TabsContent value="reports">
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
               <ConsultationReportSection practitionerId={practitionerId || ''} />
-            </TabsContent>
+            </Suspense>
+          </TabsContent>
 
           <TabsContent value="reviews">
-            <ReviewsSection practitionerId={practitioner.id} />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <ReviewsSection practitionerId={practitioner.id} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="messages">
-            <PractitionerMessagesSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <PractitionerMessagesSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="notifications">
-            <NotificationsSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <NotificationsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="support">
-            <SupportSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+              <SupportSection />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </main>

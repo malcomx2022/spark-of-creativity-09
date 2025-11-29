@@ -32,14 +32,28 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
   });
 
   const [formData, setFormData] = useState({
-    bio: practitionerData?.bio || "",
-    diplomas: practitionerData?.diplomas?.join(", ") || "",
-    languages: practitionerData?.languages?.join(", ") || "",
-    years_experience: practitionerData?.years_experience || 0,
-    intervention_radius: practitionerData?.intervention_radius || 10,
-    communes_served: practitionerData?.communes_served?.join(", ") || "",
-    license_number: practitionerData?.license_number || "",
+    bio: "",
+    diplomas: "",
+    languages: "",
+    years_experience: 0,
+    intervention_radius: 10,
+    communes_served: "",
+    license_number: "",
   });
+
+  useEffect(() => {
+    if (practitionerData) {
+      setFormData({
+        bio: practitionerData.bio || "",
+        diplomas: practitionerData.diplomas?.join(", ") || "",
+        languages: practitionerData.languages?.join(", ") || "",
+        years_experience: practitionerData.years_experience || 0,
+        intervention_radius: practitionerData.intervention_radius || 10,
+        communes_served: practitionerData.communes_served?.join(", ") || "",
+        license_number: practitionerData.license_number || "",
+      });
+    }
+  }, [practitionerData]);
 
   useEffect(() => {
     setDocumentState({
@@ -146,21 +160,12 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
         throw new Error("URL non générée");
       }
       
-      // Vérifier l'existence du fichier avant d'ouvrir la fenêtre
-      const checkResponse = await fetch(url, { method: 'HEAD' });
-      
-      if (!checkResponse.ok) {
-        toast({
-          title: "Document introuvable",
-          description: "Le document n'existe pas dans le système de stockage. Veuillez télécharger un nouveau document en mode édition.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
+      // Ouvrir immédiatement et laisser le navigateur gérer l'erreur 404
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (error: any) {
-      console.error("Erreur lors de l'accès au document:", error);
+      if (import.meta.env.DEV) {
+        console.error("Document access error:", error);
+      }
       
       toast({
         title: "Impossible d'ouvrir le document",
