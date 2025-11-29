@@ -60,6 +60,12 @@ verify_jwt = false
 [functions.get-fedapay-config]
 verify_jwt = false
 
+[functions.get-webhook-url]
+verify_jwt = false
+
+[functions.simulate-webhook]
+verify_jwt = true
+
 [functions.complete-user-registration]
 verify_jwt = true
 

@@ -248,9 +248,9 @@ serve(async (req) => {
     if (existingPayments && existingPayments.length > 0) {
       const existingPayment = existingPayments[0];
       const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-      const PAYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes - standardisé avec frontend
+      const PAYMENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes pour améliorer l'UX
       
-      // Si le paiement a plus de 10 minutes, le marquer comme expiré
+      // Si le paiement a plus de 2 minutes, le marquer comme expiré
       if (paymentAge > PAYMENT_TIMEOUT_MS) {
         console.log('Existing payment expired, marking as failed:', existingPayment.id);
         await supabase
@@ -315,7 +315,7 @@ serve(async (req) => {
       ? 'https://api.fedapay.com' 
       : 'https://sandbox-api.fedapay.com';
 
-    console.log(`Using FedaPay endpoint: ${fedapayBaseUrl}`);
+    const isProduction = Deno.env.get('FEDAPAY_MODE') === 'live';
 
     // Préparer les informations du client pour FedaPay
     const nameParts = payerName.trim().split(/\s+/);
@@ -323,11 +323,22 @@ serve(async (req) => {
     const lastname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Domicares';
     const customerEmail = payerEmail || `patient-${paymentUserId}@domicares.app`;
 
+    console.log(`🔧 Configuration FedaPay:`, {
+      mode: isProduction ? 'PRODUCTION' : 'SANDBOX',
+      baseUrl: fedapayBaseUrl,
+      montant: amountToCharge,
+      méthode: selectedMode,
+      téléphone: phoneNumber.substring(0, 8) + '***' // Masquer les derniers chiffres pour la sécurité
+    });
+
     // ÉTAPE 1: Créer la transaction FedaPay selon la documentation officielle
-    const isProduction = Deno.env.get('FEDAPAY_MODE') === 'live';
     
     if (!isProduction) {
       console.log('📝 Étape 1 : Création de la transaction FedaPay');
+      console.log('⚠️  MODE SANDBOX : Utilisez uniquement ces numéros de test :');
+      console.log('   ✅ MTN succès: +229 66 00 00 01');
+      console.log('   ✅ MOOV succès: +229 64 00 00 01');
+      console.log('   ❌ Échec simulé: +229 66 00 00 00 ou +229 64 00 00 00');
       console.log('Détails transaction:', { 
         montant: amountToCharge, 
         mode: selectedMode,
@@ -352,7 +363,10 @@ serve(async (req) => {
           currency: {
             iso: 'XOF'
           },
-          callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          // notify_url: webhook serveur pour suivi des statuts (appelé par FedaPay)
+          notify_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          // callback_url: redirection client après paiement (FedaPay ajoutera transaction_id automatiquement)
+          callback_url: `https://a6f5c529-824c-4e8e-a92c-c4acad4413c7.lovableproject.com/payment/callback?appointment_id=${appointmentId}`,
           customer: {
             firstname,
             lastname,

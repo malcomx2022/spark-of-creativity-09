@@ -73,15 +73,19 @@ async function handleTransactionEvent(
   supabaseKey: string,
   transactionId: string,
   status: string,
-  eventType: string
+  eventType: string,
+  fedapayMode: string
 ) {
-  // Map FedaPay status to normalized status
+  // Map FedaPay status to normalized status - MAPPING COMPLET selon la doc FedaPay
   const statusMap: Record<string, string> = {
     'pending': 'pending',
+    'processing': 'pending',
+    'authorized': 'authorized',
     'approved': 'paid',
     'declined': 'failed',
     'canceled': 'canceled',
     'refunded': 'refunded',
+    'timeout': 'failed',
   };
   
   const paymentStatus = statusMap[status] || 'pending';
@@ -147,8 +151,8 @@ async function handleTransactionEvent(
   }
 
   // ✅ CORRECTION ERREUR #2: Utiliser la fonction atomique pour tous les statuts qui affectent le balance
-  // Cela inclut 'paid', 'failed', et 'canceled' pour garantir la cohérence des balances
-  if (practitionerId && ['paid', 'failed', 'canceled'].includes(paymentStatus)) {
+  // Cela inclut 'paid', 'authorized', 'failed', et 'canceled' pour garantir la cohérence des balances
+  if (practitionerId && ['paid', 'authorized', 'failed', 'canceled'].includes(paymentStatus)) {
     console.log('Updating payment and balance atomically:', payment.id, practitionerId, paymentStatus);
     
     // Définir le payout_status en fonction du statut de paiement
@@ -464,19 +468,25 @@ serve(async (req) => {
       console.warn('⚠️ No webhook secret configured, skipping verification');
     }
 
-    // ✅ AMÉLIORATION #3: Vérification de l'horodatage (rejet si > 5 minutes ou dans le futur)
+    // ✅ AMÉLIORATION #3: Vérification de l'horodatage avec différenciation sandbox/production
     const timestamp = webhookData.created_at;
     if (timestamp) {
       const eventTime = new Date(timestamp * 1000);
       const now = new Date();
       const diffMinutes = (now.getTime() - eventTime.getTime()) / (1000 * 60);
       
-      // Rejeter si trop vieux OU dans le futur (avec marge de 1 minute pour clock skew)
-      if (Math.abs(diffMinutes) > 5) {
+      // En sandbox: 30 minutes de marge (tests lents), en production: 5 minutes
+      const maxAgeMinutes = fedapayMode === 'sandbox' ? 30 : 5;
+      const clockSkewMinutes = fedapayMode === 'sandbox' ? 5 : 1;
+      
+      // Rejeter si trop vieux OU dans le futur (avec marge pour clock skew)
+      if (diffMinutes > maxAgeMinutes || diffMinutes < -clockSkewMinutes) {
         console.error('Webhook timestamp invalid:', {
+          mode: fedapayMode,
           eventTime: eventTime.toISOString(),
           now: now.toISOString(),
           diffMinutes,
+          maxAge: maxAgeMinutes,
           reason: diffMinutes > 0 ? 'too_old' : 'in_future'
         });
         return new Response(
@@ -545,7 +555,7 @@ serve(async (req) => {
 
     // Gestion des événements de transaction (paiements)
     if (entityType === 'transaction') {
-      await handleTransactionEvent(supabase, supabaseUrl, supabaseKey, transactionId, status, eventType);
+      await handleTransactionEvent(supabase, supabaseUrl, supabaseKey, transactionId, status, eventType, fedapayMode);
     }
 
     // Gestion des événements de transfer (reversements)

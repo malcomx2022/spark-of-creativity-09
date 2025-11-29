@@ -25,6 +25,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import PaymentCallback from "./pages/PaymentCallback";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Services from "./pages/Services";
 import TermsOfService from "./pages/TermsOfService";
@@ -71,6 +72,7 @@ const App = () => (
           <Route path="/search-practitioners" element={<PractitionerSearch />} />
           <Route path="/search-coaches" element={<CoachSearch />} />
           <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
+          <Route path="/payment/callback" element={<PaymentCallback />} />
           <Route path="/dashboard/patient" element={<ProtectedRoute allowedRoles={['patient']}><PatientDashboard /></ProtectedRoute>} />
           <Route path="/dashboard/practitioner" element={<ProtectedRoute allowedRoles={['practitioner']}><PractitionerDashboard /></ProtectedRoute>} />
           <Route path="/dashboard/coach" element={<ProtectedRoute allowedRoles={['coach']}><CoachDashboard /></ProtectedRoute>} />

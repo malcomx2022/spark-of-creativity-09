@@ -56,6 +56,11 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         const { data, error } = await supabase.functions.invoke('get-fedapay-config');
         if (error) throw error;
         setFedapayConfig(data);
+        
+        // En mode sandbox, pré-remplir avec un numéro de test MTN
+        if (data?.environment === 'sandbox' && !phoneNumber) {
+          setPhoneNumber('+22966000001'); // Numéro de test MTN Benin
+        }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
         toast({
@@ -217,15 +222,55 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       // Gérer les erreurs
       if (error) {
         const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la création du paiement';
+        console.error('Payment creation error:', errorMessage);
+        console.log('Full error object:', JSON.stringify(error, null, 2));
         
-        // Vérifier si c'est une erreur 409 (paiement en attente)
-        if (errorMessage.includes('Un paiement est déjà en cours')) {
+        // Parse l'erreur pour récupérer les détails du paiement en cours (409)
+        let errorDetails: any = null;
+        
+        try {
+          // Essayer plusieurs patterns de parsing
+          // Pattern 1: JSON direct dans le message
+          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
+          if (jsonMatch) {
+            errorDetails = JSON.parse(jsonMatch[0]);
+            console.log('Parsed error details (pattern 1):', errorDetails);
+          }
+          
+          // Pattern 2: Après "Error, "
+          if (!errorDetails && errorMessage.includes('Error, {')) {
+            const afterError = errorMessage.substring(errorMessage.indexOf('Error, {') + 7);
+            const jsonEnd = afterError.indexOf('}') + 1;
+            if (jsonEnd > 0) {
+              errorDetails = JSON.parse(afterError.substring(0, jsonEnd));
+              console.log('Parsed error details (pattern 2):', errorDetails);
+            }
+          }
+          
+          // Pattern 3: Parse tout le message comme JSON
+          if (!errorDetails) {
+            try {
+              errorDetails = JSON.parse(errorMessage);
+              console.log('Parsed error details (pattern 3):', errorDetails);
+            } catch (e) {
+              // Pas JSON valide
+            }
+          }
+        } catch (parseError) {
+          console.error('Could not parse error details:', parseError);
+        }
+        
+        // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
+        const is409Error = errorDetails && (errorDetails.paymentId || errorDetails.existingPaymentStatus);
+        
+        if (is409Error) {
+          console.log('409 error detected, showing cancel button');
           setIsProcessing(false);
           setPaymentStatus('error');
           
           toast({
             title: 'Paiement en cours',
-            description: 'Un paiement est déjà en attente. Cliquez sur le bouton ci-dessous pour l\'annuler et recommencer.',
+            description: errorDetails.error || 'Un paiement est déjà en attente',
             variant: 'destructive',
             duration: 10000,
             action: (
@@ -290,11 +335,10 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         amount
       });
 
-      // ✅ CORRECTION: Utiliser le mode POPUP au lieu du mode EMBEDDED
-      // Le mode embedded avec container cause des problèmes de connexion
+      // Show pending status
       setPaymentStatus('pending');
 
-      // Initialize FedaPay widget in POPUP mode (plus fiable)
+      // Initialize FedaPay widget in popup mode (recommended)
       const widget = initFedaPayWidget({
         public_key: fedapayConfig.publicKey,
         environment: fedapayConfig.environment as 'sandbox' | 'live',
@@ -305,33 +349,33 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         },
         customer: {
           phone_number: {
-            number: sanitizedPhoneNumber.replace(/^\+229/, ''), // Retirer +229 pour sandbox
-            country: 'bj', // ✅ CORRECTION: Minuscules requis par FedaPay
+            number: sanitizedPhoneNumber,
+            country: 'BJ',
           },
         },
         currency: {
           iso: 'XOF',
         },
         locale: 'fr',
-        // ✅ PAS de container - mode popup
         onComplete: async (payload) => {
-          console.log('Payment completed:', payload);
+            console.log('Payment completed:', payload);
 
-          if (payload.reason === CHECKOUT_COMPLETED) {
-            // Payment successful
-            setPaymentStatus('success');
-            setIsProcessing(false);
+            if (payload.reason === CHECKOUT_COMPLETED) {
+              // Payment successful
+              setPaymentStatus('success');
+              setIsProcessing(false);
 
-            // Save payment method if requested
-            if (saveMethod) {
-              try {
-                await addPaymentMethod({
-                  provider: paymentMethod,
-                  phoneNumber: sanitizedPhoneNumber,
-                  setAsDefault: paymentMethods.length === 0,
-                });
-              } catch (saveError) {
-                console.error('Error saving payment method:', saveError);
+              // Save payment method if requested
+              if (saveMethod) {
+                try {
+                  await addPaymentMethod({
+                    provider: paymentMethod,
+                    phoneNumber: sanitizedPhoneNumber,
+                    setAsDefault: paymentMethods.length === 0,
+                  });
+                } catch (saveError) {
+                  console.error('Error saving payment method:', saveError);
+                }
               }
             }
 
@@ -382,13 +426,19 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
       widgetRef.current = widget;
 
-      // ✅ Ouvrir le widget en mode popup
-      widget.open();
-
-      toast({
-        title: 'Paiement initié',
-        description: 'Complétez le paiement dans la fenêtre popup qui vient de s\'ouvrir.',
-      });
+      // Open the popup with error handling
+      try {
+        widget.open();
+        
+        toast({
+          title: 'Fenêtre de paiement ouverte',
+          description: 'Complétez le paiement dans la fenêtre popup. Si elle ne s\'affiche pas, veuillez autoriser les popups pour ce site.',
+          duration: 5000,
+        });
+      } catch (openError) {
+        console.error('Error opening FedaPay popup:', openError);
+        throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.');
+      }
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
@@ -399,15 +449,20 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
 
-      toast({
-        title: 'Erreur de paiement',
-        description: errorMessage,
-        variant: 'destructive',
-        duration: 5000,
-      });
+      // Ne pas afficher de toast si c'est une erreur 409 déjà gérée
+      const is409Handled = errorMessage.includes('paymentId') || errorMessage.includes('existingPaymentStatus');
+      
+      if (!is409Handled) {
+        toast({
+          title: 'Erreur de paiement',
+          description: errorMessage,
+          variant: 'destructive',
+          duration: 5000,
+        });
 
-      if (onError) {
-        onError(error instanceof Error ? error : new Error(errorMessage));
+        if (onError) {
+          onError(error instanceof Error ? error : new Error(errorMessage));
+        }
       }
     }
   };
@@ -420,7 +475,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPayerName('');
     setPayerEmail('');
     setSaveMethod(false);
-
+    
     // ✅ Nettoyer l'état de paiement persisté
     clearPersistedPaymentState();
     
@@ -456,6 +511,24 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             Montant à payer: <strong>{formatAmount(amount)}</strong>
           </DialogDescription>
         </DialogHeader>
+
+        {/* Alerte pour mode sandbox avec numéros de test */}
+        {fedapayConfig?.environment === 'sandbox' && (
+          <Alert className="border-primary/50 bg-primary/5">
+            <AlertTriangle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <p className="font-semibold mb-2">Mode Test - Utilisez ces numéros :</p>
+              <ul className="space-y-1 text-xs">
+                <li>✅ <strong>MTN succès:</strong> +229 66 00 00 01</li>
+                <li>✅ <strong>MOOV succès:</strong> +229 64 00 00 01</li>
+                <li>❌ <strong>Échec simulé:</strong> +229 66 00 00 00 ou +229 64 00 00 00</li>
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Les vrais numéros ne fonctionnent pas en mode test.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {paymentStatus === 'success' && (
           <Alert className="border-success bg-success/10">
@@ -556,7 +629,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Le formulaire de paiement s'affichera ci-dessous pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}.
+                Une fenêtre popup s'ouvrira pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}. <strong>Assurez-vous d'autoriser les popups</strong> pour ce site si votre navigateur les bloque.
               </AlertDescription>
             </Alert>
 
@@ -579,15 +652,13 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         )}
 
         {paymentStatus === 'pending' && (
-          <div className="flex flex-col items-center justify-center py-8 space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-lg font-semibold">Paiement en cours...</p>
-            <p className="text-sm text-muted-foreground text-center">
-              Une fenêtre popup s'est ouverte. Complétez votre paiement dans cette fenêtre.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Si la fenêtre ne s'ouvre pas, vérifiez que les popups ne sont pas bloqués par votre navigateur.
-            </p>
+          <div className="space-y-4">
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                Complétez le paiement dans la fenêtre qui vient de s'ouvrir. Si la fenêtre ne s'affiche pas, veuillez autoriser les pop-ups pour ce site.
+              </AlertDescription>
+            </Alert>
           </div>
         )}
       </DialogContent>

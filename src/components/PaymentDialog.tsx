@@ -118,6 +118,11 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         const { data, error } = await supabase.functions.invoke('get-fedapay-config');
         if (error) throw error;
         setFedapayConfig(data);
+        
+        // En mode sandbox, pré-remplir avec un numéro de test MTN
+        if (data?.environment === 'sandbox' && !phoneNumber) {
+          setPhoneNumber('+22966000001'); // Numéro de test MTN Benin
+        }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
         toast({
@@ -562,8 +567,96 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       if (error) {
         console.error('Supabase function error:', error);
+        console.log('Full error object:', JSON.stringify(error, null, 2));
         await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
         setIsCreatingPayment(false);
+        
+        // Parse l'erreur pour récupérer les détails du paiement en cours (409)
+        let errorDetails: any = null;
+        const errorMessage = error.message || String(error);
+        
+        try {
+          // Essayer plusieurs patterns de parsing
+          // Pattern 1: JSON direct dans le message
+          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
+          if (jsonMatch) {
+            errorDetails = JSON.parse(jsonMatch[0]);
+            console.log('Parsed error details (pattern 1):', errorDetails);
+          }
+          
+          // Pattern 2: Après "Error, "
+          if (!errorDetails && errorMessage.includes('Error, {')) {
+            const afterError = errorMessage.substring(errorMessage.indexOf('Error, {') + 7);
+            const jsonEnd = afterError.indexOf('}') + 1;
+            if (jsonEnd > 0) {
+              errorDetails = JSON.parse(afterError.substring(0, jsonEnd));
+              console.log('Parsed error details (pattern 2):', errorDetails);
+            }
+          }
+          
+          // Pattern 3: Parse tout le message comme JSON
+          if (!errorDetails) {
+            try {
+              errorDetails = JSON.parse(errorMessage);
+              console.log('Parsed error details (pattern 3):', errorDetails);
+            } catch (e) {
+              // Pas JSON valide
+            }
+          }
+        } catch (parseError) {
+          console.error('Could not parse error details:', parseError);
+        }
+        
+        // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
+        const is409Error = errorDetails && (errorDetails.paymentId || errorDetails.existingPaymentStatus);
+        
+        if (is409Error) {
+          console.log('409 error detected, showing cancel button');
+          setIsProcessing(false);
+          setPaymentStatus('error');
+          
+          toast({
+            title: 'Paiement en cours',
+            description: errorDetails.error || 'Un paiement est déjà en attente',
+            variant: 'destructive',
+            duration: 10000,
+            action: (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+                      body: { appointmentId }
+                    });
+                    
+                    if (cancelError) throw cancelError;
+                    
+                    toast({
+                      title: 'Paiement annulé',
+                      description: 'Vous pouvez maintenant créer un nouveau paiement.',
+                    });
+                    
+                    // Réinitialiser le formulaire
+                    resetPaymentState();
+                    setExistingPaymentChecked(false);
+                  } catch (e) {
+                    console.error('Cancel error:', e);
+                    toast({
+                      title: 'Erreur',
+                      description: 'Impossible d\'annuler le paiement. Veuillez réessayer.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                Annuler et réessayer
+              </Button>
+            ),
+          });
+          return;
+        }
+        
         throw error;
       }
 
@@ -734,13 +827,19 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
         widgetRef.current = widget;
 
-        // Ouvrir le widget de paiement
-        widget.open();
-
-        toast({
-          title: 'Paiement initié',
-          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-        });
+        // Ouvrir le widget de paiement avec gestion d'erreur
+        try {
+          widget.open();
+          
+          toast({
+            title: 'Fenêtre de paiement ouverte',
+            description: 'Complétez le paiement dans la fenêtre popup. Si elle ne s\'affiche pas, veuillez autoriser les popups pour ce site.',
+            duration: 5000,
+          });
+        } catch (openError) {
+          console.error('Error opening FedaPay popup:', openError);
+          throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.');
+        }
       } else {
         setIsCreatingPayment(false);
         throw new Error('Format de réponse invalide du serveur');
@@ -753,29 +852,27 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       
-      // Détecter l'erreur de paiement en cours (409)
-      const isPaymentInProgress = errorMessage.includes('paiement est déjà en cours');
-      const retryMatch = errorMessage.match(/réessayer dans (\d+) minute/);
-      const retryMinutes = retryMatch ? parseInt(retryMatch[1]) : null;
+      // Ne pas afficher de toast ici si on a déjà géré l'erreur 409 au-dessus
+      // Vérifier si c'est une erreur de paiement en cours déjà gérée
+      const isHandled409 = errorMessage.includes('paiement est déjà en cours') || errorMessage.includes('paymentId');
       
-      // Enregistrer l'échec définitif
-      await recordPaymentAttempt('failed', errorMessage, isPaymentInProgress ? 'duplicate_payment' : 'payment_error', {
-        error: errorMessage,
-        timestamp: new Date().toISOString(),
-        isPaymentInProgress,
-      });
-      
-      toast({
-        title: isPaymentInProgress ? 'Paiement en cours' : 'Erreur de paiement',
-        description: isPaymentInProgress && retryMinutes 
-          ? `Un paiement est déjà en cours. Veuillez patienter ${retryMinutes} minute(s) ou vérifiez votre statut de paiement.`
-          : errorMessage,
-        variant: 'destructive',
-        duration: isPaymentInProgress ? 8000 : 5000,
-      });
+      if (!isHandled409) {
+        // Enregistrer l'échec définitif
+        await recordPaymentAttempt('failed', errorMessage, 'payment_error', {
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        });
+        
+        toast({
+          title: 'Erreur de paiement',
+          description: errorMessage,
+          variant: 'destructive',
+          duration: 5000,
+        });
 
-      if (onError) {
-        onError(error instanceof Error ? error : new Error(errorMessage));
+        if (onError) {
+          onError(error instanceof Error ? error : new Error(errorMessage));
+        }
       }
     }
   };
@@ -1148,6 +1245,24 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           </DialogDescription>
         </DialogHeader>
 
+        {/* Alerte pour mode sandbox avec numéros de test */}
+        {fedapayConfig?.environment === 'sandbox' && paymentStatus === 'idle' && (
+          <Alert className="border-primary/50 bg-primary/5">
+            <AlertTriangle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <p className="font-semibold mb-2">Mode Test - Utilisez ces numéros :</p>
+              <ul className="space-y-1 text-xs">
+                <li>✅ <strong>MTN succès:</strong> +229 66 00 00 01</li>
+                <li>✅ <strong>MOOV succès:</strong> +229 64 00 00 01</li>
+                <li>❌ <strong>Échec simulé:</strong> +229 66 00 00 00 ou +229 64 00 00 00</li>
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Les vrais numéros ne fonctionnent pas en mode test.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {paymentStatus !== 'idle' ? (
           renderPaymentStatus()
         ) : (
@@ -1165,7 +1280,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 <ShieldCheck className="h-4 w-4" />
                 <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
                 <AlertDescription>
-                  Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
+                  Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. <strong>Une fenêtre popup s'ouvrira</strong> pour autoriser le paiement mobile money. <strong>Veuillez autoriser les popups</strong> pour ce site si votre navigateur les bloque.
                 </AlertDescription>
               </Alert>
             )}
