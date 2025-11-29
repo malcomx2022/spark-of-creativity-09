@@ -9,7 +9,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 export default function Footer() {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
-  const { isPractitioner } = useUserType();
+  const { isPractitioner, error, isLoading } = useUserType();
+
+  // Afficher un fallback si erreur
+  if (error) {
+    return (
+      <footer className="bg-secondary/10 border-t border-border mt-auto">
+        <div className="container mx-auto px-4 py-8">
+          <p className="text-center text-muted-foreground text-sm">
+            Chargement des informations...
+          </p>
+        </div>
+      </footer>
+    );
+  }
 
   return (
     <footer className="bg-secondary/10 border-t border-border mt-auto">

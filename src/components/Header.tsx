@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { ROUTES } from "@/lib/routes";
+import { toast } from "@/hooks/use-toast";
 import logo from "@/assets/logo.png";
 import {
   DropdownMenu,
@@ -18,6 +19,20 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useSupabaseUser();
   const navigate = useNavigate();
+
+  const handleEmergencyCall = () => {
+    if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+      // Mobile: utiliser tel:
+      window.location.href = 'tel:112';
+    } else {
+      // Desktop: afficher un message
+      toast({
+        title: '📞 Numéro d\'urgence: 112',
+        description: 'Composez le 112 depuis votre téléphone pour joindre les urgences médicales.',
+        duration: 8000,
+      });
+    }
+  };
 
   const handleLogout = async () => {
     // Nettoyer seulement les données de l'app
@@ -96,12 +111,15 @@ export default function Header() {
 
           {/* Emergency Button & Auth */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            <Button variant="urgent" size="sm" className="hidden sm:flex min-h-[40px]" asChild>
-              <a href="tel:112" className="flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                <span className="hidden md:inline">Urgence 112</span>
-                <span className="md:hidden">112</span>
-              </a>
+            <Button 
+              variant="urgent" 
+              size="sm" 
+              className="hidden sm:flex min-h-[40px]"
+              onClick={handleEmergencyCall}
+            >
+              <Phone className="h-4 w-4" />
+              <span className="hidden md:inline">Urgence 112</span>
+              <span className="md:hidden">112</span>
             </Button>
             
             {user ? (
@@ -201,11 +219,14 @@ export default function Header() {
                 <Users className="h-4 w-4" />
                 Coachs sportifs
               </button>
-              <Button variant="urgent" size="sm" className="w-full sm:hidden" asChild>
-                <a href="tel:112" className="flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Urgence 112
-                </a>
+              <Button 
+                variant="urgent" 
+                size="sm" 
+                className="w-full sm:hidden"
+                onClick={handleEmergencyCall}
+              >
+                <Phone className="h-4 w-4" />
+                Urgence 112
               </Button>
               
               {user ? (
