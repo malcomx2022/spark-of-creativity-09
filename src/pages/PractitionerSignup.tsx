@@ -539,11 +539,13 @@ export default function PractitionerSignup() {
 
       if (createError || !createResult?.success) {
         const errorMessage = createError?.message || createResult?.error || "Échec de création du compte";
-        console.error('❌ Erreur création compte praticien:', { 
-          createError, 
-          createResult,
-          details: createResult?.details
-        });
+        if (import.meta.env.DEV) {
+          console.error('❌ Erreur création compte praticien:', { 
+            createError, 
+            createResult,
+            details: createResult?.details
+          });
+        }
         
         // Messages d'erreur contextuels et explicites
         let userMessage = errorMessage;
@@ -595,7 +597,9 @@ export default function PractitionerSignup() {
         return;
       }
       
-      console.log('✅ Compte praticien créé avec succès');
+      if (import.meta.env.DEV) {
+        console.log('✅ Compte praticien créé avec succès');
+      }
 
       // Finaliser l'inscription et envoyer notification via edge function centralisée
       try {
@@ -614,12 +618,18 @@ export default function PractitionerSignup() {
         );
         
         if (completeError) {
-          console.error('⚠️ Erreur notification (non bloquante):', completeError);
+          if (import.meta.env.DEV) {
+            console.error('⚠️ Erreur notification (non bloquante):', completeError);
+          }
         } else {
-          console.log('✅ Notification envoyée avec succès');
+          if (import.meta.env.DEV) {
+            console.log('✅ Notification envoyée avec succès');
+          }
         }
       } catch (notifError) {
-        console.error('⚠️ Erreur notification (non bloquante):', notifError);
+        if (import.meta.env.DEV) {
+          console.error('⚠️ Erreur notification (non bloquante):', notifError);
+        }
       }
 
       // ✅ Succès : rediriger vers le dashboard approprié
@@ -632,7 +642,9 @@ export default function PractitionerSignup() {
       const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
       const finalDashboardPath = await getDashboardPathForUser(userId);
       
-      console.log('✅ Redirection vers:', finalDashboardPath);
+      if (import.meta.env.DEV) {
+        console.log('✅ Redirection vers:', finalDashboardPath);
+      }
       navigate(finalDashboardPath, { replace: true });
     } catch (err) {
       const isTimeoutError = err instanceof NetworkTimeoutError;
