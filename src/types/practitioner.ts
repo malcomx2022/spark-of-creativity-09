@@ -11,6 +11,7 @@ export interface PractitionerLocation {
   phone: string;
   image?: string;
   practitioner_type?: string;
+  intervention_zone?: string;
 }
 
 export interface UserLocation {
