@@ -45,6 +45,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
   const widgetRef = useRef<FedaPayCheckoutWidget | null>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
@@ -271,7 +272,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         amount
       });
 
-      // Initialize FedaPay widget
+      // Initialize FedaPay widget in embedded mode
       const widget = initFedaPayWidget({
         public_key: fedapayConfig.publicKey,
         environment: fedapayConfig.environment as 'sandbox' | 'live',
@@ -290,6 +291,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           iso: 'XOF',
         },
         locale: 'fr',
+        container: '#fedapay-container',
         onComplete: async (payload) => {
           console.log('Payment completed:', payload);
 
@@ -358,12 +360,12 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
       widgetRef.current = widget;
 
-      // Open the payment widget
-      widget.open();
+      // Show the embedded payment form
+      setShowPaymentForm(true);
 
       toast({
         title: 'Paiement initié',
-        description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
+        description: 'Complétez le paiement dans le formulaire ci-dessous.',
       });
     } catch (error) {
       console.error('Payment error:', error);
@@ -396,6 +398,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPayerName('');
     setPayerEmail('');
     setSaveMethod(false);
+    setShowPaymentForm(false);
     
     // ✅ Nettoyer l'état de paiement persisté
     clearPersistedPaymentState();
@@ -554,12 +557,15 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           </form>
         )}
 
-        {paymentStatus === 'pending' && (
-          <div className="flex flex-col items-center justify-center py-8 space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-center text-muted-foreground">
-              Complétez le paiement dans la fenêtre FedaPay...
-            </p>
+        {paymentStatus === 'pending' && showPaymentForm && (
+          <div className="space-y-4">
+            <div className="text-center text-sm text-muted-foreground mb-4">
+              Complétez le paiement dans le formulaire ci-dessous
+            </div>
+            <div 
+              id="fedapay-container" 
+              className="w-full min-h-[420px] rounded-lg overflow-hidden border border-border"
+            />
           </div>
         )}
       </DialogContent>
