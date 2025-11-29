@@ -58,25 +58,51 @@ serve(async (req) => {
     console.log(`Found ${testUserIds.length} test accounts to preserve`);
 
     // Supprimer les praticiens non-test
-    const { error: practitionersError } = await supabaseAdmin
-      .from('practitioners')
-      .delete()
-      .not('user_id', 'in', `(${testUserIds.map(id => `'${id}'`).join(',')})`);
+    if (testUserIds.length > 0) {
+      const { error: practitionersError } = await supabaseAdmin
+        .from('practitioners')
+        .delete()
+        .not('user_id', 'in', `(${testUserIds.join(',')})`);
 
-    if (practitionersError) {
-      console.error('Error deleting practitioners:', practitionersError);
-      throw practitionersError;
+      if (practitionersError) {
+        console.error('Error deleting practitioners:', practitionersError);
+        throw practitionersError;
+      }
+    } else {
+      // Si pas de comptes test, supprimer tous les praticiens
+      const { error: practitionersError } = await supabaseAdmin
+        .from('practitioners')
+        .delete()
+        .neq('user_id', '00000000-0000-0000-0000-000000000000'); // Supprimer tous
+
+      if (practitionersError) {
+        console.error('Error deleting practitioners:', practitionersError);
+        throw practitionersError;
+      }
     }
 
     // Supprimer les profils non-test
-    const { error: profilesError } = await supabaseAdmin
-      .from('profiles')
-      .delete()
-      .not('id', 'in', `(${testUserIds.map(id => `'${id}'`).join(',')})`);
+    if (testUserIds.length > 0) {
+      const { error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .delete()
+        .not('id', 'in', `(${testUserIds.join(',')})`);
 
-    if (profilesError) {
-      console.error('Error deleting profiles:', profilesError);
-      throw profilesError;
+      if (profilesError) {
+        console.error('Error deleting profiles:', profilesError);
+        throw profilesError;
+      }
+    } else {
+      // Si pas de comptes test, supprimer tous les profils
+      const { error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Supprimer tous
+
+      if (profilesError) {
+        console.error('Error deleting profiles:', profilesError);
+        throw profilesError;
+      }
     }
 
     // Supprimer les utilisateurs auth non-test
