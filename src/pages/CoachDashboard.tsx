@@ -312,10 +312,16 @@ export default function CoachDashboard() {
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-3xl font-bold">{Math.round(stats.totalRevenue + stats.appointmentsRevenue).toLocaleString()} F</span>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Séances + consultations
-                    </p>
+                    {Math.round(stats.totalRevenue + stats.appointmentsRevenue) > 0 ? (
+                      <>
+                        <span className="text-3xl font-bold">{Math.round(stats.totalRevenue + stats.appointmentsRevenue).toLocaleString()} FCFA</span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Séances + consultations
+                        </p>
+                      </>
+                    ) : (
+                      <span className="text-2xl text-muted-foreground">Aucun revenu</span>
+                    )}
                   </div>
                   <DollarSign className="h-8 w-8 text-green-500" />
                 </div>
@@ -327,26 +333,32 @@ export default function CoachDashboard() {
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="sessions" className="gap-2">
                 <Users className="h-4 w-4" />
+                <span className="sm:hidden">Séan.</span>
                 <span className="hidden sm:inline">Séances</span>
               </TabsTrigger>
               <TabsTrigger value="appointments" className="gap-2">
                 <ClipboardList className="h-4 w-4" />
-                <span className="hidden sm:inline">RDV</span>
+                <span className="sm:hidden">RDV</span>
+                <span className="hidden sm:inline">Rendez-vous</span>
               </TabsTrigger>
               <TabsTrigger value="availability" className="gap-2">
                 <Calendar className="h-4 w-4" />
-                <span className="hidden sm:inline">Dispo</span>
+                <span className="sm:hidden">Dispo</span>
+                <span className="hidden sm:inline">Disponibilité</span>
               </TabsTrigger>
               <TabsTrigger value="profile" className="gap-2">
                 <User className="h-4 w-4" />
+                <span className="sm:hidden">Prof.</span>
                 <span className="hidden sm:inline">Profil</span>
               </TabsTrigger>
               <TabsTrigger value="notifications" className="gap-2">
                 <Bell className="h-4 w-4" />
-                <span className="hidden sm:inline">Notifs</span>
+                <span className="sm:hidden">Not.</span>
+                <span className="hidden sm:inline">Notifications</span>
               </TabsTrigger>
               <TabsTrigger value="support" className="gap-2">
                 <HelpCircle className="h-4 w-4" />
+                <span className="sm:hidden">Aide</span>
                 <span className="hidden sm:inline">Support</span>
               </TabsTrigger>
             </TabsList>
