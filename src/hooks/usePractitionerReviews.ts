@@ -5,11 +5,14 @@ import { withTimeout } from '@/lib/network-timeout';
 
 export type Review = Tables<'reviews'>;
 
-export function usePractitionerReviews(practitionerId?: string) {
+export function usePractitionerReviews(practitionerId?: string, page = 1, limit = 10) {
   return useQuery<Review[]>({
-    queryKey: ['reviews', 'practitioner', practitionerId],
+    queryKey: ['reviews', 'practitioner', practitionerId, page, limit],
     queryFn: async () => {
       if (!practitionerId) return [];
+      
+      const start = (page - 1) * limit;
+      const end = start + limit - 1;
       
       const { data, error } = await withTimeout(
         supabase
@@ -18,6 +21,7 @@ export function usePractitionerReviews(practitionerId?: string) {
           .eq('practitioner_id', practitionerId)
           .eq('is_hidden', false)
           .order('created_at', { ascending: false })
+          .range(start, end)
       );
 
       if (error) throw error;

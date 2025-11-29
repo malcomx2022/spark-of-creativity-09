@@ -13,11 +13,14 @@ import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote } from '
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { CareNotesConfirmDialog } from './CareNotesConfirmDialog';
 
 export default function CareNotesSection() {
   const { data: user } = useSupabaseUser();
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [shareWithPatient, setShareWithPatient] = useState(false);
+  const [notesLimit, setNotesLimit] = useState(10);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [formData, setFormData] = useState({
     subjective: '',
     objective: '',
@@ -128,6 +131,14 @@ export default function CareNotesSection() {
       return;
     }
 
+    setShowConfirmDialog(true);
+  };
+  
+  const confirmShare = async () => {
+    if (!selectedAppointmentId || !practitioner?.id || !user?.id) return;
+
+    setShowConfirmDialog(false);
+
     try {
       const note = await persistNote(true);
       setShareWithPatient(true);
@@ -190,7 +201,7 @@ export default function CareNotesSection() {
                 Aucune consultation terminée
               </p>
             ) : (
-              completedAppointments.slice(0, 10).map((apt) => (
+              completedAppointments.slice(0, notesLimit).map((apt) => (
                 <div
                   key={apt.id}
                   className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
@@ -209,6 +220,20 @@ export default function CareNotesSection() {
                   </Badge>
                 </div>
               ))
+            )}
+            {completedAppointments.length > notesLimit && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setNotesLimit(prev => prev + 10)}
+              >
+                Voir plus ({completedAppointments.length - notesLimit} consultations restantes)
+              </Button>
+            )}
+            {completedAppointments.length > 0 && (
+              <p className="text-sm text-center text-muted-foreground">
+                Affichage {Math.min(notesLimit, completedAppointments.length)} sur {completedAppointments.length} consultations
+              </p>
             )}
           </div>
         </CardContent>
@@ -306,6 +331,22 @@ export default function CareNotesSection() {
           )}
         </CardContent>
       </Card>
+
+      <CareNotesConfirmDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        onConfirm={confirmShare}
+        patientName={
+          completedAppointments.find((apt) => apt.id === selectedAppointmentId)?.patientName || ''
+        }
+        appointmentDate={
+          selectedAppointmentId
+            ? new Date(
+                completedAppointments.find((apt) => apt.id === selectedAppointmentId)?.date || ''
+              ).toLocaleDateString('fr-FR')
+            : ''
+        }
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { isValidPhoneNumber, normalizePhoneNumber } from "@/lib/phone-utils";
+import { mtnSchema, moovSchema, bankSchema } from "@/schemas/paymentInfoSchema";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -54,19 +55,62 @@ interface PractitionerPaymentInfo {
   updated_at: string;
 }
 
-interface FormState {
-  accountHolderName: string;
-  phoneNumber: string;
-  bankName: string;
-  bankAccountNumber: string;
+interface FormContext {
+  data: {
+    accountHolderName: string;
+    phoneNumber: string;
+    bankName: string;
+    bankAccountNumber: string;
+  };
+  errors: {
+    accountHolderName?: string;
+    phoneNumber?: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+  };
+  isVerified: boolean;
+  hasChanges: boolean;
+  pendingAction: "verify" | "save" | null;
 }
 
-interface FormErrors {
-  accountHolderName?: string;
-  phoneNumber?: string;
-  bankName?: string;
-  bankAccountNumber?: string;
-}
+type FormAction =
+  | { type: "SET_FIELD"; field: string; value: string }
+  | { type: "SET_ERRORS"; errors: FormContext["errors"] }
+  | { type: "SET_VERIFIED"; isVerified: boolean }
+  | { type: "SET_HAS_CHANGES"; hasChanges: boolean }
+  | { type: "SET_PENDING_ACTION"; action: "verify" | "save" | null }
+  | { type: "RESET_FORM"; data: FormContext["data"]; isVerified: boolean };
+
+const formReducer = (state: FormContext, action: FormAction): FormContext => {
+  switch (action.type) {
+    case "SET_FIELD":
+      return {
+        ...state,
+        data: { ...state.data, [action.field]: action.value },
+        errors: { ...state.errors, [action.field]: undefined },
+        hasChanges: true,
+        isVerified: false,
+      };
+    case "SET_ERRORS":
+      return { ...state, errors: action.errors };
+    case "SET_VERIFIED":
+      return { ...state, isVerified: action.isVerified };
+    case "SET_HAS_CHANGES":
+      return { ...state, hasChanges: action.hasChanges };
+    case "SET_PENDING_ACTION":
+      return { ...state, pendingAction: action.action };
+    case "RESET_FORM":
+      return {
+        ...state,
+        data: action.data,
+        isVerified: action.isVerified,
+        errors: {},
+        hasChanges: false,
+      };
+    default:
+      return state;
+  }
+};
 
 interface PaymentMethodMetadata {
   label: string;
@@ -131,16 +175,19 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mtn");
-  const [formState, setFormState] = useState<FormState>({
-    accountHolderName: practitionerName || "",
-    phoneNumber: "",
-    bankName: "",
-    bankAccountNumber: "",
+  
+  const [formContext, dispatch] = useReducer(formReducer, {
+    data: {
+      accountHolderName: practitionerName || "",
+      phoneNumber: "",
+      bankName: "",
+      bankAccountNumber: "",
+    },
+    errors: {},
+    isVerified: false,
+    hasChanges: false,
+    pendingAction: null,
   });
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [isVerified, setIsVerified] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"verify" | "save" | null>(null);
 
   const { data: paymentInfos, isLoading } = useQuery({
     queryKey: ["practitioner-payment-info", practitionerId],
@@ -177,15 +224,16 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
     const info = paymentInfos.find((item) => item.payment_method === selectedMethod);
 
-    setFormState({
-      accountHolderName: info?.account_holder_name || practitionerName || "",
-      phoneNumber: info?.phone_number || "",
-      bankName: info?.bank_name || "",
-      bankAccountNumber: info?.bank_account_number || "",
+    dispatch({
+      type: "RESET_FORM",
+      data: {
+        accountHolderName: info?.account_holder_name || practitionerName || "",
+        phoneNumber: info?.phone_number || "",
+        bankName: info?.bank_name || "",
+        bankAccountNumber: info?.bank_account_number || "",
+      },
+      isVerified: !!info?.is_verified,
     });
-    setIsVerified(!!info?.is_verified);
-    setFormErrors({});
-    setHasChanges(false);
   }, [paymentInfos, selectedMethod, practitionerName]);
 
   const mutation = useMutation({
@@ -193,15 +241,15 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
       const sanitizedPhone =
         selectedMethod === "bank"
           ? null
-          : normalizePhoneNumber(formState.phoneNumber, PHONE_NORMALIZATION_OPTIONS);
-      const sanitizedAccount = selectedMethod === "bank" ? sanitizeAccountNumber(formState.bankAccountNumber) : null;
+          : normalizePhoneNumber(formContext.data.phoneNumber, PHONE_NORMALIZATION_OPTIONS);
+      const sanitizedAccount = selectedMethod === "bank" ? sanitizeAccountNumber(formContext.data.bankAccountNumber) : null;
 
       const updatePayload = {
         practitioner_id: practitionerId,
         payment_method: selectedMethod,
-        account_holder_name: formState.accountHolderName.trim(),
+        account_holder_name: formContext.data.accountHolderName.trim(),
         phone_number: selectedMethod === "bank" ? null : sanitizedPhone,
-        bank_name: selectedMethod === "bank" ? formState.bankName.trim() || null : null,
+        bank_name: selectedMethod === "bank" ? formContext.data.bankName.trim() || null : null,
         bank_account_number: selectedMethod === "bank" ? sanitizedAccount : null,
         is_verified: payload.verify,
       };
@@ -213,15 +261,17 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
         .single();
 
       if (error) {
-        console.error("Erreur mise à jour payment info", error);
+        if (import.meta.env.DEV) {
+          console.error("Erreur mise à jour payment info", error);
+        }
         throw error;
       }
 
       return data as PractitionerPaymentInfo;
     },
     onSuccess: (data, variables) => {
-      setIsVerified(!!data.is_verified);
-      setHasChanges(false);
+      dispatch({ type: "SET_VERIFIED", isVerified: !!data.is_verified });
+      dispatch({ type: "SET_HAS_CHANGES", hasChanges: false });
       queryClient.invalidateQueries({ queryKey: ["practitioner-payment-info", practitionerId] });
 
       toast({
@@ -239,76 +289,72 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
       });
     },
     onSettled: () => {
-      setPendingAction(null);
+      dispatch({ type: "SET_PENDING_ACTION", action: null });
     },
   });
 
-  const handleFieldChange = (field: keyof FormState, value: string) => {
-    setFormState((prev) => ({ ...prev, [field]: value }));
-    setFormErrors((prev) => ({ ...prev, [field]: undefined }));
-    setHasChanges(true);
-    if (isVerified) {
-      setIsVerified(false);
-    }
+  const handleFieldChange = (field: string, value: string) => {
+    dispatch({ type: "SET_FIELD", field, value });
   };
 
   const validateForm = () => {
-    const errors: FormErrors = {};
-
-    if (!formState.accountHolderName.trim()) {
-      errors.accountHolderName = "Le nom du titulaire est obligatoire.";
-    }
-
-    if (selectedMethod === "bank") {
-      if (!formState.bankName.trim()) {
-        errors.bankName = "Le nom de la banque est obligatoire.";
+    try {
+      if (selectedMethod === "mtn") {
+        mtnSchema.parse({
+          accountHolderName: formContext.data.accountHolderName,
+          phoneNumber: formContext.data.phoneNumber,
+        });
+      } else if (selectedMethod === "moov") {
+        moovSchema.parse({
+          accountHolderName: formContext.data.accountHolderName,
+          phoneNumber: formContext.data.phoneNumber,
+        });
+      } else if (selectedMethod === "bank") {
+        bankSchema.parse({
+          accountHolderName: formContext.data.accountHolderName,
+          bankName: formContext.data.bankName,
+          bankAccountNumber: formContext.data.bankAccountNumber,
+        });
       }
-
-      if (!formState.bankAccountNumber.trim()) {
-        errors.bankAccountNumber = "Le numéro de compte est obligatoire.";
-      } else if (!isValidBankAccountNumber(formState.bankAccountNumber)) {
-        errors.bankAccountNumber = "Numéro de compte invalide (8 à 34 caractères alphanumériques).";
+      
+      dispatch({ type: "SET_ERRORS", errors: {} });
+      return true;
+    } catch (error: any) {
+      const fieldErrors: FormContext["errors"] = {};
+      
+      if (error.errors) {
+        error.errors.forEach((err: any) => {
+          const field = err.path[0];
+          fieldErrors[field as keyof FormContext["errors"]] = err.message;
+        });
       }
-    } else {
-      if (!formState.phoneNumber.trim()) {
-        errors.phoneNumber = "Le numéro Mobile Money est obligatoire.";
-      } else if (!isMethodPhoneValid(formState.phoneNumber, selectedMethod)) {
-        const metadata = paymentMethodMetadata[selectedMethod];
-        errors.phoneNumber = metadata.phoneExample
-          ? `Format invalide. Exemple attendu : ${metadata.phoneExample}`
-          : "Numéro de téléphone invalide.";
-      }
-    }
-
-    setFormErrors(errors);
-
-    if (Object.keys(errors).length > 0) {
+      
+      dispatch({ type: "SET_ERRORS", errors: fieldErrors });
+      
       toast({
         title: "Champs invalides",
         description: "Veuillez corriger les erreurs avant de continuer.",
         variant: "destructive",
       });
+      
       return false;
     }
-
-    return true;
   };
 
   const handleSave = (verify: boolean) => {
     if (!validateForm()) return;
 
-    setPendingAction(verify ? "verify" : "save");
+    dispatch({ type: "SET_PENDING_ACTION", action: verify ? "verify" : "save" });
     mutation.mutate({ verify });
   };
 
-  // All hooks must be called before any early returns
   const showVerifyButton = useMemo(() => {
     if (selectedMethod === "bank") {
-      return Boolean(formState.bankAccountNumber && isValidBankAccountNumber(formState.bankAccountNumber));
+      return Boolean(formContext.data.bankAccountNumber && isValidBankAccountNumber(formContext.data.bankAccountNumber));
     }
 
-    return Boolean(formState.phoneNumber && isMethodPhoneValid(formState.phoneNumber, selectedMethod));
-  }, [formState.bankAccountNumber, formState.phoneNumber, selectedMethod]);
+    return Boolean(formContext.data.phoneNumber && isMethodPhoneValid(formContext.data.phoneNumber, selectedMethod));
+  }, [formContext.data.bankAccountNumber, formContext.data.phoneNumber, selectedMethod]);
 
   const methodMetadata = paymentMethodMetadata[selectedMethod];
 
@@ -371,10 +417,10 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
             </CardDescription>
           </div>
           <Badge
-            variant={isVerified ? "default" : "secondary"}
-            className={isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}
+            variant={formContext.isVerified ? "default" : "secondary"}
+            className={formContext.isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}
           >
-            {isVerified ? (
+            {formContext.isVerified ? (
               <span className="flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5" /> Vérifié
               </span>
@@ -464,12 +510,12 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
             <Label htmlFor="accountHolder">Nom du titulaire</Label>
             <Input
               id="accountHolder"
-              value={formState.accountHolderName}
+              value={formContext.data.accountHolderName}
               onChange={(event) => handleFieldChange("accountHolderName", event.target.value)}
               placeholder="Nom complet du titulaire"
             />
-            {formErrors.accountHolderName && (
-              <p className="text-sm text-destructive">{formErrors.accountHolderName}</p>
+            {formContext.errors.accountHolderName && (
+              <p className="text-sm text-destructive">{formContext.errors.accountHolderName}</p>
             )}
           </div>
 
@@ -478,22 +524,22 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
               <Label htmlFor="bankName">Banque</Label>
               <Input
                 id="bankName"
-                value={formState.bankName}
+                value={formContext.data.bankName}
                 onChange={(event) => handleFieldChange("bankName", event.target.value)}
                 placeholder="Nom de la banque"
               />
-              {formErrors.bankName && <p className="text-sm text-destructive">{formErrors.bankName}</p>}
+              {formContext.errors.bankName && <p className="text-sm text-destructive">{formContext.errors.bankName}</p>}
             </div>
           ) : (
             <div className="space-y-2">
               <Label htmlFor="phoneNumber">Numéro Mobile Money</Label>
               <PhoneInput
                 id="phoneNumber"
-                value={formState.phoneNumber}
+                value={formContext.data.phoneNumber}
                 onChange={(value) => handleFieldChange("phoneNumber", value)}
                 countryCode="+229"
                 localNumberLength={8}
-                error={formErrors.phoneNumber}
+                error={formContext.errors.phoneNumber}
               />
             </div>
           )}
@@ -504,12 +550,12 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
             <Label htmlFor="bankAccount">Numéro de compte / IBAN</Label>
             <Input
               id="bankAccount"
-              value={formState.bankAccountNumber}
+              value={formContext.data.bankAccountNumber}
               onChange={(event) => handleFieldChange("bankAccountNumber", event.target.value)}
               placeholder="Numéro de compte bancaire"
             />
-            {formErrors.bankAccountNumber && (
-              <p className="text-sm text-destructive">{formErrors.bankAccountNumber}</p>
+            {formContext.errors.bankAccountNumber && (
+              <p className="text-sm text-destructive">{formContext.errors.bankAccountNumber}</p>
             )}
           </div>
         )}
@@ -536,8 +582,8 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
           </Alert>
         )}
 
-        <Alert variant={isVerified ? "default" : "destructive"}>
-          {isVerified ? (
+        <Alert variant={formContext.isVerified ? "default" : "destructive"}>
+          {formContext.isVerified ? (
             <>
               <CheckCircle2 className="h-4 w-4" />
               <AlertTitle>Informations vérifiées</AlertTitle>
@@ -560,9 +606,9 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
           <Button
             variant="outline"
             onClick={() => handleSave(false)}
-            disabled={mutation.isPending || !hasChanges}
+            disabled={mutation.isPending || !formContext.hasChanges}
           >
-            {mutation.isPending && pendingAction === "save" ? (
+            {mutation.isPending && formContext.pendingAction === "save" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : null}
             Enregistrer
@@ -571,7 +617,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
             onClick={() => handleSave(true)}
             disabled={mutation.isPending || !showVerifyButton}
           >
-            {mutation.isPending && pendingAction === "verify" ? (
+            {mutation.isPending && formContext.pendingAction === "verify" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : null}
             Vérifier les informations
