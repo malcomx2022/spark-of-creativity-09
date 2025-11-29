@@ -46,6 +46,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [pendingTransaction, setPendingTransaction] = useState<{ id: number; phoneNumber: string } | null>(null);
   const widgetRef = useRef<FedaPayCheckoutWidget | null>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
@@ -97,18 +98,129 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     }
   }, [open]);
 
-  // Cleanup widget on unmount
+  // Initialize FedaPay widget when transaction is ready and container is visible
   useEffect(() => {
-    return () => {
-      if (widgetRef.current) {
-        try {
-          widgetRef.current.close();
-        } catch (error) {
-          console.error('Error closing FedaPay widget:', error);
-        }
+    if (!pendingTransaction || !showPaymentForm || !fedapayConfig || widgetRef.current) {
+      return;
+    }
+
+    // Wait for next tick to ensure DOM is ready
+    const timer = setTimeout(() => {
+      const container = document.getElementById('fedapay-container');
+      if (!container) {
+        console.error('FedaPay container not found in DOM');
+        toast({
+          title: 'Erreur',
+          description: 'Impossible d\'afficher le formulaire de paiement',
+          variant: 'destructive',
+        });
+        return;
       }
-    };
-  }, []);
+
+      console.log('Initializing FedaPay widget with:', {
+        transactionId: pendingTransaction.id,
+        environment: fedapayConfig.environment,
+        amount
+      });
+
+      // Initialize FedaPay widget in embedded mode
+      const widget = initFedaPayWidget({
+        public_key: fedapayConfig.publicKey,
+        environment: fedapayConfig.environment as 'sandbox' | 'live',
+        transaction: {
+          id: pendingTransaction.id,
+          amount: amount,
+          description: `Paiement rendez-vous médical #${appointmentId}`,
+        },
+        customer: {
+          phone_number: {
+            number: pendingTransaction.phoneNumber,
+            country: 'BJ',
+          },
+        },
+        currency: {
+          iso: 'XOF',
+        },
+        locale: 'fr',
+        container: '#fedapay-container',
+        onComplete: async (payload) => {
+          console.log('Payment completed:', payload);
+
+          if (payload.reason === CHECKOUT_COMPLETED) {
+            // Payment successful
+            setPaymentStatus('success');
+            setIsProcessing(false);
+
+            // Save payment method if requested
+            if (saveMethod) {
+              try {
+                await addPaymentMethod({
+                  provider: paymentMethod,
+                  phoneNumber: pendingTransaction.phoneNumber,
+                  setAsDefault: paymentMethods.length === 0,
+                });
+              } catch (saveError) {
+                console.error('Error saving payment method:', saveError);
+              }
+            }
+
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
+
+            toast({
+              title: 'Paiement réussi !',
+              description: 'Votre rendez-vous a été confirmé.',
+            });
+
+            if (onSuccess) {
+              onSuccess();
+            }
+
+            if (onComplete) {
+              onComplete();
+            }
+
+            setTimeout(() => {
+              resetState();
+              onOpenChange(false);
+            }, 2000);
+          } else if (payload.reason === DIALOG_DISMISSED) {
+            // User closed the dialog
+            setPaymentStatus('error');
+            setIsProcessing(false);
+
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
+
+            toast({
+              title: 'Paiement annulé',
+              description: 'Vous avez annulé le paiement.',
+              variant: 'destructive',
+            });
+
+            if (onError) {
+              onError(new Error('Paiement annulé par l\'utilisateur'));
+            }
+          }
+        },
+      });
+
+      if (!widget) {
+        console.error('Failed to initialize FedaPay widget');
+        toast({
+          title: 'Erreur',
+          description: 'Impossible d\'initialiser le widget de paiement',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      widgetRef.current = widget;
+      console.log('FedaPay widget initialized successfully');
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [pendingTransaction, showPaymentForm, fedapayConfig, amount, appointmentId, paymentMethod, saveMethod, paymentMethods.length, addPaymentMethod, onSuccess, onComplete, onError, onOpenChange]);
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,47 +327,66 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         }
       );
 
-      if (error instanceof Error) {
+      // Gérer les erreurs
+      if (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la création du paiement';
+        
         // Vérifier si c'est une erreur 409 (paiement en attente)
-        if (error.message.includes('Un paiement est déjà en cours')) {
+        if (errorMessage.includes('Un paiement est déjà en cours')) {
+          setIsProcessing(false);
+          setPaymentStatus('error');
+          
           toast({
             title: 'Paiement en cours',
-            description: 'Un paiement est déjà en attente. Annulez-le d\'abord ou attendez quelques minutes.',
+            description: 'Un paiement est déjà en attente. Cliquez sur le bouton ci-dessous pour l\'annuler et recommencer.',
             variant: 'destructive',
+            duration: 10000,
             action: (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={async () => {
                   try {
-                    await supabase.functions.invoke('cancel-pending-payment', {
+                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
                       body: { appointmentId }
                     });
+                    
+                    if (cancelError) throw cancelError;
+                    
                     toast({
                       title: 'Paiement annulé',
                       description: 'Vous pouvez maintenant créer un nouveau paiement.',
                     });
-                    // Rafraîchir après 1 seconde
+                    
+                    // Réinitialiser le formulaire
+                    resetState();
+                    
+                    // Rafraîchir la page après 1 seconde
                     setTimeout(() => window.location.reload(), 1000);
                   } catch (e) {
+                    console.error('Cancel error:', e);
                     toast({
                       title: 'Erreur',
-                      description: 'Impossible d\'annuler le paiement',
+                      description: 'Impossible d\'annuler le paiement. Veuillez réessayer.',
                       variant: 'destructive',
                     });
                   }
                 }}
               >
-                Annuler le paiement
+                Annuler et réessayer
               </Button>
             ),
           });
           return;
         }
+        
+        // Autre erreur
+        throw new Error(errorMessage);
       }
 
+      // Vérifier que nous avons reçu le transactionId
       if (!result || typeof result !== 'object' || !('transactionId' in result)) {
-        throw new Error('ID de transaction non reçu du serveur');
+        throw new Error('ID de transaction non reçu du serveur. Veuillez réessayer.');
       }
 
       const txId = parseInt(String(result.transactionId));
@@ -266,106 +397,18 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         throw new Error('Configuration de paiement non disponible');
       }
 
-      console.log('Initializing FedaPay widget with:', {
-        transactionId: txId,
-        environment: fedapayConfig.environment,
-        amount
+      // Store transaction info and show payment form
+      setPendingTransaction({
+        id: txId,
+        phoneNumber: sanitizedPhoneNumber
       });
-
-      // Initialize FedaPay widget in embedded mode
-      const widget = initFedaPayWidget({
-        public_key: fedapayConfig.publicKey,
-        environment: fedapayConfig.environment as 'sandbox' | 'live',
-        transaction: {
-          id: txId,
-          amount: amount,
-          description: `Paiement rendez-vous médical #${appointmentId}`,
-        },
-        customer: {
-          phone_number: {
-            number: sanitizedPhoneNumber,
-            country: 'BJ',
-          },
-        },
-        currency: {
-          iso: 'XOF',
-        },
-        locale: 'fr',
-        container: '#fedapay-container',
-        onComplete: async (payload) => {
-          console.log('Payment completed:', payload);
-
-          if (payload.reason === CHECKOUT_COMPLETED) {
-            // Payment successful
-            setPaymentStatus('success');
-            setIsProcessing(false);
-
-            // Save payment method if requested
-            if (saveMethod) {
-              try {
-                await addPaymentMethod({
-                  provider: paymentMethod,
-                  phoneNumber: sanitizedPhoneNumber,
-                  setAsDefault: paymentMethods.length === 0,
-                });
-              } catch (saveError) {
-                console.error('Error saving payment method:', saveError);
-              }
-            }
-
-            // ✅ Nettoyer l'état de paiement persisté
-            clearPersistedPaymentState();
-
-            toast({
-              title: 'Paiement réussi !',
-              description: 'Votre rendez-vous a été confirmé.',
-            });
-
-            if (onSuccess) {
-              onSuccess();
-            }
-
-            if (onComplete) {
-              onComplete();
-            }
-
-            setTimeout(() => {
-              resetState();
-              onOpenChange(false);
-            }, 2000);
-          } else if (payload.reason === DIALOG_DISMISSED) {
-            // User closed the dialog
-            setPaymentStatus('error');
-            setIsProcessing(false);
-
-            // ✅ Nettoyer l'état de paiement persisté
-            clearPersistedPaymentState();
-
-            toast({
-              title: 'Paiement annulé',
-              description: 'Vous avez annulé le paiement.',
-              variant: 'destructive',
-            });
-
-            if (onError) {
-              onError(new Error('Paiement annulé par l\'utilisateur'));
-            }
-          }
-        },
-      });
-
-      if (!widget) {
-        throw new Error('Impossible d\'initialiser le widget de paiement');
-      }
-
-      widgetRef.current = widget;
-
-      // Show the embedded payment form
+      
+      // Show the embedded payment form (widget will be initialized by useEffect)
       setShowPaymentForm(true);
 
       toast({
         title: 'Paiement initié',
-        description: 'Complétez le paiement dans le formulaire ci-dessous.',
+        description: 'Le formulaire de paiement va s\'afficher dans quelques instants.',
       });
     } catch (error) {
       console.error('Payment error:', error);
@@ -394,6 +437,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setIsProcessing(false);
     setPaymentStatus('idle');
     setTransactionId(null);
+    setPendingTransaction(null);
     setPhoneNumber('');
     setPayerName('');
     setPayerEmail('');
@@ -535,7 +579,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Après avoir cliqué sur "Payer", une fenêtre s'ouvrira pour compléter le paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}.
+                Le formulaire de paiement s'affichera ci-dessous pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}.
               </AlertDescription>
             </Alert>
 
