@@ -31,6 +31,8 @@ All colors MUST be HSL.
     --urgent-foreground: 0 0% 100%;
     --warning: 45 93% 58%;           /* Orange attention */
     --warning-foreground: 45 100% 15%;
+    --success: 142 76% 36%;          /* Vert succès */
+    --success-foreground: 0 0% 100%;
 
     /* Couleurs UI */
     --muted: 210 40% 96.1%;
@@ -87,6 +89,8 @@ All colors MUST be HSL.
     --urgent-foreground: 215 28% 17%;
     --warning: 45 93% 68%;
     --warning-foreground: 215 28% 17%;
+    --success: 142 76% 46%;
+    --success-foreground: 215 28% 17%;
 
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
