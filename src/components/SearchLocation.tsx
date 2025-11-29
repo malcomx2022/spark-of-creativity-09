@@ -59,7 +59,9 @@ export function SearchLocation({
         setRecentSearches(JSON.parse(stored));
       }
     } catch (err) {
-      console.error('Error loading recent searches:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error loading recent searches:', err);
+      }
     }
   }, []);
 
@@ -74,7 +76,9 @@ export function SearchLocation({
       setRecentSearches(updated);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.error('Error saving recent search:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error saving recent search:', err);
+      }
     }
   }, [recentSearches]);
 

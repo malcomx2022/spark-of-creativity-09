@@ -16,8 +16,10 @@ import {
   Star,
   User,
   DollarSign,
-  Search
+  Search,
+  AlertCircle
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePractitioners } from "@/hooks/usePractitioners";
 import { useGroupSessions } from "@/hooks/useGroupSessions";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
@@ -37,6 +39,9 @@ export default function CoachSearch() {
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [selectedCoach, setSelectedCoach] = useState<any>(null);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const [coachesPage, setCoachesPage] = useState(1);
+  const ITEMS_PER_PAGE = 6;
 
   const patientId = user?.id;
   const patientName = (user?.user_metadata?.full_name as string) || user?.email || "Patient";
@@ -44,7 +49,7 @@ export default function CoachSearch() {
   const createAppointment = useCreateAppointment(patientId, patientName);
 
   // Récupérer tous les coachs
-  const { data: allPractitioners = [], isLoading: isLoadingCoaches } = usePractitioners();
+  const { data: allPractitioners = [], isLoading: isLoadingCoaches, error: practitionersError } = usePractitioners();
   
   const coaches = useMemo(() => 
     allPractitioners.filter(p => p.practitioner_type === "coach_sportif"),
@@ -76,6 +81,23 @@ export default function CoachSearch() {
     return coaches.filter(c => c.intervention_zone === selectedZone || c.address === selectedZone);
   }, [coaches, selectedZone]);
 
+  // Paginer les séances
+  const paginatedSessions = useMemo(() => {
+    const start = (sessionsPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    return availableSessions.slice(start, end);
+  }, [availableSessions, sessionsPage]);
+
+  // Paginer les coachs
+  const paginatedCoaches = useMemo(() => {
+    const start = (coachesPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    return filteredCoaches.slice(start, end);
+  }, [filteredCoaches, coachesPage]);
+
+  const sessionsTotalPages = Math.ceil(availableSessions.length / ITEMS_PER_PAGE);
+  const coachesTotalPages = Math.ceil(filteredCoaches.length / ITEMS_PER_PAGE);
+
   const handleBookSession = (session: any) => {
     if (!user) {
       navigate('/login');
@@ -98,6 +120,22 @@ export default function CoachSearch() {
     setSelectedCoach(coach);
     setAppointmentDialogOpen(true);
   };
+
+  if (practitionersError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+        <Header />
+        <main className="container mx-auto px-4 py-8 pt-24">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Erreur de chargement des coachs. Veuillez réactualiser la page.
+            </AlertDescription>
+          </Alert>
+        </main>
+      </div>
+    );
+  }
 
   if (isLoadingCoaches || isLoadingSessions) {
     return (
@@ -170,8 +208,9 @@ export default function CoachSearch() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-6 md:grid-cols-2">
-                {availableSessions.map((session) => {
+              <>
+                <div className="grid gap-6 md:grid-cols-2">
+                  {paginatedSessions.map((session) => {
                   const coach = coaches.find(c => c.id === session.coach_id);
                   const spotsLeft = (session.max_participants || 0) - (session.current_participants || 0);
 
@@ -232,6 +271,29 @@ export default function CoachSearch() {
                   );
                 })}
               </div>
+              
+              {sessionsTotalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSessionsPage(p => Math.max(1, p - 1))}
+                    disabled={sessionsPage === 1}
+                  >
+                    Précédent
+                  </Button>
+                  <span className="flex items-center px-4">
+                    Page {sessionsPage} sur {sessionsTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSessionsPage(p => Math.min(sessionsTotalPages, p + 1))}
+                    disabled={sessionsPage === sessionsTotalPages}
+                  >
+                    Suivant
+                  </Button>
+                </div>
+              )}
+            </>
             )}
           </TabsContent>
 
@@ -247,8 +309,9 @@ export default function CoachSearch() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {filteredCoaches.map((coach) => (
+              <>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {paginatedCoaches.map((coach) => (
                   <Card key={coach.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader>
                       <div className="flex items-center gap-3 mb-2">
@@ -288,6 +351,29 @@ export default function CoachSearch() {
                   </Card>
                 ))}
               </div>
+              
+              {coachesTotalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCoachesPage(p => Math.max(1, p - 1))}
+                    disabled={coachesPage === 1}
+                  >
+                    Précédent
+                  </Button>
+                  <span className="flex items-center px-4">
+                    Page {coachesPage} sur {coachesTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCoachesPage(p => Math.min(coachesTotalPages, p + 1))}
+                    disabled={coachesPage === coachesTotalPages}
+                  >
+                    Suivant
+                  </Button>
+                </div>
+              )}
+            </>
             )}
           </TabsContent>
         </Tabs>

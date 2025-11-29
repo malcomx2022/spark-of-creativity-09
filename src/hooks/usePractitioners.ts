@@ -32,7 +32,9 @@ async function fetchPractitioners() {
       .order('name', { ascending: true });
 
     if (error) {
-      console.error('Erreur chargement praticiens:', error);
+      if (import.meta.env.DEV) {
+        console.error('Erreur chargement praticiens:', error);
+      }
       throw error;
     }
 
