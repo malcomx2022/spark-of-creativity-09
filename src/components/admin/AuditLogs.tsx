@@ -15,13 +15,38 @@ export function AuditLogs() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const { data: logsData, isLoading } = useQuery({
-    queryKey: ['audit-logs', page],
+  // Récupérer les types d'entités pour le filtre
+  const { data: entityTypesData } = useQuery({
+    queryKey: ['audit-entity-types'],
     queryFn: async () => {
-      const { data: logsData, error: logsError, count } = await supabase
+      const { data, error } = await supabase
+        .from('admin_audit_logs')
+        .select('entity_type')
+        .limit(1000);
+      
+      if (error) throw error;
+      return [...new Set(data?.map(l => l.entity_type) || [])];
+    },
+  });
+
+  const { data: logsData, isLoading } = useQuery({
+    queryKey: ['audit-logs', page, filterEntity, searchTerm],
+    queryFn: async () => {
+      let query = supabase
         .from('admin_audit_logs')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      // Filtrage côté serveur
+      if (filterEntity !== 'all') {
+        query = query.eq('entity_type', filterEntity);
+      }
+
+      if (searchTerm) {
+        query = query.or(`action.ilike.%${searchTerm}%,entity_id.ilike.%${searchTerm}%`);
+      }
+
+      const { data: logsData, error: logsError, count } = await query
         .range((page - 1) * limit, page * limit - 1);
       
       if (logsError) throw logsError;
@@ -49,18 +74,7 @@ export function AuditLogs() {
 
   const totalPages = Math.ceil((logsData?.total || 0) / limit);
   const logs = logsData?.logs || [];
-
-  const filteredLogs = logs.filter(log => {
-    const matchesSearch = !searchTerm || 
-      log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.entity_id?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = filterEntity === 'all' || log.entity_type === filterEntity;
-    
-    return matchesSearch && matchesFilter;
-  });
-
-  const entityTypes = [...new Set(logs.map(l => l.entity_type))];
+  const entityTypes = entityTypesData || [];
 
   return (
     <Card>
@@ -99,7 +113,7 @@ export function AuditLogs() {
 
         {isLoading ? (
           <div className="text-center py-8 text-muted-foreground">Chargement...</div>
-        ) : filteredLogs && filteredLogs.length > 0 ? (
+        ) : logs && logs.length > 0 ? (
           <>
             <div className="border rounded-lg">
               <Table>
@@ -114,7 +128,7 @@ export function AuditLogs() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLogs.map((log) => (
+                  {logs.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="whitespace-nowrap">
                         {new Date(log.created_at).toLocaleString('fr-FR')}
