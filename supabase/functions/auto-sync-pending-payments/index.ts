@@ -30,8 +30,9 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Configuration: considérer un paiement "bloqué" après 15 minutes
-    const staleThresholdMinutes = 15;
+    // Configuration: considérer un paiement "bloqué" après 10 minutes
+    // Standardisé avec create-payment et PaymentDialog pour cohérence
+    const staleThresholdMinutes = 10;
     const staleThreshold = new Date(Date.now() - staleThresholdMinutes * 60 * 1000);
 
     console.log(`Looking for payments stuck in initiated/pending since before ${staleThreshold.toISOString()}`);

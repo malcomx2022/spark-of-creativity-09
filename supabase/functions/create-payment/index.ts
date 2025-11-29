@@ -248,7 +248,7 @@ serve(async (req) => {
     if (existingPayments && existingPayments.length > 0) {
       const existingPayment = existingPayments[0];
       const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-      const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (réduit de 10 pour améliorer UX)
+      const PAYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes - standardisé avec frontend
       
       // Si le paiement a plus de 10 minutes, le marquer comme expiré
       if (paymentAge > PAYMENT_TIMEOUT_MS) {
