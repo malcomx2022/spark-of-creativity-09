@@ -130,21 +130,24 @@ export default function ReviewsSection({ practitionerId }: ReviewsSectionProps) 
             </p>
           ) : (
             <div className="space-y-6">
-              {reviews.map((review) => (
-                <div key={review.id} className="border-b pb-6 last:border-0">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <p className="font-medium">Patient</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(review.created_at).toLocaleDateString('fr-FR')}
-                      </p>
+              {reviews.map((review) => {
+                const profile = (review as any).profiles;
+                return (
+                  <div key={review.id} className="border-b pb-6 last:border-0">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="font-medium">{profile?.full_name || 'Patient anonyme'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(review.created_at).toLocaleDateString('fr-FR')}
+                        </p>
+                      </div>
+                      {renderStars(review.rating)}
                     </div>
-                    {renderStars(review.rating)}
+                    
+                    {review.comment && <p className="text-sm mb-3">{review.comment}</p>}
                   </div>
-                  
-                  {review.comment && <p className="text-sm mb-3">{review.comment}</p>}
-                </div>
-              ))}
+                );
+              })}
               
               {reviews.length >= limit && (
                 <div className="flex justify-between items-center pt-4 border-t">

@@ -2,6 +2,7 @@ import { useState, useMemo, lazy, Suspense } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { 
   Calendar, 
   Clock, 
@@ -26,6 +27,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { getKYCMessage, calculateMonthlyTotalMinutes } from '@/lib/practitionerHelpers';
 import Header from '@/components/Header';
 
 // Lazy load dashboard tabs
@@ -46,6 +48,9 @@ export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
+  const [awaitingLimit, setAwaitingLimit] = useState(10);
+  const [confirmedLimit, setConfirmedLimit] = useState(10);
+  const [completedLimit, setCompletedLimit] = useState(10);
   const practitionerUserId = user?.id;
   
   // 🔔 Activer les notifications en temps réel
@@ -300,24 +305,7 @@ export default function PractitionerDashboard() {
                 ⚠️ Compte non opérationnel
               </CardTitle>
               <CardDescription className="text-orange-600 dark:text-orange-300">
-                {practitioner.kyc_status === 'pending' && (
-                  <>
-                    Votre dossier est en cours de vérification par notre équipe. Ce processus prend généralement 24 à 48 heures.
-                    Vous recevrez un email et un SMS dès que votre compte sera activé.
-                  </>
-                )}
-                {practitioner.kyc_status === 'incomplete' && (
-                  <>
-                    Des documents ou informations sont manquants dans votre dossier.
-                    {practitioner.kyc_comment && ` Détails : ${practitioner.kyc_comment}`}
-                  </>
-                )}
-                {practitioner.kyc_status === 'rejected' && (
-                  <>
-                    Votre dossier n'a pas été validé.
-                    {practitioner.kyc_comment && ` Raison : ${practitioner.kyc_comment}`}
-                  </>
-                )}
+                {getKYCMessage(practitioner.kyc_status, practitioner.kyc_comment)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -400,7 +388,7 @@ export default function PractitionerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {appointments.reduce((acc, apt) => acc + apt.duration, 0)} min
+                {calculateMonthlyTotalMinutes(appointments)} min
               </div>
               <p className="text-xs text-muted-foreground">Ce mois</p>
             </CardContent>
@@ -486,25 +474,36 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  categorizedAppointments.awaiting.map(appointment => (
-                    <div key={appointment.id} className="relative">
-                      {processingAppointment === appointment.id && (
-                        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span>Traitement en cours...</span>
+                  <>
+                    {categorizedAppointments.awaiting.slice(0, awaitingLimit).map(appointment => (
+                      <div key={appointment.id} className="relative">
+                        {processingAppointment === appointment.id && (
+                          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Traitement en cours...</span>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      <AppointmentCard
-                        appointment={appointment}
-                        userRole="practitioner"
-                        onConfirm={() => handleAccept(appointment.id)}
-                        onReject={() => handleReject(appointment.id)}
-                        disabled={!practitioner.can_accept_missions}
-                      />
-                    </div>
-                  ))
+                        )}
+                        <AppointmentCard
+                          appointment={appointment}
+                          userRole="practitioner"
+                          onConfirm={() => handleAccept(appointment.id)}
+                          onReject={() => handleReject(appointment.id)}
+                          disabled={!practitioner.can_accept_missions}
+                        />
+                      </div>
+                    ))}
+                    {categorizedAppointments.awaiting.length > awaitingLimit && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setAwaitingLimit(prev => prev + 10)}
+                      >
+                        Voir plus ({categorizedAppointments.awaiting.length - awaitingLimit} demandes restantes)
+                      </Button>
+                    )}
+                  </>
                 )}
               </TabsContent>
 
@@ -517,15 +516,26 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  categorizedAppointments.confirmed.map(appointment => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={appointment}
-                      userRole="practitioner"
-                      onComplete={() => handleStatusUpdate(appointment.id, 'completed')}
-                      onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
-                    />
-                  ))
+                  <>
+                    {categorizedAppointments.confirmed.slice(0, confirmedLimit).map(appointment => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        userRole="practitioner"
+                        onComplete={() => handleStatusUpdate(appointment.id, 'completed')}
+                        onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
+                      />
+                    ))}
+                    {categorizedAppointments.confirmed.length > confirmedLimit && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setConfirmedLimit(prev => prev + 10)}
+                      >
+                        Voir plus ({categorizedAppointments.confirmed.length - confirmedLimit} rendez-vous restants)
+                      </Button>
+                    )}
+                  </>
                 )}
               </TabsContent>
 
@@ -538,13 +548,24 @@ export default function PractitionerDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  categorizedAppointments.completed.map(appointment => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={appointment}
-                      userRole="practitioner"
-                    />
-                  ))
+                  <>
+                    {categorizedAppointments.completed.slice(0, completedLimit).map(appointment => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        userRole="practitioner"
+                      />
+                    ))}
+                    {categorizedAppointments.completed.length > completedLimit && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setCompletedLimit(prev => prev + 10)}
+                      >
+                        Voir plus ({categorizedAppointments.completed.length - completedLimit} consultations restantes)
+                      </Button>
+                    )}
+                  </>
                 )}
               </TabsContent>
             </Tabs>

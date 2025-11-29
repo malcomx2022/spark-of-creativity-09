@@ -186,46 +186,57 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   };
 
   const exportToPDF = () => {
-    const doc = new jsPDF();
-    
-    // Title
-    doc.setFontSize(18);
-    doc.text("Rapport de Reversements", 14, 22);
-    
-    // Date
-    doc.setFontSize(11);
-    doc.text(`Généré le ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 30);
-    
-    // Balance summary
-    doc.setFontSize(14);
-    doc.text("Résumé du Solde", 14, 45);
-    doc.setFontSize(11);
-    doc.text(`Disponible: ${formatAmount(balance?.balance_available || 0)}`, 14, 53);
-    doc.text(`En attente: ${formatAmount(balance?.balance_pending || 0)}`, 14, 60);
-    doc.text(`En rétention: ${formatAmount(balance?.balance_on_hold || 0)}`, 14, 67);
-    
-    // Payouts table
-    if (payouts && payouts.length > 0) {
-      autoTable(doc, {
-        startY: 75,
-        head: [["Date", "Période", "Montant", "Statut"]],
-        body: payouts.map(payout => [
-          format(new Date(payout.created_at), "dd/MM/yyyy", { locale: fr }),
-          payout.period_start && payout.period_end 
-            ? `${format(new Date(payout.period_start), "dd/MM", { locale: fr })} - ${format(new Date(payout.period_end), "dd/MM/yyyy", { locale: fr })}`
-            : "N/A",
-          formatAmount(payout.amount),
-          PAYOUT_STATUS_LABELS[payout.status as keyof typeof PAYOUT_STATUS_LABELS] || payout.status,
-        ]),
+    try {
+      const doc = new jsPDF();
+      
+      // Title
+      doc.setFontSize(18);
+      doc.text("Rapport de Reversements", 14, 22);
+      
+      // Date
+      doc.setFontSize(11);
+      doc.text(`Généré le ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 30);
+      
+      // Balance summary
+      doc.setFontSize(14);
+      doc.text("Résumé du Solde", 14, 45);
+      doc.setFontSize(11);
+      doc.text(`Disponible: ${formatAmount(balance?.balance_available || 0)}`, 14, 53);
+      doc.text(`En attente: ${formatAmount(balance?.balance_pending || 0)}`, 14, 60);
+      doc.text(`En rétention: ${formatAmount(balance?.balance_on_hold || 0)}`, 14, 67);
+      
+      // Payouts table
+      if (payouts && payouts.length > 0) {
+        autoTable(doc, {
+          startY: 75,
+          head: [["Date", "Période", "Montant", "Statut"]],
+          body: payouts.map(payout => [
+            format(new Date(payout.created_at), "dd/MM/yyyy", { locale: fr }),
+            payout.period_start && payout.period_end 
+              ? `${format(new Date(payout.period_start), "dd/MM", { locale: fr })} - ${format(new Date(payout.period_end), "dd/MM/yyyy", { locale: fr })}`
+              : "N/A",
+            formatAmount(payout.amount),
+            PAYOUT_STATUS_LABELS[payout.status as keyof typeof PAYOUT_STATUS_LABELS] || payout.status,
+          ]),
+        });
+      }
+      
+      doc.save(`rapport-reversements-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+      
+      toast({
+        title: "Export réussi",
+        description: "Le rapport PDF a été téléchargé.",
+      });
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('PDF export error:', error);
+      }
+      toast({
+        title: "Erreur d'export",
+        description: "Impossible de générer le PDF",
+        variant: "destructive",
       });
     }
-    
-    doc.save(`rapport-reversements-${format(new Date(), "yyyy-MM-dd")}.pdf`);
-    
-    toast({
-      title: "Export réussi",
-      description: "Le rapport PDF a été téléchargé.",
-    });
   };
 
   return (
