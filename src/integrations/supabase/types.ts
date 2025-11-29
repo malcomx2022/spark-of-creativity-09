@@ -2414,6 +2414,9 @@ export type Database = {
         | "compliance"
         | "support"
         | "analyst"
+        | "patient"
+        | "practitioner"
+        | "coach"
       blood_type:
         | "A+"
         | "A-"
@@ -2584,6 +2587,9 @@ export const Constants = {
         "compliance",
         "support",
         "analyst",
+        "patient",
+        "practitioner",
+        "coach",
       ],
       blood_type: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "inconnu"],
       consent_type: ["cgu", "charte", "partage_donnees", "marketing"],
