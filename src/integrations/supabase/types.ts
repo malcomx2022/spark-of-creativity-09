@@ -2161,27 +2161,42 @@ export type Database = {
       webhook_events: {
         Row: {
           created_at: string | null
+          error_message: string | null
+          error_stack: string | null
           event_id: string
           event_type: string
           id: string
+          last_retry_at: string | null
           payload: Json
           processed_at: string | null
+          processing_status: string | null
+          retry_count: number | null
         }
         Insert: {
           created_at?: string | null
+          error_message?: string | null
+          error_stack?: string | null
           event_id: string
           event_type: string
           id?: string
+          last_retry_at?: string | null
           payload: Json
           processed_at?: string | null
+          processing_status?: string | null
+          retry_count?: number | null
         }
         Update: {
           created_at?: string | null
+          error_message?: string | null
+          error_stack?: string | null
           event_id?: string
           event_type?: string
           id?: string
+          last_retry_at?: string | null
           payload?: Json
           processed_at?: string | null
+          processing_status?: string | null
+          retry_count?: number | null
         }
         Relationships: []
       }
