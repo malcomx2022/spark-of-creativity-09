@@ -38,6 +38,32 @@ export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogPr
     setIsSubmitting(true);
 
     try {
+      // Validate min_participants <= max_participants
+      if (formData.min_participants > formData.max_participants) {
+        toast({
+          title: "Erreur de validation",
+          description: "Le nombre minimum de participants ne peut pas dépasser le maximum",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate date is in the future
+      const sessionDate = new Date(formData.scheduled_date);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      if (sessionDate < now) {
+        toast({
+          title: "Date invalide",
+          description: "La date de la séance doit être dans le futur",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       const { error } = await supabase
         .from("group_sessions")
         .insert({
