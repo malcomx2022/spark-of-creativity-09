@@ -278,28 +278,6 @@ const Index = () => {
                     Je suis praticien
                   </Button>
                   </div>
-
-                  <div className="text-center pt-4">
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Vous avez déjà un compte ?
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                      <Button
-                        variant="outline"
-                        onClick={() => navigate(ROUTES.LOGIN)}
-                        className="gap-2"
-                      >
-                        <Phone className="h-4 w-4" />
-                        Connexion par téléphone
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => navigate(ROUTES.LOGIN_EMAIL)}
-                      >
-                        Connexion par email
-                      </Button>
-                    </div>
-                  </div>
                 </>
               )}
 
