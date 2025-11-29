@@ -162,10 +162,10 @@ export default function PatientSignup() {
 
     // Inscription avec Supabase
     try {
-      // ✅ Vérifier l'unicité du téléphone AVANT inscription
+      // ✅ Vérifier si le téléphone est déjà utilisé
       const { data: existingProfile, error: profileCheckError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, phone')
         .eq('phone', formData.phone)
         .maybeSingle();
 
@@ -175,10 +175,17 @@ export default function PatientSignup() {
       }
 
       if (existingProfile) {
+        // Téléphone déjà utilisé
         toast({
-          title: "Erreur",
-          description: "Ce numéro de téléphone est déjà utilisé",
-          variant: "destructive"
+          title: "Téléphone déjà utilisé",
+          description: "Ce numéro de téléphone est déjà lié à un compte. Veuillez vous connecter ou utiliser un autre numéro.",
+          variant: "destructive",
+          action: (
+            <Button size="sm" onClick={() => navigate('/login')}>
+              Se connecter
+            </Button>
+          ),
+          duration: 10000,
         });
         setIsSubmitting(false);
         return;
@@ -227,8 +234,19 @@ export default function PatientSignup() {
 
       // Vérifier si l'email nécessite une confirmation
       if (authData.user && !authData.user.confirmed_at && !authData.session) {
-        // Email non confirmé : rediriger vers page de confirmation
-        toast(AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION);
+        // Sauvegarder les données dans user_metadata pour finalisation après confirmation
+        await supabase.auth.updateUser({
+          data: {
+            pending_onboarding: onboardingPayload,
+            needs_onboarding: true
+          }
+        });
+
+        toast({
+          ...AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION,
+          description: "Vos données sont sauvegardées. Après confirmation de l'email, vous pourrez finaliser votre inscription.",
+        });
+
         navigateToEmailConfirmation(navigate, formData.email, 'patient');
         setIsSubmitting(false);
         return;
