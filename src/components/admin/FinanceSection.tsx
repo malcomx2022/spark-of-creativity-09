@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 import { PayoutsManagementSection } from './PayoutsManagementSection';
 import { RefundsSection } from './RefundsSection';
 import { WebhooksSection } from './WebhooksSection';
@@ -81,6 +82,64 @@ export function FinanceSection() {
     return variants[status] || 'outline';
   };
 
+  const handleExportPayments = async () => {
+    try {
+      const csv = payments.map(p =>
+        `${new Date(p.created_at).toLocaleDateString('fr-FR')},${p.patient_id},${p.amount},${p.payment_method},${p.status}`
+      ).join('\n');
+
+      const header = 'Date,Patient,Montant,Méthode,Statut\n';
+      const blob = new Blob([header + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `paiements-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({ title: "Export réussi", description: `${payments.length} paiements exportés` });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({ 
+        title: "Erreur d'export", 
+        description: "Impossible d'exporter les données",
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const handleExportPayouts = async () => {
+    try {
+      const csv = payouts.map(p =>
+        `${new Date(p.period_start).toLocaleDateString('fr-FR')} - ${new Date(p.period_end).toLocaleDateString('fr-FR')},${p.practitioner_id},${p.amount},${p.payment_method},${p.status}`
+      ).join('\n');
+
+      const header = 'Période,Praticien,Montant,Méthode,Statut\n';
+      const blob = new Blob([header + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reversements-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({ title: "Export réussi", description: `${payouts.length} reversements exportés` });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({ 
+        title: "Erreur d'export", 
+        description: "Impossible d'exporter les données",
+        variant: "destructive" 
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Statistiques */}
@@ -152,7 +211,7 @@ export function FinanceSection() {
                   <CardTitle>Transactions patients</CardTitle>
                   <CardDescription>Historique des paiements reçus</CardDescription>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleExportPayments}>
                   <Download className="h-4 w-4 mr-2" />
                   Exporter
                 </Button>
@@ -242,7 +301,7 @@ export function FinanceSection() {
                   <CardTitle>Reversements praticiens</CardTitle>
                   <CardDescription>Paiements aux praticiens</CardDescription>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleExportPayouts}>
                   <Download className="h-4 w-4 mr-2" />
                   Exporter
                 </Button>

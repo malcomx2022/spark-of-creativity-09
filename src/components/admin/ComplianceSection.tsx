@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BookOpen, Shield, Settings, FileText } from 'lucide-react';
+import { BookOpen, Shield, Settings, FileText, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
 
@@ -211,7 +211,14 @@ export function ComplianceSection() {
                         onClick={() => createConsentMutation.mutate(newConsentForm)}
                         disabled={createConsentMutation.isPending}
                       >
-                        Créer la version
+                        {createConsentMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Création...
+                          </>
+                        ) : (
+                          'Créer la version'
+                        )}
                       </Button>
                     </div>
                   </DialogContent>
