@@ -38,8 +38,8 @@ export default function LoginPage() {
             {/* Connexion Patient */}
             <Card className="shadow-elegant hover:shadow-glow transition-all duration-300 border-patient/20 hover:border-patient/40 cursor-pointer group">
               <CardHeader className="text-center pb-6">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-patient to-patient-light rounded-full flex items-center justify-center mb-4 shadow-elegant group-hover:shadow-glow transition-all duration-300">
-                  <Heart className="h-10 w-10 text-white" />
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-patient/90 to-patient-light rounded-full flex items-center justify-center mb-4 shadow-elegant group-hover:shadow-glow transition-all duration-300">
+                  <Heart className="h-10 w-10 text-white" fill="white" />
                 </div>
                 <CardTitle className="text-2xl font-bold text-foreground">
                   Patient
