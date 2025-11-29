@@ -3,6 +3,8 @@ import logo from "@/assets/logo.png";
 import { Phone, Mail } from "lucide-react";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useUserType } from "@/contexts/UserTypeContext";
+import { ROUTES } from "@/lib/routes";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function Footer() {
   const navigate = useNavigate();
@@ -33,7 +35,7 @@ export default function Footer() {
             <ul className="space-y-2">
               <li>
                 <button
-                  onClick={() => navigate("/")}
+                  onClick={() => navigate(ROUTES.HOME)}
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
                   Accueil
@@ -41,7 +43,7 @@ export default function Footer() {
               </li>
               <li>
                 <button
-                  onClick={() => navigate("/services")}
+                  onClick={() => navigate(ROUTES.SERVICES)}
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
                   Services
@@ -49,7 +51,7 @@ export default function Footer() {
               </li>
               <li>
                 <button
-                  onClick={() => navigate("/search-practitioners")}
+                  onClick={() => navigate(ROUTES.SEARCH_PRACTITIONERS)}
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
                   Recherche
@@ -61,34 +63,54 @@ export default function Footer() {
           {/* Espaces */}
           <div>
             <h3 className="font-semibold text-foreground mb-3">Espaces</h3>
-            <ul className="space-y-2">
-              <li>
-                <button
-                  onClick={() => navigate("/dashboard/patient")}
-                  disabled={isPractitioner === true}
-                  className={`text-sm transition-colors ${
-                    isPractitioner === true
-                      ? "text-muted-foreground/40 cursor-not-allowed"
-                      : "text-muted-foreground hover:text-primary"
-                  }`}
-                >
-                  Espace Patient
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => navigate("/dashboard/practitioner")}
-                  disabled={user !== null && isPractitioner === false}
-                  className={`text-sm transition-colors ${
-                    user !== null && isPractitioner === false
-                      ? "text-muted-foreground/40 cursor-not-allowed"
-                      : "text-muted-foreground hover:text-primary"
-                  }`}
-                >
-                  Espace Praticien
-                </button>
-              </li>
-            </ul>
+            <TooltipProvider>
+              <ul className="space-y-2">
+                <li>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => navigate(ROUTES.DASHBOARD_PATIENT)}
+                        disabled={isPractitioner === true}
+                        className={`text-sm transition-colors ${
+                          isPractitioner === true
+                            ? "text-muted-foreground/40 cursor-not-allowed"
+                            : "text-muted-foreground hover:text-primary"
+                        }`}
+                      >
+                        Espace Patient
+                      </button>
+                    </TooltipTrigger>
+                    {isPractitioner === true && (
+                      <TooltipContent>
+                        <p>Vous êtes connecté en tant que praticien</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </li>
+                <li>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => navigate(ROUTES.DASHBOARD_PRACTITIONER)}
+                        disabled={user !== null && isPractitioner === false}
+                        className={`text-sm transition-colors ${
+                          user !== null && isPractitioner === false
+                            ? "text-muted-foreground/40 cursor-not-allowed"
+                            : "text-muted-foreground hover:text-primary"
+                        }`}
+                      >
+                        Espace Praticien
+                      </button>
+                    </TooltipTrigger>
+                    {user !== null && isPractitioner === false && (
+                      <TooltipContent>
+                        <p>Vous êtes connecté en tant que patient</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </li>
+              </ul>
+            </TooltipProvider>
           </div>
 
           {/* Contact */}
@@ -102,7 +124,7 @@ export default function Footer() {
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4" />
                 <button
-                  onClick={() => navigate("/contact")}
+                  onClick={() => navigate(ROUTES.CONTACT)}
                   className="hover:text-primary transition-colors"
                 >
                   Nous contacter
@@ -120,13 +142,13 @@ export default function Footer() {
             </p>
             <div className="flex gap-4">
               <button
-                onClick={() => navigate("/terms-of-service")}
+                onClick={() => navigate(ROUTES.TERMS)}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Conditions d'utilisation
               </button>
               <button
-                onClick={() => navigate("/privacy-policy")}
+                onClick={() => navigate(ROUTES.PRIVACY)}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Politique de confidentialité

@@ -22,7 +22,7 @@ export default function UserTypeCard({
   onSelect,
 }: UserTypeCardProps) {
   return (
-    <Card className="h-full shadow-medical hover:shadow-glow transition-all duration-300 transform hover:scale-105 border-border/50">
+    <Card className="h-full shadow-medical hover:shadow-glow transition-all duration-300 transform hover:scale-[1.02] border-border/50">
       <CardHeader className="text-center pb-4">
         <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${
           variant === "patient" ? "gradient-primary" : "bg-secondary"
