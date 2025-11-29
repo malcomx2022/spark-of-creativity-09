@@ -15,6 +15,7 @@ export function UsersManagementSection() {
   const [searchTerm, setSearchTerm] = useState('');
   const [profilesPage, setProfilesPage] = useState(0);
   const [practitionersPage, setPractitionersPage] = useState(0);
+  const [confirmText, setConfirmText] = useState('');
   const pageSize = 50;
   const queryClient = useQueryClient();
 
@@ -127,11 +128,23 @@ export function UsersManagementSection() {
                 Les comptes de test seront préservés. Cette action est irréversible.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="py-4">
+              <Input
+                placeholder="Tapez SUPPRIMER pour confirmer"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                className="font-mono"
+              />
+            </div>
             <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogCancel onClick={() => setConfirmText('')}>Annuler</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => cleanupMutation.mutate()}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  cleanupMutation.mutate();
+                  setConfirmText('');
+                }}
+                disabled={confirmText !== 'SUPPRIMER'}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
               >
                 Supprimer
               </AlertDialogAction>
