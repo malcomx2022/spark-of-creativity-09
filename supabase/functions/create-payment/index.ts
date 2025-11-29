@@ -242,7 +242,7 @@ serve(async (req) => {
     if (existingPayments && existingPayments.length > 0) {
       const existingPayment = existingPayments[0];
       const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-      const PAYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+      const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (réduit de 10 pour améliorer UX)
       
       // Si le paiement a plus de 10 minutes, le marquer comme expiré
       if (paymentAge > PAYMENT_TIMEOUT_MS) {
@@ -272,9 +272,10 @@ serve(async (req) => {
         console.log('Existing pending payment found:', existingPayment);
         return new Response(
           JSON.stringify({ 
-            error: `Un paiement est déjà en cours pour ce rendez-vous. Veuillez réessayer dans ${remainingMinutes} minute(s).`,
+            error: `Un paiement est déjà en cours pour ce rendez-vous. Veuillez patienter ${remainingMinutes} minute(s) ou annuler le paiement en attente.`,
             paymentId: existingPayment.id,
-            retryAfter: remainingMinutes
+            retryAfter: remainingMinutes,
+            existingPaymentStatus: existingPayment.status
           }),
           { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
