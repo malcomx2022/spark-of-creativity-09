@@ -43,28 +43,36 @@ export default function PatientLogin() {
         return;
       }
 
-      // Vérifier que l'utilisateur est bien un patient (pas praticien ni admin)
-      const [roleResult, practitionerResult] = await Promise.all([
-        withTimeout<{ data: { role: string } | null }>(
-          supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', data.user.id)
-            .maybeSingle() as unknown as Promise<any>
-        ),
-        withTimeout<{ data: { id: string } | null }>(
-          supabase
-            .from('practitioners')
-            .select('id')
-            .eq('user_id', data.user.id)
-            .maybeSingle() as unknown as Promise<any>
-        )
-      ]);
+      // Vérifier que l'utilisateur a bien un profil patient (peut aussi avoir un profil praticien)
+      const { data: profileData } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', data.user.id)
+          .maybeSingle()
+      );
 
-      if (roleResult.data?.role || practitionerResult.data) {
+      const { data: roleData } = await withTimeout(
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle()
+      );
+
+      const { data: practitionerData } = await withTimeout(
+        supabase
+          .from('practitioners')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .maybeSingle()
+      );
+
+      // Si l'utilisateur n'a QUE un profil praticien/admin (pas de profil patient)
+      if ((roleData?.role || practitionerData) && !profileData) {
         toast({
           title: "Erreur de connexion",
-          description: "Ce compte n'est pas un compte patient. Veuillez utiliser la connexion appropriée.",
+          description: "Ce compte n'est pas un compte patient. Veuillez utiliser la connexion praticien.",
           variant: "destructive"
         });
         await supabase.auth.signOut();
