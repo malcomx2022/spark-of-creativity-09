@@ -425,12 +425,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let webhookEventId: string | null = null;
+  let supabase: any = null;
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const webhookSecret = Deno.env.get('FEDAPAY_WEBHOOK_SECRET');
     const fedapayMode = Deno.env.get('FEDAPAY_MODE') || 'sandbox';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    supabase = createClient(supabaseUrl, supabaseKey);
 
     const signature = req.headers.get('x-fedapay-signature');
     const rawBody = await req.text();
@@ -513,6 +516,16 @@ serve(async (req) => {
         console.error('Error inserting webhook event:', upsertError);
         throw upsertError;
       }
+
+      webhookEventId = webhookEvent?.id;
+
+      // Marquer comme en cours de traitement
+      if (webhookEventId) {
+        await supabase
+          .from('webhook_events')
+          .update({ processing_status: 'processing' })
+          .eq('id', webhookEventId);
+      }
     }
 
     const eventType = webhookData.type;
@@ -541,6 +554,14 @@ serve(async (req) => {
     }
 
 
+    // Marquer le webhook comme traité avec succès
+    if (webhookEventId) {
+      await supabase
+        .from('webhook_events')
+        .update({ processing_status: 'success' })
+        .eq('id', webhookEventId);
+    }
+
     return new Response(
       JSON.stringify({ success: true }),
       { 
@@ -552,6 +573,20 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in payment-webhook function:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Marquer le webhook comme échoué pour retry ultérieur
+    if (webhookEventId) {
+      await supabase
+        .from('webhook_events')
+        .update({ 
+          processing_status: 'failed',
+          error_message: errorMessage,
+          error_stack: error instanceof Error ? error.stack : null,
+          last_retry_at: new Date().toISOString()
+        })
+        .eq('id', webhookEventId);
+    }
+    
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { 
