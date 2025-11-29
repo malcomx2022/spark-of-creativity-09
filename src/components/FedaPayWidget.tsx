@@ -186,17 +186,23 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       console.log('Creating payment transaction...');
 
       // Create payment transaction via edge function
+      const paymentBody: any = {
+        appointmentId,
+        amount,
+        paymentMethod,
+        phoneNumber: sanitizedPhoneNumber,
+        payerName: payerName.trim(),
+      };
+
+      // Only include email if it's not empty
+      if (payerEmail && payerEmail.trim()) {
+        paymentBody.payerEmail = payerEmail.trim();
+      }
+
       const { data: result, error } = await invokeEdgeFunctionWithRetry(
         'create-payment',
         {
-          body: {
-            appointmentId,
-            amount,
-            paymentMethod,
-            phoneNumber: sanitizedPhoneNumber,
-            payerName: payerName.trim(),
-            payerEmail: payerEmail.trim() || undefined,
-          },
+          body: paymentBody,
         },
         3,
         (attempt) => {
