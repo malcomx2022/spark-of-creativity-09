@@ -283,29 +283,65 @@ serve(async (req) => {
 
     console.log('🚀 Création compte praticien atomique:', userId);
 
-    // ✅ CONTRÔLE D'UNICITÉ: Vérifier si un praticien existe déjà avec cet email ou téléphone
+    // ✅ CONTRÔLE D'UNICITÉ: Vérifier si un praticien existe déjà avec ce téléphone
     const { data: existingPractitioner, error: checkError } = await supabase
       .from('practitioners')
       .select('user_id, phone')
-      .or(`phone.eq.${practitionerData.phone},user_id.eq.${userId}`)
+      .eq('phone', practitionerData.phone)
+      .neq('user_id', userId)
       .maybeSingle();
 
-    if (checkError) {
-      console.error('❌ Erreur vérification unicité:', checkError);
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('❌ Erreur vérification unicité téléphone:', checkError);
     }
 
-    if (existingPractitioner && existingPractitioner.user_id !== userId) {
-      console.error('❌ Compte praticien déjà existant:', existingPractitioner);
+    if (existingPractitioner) {
+      console.error('❌ Numéro téléphone déjà utilisé par un autre praticien');
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Un compte praticien existe déjà avec ce numéro de téléphone',
+          error: 'Ce numéro de téléphone est déjà utilisé par un autre praticien',
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 409, // Conflict
         }
       );
+    }
+
+    // ✅ CONTRÔLE D'UNICITÉ EMAIL: Vérifier si un praticien existe déjà avec cet email
+    const { data: currentUser } = await supabase.auth.admin.getUserById(userId);
+    
+    if (currentUser?.user?.email) {
+      // Chercher d'autres utilisateurs avec le même email
+      const { data: allUsers } = await supabase.auth.admin.listUsers();
+      const otherUsersWithEmail = allUsers?.users?.filter(
+        (u: any) => u.email === currentUser.user.email && u.id !== userId
+      ) || [];
+
+      if (otherUsersWithEmail.length > 0) {
+        // Vérifier si ces utilisateurs sont des praticiens
+        const otherUserIds = otherUsersWithEmail.map((u: any) => u.id);
+        const { data: existingPractitioners } = await supabase
+          .from('practitioners')
+          .select('user_id')
+          .in('user_id', otherUserIds);
+        
+        // Si au moins un est praticien, c'est un doublon
+        if (existingPractitioners && existingPractitioners.length > 0) {
+          console.error('❌ Email déjà utilisé par un autre praticien');
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'Cette adresse email est déjà utilisée par un autre praticien',
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 409,
+            }
+          );
+        }
+      }
     }
 
     // Validation stricte des données praticien
