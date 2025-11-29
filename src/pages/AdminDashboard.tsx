@@ -25,6 +25,7 @@ const ComplianceSection = lazy(() => import("@/components/admin/ComplianceSectio
 const AuditLogs = lazy(() => import("@/components/admin/AuditLogs").then(m => ({ default: m.AuditLogs })));
 const WebhooksSection = lazy(() => import("@/components/admin/WebhooksSection").then(m => ({ default: m.WebhooksSection })));
 const WebhookConfig = lazy(() => import("@/components/admin/WebhookConfig").then(m => ({ default: m.WebhookConfig })));
+const SandboxPaymentTester = lazy(() => import("@/components/admin/SandboxPaymentTester").then(m => ({ default: m.SandboxPaymentTester })));
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -271,6 +272,7 @@ export default function AdminDashboard() {
           <TabsContent value="webhooks" className="space-y-4">
             <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
               <WebhookConfig />
+              <SandboxPaymentTester />
               <WebhooksSection />
             </Suspense>
           </TabsContent>
