@@ -93,8 +93,24 @@ export function SearchLocation({
   }, [searchValue, mapboxToken]);
 
   const performSearch = async (query: string, retryCount = 0) => {
-    if (!mapboxToken) {
-      setError('Token Mapbox manquant');
+    if (!mapboxToken || mapboxToken.trim().length === 0) {
+      setError('Configuration Mapbox manquante. Veuillez contacter le support.');
+      toast({
+        variant: 'destructive',
+        title: 'Erreur de configuration',
+        description: 'Le service de recherche d\'adresse n\'est pas configuré. Contactez l\'administrateur.',
+      });
+      return;
+    }
+
+    // Vérifier que le token ressemble à un token Mapbox valide (commence par pk.)
+    if (!mapboxToken.startsWith('pk.')) {
+      setError('Token Mapbox invalide');
+      toast({
+        variant: 'destructive',
+        title: 'Configuration invalide',
+        description: 'Le token Mapbox est mal configuré.',
+      });
       return;
     }
 
@@ -121,12 +137,17 @@ export function SearchLocation({
     } catch (err) {
       console.error('Geocoding error:', err);
       
-      // Retry logic
+      // Retry logic avec délai exponentiel
       if (retryCount < 2) {
-        console.log(`Retrying search... (${retryCount + 1}/2)`);
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 secondes
+
+        if (import.meta.env.DEV) {
+          console.log(`Retrying search... (${retryCount + 1}/2) in ${delay}ms`);
+        }
+
         setTimeout(() => {
           performSearch(query, retryCount + 1);
-        }, 1000 * (retryCount + 1));
+        }, delay);
         return;
       }
 

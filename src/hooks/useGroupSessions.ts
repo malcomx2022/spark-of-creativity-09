@@ -14,8 +14,16 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        // Return empty result for unauthenticated users
-        return { data: [], count: 0 };
+        // Permettre aux visiteurs de voir les séances publiques
+        const { data, error, count } = await supabase
+          .from('group_sessions')
+          .select('*', { count: 'exact' })
+          .in('status', ['confirmee', 'planifiee'])
+          .order('scheduled_date', { ascending: true })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+        return { data: data || [], count: count || 0 };
       }
 
       let query = supabase
