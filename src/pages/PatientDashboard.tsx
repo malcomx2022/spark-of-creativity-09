@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import Header from '@/components/Header';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
+
+// Lazy loaded tabs
+const AppointmentsTab = lazy(() => import('@/components/dashboard/tabs/AppointmentsTab'));
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users } from 'lucide-react';
@@ -538,162 +541,113 @@ export default function PatientDashboard() {
           </TabsContent>
 
           <TabsContent value="appointments" className="space-y-6">
-            {confirmedAwaitingPayment.length > 0 && (
-              <Card className="border-destructive bg-destructive/5">
-                <CardHeader>
-                  <CardTitle className="text-destructive flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5" />
-                    Paiement requis ({confirmedAwaitingPayment.length})
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Les praticiens ont accepté ces rendez-vous. Procédez au paiement pour finaliser.
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {confirmedAwaitingPayment.map(appointment => (
-                    <div key={appointment.id} className="p-4 bg-background rounded-lg border space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-semibold">{appointment.practitionerName}</p>
-                          <p className="text-sm text-muted-foreground">{appointment.specialty}</p>
-                        </div>
-                        <Badge variant="destructive">Paiement requis</Badge>
-                      </div>
-                      {typeof appointment.paymentAmount === 'number' && (
-                        <p className="text-sm font-semibold">{formatAmount(appointment.paymentAmount)}</p>
-                      )}
-                      <div className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span>{new Date(appointment.date).toLocaleDateString('fr-FR')} à {appointment.time}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handlePaymentRequired(appointment.id)}
-                        >
-                          <CreditCard className="h-4 w-4 mr-2" />
-                          Payer maintenant
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCancel(appointment.id)}
-                        >
-                          Annuler
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-semibold">Mes rendez-vous</h3>
-              {patientId && (
-                <NewAppointmentDialog 
-                  onSubmit={handleNewAppointment}
-                />
-              )}
-            </div>
-            
-            <Tabs defaultValue="upcoming" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="upcoming">À venir</TabsTrigger>
-                <TabsTrigger value="past">Historique</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="upcoming" className="space-y-4">
-                {upcomingAppointments.length === 0 ? (
-                  <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                      <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
-                      {patientId && (
-                        <NewAppointmentDialog 
-                          onSubmit={handleNewAppointment}
-                        />
-                      )}
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <>
-                    {upcomingAppointments.map(appointment => (
-                      <div key={appointment.id} className="space-y-4">
-                        <AppointmentCard
-                          appointment={appointment}
-                          userRole="patient"
-                          onCancel={handleCancel}
-                          onPaymentRequired={handlePaymentRequired}
-                        />
-                        {appointment.status === 'confirmed' && (
-                          <GPSTracking appointment={appointment} />
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </TabsContent>
-
-              <TabsContent value="past" className="space-y-4">
-                {pastAppointments.length === 0 ? (
-                  <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                      <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">Aucun rendez-vous passé</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  pastAppointments.map(appointment => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={appointment}
-                      userRole="patient"
-                    />
-                  ))
-                )}
-              </TabsContent>
-            </Tabs>
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <AppointmentsTab onPaymentRequired={handlePaymentRequired} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="group-sessions">
-            <PatientGroupSessionsSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <PatientGroupSessionsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="triage">
-            <TriageForm />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <TriageForm />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="reports">
-            <PatientConsultationReportsSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <PatientConsultationReportsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="profile">
-            <ProfileSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <ProfileSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="medical">
-            <MedicalSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <MedicalSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="payments">
-            <PaymentsSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <PaymentsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="notifications">
-            <NotificationsSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <NotificationsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="messages">
-            <MessagesSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <MessagesSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="reviews">
-            <ReviewsSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <ReviewsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="support">
-            <SupportSection />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <SupportSection />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </main>

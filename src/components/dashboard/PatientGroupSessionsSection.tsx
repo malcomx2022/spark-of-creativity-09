@@ -6,7 +6,7 @@ import { format, isPast, isFuture } from "date-fns";
 import { fr } from "date-fns/locale";
 import { usePatientGroupSessions } from "@/hooks/usePatientGroupSessions";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog";
 
 export function PatientGroupSessionsSection() {
@@ -80,10 +80,15 @@ export function PatientGroupSessionsSection() {
     return 'upcoming';
   };
 
-  const pendingSessions = sessions?.filter(s => categorizeSession(s) === 'pending') || [];
-  const upcomingSessions = sessions?.filter(s => categorizeSession(s) === 'upcoming') || [];
-  const pastSessions = sessions?.filter(s => categorizeSession(s) === 'past') || [];
-  const canceledSessions = sessions?.filter(s => categorizeSession(s) === 'canceled') || [];
+  const categorizedSessions = useMemo(() => {
+    const pending = sessions?.filter(s => categorizeSession(s) === 'pending') || [];
+    const upcoming = sessions?.filter(s => categorizeSession(s) === 'upcoming') || [];
+    const past = sessions?.filter(s => categorizeSession(s) === 'past') || [];
+    const canceled = sessions?.filter(s => categorizeSession(s) === 'canceled') || [];
+    return { pending, upcoming, past, canceled };
+  }, [sessions]);
+
+  const { pending: pendingSessions, upcoming: upcomingSessions, past: pastSessions, canceled: canceledSessions } = categorizedSessions;
 
   if (isLoading) {
     return (
