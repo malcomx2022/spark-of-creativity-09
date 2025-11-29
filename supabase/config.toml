@@ -95,3 +95,6 @@ verify_jwt = true
 
 [functions.auto-sync-pending-payments]
 verify_jwt = false
+
+[functions.retry-failed-webhooks]
+verify_jwt = true

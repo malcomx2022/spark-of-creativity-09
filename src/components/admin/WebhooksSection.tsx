@@ -27,12 +27,25 @@ export function WebhooksSection() {
 
   const stats = {
     total: webhooks.length,
-    processed: webhooks.filter(w => w.processed_at !== null).length,
-    pending: webhooks.filter(w => w.processed_at === null).length,
+    processed: webhooks.filter(w => w.processing_status === 'success').length,
+    pending: webhooks.filter(w => w.processing_status === 'pending' || w.processing_status === 'processing').length,
+    failed: webhooks.filter(w => w.processing_status === 'failed').length,
+    permanentlyFailed: webhooks.filter(w => w.processing_status === 'permanently_failed').length,
   };
 
-  const getStatusBadge = (processedAt: string | null) => {
-    return processedAt ? 'default' : 'secondary';
+  const getStatusBadge = (status: string | null) => {
+    switch (status) {
+      case 'success':
+        return 'default';
+      case 'processing':
+        return 'secondary';
+      case 'failed':
+        return 'destructive';
+      case 'permanently_failed':
+        return 'destructive';
+      default:
+        return 'secondary';
+    }
   };
 
   const handleExport = () => {
@@ -89,6 +102,16 @@ export function WebhooksSection() {
             <div className="text-2xl font-bold text-secondary">{stats.pending}</div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Échoués
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">{stats.failed + stats.permanentlyFailed}</div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -132,10 +155,11 @@ export function WebhooksSection() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Event ID</TableHead>
-                    <TableHead>Type d'événement</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Statut</TableHead>
-                    <TableHead>Traité le</TableHead>
-                    <TableHead>Payload</TableHead>
+                    <TableHead>Retry</TableHead>
+                    <TableHead>Dernière tentative</TableHead>
+                    <TableHead>Erreur</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -149,17 +173,20 @@ export function WebhooksSection() {
                         </TableCell>
                         <TableCell className="font-medium">{webhook.event_type}</TableCell>
                         <TableCell>
-                          <Badge variant={getStatusBadge(webhook.processed_at)}>
-                            {webhook.processed_at ? 'Traité' : 'En attente'}
+                          <Badge variant={getStatusBadge(webhook.processing_status)}>
+                            {webhook.processing_status || 'pending'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm">
-                          {webhook.processed_at
-                            ? new Date(webhook.processed_at).toLocaleString('fr-FR')
+                          {webhook.retry_count > 0 ? `${webhook.retry_count}/5` : '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {webhook.last_retry_at
+                            ? new Date(webhook.last_retry_at).toLocaleString('fr-FR')
                             : '-'}
                         </TableCell>
-                        <TableCell className="max-w-xs truncate text-xs">
-                          <code className="text-xs">{JSON.stringify(webhook.payload).substring(0, 50)}...</code>
+                        <TableCell className="max-w-xs truncate text-xs text-destructive">
+                          {webhook.error_message || '-'}
                         </TableCell>
                       </TableRow>
                     ))}
