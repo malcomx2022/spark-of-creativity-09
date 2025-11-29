@@ -1,17 +1,70 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Heart, User, Stethoscope, Clock, Shield, CheckCircle, Star, Phone } from "lucide-react";
+import { Heart, User, Stethoscope, Clock, Shield, CheckCircle, Star, Phone, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Helmet } from "react-helmet-async";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 const Index = () => {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  const { data: realStats } = useQuery({
+    queryKey: ['homepage-stats'],
+    queryFn: async () => {
+      const [practitionersResult, reviewsResult] = await Promise.all([
+        supabase
+          .from('practitioners')
+          .select('id', { count: 'exact', head: true })
+          .eq('kyc_status', 'approved')
+          .eq('available', true),
+        supabase
+          .from('reviews')
+          .select('rating')
+      ]);
+
+      const practitionersCount = practitionersResult.count || 0;
+      
+      // Calculer le taux de satisfaction
+      const reviews = reviewsResult.data || [];
+      const avgRating = reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : 0;
+      const satisfactionRate = Math.round((avgRating / 5) * 100);
+
+      return {
+        practitioners: practitionersCount,
+        satisfaction: satisfactionRate
+      };
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  const handleDashboardClick = async () => {
+    setDashboardLoading(true);
+    try {
+      const path = await getDashboardPathForUser(user!.id);
+      navigate(path);
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de charger votre tableau de bord. Réessayez.',
+        variant: 'destructive'
+      });
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
 
   const patientFeatures = [
     "Consultation à domicile 24/7",
@@ -30,8 +83,31 @@ const Index = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-glow/10 to-secondary/5">
-      <Header />
+    <>
+      <Helmet>
+        <title>DomiCares - Soins de santé à domicile en Afrique | 24/7</title>
+        <meta 
+          name="description" 
+          content="Consultez un professionnel de santé certifié à domicile. Médecins, infirmiers, kinésithérapeutes disponibles 24/7 au Bénin. Paiement Mobile Money sécurisé." 
+        />
+        <meta name="keywords" content="soins domicile, médecin domicile, infirmier domicile, kinésithérapeute, santé Bénin, santé Afrique" />
+        
+        {/* Open Graph */}
+        <meta property="og:title" content="DomiCares - Soins de santé à domicile 24/7" />
+        <meta property="og:description" content="Consultez un professionnel de santé certifié directement chez vous en Afrique." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://domicares.com" />
+        <meta property="og:image" content={heroImage} />
+        
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="DomiCares - Soins de santé à domicile" />
+        <meta name="twitter:description" content="Professionnels de santé certifiés à domicile 24/7" />
+        <meta name="twitter:image" content={heroImage} />
+      </Helmet>
+
+      <div className="min-h-screen bg-gradient-to-br from-primary-glow/10 to-secondary/5">
+        <Header />
 
       {/* Hero Section */}
       <section className="pt-20 sm:pt-24 pb-12 sm:pb-16">
@@ -55,12 +131,17 @@ const Index = () => {
                 <div className="flex justify-center">
                   <Button 
                     size="xl" 
-                    onClick={async () => {
-                      const path = await getDashboardPathForUser(user.id);
-                      navigate(path);
-                    }}
+                    onClick={handleDashboardClick}
+                    disabled={dashboardLoading}
                   >
-                    Mon tableau de bord
+                    {dashboardLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        Chargement...
+                      </>
+                    ) : (
+                      'Mon tableau de bord'
+                    )}
                   </Button>
                 </div>
               ) : (
@@ -113,7 +194,9 @@ const Index = () => {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-6 pt-8">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">500+</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {realStats?.practitioners || 0}+
+                  </div>
                   <div className="text-sm text-muted-foreground">Praticiens certifiés</div>
                 </div>
                 <div className="text-center">
@@ -121,7 +204,9 @@ const Index = () => {
                   <div className="text-sm text-muted-foreground">Disponibilité</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">98%</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {realStats?.satisfaction || 0}%
+                  </div>
                   <div className="text-sm text-muted-foreground">Satisfaction</div>
                 </div>
               </div>
@@ -131,8 +216,15 @@ const Index = () => {
               <div className="relative z-10">
                 <img
                   src={heroImage}
-                  alt="Soins médicaux à domicile en Afrique"
+                  alt="Soins médicaux à domicile en Afrique - Médecin professionnel en consultation"
                   className="rounded-2xl shadow-2xl animate-float"
+                  loading="lazy"
+                  decoding="async"
+                  width="800"
+                  height="600"
+                  onError={(e) => {
+                    e.currentTarget.src = '/placeholder-hero.jpg';
+                  }}
                 />
               </div>
               <div className="absolute -top-4 -right-4 w-full h-full bg-gradient-primary rounded-2xl opacity-20 blur-xl" />
@@ -383,8 +475,9 @@ const Index = () => {
         </div>
       </section>
 
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 };
 

@@ -2,26 +2,12 @@ import { useNavigate } from "react-router-dom";
 import logo from "@/assets/logo.png";
 import { Phone, Mail } from "lucide-react";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useUserType } from "@/contexts/UserTypeContext";
 
 export default function Footer() {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
-
-  const { data: isPractitioner } = useQuery({
-    queryKey: ['user-type', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return false;
-      const { data } = await supabase
-        .from('practitioners')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      return !!data;
-    },
-    enabled: !!user?.id,
-  });
+  const { isPractitioner } = useUserType();
 
   return (
     <footer className="bg-secondary/10 border-t border-border mt-auto">

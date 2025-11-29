@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import logo from "@/assets/logo.png";
 import {
   DropdownMenu,
@@ -18,10 +19,20 @@ export default function Header() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    // Nettoyer complètement la session
+    // Nettoyer seulement les données de l'app
+    const keysToRemove = [
+      'supabase.auth.token',
+      'recent_location_searches',
+      'payment_state',
+      'user_preferences'
+    ];
+
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+
     await supabase.auth.signOut();
-    localStorage.clear();
-    sessionStorage.clear();
     window.location.href = "/";
   };
 
@@ -52,21 +63,16 @@ export default function Header() {
             >
               Services
             </button>
-            {!user && (
-              <>
-                <button 
-                  onClick={() => navigate("/dashboard/patient")}
-                  className="text-foreground hover:text-primary transition-colors"
-                >
-                  Patient
-                </button>
-                <button 
-                  onClick={() => navigate("/dashboard/practitioner")}
-                  className="text-foreground hover:text-primary transition-colors"
-                >
-                  Praticien
-                </button>
-              </>
+            {user && (
+              <button 
+                onClick={async () => {
+                  const path = await getDashboardPathForUser(user.id);
+                  navigate(path);
+                }}
+                className="text-foreground hover:text-primary transition-colors"
+              >
+                Mon espace
+              </button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
@@ -145,42 +151,50 @@ export default function Header() {
           <div className="md:hidden mt-4 pb-4 border-t border-border">
             <nav className="flex flex-col space-y-3 pt-4">
               <button 
-                onClick={() => navigate("/")}
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate("/");
+                }}
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
                 Accueil
               </button>
               <button 
-                onClick={() => navigate("/services")}
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate("/services");
+                }}
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
                 Services
               </button>
-              {!user && (
-                <>
-                  <button 
-                    onClick={() => navigate("/dashboard/patient")}
-                    className="text-foreground hover:text-primary transition-colors text-left"
-                  >
-                    Espace Patient
-                  </button>
-                  <button 
-                    onClick={() => navigate("/dashboard/practitioner")}
-                    className="text-foreground hover:text-primary transition-colors text-left"
-                  >
-                    Espace Praticien
-                  </button>
-                </>
+              {user && (
+                <button 
+                  onClick={async () => {
+                    setIsMenuOpen(false);
+                    const path = await getDashboardPathForUser(user.id);
+                    navigate(path);
+                  }}
+                  className="text-foreground hover:text-primary transition-colors text-left"
+                >
+                  Mon espace
+                </button>
               )}
               <button 
-                onClick={() => navigate("/search-practitioners")}
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate("/search-practitioners");
+                }}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
                 <MapPin className="h-4 w-4" />
                 Praticiens médicaux
               </button>
               <button 
-                onClick={() => navigate("/search-coaches")}
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate("/search-coaches");
+                }}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
                 <Users className="h-4 w-4" />
@@ -197,7 +211,10 @@ export default function Header() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={handleLogout}
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    handleLogout();
+                  }}
                   className="w-full"
                 >
                   Déconnexion
@@ -207,7 +224,10 @@ export default function Header() {
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    onClick={() => navigate("/login")}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      navigate("/login");
+                    }}
                     className="w-full"
                   >
                     <LogIn className="h-4 w-4 mr-2" />
@@ -216,7 +236,10 @@ export default function Header() {
                   <Button 
                     variant="default" 
                     size="sm" 
-                    onClick={() => navigate("/signup")}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      navigate("/signup");
+                    }}
                     className="w-full"
                   >
                     <UserPlus className="h-4 w-4 mr-2" />
