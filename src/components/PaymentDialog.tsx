@@ -200,11 +200,11 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       if (existingPayment) {
         console.log('✅ Paiement existant trouvé:', existingPayment.id, 'Status:', existingPayment.status);
         
-        // Vérifier si le paiement a plus de 15 minutes (expiré)
+        // Vérifier si le paiement a plus de 10 minutes (expiré)
         const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-        const fifteenMinutes = 15 * 60 * 1000;
+        const tenMinutes = 10 * 60 * 1000;
         
-        if (paymentAge > fifteenMinutes) {
+        if (paymentAge > tenMinutes) {
           console.log('⏰ Paiement expiré, suppression...');
           await supabase.from('payments').delete().eq('id', existingPayment.id);
           toast({
@@ -223,7 +223,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           setPaymentStatus('pending');
           setPollCount(0);
 
-          const remainingMinutes = Math.ceil((fifteenMinutes - paymentAge) / 60000);
+          const remainingMinutes = Math.ceil((tenMinutes - paymentAge) / 60000);
           
           toast({
             title: 'Paiement en cours',
@@ -454,10 +454,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       // Si un paiement existe, vérifier son état
       if (existingPayment) {
         const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-        const fifteenMinutes = 15 * 60 * 1000;
+        const tenMinutes = 10 * 60 * 1000;
         
         // Si le paiement a expiré, le supprimer
-        if (paymentAge > fifteenMinutes) {
+        if (paymentAge > tenMinutes) {
           console.log('⏰ Paiement expiré lors de la vérification, suppression...');
           await supabase.from('payments').delete().eq('id', existingPayment.id);
         } else if (existingPayment.fedapay_payment_url) {
@@ -471,7 +471,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           setPollCount(0);
           setIsCreatingPayment(false);
 
-          const remainingMinutes = Math.ceil((fifteenMinutes - paymentAge) / 60000);
+          const remainingMinutes = Math.ceil((tenMinutes - paymentAge) / 60000);
 
           toast({
             title: 'Paiement en cours',
