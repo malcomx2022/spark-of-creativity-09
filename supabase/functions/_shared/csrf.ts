@@ -7,7 +7,22 @@ const ALLOWED_ORIGINS = [
   Deno.env.get('FRONTEND_URL'),
   'http://localhost:5173', // Dev
   'http://localhost:3000', // Dev alternative
-].filter(Boolean) as string[];
+];
+
+// Vérifier si l'origine est autorisée
+function isOriginAllowed(origin: string | null): boolean {
+  if (!origin) return false;
+  
+  // Autoriser les domaines configurés
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  
+  // Autoriser tous les domaines lovableproject.com et lovable.app
+  if (origin.endsWith('.lovableproject.com') || origin.endsWith('.lovable.app')) {
+    return true;
+  }
+  
+  return false;
+}
 
 export interface CsrfVerificationResult {
   valid: boolean;
@@ -33,7 +48,7 @@ export function verifyCsrfToken(req: Request): CsrfVerificationResult {
     };
   }
 
-  if (!ALLOWED_ORIGINS.includes(requestOrigin)) {
+  if (!isOriginAllowed(requestOrigin)) {
     console.warn('CSRF: Blocked request from unauthorized origin:', requestOrigin);
     return {
       valid: false,
@@ -56,9 +71,9 @@ export function verifyCsrfToken(req: Request): CsrfVerificationResult {
  * Headers CORS sécurisés (pas de wildcard)
  */
 export function getSecureCorsHeaders(origin?: string | null): Record<string, string> {
-  const requestOrigin = origin && ALLOWED_ORIGINS.includes(origin) 
+  const requestOrigin = origin && isOriginAllowed(origin) 
     ? origin 
-    : ALLOWED_ORIGINS[0] || '*';
+    : (ALLOWED_ORIGINS.find(o => o) || '*');
 
   return {
     'Access-Control-Allow-Origin': requestOrigin,
