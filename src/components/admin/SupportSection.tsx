@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MessageSquare, BookOpen, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 export function SupportSection() {
   const queryClient = useQueryClient();
@@ -59,12 +59,12 @@ export function SupportSection() {
     },
   });
 
-  const stats = {
+  const stats = useMemo(() => ({
     openTickets: tickets.filter(t => t.status === 'ouvert').length,
     inProgressTickets: tickets.filter(t => t.status === 'en_cours').length,
     totalFaqs: faqs.length,
     publishedFaqs: faqs.filter(f => f.is_published).length,
-  };
+  }), [tickets, faqs]);
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {

@@ -4,23 +4,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
-import { useEffect, useRef, useState } from "react";
-import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings } from "lucide-react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2 } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
-import { AdminManagement } from "@/components/admin/AdminManagement";
-import { KYCQueue } from "@/components/admin/KYCQueue";
-import { AuditLogs } from "@/components/admin/AuditLogs";
-import { FinanceSection } from "@/components/admin/FinanceSection";
-import { SupportSection } from "@/components/admin/SupportSection";
-import { OperationsSection } from "@/components/admin/OperationsSection";
-import { ComplianceSection } from "@/components/admin/ComplianceSection";
-import { UsersManagementSection } from "@/components/admin/UsersManagementSection";
-import { OTPManagementSection } from "@/components/admin/OTPManagementSection";
-import { ApiManagementSection } from "@/components/admin/ApiManagementSection";
 import { useAdminStats } from "@/hooks/useAdminStats";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useNotifications, useMarkNotificationAsRead } from "@/hooks/useNotifications";
 import { Badge } from "@/components/ui/badge";
+
+// Lazy load admin sections
+const UsersManagementSection = lazy(() => import("@/components/admin/UsersManagementSection").then(m => ({ default: m.UsersManagementSection })));
+const AdminManagement = lazy(() => import("@/components/admin/AdminManagement").then(m => ({ default: m.AdminManagement })));
+const KYCQueue = lazy(() => import("@/components/admin/KYCQueue").then(m => ({ default: m.KYCQueue })));
+const OperationsSection = lazy(() => import("@/components/admin/OperationsSection").then(m => ({ default: m.OperationsSection })));
+const FinanceSection = lazy(() => import("@/components/admin/FinanceSection").then(m => ({ default: m.FinanceSection })));
+const SupportSection = lazy(() => import("@/components/admin/SupportSection").then(m => ({ default: m.SupportSection })));
+const OTPManagementSection = lazy(() => import("@/components/admin/OTPManagementSection").then(m => ({ default: m.OTPManagementSection })));
+const ApiManagementSection = lazy(() => import("@/components/admin/ApiManagementSection").then(m => ({ default: m.ApiManagementSection })));
+const ComplianceSection = lazy(() => import("@/components/admin/ComplianceSection").then(m => ({ default: m.ComplianceSection })));
+const AuditLogs = lazy(() => import("@/components/admin/AuditLogs").then(m => ({ default: m.AuditLogs })));
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -199,45 +201,65 @@ export default function AdminDashboard() {
           </div>
 
           <TabsContent value="dashboard" className="space-y-4">
-            <UsersManagementSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <UsersManagementSection />
+            </Suspense>
           </TabsContent>
 
           {canManageAdmins && (
             <TabsContent value="admins">
-              <AdminManagement />
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <AdminManagement />
+              </Suspense>
             </TabsContent>
           )}
 
           <TabsContent value="kyc">
-            <KYCQueue />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <KYCQueue />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="operations">
-            <OperationsSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <OperationsSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="finance">
-            <FinanceSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <FinanceSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="support">
-            <SupportSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <SupportSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="otp">
-            <OTPManagementSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <OTPManagementSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="api">
-            <ApiManagementSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <ApiManagementSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="compliance">
-            <ComplianceSection />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <ComplianceSection />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="audit">
-            <AuditLogs />
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <AuditLogs />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </main>
