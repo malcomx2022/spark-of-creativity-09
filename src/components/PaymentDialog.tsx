@@ -197,23 +197,49 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           .maybeSingle()
       );
 
-      if (existingPayment?.fedapay_payment_url) {
-        console.log('✅ Paiement existant trouvé:', existingPayment.id);
+      if (existingPayment) {
+        console.log('✅ Paiement existant trouvé:', existingPayment.id, 'Status:', existingPayment.status);
         
-        // Utiliser directement le paiement existant
-        setPaymentId(existingPayment.id);
-        setPaymentUrl(existingPayment.fedapay_payment_url);
-        setTransactionId(existingPayment.fedapay_transaction_id || null);
-        setPaymentStatus('pending');
-        setPollCount(0);
+        // Vérifier si le paiement a plus de 15 minutes (expiré)
+        const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
+        const fifteenMinutes = 15 * 60 * 1000;
+        
+        if (paymentAge > fifteenMinutes) {
+          console.log('⏰ Paiement expiré, suppression...');
+          await supabase.from('payments').delete().eq('id', existingPayment.id);
+          toast({
+            title: 'Paiement expiré',
+            description: 'Le paiement précédent a expiré. Vous pouvez créer un nouveau paiement.',
+          });
+          setExistingPaymentChecked(true);
+          return;
+        }
+        
+        // Si le paiement a une URL, l'utiliser
+        if (existingPayment.fedapay_payment_url) {
+          setPaymentId(existingPayment.id);
+          setPaymentUrl(existingPayment.fedapay_payment_url);
+          setTransactionId(existingPayment.fedapay_transaction_id || null);
+          setPaymentStatus('pending');
+          setPollCount(0);
 
-        toast({
-          title: 'Paiement en attente',
-          description: 'Un paiement est déjà en cours pour ce rendez-vous. Vous pouvez compléter le paiement en cliquant sur le lien ci-dessous.',
-        });
+          const remainingMinutes = Math.ceil((fifteenMinutes - paymentAge) / 60000);
+          
+          toast({
+            title: 'Paiement en cours',
+            description: `Un paiement est déjà en cours pour ce rendez-vous (expire dans ${remainingMinutes} min). Complétez-le dans la fenêtre qui vient de s'ouvrir.`,
+          });
 
-        // Ouvrir automatiquement l'URL de paiement
-        window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+          window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+        } else {
+          // Paiement sans URL (probablement échoué), le supprimer
+          console.log('⚠️ Paiement sans URL détecté, suppression...');
+          await supabase.from('payments').delete().eq('id', existingPayment.id);
+          toast({
+            title: 'Paiement invalide',
+            description: 'Un paiement incomplet a été nettoyé. Vous pouvez créer un nouveau paiement.',
+          });
+        }
       } else {
         console.log('ℹ️ Aucun paiement en cours trouvé, création possible');
       }
@@ -417,7 +443,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       const { data: existingPayment } = await withTimeout(
         supabase
           .from('payments')
-          .select('id, fedapay_payment_url, fedapay_transaction_id, status')
+          .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
           .eq('appointment_id', appointmentId)
           .in('status', ['initiated', 'pending'])
           .order('created_at', { ascending: false })
@@ -425,24 +451,40 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           .maybeSingle()
       );
 
-      // Si un paiement existe, l'utiliser au lieu d'en créer un nouveau
-      if (existingPayment?.fedapay_payment_url) {
-        console.log('✅ Paiement existant trouvé, réutilisation');
+      // Si un paiement existe, vérifier son état
+      if (existingPayment) {
+        const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
+        const fifteenMinutes = 15 * 60 * 1000;
         
-        setPaymentUrl(existingPayment.fedapay_payment_url);
-        setPaymentId(existingPayment.id);
-        setTransactionId(existingPayment.fedapay_transaction_id || null);
-        setPaymentStatus('pending');
-        setPollCount(0);
-        setIsCreatingPayment(false);
+        // Si le paiement a expiré, le supprimer
+        if (paymentAge > fifteenMinutes) {
+          console.log('⏰ Paiement expiré lors de la vérification, suppression...');
+          await supabase.from('payments').delete().eq('id', existingPayment.id);
+        } else if (existingPayment.fedapay_payment_url) {
+          // Si le paiement est valide avec URL, l'utiliser
+          console.log('✅ Paiement existant trouvé, réutilisation');
+          
+          setPaymentUrl(existingPayment.fedapay_payment_url);
+          setPaymentId(existingPayment.id);
+          setTransactionId(existingPayment.fedapay_transaction_id || null);
+          setPaymentStatus('pending');
+          setPollCount(0);
+          setIsCreatingPayment(false);
 
-        toast({
-          title: 'Paiement en cours',
-          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-        });
+          const remainingMinutes = Math.ceil((fifteenMinutes - paymentAge) / 60000);
 
-        window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
-        return;
+          toast({
+            title: 'Paiement en cours',
+            description: `Complétez le paiement dans la fenêtre qui vient de s'ouvrir (expire dans ${remainingMinutes} min).`,
+          });
+
+          window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+          return;
+        } else {
+          // Paiement sans URL, le supprimer
+          console.log('⚠️ Paiement sans URL lors de la vérification, suppression...');
+          await supabase.from('payments').delete().eq('id', existingPayment.id);
+        }
       }
 
       // Sinon, créer un nouveau paiement
