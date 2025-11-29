@@ -118,6 +118,11 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         const { data, error } = await supabase.functions.invoke('get-fedapay-config');
         if (error) throw error;
         setFedapayConfig(data);
+        
+        // En mode sandbox, pré-remplir avec un numéro de test MTN
+        if (data?.environment === 'sandbox' && !phoneNumber) {
+          setPhoneNumber('+22966000001'); // Numéro de test MTN Benin
+        }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
         toast({
@@ -1199,6 +1204,24 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             Montant à payer: {formatAmount(amount)}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Alerte pour mode sandbox avec numéros de test */}
+        {fedapayConfig?.environment === 'sandbox' && paymentStatus === 'idle' && (
+          <Alert className="border-primary/50 bg-primary/5">
+            <AlertTriangle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <p className="font-semibold mb-2">Mode Test - Utilisez ces numéros :</p>
+              <ul className="space-y-1 text-xs">
+                <li>✅ <strong>MTN succès:</strong> +229 66 00 00 01</li>
+                <li>✅ <strong>MOOV succès:</strong> +229 64 00 00 01</li>
+                <li>❌ <strong>Échec simulé:</strong> +229 66 00 00 00 ou +229 64 00 00 00</li>
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Les vrais numéros ne fonctionnent pas en mode test.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {paymentStatus !== 'idle' ? (
           renderPaymentStatus()
