@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { verifyCsrfToken, getSecureCorsHeaders } from "../_shared/csrf.ts";
 
 /**
  * Normalise un numéro de téléphone au format E.164
@@ -43,8 +39,25 @@ function validatePhoneNumber(phone: string): boolean {
  * - Gestion d'erreurs complète avec messages clairs
  */
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = getSecureCorsHeaders(origin);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Vérifier CSRF
+  const csrfCheck = verifyCsrfToken(req);
+  if (!csrfCheck.valid) {
+    console.warn('CSRF verification failed:', csrfCheck.error);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false,
+        error: 'Security verification failed. Please refresh the page and try again.' 
+      }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;

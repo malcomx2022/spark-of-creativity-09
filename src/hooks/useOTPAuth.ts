@@ -10,6 +10,13 @@ const OTP_PHONE_KEY = 'otp_last_phone';
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
 
+/**
+ * Génère un token CSRF sécurisé pour les requêtes OTP
+ */
+function generateCsrfToken(): string {
+  return crypto.randomUUID() + crypto.randomUUID(); // 72 caractères
+}
+
 interface SendOTPParams {
   phoneNumber: string;
   channel?: OTPChannel;
@@ -65,8 +72,13 @@ export function useOTPAuth() {
   // Mutation pour envoyer l'OTP
   const sendOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, channel = 'sms' }: SendOTPParams) => {
+      const csrfToken = generateCsrfToken();
+      
       const { data, error } = await withTimeout(
         invokeEdgeFunctionWithRetry<SendOTPResponse>('send-otp', {
+          headers: {
+            'x-csrf-token': csrfToken,
+          },
           body: {
             phoneNumber,
             channel
@@ -111,8 +123,13 @@ export function useOTPAuth() {
   // Mutation pour vérifier l'OTP
   const verifyOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, code }: VerifyOTPParams) => {
+      const csrfToken = generateCsrfToken();
+      
       const { data, error } = await withTimeout(
         invokeEdgeFunctionWithRetry<VerifyOTPResponse>('verify-otp', {
+          headers: {
+            'x-csrf-token': csrfToken,
+          },
           body: {
             phoneNumber,
             code

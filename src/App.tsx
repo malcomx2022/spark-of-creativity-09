@@ -19,6 +19,8 @@ import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import LoginWithOTP from "./pages/LoginWithOTP";
 import VerifyOTP from "./pages/VerifyOTP";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -51,6 +53,8 @@ const App = () => (
           <Route path="/login" element={<LoginWithOTP />} />
           <Route path="/login-email" element={<LoginPage />} />
           <Route path="/verify-otp" element={<VerifyOTP />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/confirm-email" element={<ConfirmEmail />} />
           <Route path="/admin/login" element={<AdminLogin />} />
