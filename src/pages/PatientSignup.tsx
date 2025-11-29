@@ -44,7 +44,7 @@ const patientSignupSchema = z.object({
     .trim()
     .min(10, "L'adresse doit contenir au moins 10 caractères"),
   phone: z.string()
-    .regex(/^\+229\d{8}$/, "Le numéro doit être au format +229XXXXXXXX"),
+    .regex(/^\+[1-9]\d{7,14}$/, "Le numéro doit être au format international (+XXX...)"),
   email: z.string()
     .email("Adresse email invalide")
     .max(255, "L'email ne peut pas dépasser 255 caractères"),
@@ -56,7 +56,7 @@ const patientSignupSchema = z.object({
     .trim()
     .min(2, "Le nom du contact doit contenir au moins 2 caractères"),
   emergencyContactPhone: z.string()
-    .regex(/^\+229\d{8}$/, "Le numéro doit être au format +229XXXXXXXX"),
+    .regex(/^\+[1-9]\d{7,14}$/, "Le numéro doit être au format international (+XXX...)"),
   medicalHistory: z.array(z.string()),
   acceptTerms: z.boolean()
     .refine((val) => val === true, "Vous devez accepter les conditions d'utilisation")
@@ -252,24 +252,26 @@ export default function PatientSignup() {
       );
 
       if (registrationError) {
-        console.error('Erreur lors de la finalisation:', registrationError);
-        
-        // ⚠️ Compte créé mais données non finalisées
-        // Les données sont dans user_metadata.pending_onboarding et pourront être récupérées plus tard
-        
-        toast({
-          ...AUTH_MESSAGES.SIGNUP_ERROR,
-          description: "Compte créé mais finalisation incomplète. Reconnectez-vous pour terminer.",
-          variant: "destructive"
-        });
-        
-        // On déconnecte pour forcer l'utilisateur à se reconnecter et récupérer les données
-        try {
-          await supabase.auth.signOut();
-        } catch (signOutError) {
-          console.error('Erreur lors de la déconnexion:', signOutError);
+        if (import.meta.env.DEV) {
+          console.error('Erreur lors de la finalisation:', registrationError);
         }
-        
+
+        // Ne PAS déconnecter, proposer de réessayer
+        toast({
+          title: "Finalisation en attente",
+          description: "Votre compte est créé mais certaines données n'ont pas pu être sauvegardées.",
+          variant: "destructive",
+          action: (
+            <Button 
+              size="sm"
+              onClick={() => handleRetryFinalization(userId, onboardingPayload)}
+            >
+              Réessayer
+            </Button>
+          ),
+          duration: 30000,
+        });
+
         setIsSubmitting(false);
         return;
       }
@@ -312,6 +314,33 @@ export default function PatientSignup() {
         ? [...prev.medicalHistory, condition]
         : prev.medicalHistory.filter(c => c !== condition)
     }));
+  };
+
+  // Fonction de retry manuel de l'edge function
+  const handleRetryFinalization = async (userId: string, payload: any) => {
+    setIsSubmitting(true);
+
+    const { error } = await withTimeout(
+      supabase.functions.invoke('complete-user-registration', {
+        body: { userId, data: { userType: 'patient', ...payload } }
+      })
+    );
+
+    if (error) {
+      toast({
+        title: "Échec du retry",
+        description: "Veuillez vous déconnecter et vous reconnecter pour réessayer",
+        variant: "destructive"
+      });
+    } else {
+      toast({ 
+        title: "Finalisation réussie !", 
+        description: "Bienvenue sur Domicares" 
+      });
+      navigate('/registration-success?type=patient', { replace: true });
+    }
+
+    setIsSubmitting(false);
   };
 
   return (
@@ -443,6 +472,7 @@ export default function PatientSignup() {
                         localNumberLength={8}
                         className={validationErrors.phone ? "border-destructive" : ""}
                       />
+                      <p className="text-xs text-muted-foreground">Format: +229XXXXXXXX (Bénin), +33XXXXXXXXX (France), etc.</p>
                       {validationErrors.phone && (
                         <p className="text-sm text-destructive">{validationErrors.phone}</p>
                       )}
@@ -556,6 +586,7 @@ export default function PatientSignup() {
                         localNumberLength={8}
                         className={validationErrors.emergencyContactPhone ? "border-destructive" : ""}
                       />
+                      <p className="text-xs text-muted-foreground">Format international accepté: +229, +33, +1, etc.</p>
                       {validationErrors.emergencyContactPhone && (
                         <p className="text-sm text-destructive">{validationErrors.emergencyContactPhone}</p>
                       )}
