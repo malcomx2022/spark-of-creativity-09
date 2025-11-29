@@ -57,36 +57,24 @@ serve(async (req) => {
       throw new Error('Utilisateur non trouvé');
     }
 
-    // Vérifier que la séance existe et a des places disponibles
-    const { data: session, error: sessionError } = await supabase
-      .from('group_sessions')
-      .select('*')
-      .eq('id', body.sessionId)
-      .single();
+    // Vérification atomique de la disponibilité avec verrouillage optimiste
+    const { data: reservation, error: reserveError } = await supabase
+      .rpc('reserve_group_session_spot', {
+        p_session_id: body.sessionId,
+        p_patient_id: body.patientId
+      });
 
-    if (sessionError || !session) {
-      throw new Error('Séance non trouvée');
+    if (reserveError) {
+      console.error('❌ Erreur réservation:', reserveError);
+      throw new Error('Erreur lors de la vérification de disponibilité');
     }
 
-    if (session.status !== 'planifiee' && session.status !== 'confirmee') {
-      throw new Error('Séance non disponible pour inscription');
+    if (!reservation?.spot_reserved) {
+      throw new Error(reservation?.error_message || 'Impossible de réserver cette place');
     }
 
-    if (session.current_participants >= session.max_participants) {
-      throw new Error('Séance complète');
-    }
-
-    // Vérifier si déjà inscrit
-    const { data: existing } = await supabase
-      .from('group_session_participants')
-      .select('id')
-      .eq('session_id', body.sessionId)
-      .eq('patient_id', body.patientId)
-      .single();
-
-    if (existing) {
-      throw new Error('Déjà inscrit à cette séance');
-    }
+    const session = reservation.session;
+    console.log('✅ Place réservée atomiquement pour la séance:', session.id);
 
     let participantId: string | undefined;
     let paymentResult: any;
