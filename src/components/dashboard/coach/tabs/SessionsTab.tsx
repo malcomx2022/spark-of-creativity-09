@@ -44,6 +44,41 @@ export default function SessionsTab({
   const displayedSessions = sortedSessions.slice(0, sessionsLimit);
   const hasMoreSessions = sortedSessions.length > sessionsLimit;
 
+  // Determine empty state message
+  const getEmptyStateMessage = () => {
+    if (!sessions || sessions.length === 0) {
+      return {
+        title: "Aucune séance créée pour le moment",
+        subtitle: "Créez votre première séance de groupe"
+      };
+    }
+
+    const now = new Date();
+    const allInPast = sessions.every(s => new Date(s.scheduled_date) < now);
+    const allCancelled = sessions.every(s => s.status === 'annulee');
+
+    if (allCancelled) {
+      return {
+        title: "Toutes vos séances ont été annulées",
+        subtitle: "Créez une nouvelle séance pour recommencer"
+      };
+    }
+
+    if (allInPast) {
+      return {
+        title: "Toutes vos séances sont terminées",
+        subtitle: "Créez une nouvelle séance à venir"
+      };
+    }
+
+    return {
+      title: "Aucune séance disponible",
+      subtitle: "Créez une nouvelle séance"
+    };
+  };
+
+  const emptyState = getEmptyStateMessage();
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -92,8 +127,11 @@ export default function SessionsTab({
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">
-              Aucune séance créée pour le moment
+            <p className="text-muted-foreground mb-2 font-semibold">
+              {emptyState.title}
+            </p>
+            <p className="text-sm text-muted-foreground mb-4">
+              {emptyState.subtitle}
             </p>
             <CreateGroupSessionDialog coachId={coach.id} />
           </CardContent>
