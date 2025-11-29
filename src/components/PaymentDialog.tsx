@@ -524,6 +524,66 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         console.error('Supabase function error:', error);
         await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
         setIsCreatingPayment(false);
+        
+        // Parse l'erreur pour récupérer les détails du paiement en cours (409)
+        let errorDetails: any = null;
+        try {
+          // Essayer de parser le message d'erreur comme JSON
+          const errorMatch = error.message.match(/\{.*\}/);
+          if (errorMatch) {
+            errorDetails = JSON.parse(errorMatch[0]);
+          }
+        } catch (parseError) {
+          console.error('Could not parse error details:', parseError);
+        }
+        
+        // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
+        if (errorDetails && errorDetails.paymentId && errorDetails.retryAfter) {
+          setIsProcessing(false);
+          setPaymentStatus('error');
+          
+          toast({
+            title: 'Paiement en cours',
+            description: errorDetails.error || 'Un paiement est déjà en attente',
+            variant: 'destructive',
+            duration: 10000,
+            action: (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+                      body: { appointmentId }
+                    });
+                    
+                    if (cancelError) throw cancelError;
+                    
+                    toast({
+                      title: 'Paiement annulé',
+                      description: 'Vous pouvez maintenant créer un nouveau paiement.',
+                    });
+                    
+                    // Réinitialiser le formulaire
+                    resetPaymentState();
+                    setExistingPaymentChecked(false);
+                  } catch (e) {
+                    console.error('Cancel error:', e);
+                    toast({
+                      title: 'Erreur',
+                      description: 'Impossible d\'annuler le paiement. Veuillez réessayer.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                Annuler et réessayer
+              </Button>
+            ),
+          });
+          return;
+        }
+        
         throw error;
       }
 
@@ -719,29 +779,27 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       
       const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue lors du paiement';
       
-      // Détecter l'erreur de paiement en cours (409)
-      const isPaymentInProgress = errorMessage.includes('paiement est déjà en cours');
-      const retryMatch = errorMessage.match(/réessayer dans (\d+) minute/);
-      const retryMinutes = retryMatch ? parseInt(retryMatch[1]) : null;
+      // Ne pas afficher de toast ici si on a déjà géré l'erreur 409 au-dessus
+      // Vérifier si c'est une erreur de paiement en cours déjà gérée
+      const isHandled409 = errorMessage.includes('paiement est déjà en cours') || errorMessage.includes('paymentId');
       
-      // Enregistrer l'échec définitif
-      await recordPaymentAttempt('failed', errorMessage, isPaymentInProgress ? 'duplicate_payment' : 'payment_error', {
-        error: errorMessage,
-        timestamp: new Date().toISOString(),
-        isPaymentInProgress,
-      });
-      
-      toast({
-        title: isPaymentInProgress ? 'Paiement en cours' : 'Erreur de paiement',
-        description: isPaymentInProgress && retryMinutes 
-          ? `Un paiement est déjà en cours. Veuillez patienter ${retryMinutes} minute(s) ou vérifiez votre statut de paiement.`
-          : errorMessage,
-        variant: 'destructive',
-        duration: isPaymentInProgress ? 8000 : 5000,
-      });
+      if (!isHandled409) {
+        // Enregistrer l'échec définitif
+        await recordPaymentAttempt('failed', errorMessage, 'payment_error', {
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        });
+        
+        toast({
+          title: 'Erreur de paiement',
+          description: errorMessage,
+          variant: 'destructive',
+          duration: 5000,
+        });
 
-      if (onError) {
-        onError(error instanceof Error ? error : new Error(errorMessage));
+        if (onError) {
+          onError(error instanceof Error ? error : new Error(errorMessage));
+        }
       }
     }
   };

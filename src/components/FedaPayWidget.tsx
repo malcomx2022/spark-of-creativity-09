@@ -218,8 +218,67 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       if (error) {
         const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la création du paiement';
         
+        // Parse l'erreur pour récupérer les détails du paiement en cours (409)
+        let errorDetails: any = null;
+        try {
+          // Essayer de parser le message d'erreur comme JSON
+          const errorMatch = errorMessage.match(/\{.*\}/);
+          if (errorMatch) {
+            errorDetails = JSON.parse(errorMatch[0]);
+          }
+        } catch (parseError) {
+          console.error('Could not parse error details:', parseError);
+        }
+        
         // Vérifier si c'est une erreur 409 (paiement en attente)
-        if (errorMessage.includes('Un paiement est déjà en cours')) {
+        if (errorDetails && errorDetails.paymentId && errorDetails.retryAfter) {
+          setIsProcessing(false);
+          setPaymentStatus('error');
+          
+          toast({
+            title: 'Paiement en cours',
+            description: errorDetails.error || 'Un paiement est déjà en attente',
+            variant: 'destructive',
+            duration: 10000,
+            action: (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+                      body: { appointmentId }
+                    });
+                    
+                    if (cancelError) throw cancelError;
+                    
+                    toast({
+                      title: 'Paiement annulé',
+                      description: 'Vous pouvez maintenant créer un nouveau paiement.',
+                    });
+                    
+                    // Réinitialiser le formulaire
+                    resetState();
+                    
+                    // Rafraîchir la page après 1 seconde
+                    setTimeout(() => window.location.reload(), 1000);
+                  } catch (e) {
+                    console.error('Cancel error:', e);
+                    toast({
+                      title: 'Erreur',
+                      description: 'Impossible d\'annuler le paiement. Veuillez réessayer.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                Annuler et réessayer
+              </Button>
+            ),
+          });
+          return;
+        } else if (errorMessage.includes('Un paiement est déjà en cours')) {
+          // Fallback pour ancienne détection textuelle
           setIsProcessing(false);
           setPaymentStatus('error');
           
