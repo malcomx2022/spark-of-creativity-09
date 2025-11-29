@@ -561,9 +561,9 @@ const Index = () => {
                 </Button>
               )}
               <Button
-                variant="outline"
+                variant="ghost"
                 size="xl"
-                className="border-white text-white hover:bg-white hover:text-primary"
+                className="border-2 border-white text-white hover:bg-white hover:!text-primary transition-colors"
                 onClick={() => navigate(ROUTES.SERVICES)}
               >
                 En savoir plus
