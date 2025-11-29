@@ -147,16 +147,19 @@ async function handleTransactionEvent(
   }
 
   // ✅ CORRECTION ERREUR #2: Utiliser la fonction atomique pour mettre à jour payment + balance
-  if (practitionerId && paymentStatus === 'paid') {
-    console.log('Updating payment and balance atomically:', payment.id, practitionerId);
-    
+  // Utiliser la RPC atomique pour TOUS les changements de statut qui affectent le balance
+  if (practitionerId && ['paid', 'failed', 'canceled'].includes(paymentStatus)) {
+    console.log('Updating payment and balance atomically:', payment.id, practitionerId, paymentStatus);
+
+    const payoutStatus = paymentStatus === 'paid' ? 'held' : 'failed';
+
     const { error: atomicError } = await supabase.rpc('update_payment_with_balance', {
       p_payment_id: payment.id,
       p_practitioner_id: practitionerId,
       p_net_amount: netAmount,
       p_new_status: paymentStatus,
-      p_new_payout_status: 'held',
-      p_hold_until: holdUntil.toISOString()
+      p_new_payout_status: payoutStatus,
+      p_hold_until: paymentStatus === 'paid' ? holdUntil.toISOString() : null
     });
 
     if (atomicError) {
@@ -164,15 +167,11 @@ async function handleTransactionEvent(
       throw atomicError;
     }
   } else {
-    // Pour les statuts non-paid, mise à jour simple
-    const updateData: any = { 
+    // Pour les statuts intermédiaires (pending, etc.), mise à jour simple
+    const updateData: any = {
       status: paymentStatus,
       updated_at: new Date().toISOString(),
     };
-    
-    if (['failed', 'canceled'].includes(paymentStatus)) {
-      updateData.payout_status = 'failed';
-    }
 
     const { error: updateError } = await supabase
       .from('payments')
