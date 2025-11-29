@@ -100,7 +100,14 @@ export default function LoginPage() {
                     Se connecter en tant que praticien
                   </Button>
                 </Link>
-                <div className="h-10" /> {/* Spacer pour aligner avec la carte patient */}
+                <Link to="/login" className="block">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                  >
+                    Connexion avec OTP
+                  </Button>
+                </Link>
                 <div className="pt-4 border-t text-center">
                   <p className="text-sm text-muted-foreground mb-2">
                     Pas encore de compte ?
