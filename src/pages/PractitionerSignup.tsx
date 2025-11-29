@@ -479,11 +479,25 @@ export default function PractitionerSignup() {
       }
 
       if (existingPractitioner) {
+        // Mettre en évidence le champ téléphone avec l'erreur
+        setFieldErrors(prev => ({
+          ...prev,
+          phone: "Ce numéro de téléphone est déjà utilisé par un autre praticien"
+        }));
+        
         toast({
-          title: "Erreur",
-          description: "Ce numéro de téléphone est déjà utilisé par un autre praticien",
+          title: "Numéro de téléphone déjà utilisé",
+          description: "Ce numéro de téléphone est déjà enregistré. Veuillez en utiliser un autre ou vous connecter si c'est votre compte.",
           variant: "destructive"
         });
+        
+        // Scroller vers le champ téléphone
+        const phoneInput = document.getElementById('phone');
+        if (phoneInput) {
+          phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          phoneInput.focus();
+        }
+        
         setIsSubmitting(false);
         return;
       }
@@ -511,18 +525,47 @@ export default function PractitionerSignup() {
       if (error) {
         let userMessage = "Une erreur est survenue lors de l'inscription";
         let userDescription = "";
+        let errorField: keyof SignupFormData | null = null;
 
         const errorMsg = error.message.toLowerCase();
 
         if (errorMsg.includes('already registered') || errorMsg.includes('already been registered')) {
           userMessage = "Email déjà utilisé";
-          userDescription = "Un compte existe déjà avec cet email. Utilisez 'Mot de passe oublié' si c'est le vôtre, ou essayez un autre email.";
+          userDescription = "Un compte existe déjà avec cet email. Veuillez vous connecter si c'est votre compte, ou utiliser un autre email.";
+          errorField = 'email';
+          
+          // Mettre en évidence le champ email
+          setFieldErrors(prev => ({
+            ...prev,
+            email: "Cet email est déjà utilisé. Veuillez en choisir un autre ou vous connecter."
+          }));
+          
+          // Scroller vers le champ email
+          setTimeout(() => {
+            const emailInput = document.getElementById('email');
+            if (emailInput) {
+              emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              emailInput.focus();
+            }
+          }, 100);
         } else if (errorMsg.includes('password')) {
           userMessage = "Mot de passe invalide";
           userDescription = "Le mot de passe doit contenir au moins 8 caractères avec lettres et chiffres.";
+          errorField = 'password';
+          
+          setFieldErrors(prev => ({
+            ...prev,
+            password: "Le mot de passe doit contenir au moins 8 caractères"
+          }));
         } else if (errorMsg.includes('email')) {
           userMessage = "Email invalide";
           userDescription = "Veuillez vérifier le format de votre adresse email.";
+          errorField = 'email';
+          
+          setFieldErrors(prev => ({
+            ...prev,
+            email: "Format d'email invalide"
+          }));
         } else if (errorMsg.includes('rate limit') || errorMsg.includes('too many')) {
           userMessage = "Trop de tentatives";
           userDescription = "Veuillez patienter quelques minutes avant de réessayer.";
@@ -680,8 +723,45 @@ export default function PractitionerSignup() {
           errorDetails = createResult.details;
           userMessage = "Erreurs de validation détectées :";
         } else if (errorMessage.includes('existe déjà') || errorMessage.includes('already')) {
-          userMessage = "Un compte praticien existe déjà avec ces informations.";
-          errorDetails = ["Vérifiez votre numéro de téléphone ou connectez-vous si vous avez déjà un compte."];
+          // Déterminer quel champ existe déjà
+          if (errorMessage.toLowerCase().includes('phone') || errorMessage.toLowerCase().includes('téléphone')) {
+            userMessage = "Numéro de téléphone déjà utilisé";
+            errorDetails = ["Ce numéro de téléphone est déjà enregistré. Veuillez en utiliser un autre ou vous connecter si c'est votre compte."];
+            
+            setFieldErrors(prev => ({
+              ...prev,
+              phone: "Ce numéro de téléphone est déjà utilisé"
+            }));
+            
+            // Scroller vers le champ téléphone
+            setTimeout(() => {
+              const phoneInput = document.getElementById('phone');
+              if (phoneInput) {
+                phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                phoneInput.focus();
+              }
+            }, 100);
+          } else if (errorMessage.toLowerCase().includes('email')) {
+            userMessage = "Email déjà utilisé";
+            errorDetails = ["Cet email est déjà enregistré. Veuillez vous connecter si c'est votre compte, ou utiliser un autre email."];
+            
+            setFieldErrors(prev => ({
+              ...prev,
+              email: "Cet email est déjà utilisé"
+            }));
+            
+            // Scroller vers le champ email
+            setTimeout(() => {
+              const emailInput = document.getElementById('email');
+              if (emailInput) {
+                emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                emailInput.focus();
+              }
+            }, 100);
+          } else {
+            userMessage = "Informations déjà utilisées";
+            errorDetails = ["Un compte existe déjà avec ces informations. Vérifiez votre email et numéro de téléphone, ou connectez-vous si vous avez déjà un compte."];
+          }
         } else if (errorMessage.includes('Document invalide') || errorMessage.includes('document')) {
           userMessage = "Un ou plusieurs documents sont invalides.";
           errorDetails = ["Vérifiez le format (PDF, JPG, PNG uniquement) et la taille (maximum 5MB par fichier)."];
@@ -692,11 +772,39 @@ export default function PractitionerSignup() {
           userMessage = "Erreur lors de l'upload des documents.";
           errorDetails = ["Veuillez vérifier votre connexion internet et réessayer."];
         } else if (errorMessage.includes('phone') || errorMessage.includes('téléphone')) {
-          userMessage = "Numéro de téléphone invalide.";
-          errorDetails = ["Utilisez le format international (+229... pour le Bénin)."];
+          userMessage = "Numéro de téléphone invalide ou déjà utilisé";
+          errorDetails = ["Vérifiez votre numéro de téléphone. Format attendu: +229XXXXXXXX"];
+          
+          setFieldErrors(prev => ({
+            ...prev,
+            phone: "Numéro de téléphone invalide ou déjà utilisé"
+          }));
+          
+          // Scroller vers le champ téléphone
+          setTimeout(() => {
+            const phoneInput = document.getElementById('phone');
+            if (phoneInput) {
+              phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              phoneInput.focus();
+            }
+          }, 100);
         } else if (errorMessage.includes('email')) {
-          userMessage = "Email invalide ou déjà utilisé.";
+          userMessage = "Email invalide ou déjà utilisé";
           errorDetails = ["Vérifiez votre adresse email ou utilisez-en une autre."];
+          
+          setFieldErrors(prev => ({
+            ...prev,
+            email: "Email invalide ou déjà utilisé"
+          }));
+          
+          // Scroller vers le champ email
+          setTimeout(() => {
+            const emailInput = document.getElementById('email');
+            if (emailInput) {
+              emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              emailInput.focus();
+            }
+          }, 100);
         }
         
         // Afficher toast avec les détails
