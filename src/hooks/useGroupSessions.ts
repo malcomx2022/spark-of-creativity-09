@@ -54,6 +54,29 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
 
       if (error) throw error;
     },
+    onMutate: async (sessionId) => {
+      await queryClient.cancelQueries({ queryKey: ['group-sessions'] });
+
+      const previousSessions = queryClient.getQueryData(['group-sessions', coachId, page]);
+
+      queryClient.setQueryData(['group-sessions', coachId, page], (old: any) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.filter((s: any) => s.id !== sessionId)
+        };
+      });
+
+      return { previousSessions };
+    },
+    onError: (err: any, sessionId, context) => {
+      queryClient.setQueryData(['group-sessions', coachId, page], context?.previousSessions);
+      toast({
+        title: "Erreur",
+        description: err.message,
+        variant: "destructive"
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
       toast({
@@ -61,13 +84,6 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
         description: "La séance a été annulée avec succès"
       });
     },
-    onError: (error: any) => {
-      toast({
-        title: "Erreur",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
   });
 
   const confirmSession = useMutation({
@@ -79,6 +95,31 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
 
       if (error) throw error;
     },
+    onMutate: async (sessionId) => {
+      await queryClient.cancelQueries({ queryKey: ['group-sessions'] });
+
+      const previousSessions = queryClient.getQueryData(['group-sessions', coachId, page]);
+
+      queryClient.setQueryData(['group-sessions', coachId, page], (old: any) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((s: any) =>
+            s.id === sessionId ? { ...s, status: 'confirmee' } : s
+          )
+        };
+      });
+
+      return { previousSessions };
+    },
+    onError: (err: any, sessionId, context) => {
+      queryClient.setQueryData(['group-sessions', coachId, page], context?.previousSessions);
+      toast({
+        title: "Erreur",
+        description: err.message,
+        variant: "destructive"
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
       toast({
@@ -86,13 +127,6 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
         description: "La séance a été confirmée avec succès"
       });
     },
-    onError: (error: any) => {
-      toast({
-        title: "Erreur",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
   });
 
   return {
