@@ -2310,6 +2310,10 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       promote_to_super_admin: { Args: { user_email: string }; Returns: Json }
       request_consultation_confirmation: { Args: never; Returns: undefined }
+      reserve_group_session_spot: {
+        Args: { p_patient_id: string; p_session_id: string }
+        Returns: Json
+      }
       update_payment_with_balance: {
         Args: {
           p_hold_until?: string
