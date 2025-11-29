@@ -439,6 +439,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
     const sanitizedPhoneNumber = normalizePhoneNumber(resolvedPhoneNumber);
 
+    // Helper: Format phone number for FedaPay (remove +229 prefix for Benin)
+    const formatPhoneForFedaPay = (phone: string | null): string => {
+      if (!phone) return '';
+      // Pour le Bénin, retirer le préfixe +229 pour sandbox FedaPay
+      return phone.replace(/^\+229/, '');
+    };
+
     if (!sanitizedPhoneNumber) {
       setIsCreatingPayment(false);
       toast({
@@ -753,7 +760,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           },
           customer: {
             phone_number: {
-              number: sanitizedPhoneNumber.replace(/^\+229/, ''), // Retirer +229 pour sandbox
+              number: formatPhoneForFedaPay(sanitizedPhoneNumber),
               country: 'bj', // ✅ CORRECTION: Minuscules requis par FedaPay
             },
           },
