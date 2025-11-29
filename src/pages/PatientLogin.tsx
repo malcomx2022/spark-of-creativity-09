@@ -70,11 +70,11 @@ export default function PatientLogin() {
           .maybeSingle()
       );
 
-      // Si l'utilisateur est admin uniquement, bloquer
-      if (roleData?.role && !['patient', 'practitioner', 'coach'].includes(roleData.role as string)) {
+      // Si super_admin, bloquer - les admins ne peuvent pas se connecter comme patients
+      if (roleData?.role === 'super_admin') {
         toast({
           title: "Erreur de connexion",
-          description: "Ce compte n'est pas un compte patient. Veuillez utiliser la connexion appropriée.",
+          description: "Les comptes administrateurs doivent utiliser la connexion admin.",
           variant: "destructive"
         });
         await supabase.auth.signOut();
