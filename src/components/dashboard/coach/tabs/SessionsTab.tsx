@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Users } from "lucide-react";
 import { GroupSessionCard } from "@/components/coach/GroupSessionCard";
 import { CreateGroupSessionDialog } from "@/components/coach/CreateGroupSessionDialog";
@@ -22,6 +23,7 @@ export default function SessionsTab({
 }: SessionsTabProps) {
   const [editingSession, setEditingSession] = useState<any>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [sessionsLimit, setSessionsLimit] = useState(10);
 
   const handleEditSession = (sessionId: string) => {
     const session = sessions?.find(s => s.id === sessionId);
@@ -30,6 +32,17 @@ export default function SessionsTab({
       setEditDialogOpen(true);
     }
   };
+
+  // Sort sessions by date (closest first)
+  const sortedSessions = useMemo(() => {
+    if (!sessions) return [];
+    return [...sessions].sort((a, b) => 
+      new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime()
+    );
+  }, [sessions]);
+
+  const displayedSessions = sortedSessions.slice(0, sessionsLimit);
+  const hasMoreSessions = sortedSessions.length > sessionsLimit;
 
   return (
     <div className="space-y-6">
@@ -46,19 +59,35 @@ export default function SessionsTab({
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Chargement des séances...</p>
         </div>
-      ) : sessions && sessions.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {sessions.map((session) => (
-            <GroupSessionCard
-              key={session.id}
-              session={session}
-              isCoachView
-              onEdit={handleEditSession}
-              onCancel={onCancelSession}
-              onConfirm={onConfirmSession}
-            />
-          ))}
-        </div>
+      ) : sortedSessions && sortedSessions.length > 0 ? (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Affichage {displayedSessions.length} sur {sortedSessions.length} séances
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {displayedSessions.map((session) => (
+              <GroupSessionCard
+                key={session.id}
+                session={session}
+                isCoachView
+                onEdit={handleEditSession}
+                onCancel={onCancelSession}
+                onConfirm={onConfirmSession}
+              />
+            ))}
+          </div>
+          {hasMoreSessions && (
+            <Button
+              variant="outline"
+              onClick={() => setSessionsLimit(prev => prev + 10)}
+              className="w-full"
+            >
+              Voir plus
+            </Button>
+          )}
+        </>
       ) : (
         <Card>
           <CardContent className="py-12 text-center">

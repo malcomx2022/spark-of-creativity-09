@@ -31,6 +31,7 @@ import Header from "@/components/Header";
 import { useGroupSessions } from "@/hooks/useGroupSessions";
 import { usePractitionerAppointments, useMutateAppointment } from "@/hooks/useAppointments";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { COACH_REVENUE_RATE } from "@/lib/session-validation";
 
 // Lazy load tabs
 const SessionsTab = lazy(() => import("@/components/dashboard/coach/tabs/SessionsTab"));
@@ -79,24 +80,30 @@ export default function CoachDashboard() {
 
   const mutateAppointment = useMutateAppointment();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
+  const [sessionsLimit, setSessionsLimit] = useState(10);
 
   // Memoize stats calculations
-  const stats = useMemo(() => ({
-    upcomingSessions: sessions?.filter(s => 
-      s.status === 'planifiee' || s.status === 'confirmee'
-    ).length || 0,
-    upcomingAppointments: appointments?.filter(a => 
-      a.status === 'confirmed' || a.status === 'pending'
-    ).length || 0,
-    totalParticipants: sessions?.reduce((sum, s) => 
-      sum + (s.current_participants || 0), 0
-    ) || 0,
-    // 95% pour le coach (5% commission plateforme)
-    totalRevenue: sessions?.filter(s => s.status === 'terminee')
-      .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * 0.95), 0) || 0,
-    appointmentsRevenue: appointments?.filter(a => a.status === 'completed')
-      .reduce((sum, a) => sum + ((a.paymentAmount || 0) * 0.95), 0) || 0,
-  }), [sessions, appointments]);
+  const stats = useMemo(() => {
+    const now = new Date();
+    
+    return {
+      upcomingSessions: sessions?.filter(s => {
+        const sessionDate = new Date(s.scheduled_date);
+        return (s.status === 'planifiee' || s.status === 'confirmee') && sessionDate >= now;
+      }).length || 0,
+      upcomingAppointments: appointments?.filter(a => 
+        a.status === 'confirmed' || a.status === 'pending'
+      ).length || 0,
+      totalParticipants: sessions?.reduce((sum, s) => 
+        sum + (s.current_participants || 0), 0
+      ) || 0,
+      // 95% pour le coach (5% commission plateforme)
+      totalRevenue: sessions?.filter(s => s.status === 'terminee')
+        .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * COACH_REVENUE_RATE), 0) || 0,
+      appointmentsRevenue: appointments?.filter(a => a.status === 'completed')
+        .reduce((sum, a) => sum + ((a.paymentAmount || 0) * COACH_REVENUE_RATE), 0) || 0,
+    };
+  }, [sessions, appointments]);
 
   const handleCancelSession = (sessionId: string) => {
     setSelectedSessionId(sessionId);
