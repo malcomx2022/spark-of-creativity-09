@@ -50,7 +50,6 @@ export function KYCQueue() {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [incompleteDialogOpen, setIncompleteDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [currentAction, setCurrentAction] = useState<'approve' | 'incomplete' | 'reject' | null>(null);
 
   const {
     data: practitionerHistoryEntries,
@@ -151,18 +150,24 @@ export function KYCQueue() {
     const handleChange = (
       payload: RealtimePostgresChangesPayload<Tables<'practitioners'>>
     ) => {
-      const relevantStatuses = ['pending', 'incomplete'];
-      const newStatus = (payload.new as Tables<'practitioners'> | null)?.kyc_status ?? '';
-      const oldStatus = (payload.old as Tables<'practitioners'> | null)?.kyc_status ?? '';
+      try {
+        const relevantStatuses = ['pending', 'incomplete'];
+        const newStatus = (payload.new as Tables<'practitioners'> | null)?.kyc_status ?? '';
+        const oldStatus = (payload.old as Tables<'practitioners'> | null)?.kyc_status ?? '';
 
-      const shouldInvalidate =
-        (payload.eventType === 'INSERT' && relevantStatuses.includes(newStatus)) ||
-        (payload.eventType === 'UPDATE' && (relevantStatuses.includes(newStatus) || relevantStatuses.includes(oldStatus))) ||
-        (payload.eventType === 'DELETE' && relevantStatuses.includes(oldStatus));
+        const shouldInvalidate =
+          (payload.eventType === 'INSERT' && relevantStatuses.includes(newStatus)) ||
+          (payload.eventType === 'UPDATE' && (relevantStatuses.includes(newStatus) || relevantStatuses.includes(oldStatus))) ||
+          (payload.eventType === 'DELETE' && relevantStatuses.includes(oldStatus));
 
-      if (shouldInvalidate) {
-        queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
-        queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
+        if (shouldInvalidate) {
+          queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
+          queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.error('Realtime subscription error:', error);
+        }
       }
     };
 
@@ -701,7 +706,6 @@ export function KYCQueue() {
                               onClick={() => {
                                 setComment("");
                                 setSelectedPractitioner(practitioner);
-                                setCurrentAction('approve');
                                 setApproveDialogOpen(true);
                               }}
                             >
@@ -759,7 +763,6 @@ export function KYCQueue() {
                               onClick={() => {
                                 setComment("");
                                 setSelectedPractitioner(practitioner);
-                                setCurrentAction('incomplete');
                                 setIncompleteDialogOpen(true);
                               }}
                             >
@@ -814,11 +817,10 @@ export function KYCQueue() {
                           <DialogTrigger asChild>
                             <Button 
                               size="sm" 
-                              variant="destructive"
+                              variant="destructive" 
                               onClick={() => {
                                 setComment("");
                                 setSelectedPractitioner(practitioner);
-                                setCurrentAction('reject');
                                 setRejectDialogOpen(true);
                               }}
                             >

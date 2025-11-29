@@ -10,9 +10,11 @@ import { Users, Stethoscope, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 export function UsersManagementSection() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const searchTerm = useDebouncedValue(searchInput, 300);
   const [profilesPage, setProfilesPage] = useState(0);
   const [practitionersPage, setPractitionersPage] = useState(0);
   const [confirmText, setConfirmText] = useState('');
@@ -108,8 +110,8 @@ export function UsersManagementSection() {
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Rechercher un utilisateur..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
         </div>

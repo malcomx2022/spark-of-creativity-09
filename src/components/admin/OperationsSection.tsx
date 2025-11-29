@@ -12,6 +12,17 @@ import { MapPin, Star, AlertTriangle, Calendar } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useState, useMemo } from 'react';
 
+const renderStars = (rating: number) => {
+  return Array.from({ length: 5 }, (_, i) => (
+    <Star
+      key={i}
+      className={`h-4 w-4 ${
+        i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+      }`}
+    />
+  ));
+};
+
 export function OperationsSection() {
   const queryClient = useQueryClient();
   const [selectedReview, setSelectedReview] = useState<any>(null);
@@ -109,17 +120,6 @@ export function OperationsSection() {
     openDisputes: disputes.filter(d => d.status === 'open').length,
     inProgressDisputes: disputes.filter(d => d.status === 'investigating').length,
   }), [appointments, reviews, disputes]);
-
-  const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        className={`h-4 w-4 ${
-          i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
-        }`}
-      />
-    ));
-  };
 
   return (
     <div className="space-y-6">
