@@ -150,9 +150,9 @@ export default function Footer() {
         {/* Bas de page */}
         <div className="mt-8 pt-6 border-t border-border">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-muted-foreground">
-              © 2024 DomiCares. Tous droits réservés.
-            </p>
+          <p className="text-sm text-muted-foreground">
+            © {new Date().getFullYear()} DomiCares. Tous droits réservés.
+          </p>
             <div className="flex gap-4">
               <button
                 onClick={() => navigate(ROUTES.TERMS)}
