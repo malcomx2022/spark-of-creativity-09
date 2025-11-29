@@ -11,11 +11,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
 import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
 import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
+import { useToast } from "@/hooks/use-toast";
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
 
 export default function LoginWithOTP() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { sendOTP, verifyOTP, sendingOTP, verifyingOTP, phoneStored } = useOTPAuth();
   
   const [step, setStep] = useState<'phone' | 'code'>('phone');
@@ -60,7 +62,12 @@ export default function LoginWithOTP() {
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!phoneNumber || phoneNumber.length !== 12) {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      toast({
+        title: "Numéro invalide",
+        description: "Veuillez entrer un numéro de téléphone valide",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -70,6 +77,11 @@ export default function LoginWithOTP() {
       setCountdown(60); // 60 seconds countdown
     } catch (error) {
       console.error('Error sending OTP:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'envoyer le code. Veuillez réessayer.",
+        variant: "destructive"
+      });
     }
   };
 

@@ -11,6 +11,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email("Email invalide").max(255, "Email trop long"),
+  password: z.string().min(1, "Mot de passe requis"),
+});
 
 export default function PractitionerLogin() {
   const navigate = useNavigate();
@@ -23,12 +29,24 @@ export default function PractitionerLogin() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation des données
+    const validation = loginSchema.safeParse(formData);
+    if (!validation.success) {
+      toast({
+        title: "Erreur de validation",
+        description: validation.error.issues[0].message,
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
 
     try {
       const { data, error } = await withTimeout(
         supabase.auth.signInWithPassword({
-          email: formData.email,
+          email: formData.email.trim().toLowerCase(),
           password: formData.password,
         })
       );
@@ -43,16 +61,33 @@ export default function PractitionerLogin() {
         return;
       }
 
+      // Vérifier si l'utilisateur est admin
+      const { data: roleData } = await withTimeout(
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle()
+      );
+
+      // Si admin, autoriser la connexion
+      if (roleData?.role === 'super_admin') {
+        toast(AUTH_MESSAGES.LOGIN_SUCCESS);
+        navigate('/admin', { replace: true });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Vérifier que l'utilisateur est bien un praticien
-      const practitionerResult = await withTimeout<{ data: { id: string; practitioner_type: string } | null }>(
+      const { data: practitionerData, error: practitionerError } = await withTimeout(
         supabase
           .from('practitioners')
           .select('id, practitioner_type')
           .eq('user_id', data.user.id)
-          .maybeSingle() as unknown as Promise<any>
+          .maybeSingle()
       );
 
-      if (!practitionerResult.data) {
+      if (practitionerError || !practitionerData) {
         toast({
           title: "Erreur de connexion",
           description: "Ce compte n'est pas un compte praticien. Veuillez utiliser la connexion patient.",
@@ -66,7 +101,7 @@ export default function PractitionerLogin() {
       toast(AUTH_MESSAGES.LOGIN_SUCCESS);
       
       // Rediriger selon le type de praticien
-      if (practitionerResult.data.practitioner_type === 'coach_sportif') {
+      if (practitionerData.practitioner_type === 'coach_sportif') {
         navigateToDashboard(navigate, 'coach');
       } else {
         navigateToDashboard(navigate, 'practitioner');
