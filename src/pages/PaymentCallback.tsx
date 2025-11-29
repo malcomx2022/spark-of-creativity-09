@@ -125,7 +125,7 @@ export default function PaymentCallback() {
           {status === 'success' && (
             <>
               <div className="mx-auto mb-4">
-                <CheckCircle2 className="h-16 w-16 text-green-500" />
+                <CheckCircle2 className="h-16 w-16 text-success" />
               </div>
               <CardTitle>Paiement confirmé !</CardTitle>
               <CardDescription>
