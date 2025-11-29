@@ -334,6 +334,7 @@ serve(async (req) => {
         JSON.stringify({
           success: false,
           error: 'Pièce d\'identité requise',
+          details: ["Le document d'identité est obligatoire pour tous les praticiens"]
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -346,7 +347,8 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Diplôme ou certification requis pour les coachs sportifs',
+          error: 'Diplôme requis',
+          details: ["Un diplôme ou certificat est obligatoire pour les coachs sportifs"]
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -360,6 +362,7 @@ serve(async (req) => {
         JSON.stringify({
           success: false,
           error: 'Autorisation d\'exercice requise',
+          details: ["L'autorisation d'exercice est obligatoire pour les praticiens de santé"]
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
