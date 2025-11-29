@@ -142,7 +142,7 @@ export default function Header() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => navigate(ROUTES.LOGIN)}
+                  onClick={() => navigate('/login-email')}
                   className="hidden md:flex"
                 >
                   <LogIn className="h-4 w-4 mr-2" />
@@ -254,7 +254,7 @@ export default function Header() {
                     size="sm" 
                     onClick={() => {
                       setIsMenuOpen(false);
-                      navigate(ROUTES.LOGIN);
+                      navigate('/login-email');
                     }}
                     className="w-full"
                   >

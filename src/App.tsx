@@ -16,6 +16,8 @@ import PractitionerSearch from "./pages/PractitionerSearch";
 import CoachSearch from "./pages/CoachSearch";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
+import PatientLogin from "./pages/PatientLogin";
+import PractitionerLogin from "./pages/PractitionerLogin";
 import SignupPage from "./pages/SignupPage";
 import LoginWithOTP from "./pages/LoginWithOTP";
 import VerifyOTP from "./pages/VerifyOTP";
@@ -52,6 +54,8 @@ const App = () => (
           <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
           <Route path="/login" element={<LoginWithOTP />} />
           <Route path="/login-email" element={<LoginPage />} />
+          <Route path="/patient-login" element={<PatientLogin />} />
+          <Route path="/practitioner-login" element={<PractitionerLogin />} />
           <Route path="/verify-otp" element={<VerifyOTP />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
