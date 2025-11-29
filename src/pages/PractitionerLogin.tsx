@@ -158,7 +158,7 @@ export default function PractitionerLogin() {
                   <Link to="/forgot-password" className="block text-sm text-primary hover:underline">
                     Mot de passe oublié ?
                   </Link>
-                  <Link to="/login-otp" className="block text-sm text-primary hover:underline">
+                  <Link to="/login" className="block text-sm text-primary hover:underline">
                     Se connecter avec numéro de téléphone (OTP)
                   </Link>
                   <div className="pt-4 border-t">
