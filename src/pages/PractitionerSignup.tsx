@@ -512,16 +512,33 @@ export default function PractitionerSignup() {
       const documentsBase64: Record<string, string> = {};
       const fileKeys: (keyof SignupFormData)[] = ['profilePhoto', 'idDocument', 'diploma', 'licenseDocument'];
       
-      for (const key of fileKeys) {
-        const file = formData[key] as File | null;
-        if (file) {
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-          documentsBase64[key] = base64;
+      try {
+        for (const key of fileKeys) {
+          const file = formData[key] as File | null;
+          if (file) {
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                if (reader.result) {
+                  resolve(reader.result as string);
+                } else {
+                  reject(new Error(`Impossible de lire le fichier ${key}`));
+                }
+              };
+              reader.onerror = () => reject(new Error(`Erreur de lecture du fichier ${key}`));
+              reader.readAsDataURL(file);
+            });
+            documentsBase64[key] = base64;
+          }
         }
+      } catch (fileError) {
+        toast({
+          title: "Erreur",
+          description: fileError instanceof Error ? fileError.message : "Erreur de lecture des fichiers",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
       }
 
       // Appeler l'edge function transactionnelle
@@ -592,6 +609,36 @@ export default function PractitionerSignup() {
           ),
           variant: "destructive",
         });
+        
+        // ⚠️ Le compte Supabase existe mais le profil praticien n'a pas pu être créé
+        // Proposer de supprimer le compte ou de réessayer
+        toast({
+          title: "Compte en attente",
+          description: "Votre compte email existe mais l'inscription n'est pas terminée. Connectez-vous pour finaliser.",
+          duration: 10000,
+        });
+
+        // Sauvegarder les données d'inscription dans les user_metadata
+        try {
+          await supabase.auth.updateUser({
+            data: {
+              pending_practitioner_data: {
+                profileData,
+                practitionerData,
+                // Ne pas sauvegarder les documents base64 (trop gros)
+                needsDocumentUpload: true,
+              }
+            }
+          });
+
+          // Déconnecter et rediriger vers login avec message
+          await supabase.auth.signOut();
+          navigate('/login?message=complete-signup&email=' + encodeURIComponent(formData.email));
+        } catch (metadataError) {
+          if (import.meta.env.DEV) {
+            console.error('Erreur sauvegarde metadata:', metadataError);
+          }
+        }
         
         setIsSubmitting(false);
         return;
