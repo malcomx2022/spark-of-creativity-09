@@ -274,6 +274,11 @@ export default function PractitionerSignup() {
       errors.address = "L'adresse ne peut pas dépasser 200 caractères";
     }
     
+    // Validation coordonnées GPS
+    if (!formData.latitude || !formData.longitude) {
+      errors.address = "Localisation GPS requise. Sélectionnez une adresse dans la liste.";
+    }
+    
     // Téléphone
     if (!phone) {
       errors.phone = "Téléphone requis";
@@ -442,26 +447,33 @@ export default function PractitionerSignup() {
       );
 
       if (error) {
-        // Gestion erreurs spécifiques
-        if (error.message.includes('already registered') || error.message.includes('already been registered')) {
-          toast({
-            ...AUTH_MESSAGES.SIGNUP_ERROR,
-            description: "Cet email est déjà associé à un compte. Connectez-vous ou utilisez un autre email.",
-            variant: "destructive"
-          });
-        } else if (error.message.includes('password') || error.message.includes('Password')) {
-          toast({
-            ...AUTH_MESSAGES.SIGNUP_ERROR,
-            description: "Le mot de passe doit contenir au moins 8 caractères.",
-            variant: "destructive"
-          });
+        let userMessage = "Une erreur est survenue lors de l'inscription";
+        let userDescription = "";
+
+        const errorMsg = error.message.toLowerCase();
+
+        if (errorMsg.includes('already registered') || errorMsg.includes('already been registered')) {
+          userMessage = "Email déjà utilisé";
+          userDescription = "Un compte existe déjà avec cet email. Utilisez 'Mot de passe oublié' si c'est le vôtre, ou essayez un autre email.";
+        } else if (errorMsg.includes('password')) {
+          userMessage = "Mot de passe invalide";
+          userDescription = "Le mot de passe doit contenir au moins 8 caractères avec lettres et chiffres.";
+        } else if (errorMsg.includes('email')) {
+          userMessage = "Email invalide";
+          userDescription = "Veuillez vérifier le format de votre adresse email.";
+        } else if (errorMsg.includes('rate limit') || errorMsg.includes('too many')) {
+          userMessage = "Trop de tentatives";
+          userDescription = "Veuillez patienter quelques minutes avant de réessayer.";
         } else {
-          toast({
-            ...AUTH_MESSAGES.SIGNUP_ERROR,
-            description: error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription,
-            variant: "destructive"
-          });
+          userDescription = error.message;
         }
+
+        toast({
+          title: userMessage,
+          description: userDescription,
+          variant: "destructive",
+          duration: 8000,
+        });
         setIsSubmitting(false);
         return;
       }
@@ -821,8 +833,17 @@ export default function PractitionerSignup() {
                         latitude: location.latitude ?? null,
                         longitude: location.longitude ?? null,
                       }));
-                      const error = validateField('address', location.address);
-                      setFieldErrors(prev => ({ ...prev, address: error }));
+
+                      // Valider que les coordonnées sont présentes
+                      if (!location.latitude || !location.longitude) {
+                        setFieldErrors(prev => ({
+                          ...prev,
+                          address: "Veuillez sélectionner une adresse dans la liste pour obtenir la localisation GPS"
+                        }));
+                      } else {
+                        const error = validateField('address', location.address);
+                        setFieldErrors(prev => ({ ...prev, address: error }));
+                      }
                     }}
                     placeholder="Rechercher votre adresse au Bénin..."
                     required
