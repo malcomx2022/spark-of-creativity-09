@@ -660,8 +660,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           },
           customer: {
             phone_number: {
-              number: sanitizedPhoneNumber,
-              country: 'BJ',
+              number: sanitizedPhoneNumber.replace(/^\+229/, ''), // Retirer +229 pour sandbox
+              country: 'bj', // ✅ CORRECTION: Minuscules requis par FedaPay
             },
           },
           currency: {
