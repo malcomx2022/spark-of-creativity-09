@@ -1,5 +1,23 @@
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * IMPORTANT : Distinction entre rôles applicatifs et rôles de base de données
+ * 
+ * AppRole : Rôles utilisés dans l'application (patient, practitioner, coach, admin)
+ * Ces rôles sont déterminés dynamiquement et ne sont PAS tous stockés en base.
+ * 
+ * Table user_roles (DB) : Contient UNIQUEMENT les rôles administrateurs
+ * (super_admin, ops, finance, compliance, support, analyst)
+ * 
+ * Résolution des rôles applicatifs :
+ * - admin : Vérifié via table user_roles (n'importe quel rôle admin)
+ * - practitioner/coach : Déterminé via table practitioners (colonne practitioner_type)
+ * - patient : Rôle par défaut si l'utilisateur n'est ni admin ni practitioner
+ * 
+ * Les valeurs 'patient', 'practitioner', 'coach' de l'enum app_role en base
+ * ne sont JAMAIS insérées dans user_roles - elles existent uniquement pour
+ * permettre l'utilisation de l'enum dans d'autres contextes si nécessaire.
+ */
 export type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
 
 export interface UserRoleResult {
@@ -15,6 +33,8 @@ export interface UserRoleResult {
 export async function resolveUserRole(userId: string): Promise<UserRoleResult> {
   try {
     // PRIORITÉ 1: Vérifier si l'utilisateur est un admin via la table user_roles
+    // SEULS les rôles administrateurs sont stockés dans user_roles
+    // (super_admin, ops, finance, compliance, support, analyst)
     const { data: adminRole, error: adminError } = await supabase
       .from("user_roles")
       .select("role")
@@ -29,6 +49,8 @@ export async function resolveUserRole(userId: string): Promise<UserRoleResult> {
     }
 
     // PRIORITÉ 2: Vérifier si c'est un praticien ou coach via la table practitioners
+    // Les rôles 'practitioner' et 'coach' NE SONT JAMAIS dans user_roles
+    // Ils sont déterminés par la colonne practitioner_type de la table practitioners
     const { data: practitioner, error: practitionerError } = await supabase
       .from("practitioners")
       .select("practitioner_type")
@@ -71,6 +93,8 @@ export async function resolveUserRole(userId: string): Promise<UserRoleResult> {
     }
 
     // PRIORITÉ 4: Par défaut, c'est un patient
+    // Le rôle 'patient' n'est JAMAIS stocké en base - c'est le rôle par défaut
+    // pour tous les utilisateurs qui ne sont ni admins ni practitioners
     return {
       role: 'patient',
       source: 'default'
