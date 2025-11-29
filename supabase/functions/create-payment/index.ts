@@ -145,10 +145,16 @@ serve(async (req) => {
     }
 
     // Vérifier le statut de l'appointment
-    if (!['confirmed', 'pending_payment'].includes(appointment.status)) {
+    // Accepter: confirmed, pending_payment, pending (après confirmation praticien)
+    const payableStatuses = ['confirmed', 'pending_payment', 'pending'];
+    if (!payableStatuses.includes(appointment.status)) {
       console.error('Appointment not in a payable state:', appointment.status);
       return new Response(
-        JSON.stringify({ error: 'Ce rendez-vous n\'est pas dans un état payable' }),
+        JSON.stringify({ 
+          error: 'Ce rendez-vous n\'est pas dans un état payable',
+          currentStatus: appointment.status,
+          allowedStatuses: payableStatuses
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

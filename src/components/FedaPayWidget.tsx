@@ -214,9 +214,43 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         }
       );
 
-      if (error) {
-        console.error('Payment creation error:', error);
-        throw error;
+      if (error instanceof Error) {
+        // Vérifier si c'est une erreur 409 (paiement en attente)
+        if (error.message.includes('Un paiement est déjà en cours')) {
+          toast({
+            title: 'Paiement en cours',
+            description: 'Un paiement est déjà en attente. Annulez-le d\'abord ou attendez quelques minutes.',
+            variant: 'destructive',
+            action: (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await supabase.functions.invoke('cancel-pending-payment', {
+                      body: { appointmentId }
+                    });
+                    toast({
+                      title: 'Paiement annulé',
+                      description: 'Vous pouvez maintenant créer un nouveau paiement.',
+                    });
+                    // Rafraîchir après 1 seconde
+                    setTimeout(() => window.location.reload(), 1000);
+                  } catch (e) {
+                    toast({
+                      title: 'Erreur',
+                      description: 'Impossible d\'annuler le paiement',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                Annuler le paiement
+              </Button>
+            ),
+          });
+          return;
+        }
       }
 
       if (!result || typeof result !== 'object' || !('transactionId' in result)) {
