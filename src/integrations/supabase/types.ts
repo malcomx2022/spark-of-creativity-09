@@ -2187,6 +2187,15 @@ export type Database = {
       }
     }
     Views: {
+      admin_finance_stats: {
+        Row: {
+          completed_payments: number | null
+          pending_payments: number | null
+          pending_payouts: number | null
+          total_revenue: number | null
+        }
+        Relationships: []
+      }
       practitioners_public_view: {
         Row: {
           address: string | null
