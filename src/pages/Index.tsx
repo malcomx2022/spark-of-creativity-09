@@ -21,18 +21,30 @@ const HeroImage = () => {
   return (
     <div className="relative z-10">
       {!imageError ? (
-        <img
-          src={heroImage}
-          alt="Soins médicaux à domicile en Afrique - Médecin professionnel en consultation"
-          className="rounded-2xl shadow-2xl animate-float"
-          loading="lazy"
-          decoding="async"
-          width="800"
-          height="600"
-          onError={() => {
-            setImageError(true);
-          }}
-        />
+        <picture>
+          <source
+            media="(min-width: 1024px)"
+            srcSet={`${heroImage} 1x, ${heroImage} 2x`}
+            type="image/jpeg"
+          />
+          <source
+            media="(min-width: 768px)"
+            srcSet={`${heroImage} 1x`}
+            type="image/jpeg"
+          />
+          <img
+            src={heroImage}
+            alt="Soins médicaux à domicile en Afrique - Médecin professionnel à Cotonou"
+            className="rounded-2xl shadow-2xl animate-float w-full h-auto"
+            loading="lazy"
+            decoding="async"
+            width="800"
+            height="600"
+            onError={() => {
+              setImageError(true);
+            }}
+          />
+        </picture>
       ) : (
         <div className="w-full h-96 bg-gradient-primary rounded-2xl flex items-center justify-center text-white">
           <div className="text-center">
@@ -50,6 +62,11 @@ const Index = () => {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
   const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const { data: enabledFeatures } = useQuery<Record<string, boolean>>({
     queryKey: ['enabled-features'],
@@ -317,7 +334,7 @@ const Index = () => {
 
       {/* User Type Selection */}
       {!user && (
-        <section id="services" className="py-12 md:py-16 bg-white/50 px-4 sm:px-6">
+        <section id="services" className="py-12 md:py-16 bg-white/50 px-4 sm:px-6" aria-label="Choisissez votre profil">
           <div className="container mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
@@ -355,7 +372,7 @@ const Index = () => {
       )}
 
       {/* How it Works */}
-      <section id="how-it-works" className="py-12 sm:py-16">
+      <section id="how-it-works" className="py-12 sm:py-16" aria-label="Comment ça marche">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="text-center mb-8 sm:mb-12">
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4">
@@ -408,7 +425,7 @@ const Index = () => {
       </section>
 
       {/* Services rapides */}
-      <section className="py-12 sm:py-16 bg-gradient-to-br from-secondary/10 to-primary-glow/5">
+      <section id="quick-access" className="py-12 sm:py-16 bg-gradient-to-br from-secondary/10 to-primary-glow/5" aria-label="Accès rapide aux services">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="text-center mb-8 sm:mb-12">
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4">
@@ -470,7 +487,7 @@ const Index = () => {
       </section>
 
       {/* Features */}
-      <section className="py-16 bg-white/50">
+      <section id="features" className="py-16 bg-white/50" aria-label="Pourquoi choisir DomiCares">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
@@ -537,15 +554,34 @@ const Index = () => {
               pour leurs soins de santé à domicile.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                variant="secondary"
-                size="xl"
-                onClick={() => navigate(ROUTES.SIGNUP_PATIENT)}
-                className="bg-white text-primary hover:bg-white/90"
-              >
-                <User className="h-5 w-5 mr-2" />
-                Commencer maintenant
-              </Button>
+              {!user ? (
+                <Button
+                  variant="secondary"
+                  size="xl"
+                  onClick={() => navigate(ROUTES.SIGNUP_PATIENT)}
+                  className="bg-white text-primary hover:bg-white/90"
+                >
+                  <User className="h-5 w-5 mr-2" />
+                  Créer mon compte gratuit
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="xl"
+                  onClick={handleDashboardClick}
+                  disabled={dashboardLoading}
+                  className="bg-white text-primary hover:bg-white/90"
+                >
+                  {dashboardLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Chargement...
+                    </>
+                  ) : (
+                    'Accéder à mon espace'
+                  )}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="xl"
