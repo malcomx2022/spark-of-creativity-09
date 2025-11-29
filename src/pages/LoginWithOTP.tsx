@@ -62,10 +62,10 @@ export default function LoginWithOTP() {
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!phoneNumber || phoneNumber.length < 10) {
+    if (!phoneNumber || phoneNumber.length < 12) {
       toast({
         title: "Numéro invalide",
-        description: "Veuillez entrer un numéro de téléphone valide",
+        description: "Veuillez entrer un numéro de téléphone valide (format: +229XXXXXXXX)",
         variant: "destructive"
       });
       return;
