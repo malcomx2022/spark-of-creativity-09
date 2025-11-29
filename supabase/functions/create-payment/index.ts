@@ -352,7 +352,9 @@ serve(async (req) => {
           currency: {
             iso: 'XOF'
           },
-          callback_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          // Utiliser notify_url (webhook serveur) plutôt que callback_url pour suivre les statuts.
+          // callback_url sert uniquement au retour client et n'est pas appelée en sandbox.
+          notify_url: `${supabaseUrl}/functions/v1/payment-webhook`,
           customer: {
             firstname,
             lastname,
