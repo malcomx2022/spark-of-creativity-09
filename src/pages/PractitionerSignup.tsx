@@ -421,9 +421,11 @@ export default function PractitionerSignup() {
         description: "Redirection en cours..." 
       });
 
-      const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
-      const finalDashboardPath = await getDashboardPathForUser(userId);
-      navigate(finalDashboardPath, { replace: true });
+      // Extraire le practitionerType depuis practitionerData
+      const practitionerType = practitionerData.practitioner_type || 'autre';
+      
+      // Rediriger vers la page de succès avec le message de validation
+      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
     } catch (error) {
       toast({
         title: "Erreur",
@@ -894,20 +896,18 @@ export default function PractitionerSignup() {
         }
       }
 
-      // ✅ Succès : rediriger vers le dashboard approprié
+      // ✅ Succès : rediriger vers la page de succès avec le message de validation
       toast({
         title: "Inscription réussie !",
         description: "Votre compte a été créé avec succès. Redirection en cours...",
       });
-
-      // Utiliser getDashboardPathForUser pour cohérence
-      const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
-      const finalDashboardPath = await getDashboardPathForUser(userId);
       
       if (import.meta.env.DEV) {
-        console.log('✅ Redirection vers:', finalDashboardPath);
+        console.log('✅ Redirection vers page de succès avec type:', practitionerType);
       }
-      navigate(finalDashboardPath, { replace: true });
+      
+      // Rediriger vers la page de succès qui affichera le message de validation en attente
+      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
     } catch (err) {
       const isTimeoutError = err instanceof NetworkTimeoutError;
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
