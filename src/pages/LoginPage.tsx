@@ -112,12 +112,6 @@ export default function LoginPage() {
               </CardContent>
             </Card>
           </div>
-
-          <div className="text-center mt-8">
-            <Link to="/admin/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Connexion administrateur
-            </Link>
-          </div>
         </div>
       </main>
     </div>
