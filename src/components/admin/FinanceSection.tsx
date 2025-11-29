@@ -13,42 +13,59 @@ import { PaymentEventsSection } from './PaymentEventsSection';
 import { FundsReleaseSection } from './FundsReleaseSection';
 import ReconciliationSection from './ReconciliationSection';
 import { PaymentFlowsDashboard } from './PaymentFlowsDashboard';
+import { useState } from 'react';
 
 export function FinanceSection() {
-  const { data: payments = [], isLoading: paymentsLoading } = useQuery({
-    queryKey: ['admin-payments'],
+  const [paymentsPage, setPaymentsPage] = useState(1);
+  const [payoutsPage, setPayoutsPage] = useState(1);
+  const limit = 20;
+
+  // Fetch finance stats from view
+  const { data: stats } = useQuery({
+    queryKey: ['admin-finance-stats'],
     queryFn: async () => {
       const { data, error } = await supabase
+        .from('admin_finance_stats')
+        .select('*')
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: paymentsData, isLoading: paymentsLoading } = useQuery({
+    queryKey: ['admin-payments', paymentsPage],
+    queryFn: async () => {
+      const { data, error, count } = await supabase
         .from('payments')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range((paymentsPage - 1) * limit, paymentsPage * limit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { payments: data || [], total: count || 0 };
     },
   });
 
-  const { data: payouts = [], isLoading: payoutsLoading } = useQuery({
-    queryKey: ['admin-payouts'],
+  const { data: payoutsData, isLoading: payoutsLoading } = useQuery({
+    queryKey: ['admin-payouts', payoutsPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('practitioner_payouts')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range((payoutsPage - 1) * limit, payoutsPage * limit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { payouts: data || [], total: count || 0 };
     },
   });
 
-  const stats = {
-    totalRevenue: payments.filter(p => p.status === 'completed' || p.status === 'paid').reduce((sum, p) => sum + p.amount, 0),
-    pendingPayments: payments.filter(p => p.status === 'pending').length,
-    completedPayments: payments.filter(p => p.status === 'completed' || p.status === 'paid').length,
-    pendingPayouts: payouts.filter(p => p.status === 'planned').reduce((sum, p) => sum + p.amount, 0),
-  };
+  const payments = paymentsData?.payments || [];
+  const payouts = payoutsData?.payouts || [];
+  const paymentsTotal = paymentsData?.total || 0;
+  const payoutsTotal = payoutsData?.total || 0;
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
@@ -75,7 +92,7 @@ export function FinanceSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalRevenue.toLocaleString()} XOF</div>
+            <div className="text-2xl font-bold">{(stats?.total_revenue || 0).toLocaleString()} XOF</div>
           </CardContent>
         </Card>
         <Card>
@@ -85,7 +102,7 @@ export function FinanceSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingPayments}</div>
+            <div className="text-2xl font-bold">{stats?.pending_payments || 0}</div>
           </CardContent>
         </Card>
         <Card>
@@ -95,7 +112,7 @@ export function FinanceSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.completedPayments}</div>
+            <div className="text-2xl font-bold">{stats?.completed_payments || 0}</div>
           </CardContent>
         </Card>
         <Card>
@@ -105,7 +122,7 @@ export function FinanceSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingPayouts.toLocaleString()} XOF</div>
+            <div className="text-2xl font-bold">{(stats?.pending_payouts || 0).toLocaleString()} XOF</div>
           </CardContent>
         </Card>
       </div>
@@ -186,6 +203,33 @@ export function FinanceSection() {
                   </TableBody>
                 </Table>
               )}
+              
+              {/* Pagination */}
+              {!paymentsLoading && payments.length > 0 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Affichage {(paymentsPage - 1) * limit + 1} à {Math.min(paymentsPage * limit, paymentsTotal)} sur {paymentsTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPaymentsPage(p => Math.max(1, p - 1))}
+                      disabled={paymentsPage === 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPaymentsPage(p => p + 1)}
+                      disabled={paymentsPage * limit >= paymentsTotal}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -251,6 +295,33 @@ export function FinanceSection() {
                     ))}
                   </TableBody>
                 </Table>
+              )}
+              
+              {/* Pagination */}
+              {!payoutsLoading && payouts.length > 0 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Affichage {(payoutsPage - 1) * limit + 1} à {Math.min(payoutsPage * limit, payoutsTotal)} sur {payoutsTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPayoutsPage(p => Math.max(1, p - 1))}
+                      disabled={payoutsPage === 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPayoutsPage(p => p + 1)}
+                      disabled={payoutsPage * limit >= payoutsTotal}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>

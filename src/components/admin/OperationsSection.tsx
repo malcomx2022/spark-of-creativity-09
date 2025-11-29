@@ -10,11 +10,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MapPin, Star, AlertTriangle, Calendar } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 export function OperationsSection() {
   const queryClient = useQueryClient();
   const [selectedReview, setSelectedReview] = useState<any>(null);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [disputesPage, setDisputesPage] = useState(1);
+  const reviewsLimit = 20;
+  const disputesLimit = 20;
 
   const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({
     queryKey: ['admin-appointments-today'],
@@ -31,32 +35,36 @@ export function OperationsSection() {
     },
   });
 
-  const { data: reviews = [], isLoading: reviewsLoading } = useQuery({
-    queryKey: ['admin-reviews'],
+  const { data: reviewsData, isLoading: reviewsLoading } = useQuery({
+    queryKey: ['admin-reviews', reviewsPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('reviews')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range((reviewsPage - 1) * reviewsLimit, reviewsPage * reviewsLimit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { reviews: data || [], total: count || 0 };
     },
   });
 
-  const { data: disputes = [], isLoading: disputesLoading } = useQuery({
-    queryKey: ['admin-disputes'],
+  const { data: disputesData, isLoading: disputesLoading } = useQuery({
+    queryKey: ['admin-disputes', disputesPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('disputes')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((disputesPage - 1) * disputesLimit, disputesPage * disputesLimit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { disputes: data || [], total: count || 0 };
     },
   });
+
+  const reviews = reviewsData?.reviews || [];
+  const disputes = disputesData?.disputes || [];
 
   const updateReviewMutation = useMutation({
     mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) => {
@@ -95,12 +103,12 @@ export function OperationsSection() {
     },
   });
 
-  const stats = {
+  const stats = useMemo(() => ({
     todayAppointments: appointments.length,
     pendingReviews: reviews.filter(r => !r.is_hidden && !r.moderated_at).length,
     openDisputes: disputes.filter(d => d.status === 'open').length,
     inProgressDisputes: disputes.filter(d => d.status === 'investigating').length,
-  };
+  }), [appointments, reviews, disputes]);
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -275,6 +283,33 @@ export function OperationsSection() {
                   ))}
                 </div>
               )}
+              
+              {/* Pagination */}
+              {!reviewsLoading && reviews.length > 0 && (
+                <div className="flex items-center justify-between mt-4 px-4">
+                  <p className="text-sm text-muted-foreground">
+                    Affichage {(reviewsPage - 1) * reviewsLimit + 1} à {Math.min(reviewsPage * reviewsLimit, reviewsData?.total || 0)} sur {reviewsData?.total || 0}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setReviewsPage(p => Math.max(1, p - 1))}
+                      disabled={reviewsPage === 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setReviewsPage(p => p + 1)}
+                      disabled={reviewsPage * reviewsLimit >= (reviewsData?.total || 0)}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -374,15 +409,42 @@ export function OperationsSection() {
                             </DialogContent>
                           </Dialog>
                         </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            
+            {/* Pagination */}
+            {!disputesLoading && disputes.length > 0 && (
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Affichage {(disputesPage - 1) * disputesLimit + 1} à {Math.min(disputesPage * disputesLimit, disputesData?.total || 0)} sur {disputesData?.total || 0}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDisputesPage(p => Math.max(1, p - 1))}
+                    disabled={disputesPage === 1}
+                  >
+                    Précédent
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDisputesPage(p => p + 1)}
+                    disabled={disputesPage * disputesLimit >= (disputesData?.total || 0)}
+                  >
+                    Suivant
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  </div>
+);
 }
