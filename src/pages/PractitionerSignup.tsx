@@ -400,6 +400,26 @@ export default function PractitionerSignup() {
     setIsSubmitting(true);
 
     try {
+      // ✅ Vérifier l'unicité du téléphone AVANT inscription
+      const { data: existingPractitioner, error: phoneCheckError } = await supabase
+        .from('practitioners')
+        .select('id')
+        .eq('phone', formData.phone)
+        .maybeSingle();
+
+      if (phoneCheckError && phoneCheckError.code !== 'PGRST116') {
+        throw phoneCheckError;
+      }
+
+      if (existingPractitioner) {
+        toast({
+          title: "Erreur",
+          description: "Ce numéro de téléphone est déjà utilisé par un autre praticien",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
 
       // Déterminer le dashboard selon le type de praticien
       const practitionerTypeForSignup = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
