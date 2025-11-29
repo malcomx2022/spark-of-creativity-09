@@ -113,7 +113,7 @@ export function PatientGroupSessionsSection() {
           <p className="text-muted-foreground mb-4">
             Vous n'êtes inscrit à aucune séance de groupe pour le moment
           </p>
-          <Button onClick={() => window.location.href = '/practitioner-search'}>
+          <Button onClick={() => window.location.href = '/search-coaches'}>
             Découvrir les séances
           </Button>
         </CardContent>
