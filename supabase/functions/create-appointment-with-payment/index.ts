@@ -49,6 +49,70 @@ serve(async (req) => {
       throw new Error('Données manquantes: patientId, practitionerId, amount et phoneNumber requis');
     }
 
+    // Validation date/heure
+    const appointmentDate = new Date(body.date);
+    const now = new Date();
+
+    // Vérifier que la date n'est pas dans le passé
+    if (appointmentDate < now) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Date invalide',
+          details: ['La date du rendez-vous ne peut pas être dans le passé']
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Vérifier que ce n'est pas un dimanche
+    if (appointmentDate.getDay() === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Date invalide',
+          details: ['Les rendez-vous ne sont pas disponibles le dimanche']
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Valider le format de l'heure (HH:MM)
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(body.time)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Heure invalide',
+          details: ['Le format de l\'heure doit être HH:MM (ex: 14:30)']
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Vérifier que l'heure n'est pas passée si c'est aujourd'hui
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const appointmentDay = new Date(appointmentDate);
+    appointmentDay.setHours(0, 0, 0, 0);
+
+    if (appointmentDay.getTime() === today.getTime()) {
+      const [hours, minutes] = body.time.split(':').map(Number);
+      const appointmentTime = new Date();
+      appointmentTime.setHours(hours, minutes, 0, 0);
+
+      if (appointmentTime < new Date()) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Heure invalide',
+            details: ['L\'heure du rendez-vous est déjà passée. Veuillez choisir un créneau ultérieur.']
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Transaction atomique via RPC ou séquence contrôlée
     let appointmentId: string | undefined;
     let paymentResult: any;
