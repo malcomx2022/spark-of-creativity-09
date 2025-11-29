@@ -17,7 +17,7 @@ export function usePractitionerReviews(practitionerId?: string, page = 1, limit 
       const { data, error } = await withTimeout(
         supabase
           .from('reviews')
-          .select('*')
+          .select('*, profiles!patient_id(full_name)')
           .eq('practitioner_id', practitionerId)
           .eq('is_hidden', false)
           .order('created_at', { ascending: false })
