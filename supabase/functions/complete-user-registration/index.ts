@@ -133,11 +133,12 @@ async function processPatientRegistration(
     throw new Error('Adresse trop courte (minimum 10 caractères)');
   }
 
-  // ✅ Vérification unicité du téléphone
+  // ✅ Vérification unicité du téléphone (exclure l'utilisateur courant pour permettre les retry)
   const { data: existingPhone, error: phoneCheckError } = await supabase
     .from('profiles')
     .select('id')
     .eq('phone', data.profile.phone)
+    .neq('id', userId)
     .maybeSingle();
 
   if (phoneCheckError && phoneCheckError.code !== 'PGRST116') {
