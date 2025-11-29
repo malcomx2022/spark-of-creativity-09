@@ -45,7 +45,6 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
   const widgetRef = useRef<FedaPayCheckoutWidget | null>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
@@ -291,111 +290,105 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         amount
       });
 
-      // Show payment form first
-      setShowPaymentForm(true);
+      // ✅ CORRECTION: Utiliser le mode POPUP au lieu du mode EMBEDDED
+      // Le mode embedded avec container cause des problèmes de connexion
       setPaymentStatus('pending');
 
-      // Wait for DOM to be ready before initializing widget
-      setTimeout(() => {
-        const container = document.getElementById('fedapay-container');
-        if (!container) {
-          console.error('FedaPay container not found');
-          throw new Error('Container de paiement non disponible');
-        }
-
-        // Initialize FedaPay widget in embedded mode
-        const widget = initFedaPayWidget({
-          public_key: fedapayConfig.publicKey,
-          environment: fedapayConfig.environment as 'sandbox' | 'live',
-          transaction: {
-            id: txId,
-            amount: amount,
-            description: `Paiement rendez-vous médical #${appointmentId}`,
+      // Initialize FedaPay widget in POPUP mode (plus fiable)
+      const widget = initFedaPayWidget({
+        public_key: fedapayConfig.publicKey,
+        environment: fedapayConfig.environment as 'sandbox' | 'live',
+        transaction: {
+          id: txId,
+          amount: amount,
+          description: `Paiement rendez-vous médical #${appointmentId}`,
+        },
+        customer: {
+          phone_number: {
+            number: sanitizedPhoneNumber,
+            country: 'BJ',
           },
-          customer: {
-            phone_number: {
-              number: sanitizedPhoneNumber,
-              country: 'BJ',
-            },
-          },
-          currency: {
-            iso: 'XOF',
-          },
-          locale: 'fr',
-          container: '#fedapay-container',
-          onComplete: async (payload) => {
-            console.log('Payment completed:', payload);
+        },
+        currency: {
+          iso: 'XOF',
+        },
+        locale: 'fr',
+        // ✅ PAS de container - mode popup
+        onComplete: async (payload) => {
+          console.log('Payment completed:', payload);
 
-            if (payload.reason === CHECKOUT_COMPLETED) {
-              // Payment successful
-              setPaymentStatus('success');
-              setIsProcessing(false);
+          if (payload.reason === CHECKOUT_COMPLETED) {
+            // Payment successful
+            setPaymentStatus('success');
+            setIsProcessing(false);
 
-              // Save payment method if requested
-              if (saveMethod) {
-                try {
-                  await addPaymentMethod({
-                    provider: paymentMethod,
-                    phoneNumber: sanitizedPhoneNumber,
-                    setAsDefault: paymentMethods.length === 0,
-                  });
-                } catch (saveError) {
-                  console.error('Error saving payment method:', saveError);
-                }
-              }
-
-              // ✅ Nettoyer l'état de paiement persisté
-              clearPersistedPaymentState();
-
-              toast({
-                title: 'Paiement réussi !',
-                description: 'Votre rendez-vous a été confirmé.',
-              });
-
-              if (onSuccess) {
-                onSuccess();
-              }
-
-              if (onComplete) {
-                onComplete();
-              }
-
-              setTimeout(() => {
-                resetState();
-                onOpenChange(false);
-              }, 2000);
-            } else if (payload.reason === DIALOG_DISMISSED) {
-              // User closed the dialog
-              setPaymentStatus('error');
-              setIsProcessing(false);
-
-              // ✅ Nettoyer l'état de paiement persisté
-              clearPersistedPaymentState();
-
-              toast({
-                title: 'Paiement annulé',
-                description: 'Vous avez annulé le paiement.',
-                variant: 'destructive',
-              });
-
-              if (onError) {
-                onError(new Error('Paiement annulé par l\'utilisateur'));
+            // Save payment method if requested
+            if (saveMethod) {
+              try {
+                await addPaymentMethod({
+                  provider: paymentMethod,
+                  phoneNumber: sanitizedPhoneNumber,
+                  setAsDefault: paymentMethods.length === 0,
+                });
+              } catch (saveError) {
+                console.error('Error saving payment method:', saveError);
               }
             }
-          },
-        });
 
-        if (!widget) {
-          throw new Error('Impossible d\'initialiser le widget de paiement');
-        }
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
 
-        widgetRef.current = widget;
+            toast({
+              title: 'Paiement réussi !',
+              description: 'Votre rendez-vous a été confirmé.',
+            });
 
-        toast({
-          title: 'Paiement initié',
-          description: 'Complétez le paiement dans le formulaire ci-dessous.',
-        });
-      }, 200); // Attendre que le DOM soit prêt
+            if (onSuccess) {
+              onSuccess();
+            }
+
+            if (onComplete) {
+              onComplete();
+            }
+
+            setTimeout(() => {
+              resetState();
+              onOpenChange(false);
+            }, 2000);
+          } else if (payload.reason === DIALOG_DISMISSED) {
+            // User closed the dialog
+            setPaymentStatus('error');
+            setIsProcessing(false);
+
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
+
+            toast({
+              title: 'Paiement annulé',
+              description: 'Vous avez annulé le paiement.',
+              variant: 'destructive',
+            });
+
+            if (onError) {
+              onError(new Error('Paiement annulé par l\'utilisateur'));
+            }
+          }
+        },
+      });
+
+      if (!widget) {
+        throw new Error('Impossible d\'initialiser le widget de paiement');
+      }
+
+      widgetRef.current = widget;
+
+      // ✅ Ouvrir le widget en mode popup
+      widget.open();
+
+      toast({
+        title: 'Paiement initié',
+        description: 'Complétez le paiement dans la fenêtre popup qui vient de s\'ouvrir.',
+      });
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
@@ -427,8 +420,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPayerName('');
     setPayerEmail('');
     setSaveMethod(false);
-    setShowPaymentForm(false);
-    
+
     // ✅ Nettoyer l'état de paiement persisté
     clearPersistedPaymentState();
     
@@ -586,15 +578,16 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           </form>
         )}
 
-        {paymentStatus === 'pending' && showPaymentForm && (
-          <div className="space-y-4">
-            <div className="text-center text-sm text-muted-foreground mb-4">
-              Complétez le paiement dans le formulaire ci-dessous
-            </div>
-            <div 
-              id="fedapay-container" 
-              className="w-full min-h-[420px] rounded-lg overflow-hidden border border-border"
-            />
+        {paymentStatus === 'pending' && (
+          <div className="flex flex-col items-center justify-center py-8 space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-semibold">Paiement en cours...</p>
+            <p className="text-sm text-muted-foreground text-center">
+              Une fenêtre popup s'est ouverte. Complétez votre paiement dans cette fenêtre.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Si la fenêtre ne s'ouvre pas, vérifiez que les popups ne sont pas bloqués par votre navigateur.
+            </p>
           </div>
         )}
       </DialogContent>
