@@ -31,6 +31,7 @@ export interface FedaPayCheckoutOptions {
     iso?: string;
   };
   locale?: string;
+  container?: string;
   onComplete?: (payload: FedaPayCompletePayload) => void;
 }
 
