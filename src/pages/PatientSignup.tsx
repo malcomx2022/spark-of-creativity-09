@@ -36,8 +36,17 @@ const patientSignupSchema = z.object({
       const birthDate = new Date(date);
       const today = new Date();
       const age = today.getFullYear() - birthDate.getFullYear();
-      return age >= 0 && age <= 120 && birthDate <= today;
-    }, "Date de naissance invalide"),
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())
+        ? age - 1
+        : age;
+
+      if (actualAge < 0 || actualAge > 120) return false;
+      if (birthDate > today) return false;
+
+      // Âge minimum 13 ans pour utiliser le service
+      return actualAge >= 13;
+    }, "Vous devez avoir au moins 13 ans pour vous inscrire"),
   gender: z.string()
     .min(1, "Veuillez sélectionner votre sexe"),
   address: z.string()
@@ -64,6 +73,26 @@ const patientSignupSchema = z.object({
   message: "Les mots de passe ne correspondent pas",
   path: ["confirmPassword"]
 });
+
+// Helper pour retry avec timeout
+const retryWithTimeout = async <T,>(
+  promise: Promise<T>,
+  retries = 3,
+  delay = 2000
+): Promise<T> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await withTimeout(promise);
+    } catch (error) {
+      if (i === retries - 1 || !(error instanceof NetworkTimeoutError)) {
+        throw error;
+      }
+      // Attendre avant retry avec délai croissant
+      await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+    }
+  }
+  throw new Error('Max retries reached');
+};
 
 export default function PatientSignup() {
   const navigate = useNavigate();
@@ -121,13 +150,30 @@ export default function PatientSignup() {
         });
         setValidationErrors(errors);
         
-        // Afficher la première erreur
-        const firstError = error.issues[0];
+        // Afficher TOUTES les erreurs dans le toast
         toast({
-          title: "Erreur de validation",
-          description: firstError.message,
-          variant: "destructive"
+          title: `${error.issues.length} erreur(s) détectée(s)`,
+          description: (
+            <ul className="list-disc list-inside space-y-1 text-sm">
+              {error.issues.slice(0, 5).map((issue, idx) => (
+                <li key={idx}>{issue.message}</li>
+              ))}
+              {error.issues.length > 5 && (
+                <li className="text-muted-foreground">+ {error.issues.length - 5} autre(s) erreur(s)</li>
+              )}
+            </ul>
+          ),
+          variant: "destructive",
+          duration: 10000,
         });
+
+        // Scroll vers la première erreur
+        const firstErrorField = document.getElementById(error.issues[0].path[0]?.toString() || '');
+        if (firstErrorField) {
+          firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          firstErrorField.focus();
+        }
+
         setIsSubmitting(false);
         return;
       }
@@ -191,7 +237,7 @@ export default function PatientSignup() {
         return;
       }
       // 1. Créer le compte utilisateur Supabase (auto-confirmé)
-      const { data: authData, error: authError } = await withTimeout(
+      const { data: authData, error: authError } = await retryWithTimeout(
         supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -256,7 +302,7 @@ export default function PatientSignup() {
       const userId = authData.user.id;
 
       // 2. Finaliser l'inscription via edge function centralisée
-      const { error: registrationError } = await withTimeout(
+      const { error: registrationError } = await retryWithTimeout(
         supabase.functions.invoke('complete-user-registration',
         {
           body: {
