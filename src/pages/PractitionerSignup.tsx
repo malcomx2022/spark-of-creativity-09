@@ -449,15 +449,33 @@ export default function PractitionerSignup() {
     setIsSubmitting(true);
 
     try {
-      // ✅ Vérifier l'unicité du téléphone AVANT inscription
-      const { data: existingPractitioner, error: phoneCheckError } = await supabase
-        .from('practitioners')
-        .select('id')
-        .eq('phone', formData.phone)
-        .maybeSingle();
+      // ✅ Vérifier l'unicité du téléphone AVANT inscription (avec timeout)
+      let existingPractitioner = null;
+      try {
+        const phoneCheckResult = await withTimeout(
+          supabase
+            .from('practitioners')
+            .select('id')
+            .eq('phone', formData.phone)
+            .maybeSingle(),
+          8000 // 8 secondes de timeout
+        );
 
-      if (phoneCheckError && phoneCheckError.code !== 'PGRST116') {
-        throw phoneCheckError;
+        if (phoneCheckResult.error && phoneCheckResult.error.code !== 'PGRST116') {
+          console.warn('Erreur vérification téléphone:', phoneCheckResult.error);
+          // Ne pas bloquer l'inscription si la vérification échoue, continuer quand même
+          // L'edge function vérifiera également l'unicité côté backend
+        } else {
+          existingPractitioner = phoneCheckResult.data;
+        }
+      } catch (phoneCheckError) {
+        if (phoneCheckError instanceof NetworkTimeoutError) {
+          console.warn('Timeout lors de la vérification du téléphone, on continue quand même');
+          // L'edge function vérifiera l'unicité
+        } else {
+          console.warn('Erreur réseau vérification téléphone:', phoneCheckError);
+          // Ne pas bloquer, l'edge function vérifiera
+        }
       }
 
       if (existingPractitioner) {
