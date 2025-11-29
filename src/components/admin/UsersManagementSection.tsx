@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { PatientDetailsDialog } from './PatientDetailsDialog';
 
 export function UsersManagementSection() {
   const [searchInput, setSearchInput] = useState('');
@@ -18,6 +19,7 @@ export function UsersManagementSection() {
   const [profilesPage, setProfilesPage] = useState(0);
   const [practitionersPage, setPractitionersPage] = useState(0);
   const [confirmText, setConfirmText] = useState('');
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const pageSize = 50;
   const queryClient = useQueryClient();
 
@@ -193,7 +195,11 @@ export function UsersManagementSection() {
                     </TableHeader>
                     <TableBody>
                       {profiles.map((profile) => (
-                        <TableRow key={profile.id}>
+                        <TableRow 
+                          key={profile.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedPatientId(profile.id)}
+                        >
                           <TableCell className="font-medium">
                             {profile.full_name || 'N/A'}
                           </TableCell>
@@ -332,6 +338,11 @@ export function UsersManagementSection() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <PatientDetailsDialog 
+        patientId={selectedPatientId}
+        onOpenChange={(open) => !open && setSelectedPatientId(null)}
+      />
     </div>
   );
 }
