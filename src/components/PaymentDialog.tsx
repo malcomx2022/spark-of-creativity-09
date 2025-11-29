@@ -694,13 +694,19 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
         widgetRef.current = widget;
 
-        // Ouvrir le widget de paiement
-        widget.open();
-
-        toast({
-          title: 'Paiement initié',
-          description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-        });
+        // Ouvrir le widget de paiement avec gestion d'erreur
+        try {
+          widget.open();
+          
+          toast({
+            title: 'Fenêtre de paiement ouverte',
+            description: 'Complétez le paiement dans la fenêtre popup. Si elle ne s\'affiche pas, veuillez autoriser les popups pour ce site.',
+            duration: 5000,
+          });
+        } catch (openError) {
+          console.error('Error opening FedaPay popup:', openError);
+          throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.');
+        }
       } else {
         setIsCreatingPayment(false);
         throw new Error('Format de réponse invalide du serveur');
@@ -1125,7 +1131,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 <ShieldCheck className="h-4 w-4" />
                 <AlertTitle>Paiement sécurisé via FedaPay</AlertTitle>
                 <AlertDescription>
-                  Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. Vous serez redirigé vers une page sécurisée pour autoriser le paiement mobile money.
+                  Vos informations sont chiffrées et traitées par la passerelle régionale FedaPay. <strong>Une fenêtre popup s'ouvrira</strong> pour autoriser le paiement mobile money. <strong>Veuillez autoriser les popups</strong> pour ce site si votre navigateur les bloque.
                 </AlertDescription>
               </Alert>
             )}

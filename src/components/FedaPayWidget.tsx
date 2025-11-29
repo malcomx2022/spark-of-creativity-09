@@ -380,13 +380,19 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
       widgetRef.current = widget;
 
-      // Open the popup
-      widget.open();
-
-      toast({
-        title: 'Paiement initié',
-        description: 'Complétez le paiement dans la fenêtre qui vient de s\'ouvrir.',
-      });
+      // Open the popup with error handling
+      try {
+        widget.open();
+        
+        toast({
+          title: 'Fenêtre de paiement ouverte',
+          description: 'Complétez le paiement dans la fenêtre popup. Si elle ne s\'affiche pas, veuillez autoriser les popups pour ce site.',
+          duration: 5000,
+        });
+      } catch (openError) {
+        console.error('Error opening FedaPay popup:', openError);
+        throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.');
+      }
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('error');
@@ -554,7 +560,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Une fenêtre pop-up s'ouvrira pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}.
+                Une fenêtre popup s'ouvrira pour compléter votre paiement via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}. <strong>Assurez-vous d'autoriser les popups</strong> pour ce site si votre navigateur les bloque.
               </AlertDescription>
             </Alert>
 
