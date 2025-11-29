@@ -85,7 +85,9 @@ export function KYCQueue() {
         );
 
         if (profilesError) {
-          console.error('Error loading admin profiles:', profilesError);
+          if (import.meta.env.DEV) {
+            console.error('Error loading admin profiles:', profilesError);
+          }
         } else {
           adminMap = (profilesData || []).reduce<Record<string, string | null>>((acc, profile) => {
             acc[profile.id] = profile.full_name;
@@ -176,14 +178,18 @@ export function KYCQueue() {
 
   const updateKYCMutation = useMutation({
     mutationFn: async ({ id, status, comment }: { id: string; status: string; comment?: string }) => {
-      console.log('[KYC Update] Starting mutation:', { id, status, comment });
+      if (import.meta.env.DEV) {
+        console.log('[KYC Update] Starting mutation:', { id, status, comment });
+      }
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
         throw new Error('Utilisateur non authentifié');
       }
 
-      console.log('[KYC Update] Updating practitioner in database...');
+      if (import.meta.env.DEV) {
+        console.log('[KYC Update] Updating practitioner in database...');
+      }
       const { error } = await withTimeout(
         supabase
           .from('practitioners')
@@ -198,11 +204,15 @@ export function KYCQueue() {
       );
 
       if (error) {
-        console.error('[KYC Update] Database update error:', error);
+        if (import.meta.env.DEV) {
+          console.error('[KYC Update] Database update error:', error);
+        }
         throw error;
       }
 
-      console.log('[KYC Update] Inserting audit log...');
+      if (import.meta.env.DEV) {
+        console.log('[KYC Update] Inserting audit log...');
+      }
       const { error: auditError } = await withTimeout(
         supabase.from('admin_audit_logs').insert({
           admin_id: user.id,
@@ -214,20 +224,28 @@ export function KYCQueue() {
       );
 
       if (auditError) {
-        console.error('[KYC Update] Audit log error:', auditError);
+        if (import.meta.env.DEV) {
+          console.error('[KYC Update] Audit log error:', auditError);
+        }
         // Ne pas bloquer si le log d'audit échoue
       }
 
-      console.log('[KYC Update] Mutation completed successfully');
+      if (import.meta.env.DEV) {
+        console.log('[KYC Update] Mutation completed successfully');
+      }
     },
     onSuccess: async (_, variables) => {
-      console.log('[KYC Update] onSuccess triggered');
+      if (import.meta.env.DEV) {
+        console.log('[KYC Update] onSuccess triggered');
+      }
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
       queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
       
       // Envoyer la notification appropriée selon le statut
       try {
-        console.log('[KYC Update] Sending notification...');
+        if (import.meta.env.DEV) {
+          console.log('[KYC Update] Sending notification...');
+        }
         await supabase.functions.invoke('send-kyc-status-notification', {
           body: {
             practitionerId: variables.id,
@@ -247,7 +265,9 @@ export function KYCQueue() {
           description: statusMessages[variables.status as keyof typeof statusMessages] || "Statut mis à jour"
         });
       } catch (notifError) {
-        console.error('[KYC Update] Error sending notification:', notifError);
+        if (import.meta.env.DEV) {
+          console.error('[KYC Update] Error sending notification:', notifError);
+        }
         toast({ 
           title: "Statut KYC mis à jour", 
           description: "Statut modifié (erreur d'envoi de notification)" 
@@ -261,7 +281,9 @@ export function KYCQueue() {
       setRejectDialogOpen(false);
     },
     onError: (error: Error) => {
-      console.error('[KYC Update] Mutation error:', error);
+      if (import.meta.env.DEV) {
+        console.error('[KYC Update] Mutation error:', error);
+      }
       toast({
         title: "Erreur",
         description: error.message || "Impossible de mettre à jour le statut KYC",
@@ -297,7 +319,9 @@ export function KYCQueue() {
               },
             }));
           } catch (error) {
-            console.error(`Error loading documents for ${practitioner.id}:`, error);
+            if (import.meta.env.DEV) {
+              console.error(`Error loading documents for ${practitioner.id}:`, error);
+            }
           } finally {
             setLoadingUrls(prev => ({ ...prev, [practitioner.id]: false }));
           }

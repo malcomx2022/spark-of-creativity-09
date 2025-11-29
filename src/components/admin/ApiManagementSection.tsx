@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +17,7 @@ import { Settings, Key, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-reac
 export function ApiManagementSection() {
   const queryClient = useQueryClient();
   const [selectedMode, setSelectedMode] = useState<string>("");
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   
   // Dialog states
   const [fedapayDialogOpen, setFedapayDialogOpen] = useState(false);
@@ -74,14 +76,23 @@ export function ApiManagementSection() {
       toast.success("Mode FedaPay mis à jour avec succès");
     },
     onError: (error) => {
-      console.error("Error updating FedaPay mode:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error updating FedaPay mode:", error);
+      }
       toast.error("Erreur lors de la mise à jour du mode");
     },
   });
 
   const handleUpdateMode = () => {
     if (selectedMode && selectedMode !== currentConfig?.mode) {
+      setConfirmDialogOpen(true);
+    }
+  };
+
+  const confirmUpdateMode = () => {
+    if (selectedMode) {
       updateModeMutation.mutate(selectedMode);
+      setConfirmDialogOpen(false);
     }
   };
 
@@ -418,6 +429,29 @@ export function ApiManagementSection() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog for Mode Change */}
+      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer le changement de mode</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir passer en mode <strong>{selectedMode === "live" ? "Production" : "Sandbox"}</strong> ? 
+              {selectedMode === "live" && (
+                <span className="block mt-2 font-medium text-destructive">
+                  ⚠️ Cette action affectera tous les paiements. Les transactions seront réelles et facturées.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUpdateMode}>
+              Confirmer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Mapbox Token Dialog */}
       <Dialog open={mapboxDialogOpen} onOpenChange={setMapboxDialogOpen}>
