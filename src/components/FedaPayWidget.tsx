@@ -31,9 +31,11 @@ interface FedaPayWidgetProps {
   appointmentId: string;
   amount: number;
   onSuccess?: () => void;
+  onComplete?: () => void;
+  onError?: (error: Error) => void;
 }
 
-export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuccess }: FedaPayWidgetProps) {
+export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuccess, onComplete, onError }: FedaPayWidgetProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [payerName, setPayerName] = useState('');
@@ -281,6 +283,10 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               onSuccess();
             }
 
+            if (onComplete) {
+              onComplete();
+            }
+
             setTimeout(() => {
               resetState();
               onOpenChange(false);
@@ -298,6 +304,10 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               description: 'Vous avez annulé le paiement.',
               variant: 'destructive',
             });
+
+            if (onError) {
+              onError(new Error('Paiement annulé par l\'utilisateur'));
+            }
           }
         },
       });
@@ -331,6 +341,10 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         variant: 'destructive',
         duration: 5000,
       });
+
+      if (onError) {
+        onError(error instanceof Error ? error : new Error(errorMessage));
+      }
     }
   };
 
