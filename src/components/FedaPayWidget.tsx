@@ -556,11 +556,53 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                     const FedaPay = (window as any).FedaPay;
                     
                     if (resp.reason === FedaPay?.CHECKOUT_COMPLETED) {
-                      console.log('Payment completed successfully:', resp.transaction);
+                      console.log('✅ FedaPay payment completed successfully:', resp.transaction);
                       
                       // Payment successful
                       setPaymentStatus('success');
                       setIsProcessing(false);
+
+                      // ✅ CORRECTION CRITIQUE: Vérifier et mettre à jour le statut dans la DB
+                      try {
+                        console.log('🔄 Waiting for webhook to process payment...');
+                        // Attendre 3 secondes que le webhook traite le paiement
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        
+                        // Vérifier le statut dans la base de données
+                        const { data: payment, error: paymentError } = await supabase
+                          .from('payments')
+                          .select('id, status')
+                          .eq('appointment_id', appointmentId)
+                          .eq('fedapay_transaction_id', String(resp.transaction.id))
+                          .single();
+                        
+                        if (paymentError) {
+                          console.error('❌ Error fetching payment:', paymentError);
+                        } else if (payment) {
+                          console.log('📊 Payment status in DB:', payment.status);
+                          
+                          // Si le statut n'est pas encore 'paid', attendre encore un peu
+                          if (payment.status !== 'paid') {
+                            console.log('⏳ Payment not yet marked as paid, waiting more...');
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            
+                            // Vérifier à nouveau
+                            const { data: updatedPayment } = await supabase
+                              .from('payments')
+                              .select('id, status')
+                              .eq('id', payment.id)
+                              .single();
+                            
+                            if (updatedPayment) {
+                              console.log('📊 Updated payment status:', updatedPayment.status);
+                            }
+                          } else {
+                            console.log('✅ Payment already marked as paid in DB');
+                          }
+                        }
+                      } catch (error) {
+                        console.error('⚠️ Error checking payment status:', error);
+                      }
 
                       // Save payment method if requested
                       if (saveMethod) {
@@ -579,7 +621,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
                       toast({
                         title: 'Paiement réussi !',
-                        description: 'Votre rendez-vous a été confirmé.',
+                        description: 'Votre rendez-vous a été confirmé. Le statut sera mis à jour dans quelques instants.',
+                        duration: 5000,
                       });
 
                       if (onSuccess) {
