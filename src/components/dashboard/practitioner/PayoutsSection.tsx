@@ -4,10 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DollarSign, Download, TrendingUp, Wallet, Clock, FileText } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect } from "react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import jsPDF from "jspdf";
@@ -22,6 +22,15 @@ interface PayoutsSectionProps {
 export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [balanceUpdate, setBalanceUpdate] = useState<string | null>(null);
+  const [paymentsLimit, setPaymentsLimit] = useState(20);
+  const [payoutsLimit, setPayoutsLimit] = useState(20);
+
+  type PractitionerBalance = {
+    balance_available: number;
+    balance_pending: number;
+    balance_on_hold: number;
+  };
 
   // Fetch practitioner balance
   const { data: balance } = useQuery({
@@ -42,7 +51,9 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   useEffect(() => {
     if (!practitionerId) return;
 
-    console.log('🔄 Configuration realtime balance praticien:', practitionerId);
+    if (import.meta.env.DEV) {
+      console.log('Realtime balance config:', practitionerId);
+    }
 
     const channel = supabase
       .channel('practitioner-balance-changes')
@@ -55,18 +66,14 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
           filter: `practitioner_id=eq.${practitionerId}`,
         },
         (payload) => {
-          console.log('💰 Balance mise à jour:', payload);
+          if (import.meta.env.DEV) {
+            console.log('Balance updated:', payload);
+          }
           queryClient.invalidateQueries({ queryKey: ['practitioner-balance', practitionerId] });
           
-          // Afficher notification à l'utilisateur - utilise setTimeout pour éviter l'erreur React #310
           if (payload.eventType === 'UPDATE') {
-            const newBalance = payload.new as any;
-            setTimeout(() => {
-              toast({
-                title: "Balance mise à jour",
-                description: `Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`,
-              });
-            }, 0);
+            const newBalance = payload.new as PractitionerBalance;
+            setBalanceUpdate(`Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`);
           }
         }
       )
@@ -77,9 +84,20 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
     };
   }, [practitionerId, queryClient]);
 
+  // Toast notification for balance updates
+  useEffect(() => {
+    if (balanceUpdate) {
+      toast({
+        title: "Balance mise à jour",
+        description: balanceUpdate,
+      });
+      setBalanceUpdate(null);
+    }
+  }, [balanceUpdate, toast]);
+
   // Fetch payments history
   const { data: payments } = useQuery({
-    queryKey: ["practitioner-payments", practitionerId],
+    queryKey: ["practitioner-payments", practitionerId, paymentsLimit],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payments")
@@ -88,7 +106,8 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
           appointments!inner(practitioner_id)
         `)
         .eq("appointments.practitioner_id", practitionerId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(paymentsLimit);
       
       if (error) throw error;
       return data;
@@ -97,13 +116,14 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
 
   // Fetch payouts history
   const { data: payouts } = useQuery({
-    queryKey: ["practitioner-payouts", practitionerId],
+    queryKey: ["practitioner-payouts", practitionerId, payoutsLimit],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("practitioner_payouts")
         .select("*")
         .eq("practitioner_id", practitionerId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(payoutsLimit);
       
       if (error) throw error;
       return data;
@@ -369,6 +389,16 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                   )}
                 </TableBody>
               </Table>
+              {payments && payments.length >= paymentsLimit && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPaymentsLimit(prev => prev + 20)}
+                  >
+                    Voir plus
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -420,6 +450,16 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                   )}
                 </TableBody>
               </Table>
+              {payouts && payouts.length >= payoutsLimit && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPayoutsLimit(prev => prev + 20)}
+                  >
+                    Voir plus
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
