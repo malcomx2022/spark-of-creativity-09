@@ -198,6 +198,22 @@ serve(async (req) => {
     if (existingProfile) {
       console.log('Existing user found:', existingProfile.id);
 
+      // Get user's actual email from auth.users
+      const { data: authUser, error: getUserError } = await supabase.auth.admin.getUserById(
+        existingProfile.id
+      );
+
+      if (getUserError || !authUser.user) {
+        console.error('Error fetching auth user:', getUserError);
+        throw new Error('Could not retrieve user data');
+      }
+
+      const userEmail = authUser.user.email;
+      if (!userEmail) {
+        console.error('User has no email');
+        throw new Error('User account is missing email');
+      }
+
       // Generate a temporary password for session creation
       const tempPassword = crypto.randomUUID();
       
@@ -218,9 +234,9 @@ serve(async (req) => {
       const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
       const clientSupabase = createClient(supabaseUrl, anonKey);
 
-      // Sign in with temporary password to get session
+      // Sign in with user's actual email and temporary password
       const { data: signInData, error: signInError } = await clientSupabase.auth.signInWithPassword({
-        email: tempEmail,
+        email: userEmail,
         password: tempPassword,
       });
 
