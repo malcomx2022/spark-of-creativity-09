@@ -25,6 +25,35 @@ import { AddressSearchInput } from './AddressSearchInput';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 
+// Système de queue de toasts pour éviter l'affichage simultané
+const toastQueue: Array<{ id: string; toast: any }> = [];
+let isShowingToast = false;
+
+const showToast = (toastConfig: any) => {
+  const id = Math.random().toString(36);
+  toastQueue.push({ id, toast: toastConfig });
+
+  if (!isShowingToast) {
+    processToastQueue();
+  }
+};
+
+const processToastQueue = () => {
+  if (toastQueue.length === 0) {
+    isShowingToast = false;
+    return;
+  }
+
+  isShowingToast = true;
+  const { toast: toastConfig } = toastQueue.shift()!;
+
+  toast(toastConfig);
+
+  setTimeout(() => {
+    processToastQueue();
+  }, toastConfig.duration || 4000);
+};
+
 const formSchema = z.object({
   specialty: z.string().min(1, '❌ Vous devez sélectionner une spécialité médicale'),
   date: z.date({ 
@@ -98,9 +127,10 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
 
     if (locationMode === 'auto' && !position && !geoLoading) {
       requestPosition();
-      toast({
+      showToast({
         title: 'Localisation requise',
         description: 'Nous avons besoin de votre localisation pour trouver un praticien près de vous.',
+        duration: 4000,
       });
     }
   };
@@ -115,7 +145,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       if (import.meta.env.DEV) {
         console.warn('⚠️ Soumission déjà en cours (via ref), requête bloquée');
       }
-      toast({
+      showToast({
         title: '⏳ Traitement en cours',
         description: 'Votre demande est déjà en cours de traitement. Veuillez patienter.',
         duration: 3000,
@@ -129,7 +159,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       if (import.meta.env.DEV) {
         console.warn(`⚠️ Soumission trop rapide, veuillez patienter ${Math.ceil(remainingMs / 1000)}s`);
       }
-      toast({
+      showToast({
         title: '⚠️ Veuillez patienter',
         description: `Merci d'attendre ${Math.ceil(remainingMs / 1000)} seconde(s) avant de soumettre à nouveau.`,
         variant: 'destructive',
@@ -160,7 +190,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         console.warn('⚠️ Géolocalisation en cours');
       }
       isSubmittingRef.current = false;
-      toast({
+      showToast({
         title: '📍 Géolocalisation en cours',
         description: 'Veuillez patienter pendant que nous déterminons votre position.',
         variant: 'destructive',
@@ -177,7 +207,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     // Vérification de la géolocalisation en mode automatique AVANT tout traitement
     if (locationMode === 'auto' && !position) {
       isSubmittingRef.current = false;
-      toast({
+      showToast({
         title: '📍 Localisation requise',
         description: geoError 
           ? `${geoError}\n\nVous pouvez soit réessayer la géolocalisation, soit passer en mode manuel pour saisir votre adresse.`
@@ -198,7 +228,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       
       if (position.accuracy > MAX_ACCURACY_METERS) {
         isSubmittingRef.current = false;
-        toast({
+        showToast({
           title: '📍 Géolocalisation imprécise',
           description: `Votre position n'est pas assez précise (±${Math.round(position.accuracy)}m). Rapprochez-vous d'une fenêtre ou d'un lieu ouvert, puis réessayez. Vous pouvez aussi passer en mode manuel.`,
           variant: 'destructive',
@@ -219,7 +249,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         // Rafraîchir automatiquement la position
         requestPosition();
 
-        toast({
+        showToast({
           title: '🔄 Rafraîchissement de la position',
           description: 'Votre position GPS est obsolète. Rafraîchissement automatique en cours...',
           duration: 5000,
@@ -239,7 +269,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       // Validation de l'adresse manuelle
       if (!manualLocation.address.trim()) {
         isSubmittingRef.current = false;
-        toast({
+        showToast({
           title: '❌ Adresse requise',
           description: 'Vous devez indiquer une adresse complète pour l\'intervention. Utilisez la recherche d\'adresse pour trouver votre localisation.',
           variant: 'destructive',
@@ -250,7 +280,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
 
       if (manualLocation.address.trim().length < 10) {
         isSubmittingRef.current = false;
-        toast({
+        showToast({
           title: '❌ Adresse incomplète',
           description: 'L\'adresse semble trop courte. Veuillez fournir une adresse complète (rue, quartier, ville).',
           variant: 'destructive',
@@ -261,7 +291,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
 
       if (!manualLocation.latitude || !manualLocation.longitude) {
         isSubmittingRef.current = false;
-        toast({
+        showToast({
           title: '📍 Coordonnées GPS requises',
           description: 'Veuillez sélectionner une adresse dans la liste de suggestion pour obtenir les coordonnées GPS nécessaires à la recherche de praticien.',
           variant: 'destructive',
@@ -309,7 +339,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           console.log('✅ Rendez-vous créé avec ID:', createdAppointment.id);
         }
 
-        toast({
+        showToast({
           title: '✅ Demande enregistrée avec succès',
           description: 'Votre demande a été envoyée. Notre équipe vous contactera sous 30 minutes pour affecter un praticien disponible et confirmer votre rendez-vous.',
           duration: 6000,
@@ -350,7 +380,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           }
         }
         
-        toast({
+        showToast({
           title: errorTitle,
           description: errorDescription,
           variant: 'destructive',
@@ -399,7 +429,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
             console.warn(`⚠️ Tentative ${attempt} échouée:`, error.message);
           }
           if (attempt === 1) {
-            toast({
+            showToast({
               title: '🔄 Recherche en cours...',
               description: 'Première tentative échouée, nouvelle tentative en cours.',
               duration: 3000,
@@ -452,7 +482,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           console.warn('⚠️ Aucun praticien disponible dans les critères recherchés');
         }
         
-        toast({
+        showToast({
           title: '😔 Aucun praticien disponible',
           description: `Aucun ${data.specialty} disponible dans un rayon de 100 km le ${formattedDate} à ${data.time}.`,
           variant: 'destructive',
@@ -475,7 +505,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                   const createdAppointment = await onSubmit(fallbackPayload);
 
                   if (createdAppointment?.id) {
-                    toast({
+                    showToast({
                       title: '✅ Demande enregistrée',
                       description: 'Votre demande a été enregistrée. Notre équipe vous contactera sous 30 minutes pour trouver un praticien disponible.',
                       duration: 6000,
@@ -483,10 +513,11 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                     handleOpenChange(false);
                   }
                 } catch (error) {
-                  toast({
+                  showToast({
                     title: 'Erreur',
                     description: 'Impossible d\'enregistrer la demande',
-                    variant: 'destructive'
+                    variant: 'destructive',
+                    duration: 5000,
                   });
                 }
               }}
@@ -511,9 +542,10 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         console.log('✅ Praticien trouvé:', practitioner);
       }
 
-      toast({
+      showToast({
         title: 'Praticien trouvé !',
         description: `${practitioner.name} (${practitioner.distance.toFixed(1)} km). En attente de confirmation...`,
+        duration: 4000,
       });
 
       // 2. Créer le rendez-vous avec statut "awaiting_practitioner"
@@ -568,7 +600,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         urgencyLevel: 'non-urgent'
       });
       
-      toast({
+      showToast({
         title: '✅ Demande envoyée avec succès',
         description: `Votre demande a été envoyée à ${practitioner.name}. Le praticien répondra généralement sous 30 minutes. Vous recevrez une notification dès qu'il acceptera.`,
         duration: 6000,
@@ -600,7 +632,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         }
       }
       
-      toast({
+      showToast({
         title: errorTitle,
         description: errorDescription,
         variant: 'destructive',
@@ -622,7 +654,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       errorMessages.push('Veuillez vérifier tous les champs du formulaire');
     }
     
-    toast({
+    showToast({
       title: '❌ Formulaire incomplet',
       description: errorMessages.join('\n\n'),
       variant: 'destructive',
@@ -685,7 +717,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     if (availableSlots.length === 0) {
       // Afficher un toast d'information pour guider l'utilisateur
       setTimeout(() => {
-        toast({
+        showToast({
           title: '⏰ Plus de créneaux aujourd\'hui',
           description: `Il est ${currentHour}h${String(currentMinutes).padStart(2, '0')}. Tous les créneaux d'aujourd'hui sont passés. Veuillez sélectionner une date ultérieure (demain ou plus tard).`,
           variant: 'destructive',
@@ -901,6 +933,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
+                        <div className="p-3 text-sm text-muted-foreground border-b bg-muted/30">
+                          ℹ️ Les dimanches ne sont pas disponibles pour les consultations
+                        </div>
                         <Calendar
                           mode="single"
                           selected={field.value}
