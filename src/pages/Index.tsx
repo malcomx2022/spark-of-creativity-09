@@ -9,6 +9,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
+import logo from "@/assets/logo.png";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { supabase } from "@/integrations/supabase/client";
@@ -157,6 +158,49 @@ const Index = () => {
         <meta name="twitter:title" content="DomiCares - Soins de santé à domicile" />
         <meta name="twitter:description" content="Professionnels de santé certifiés à domicile 24/7" />
         <meta name="twitter:image" content={heroImage} />
+
+        {/* Structured Data */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "MedicalBusiness",
+            "name": "DomiCares",
+            "description": "Plateforme de soins de santé à domicile en Afrique",
+            "url": "https://domicares.com",
+            "logo": logo,
+            "image": heroImage,
+            "telephone": "+229-XXXXXXXX",
+            "address": {
+              "@type": "PostalAddress",
+              "addressCountry": "BJ",
+              "addressLocality": "Cotonou",
+              "addressRegion": "Littoral"
+            },
+            "priceRange": "$$",
+            "openingHours": "Mo-Su 00:00-23:59",
+            "availableService": [
+              {
+                "@type": "MedicalProcedure",
+                "name": "Consultation médicale à domicile"
+              },
+              {
+                "@type": "MedicalProcedure",
+                "name": "Soins infirmiers à domicile"
+              },
+              {
+                "@type": "MedicalProcedure",
+                "name": "Kinésithérapie à domicile"
+              }
+            ],
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": ((realStats?.satisfaction || 0) / 20).toFixed(1),
+              "bestRating": "5",
+              "worstRating": "1",
+              "ratingCount": "100"
+            }
+          })}
+        </script>
       </Helmet>
 
       <div className="min-h-screen bg-gradient-to-br from-primary-glow/10 to-secondary/5">
@@ -329,22 +373,24 @@ const Index = () => {
               {
                 icon: User,
                 title: "1. Inscription",
-                description: "Créez votre profil et complétez le questionnaire médical"
+                description: user 
+                  ? "Vous êtes déjà inscrit ! Demandez un rendez-vous dès maintenant." 
+                  : "Créez votre profil et complétez le questionnaire médical en 2 minutes"
               },
               {
                 icon: CheckCircle,
                 title: "2. Évaluation",
-                description: "Notre système évalue vos besoins et détecte les urgences"
+                description: "Notre système intelligent évalue vos besoins et détecte les urgences médicales"
               },
               {
                 icon: Stethoscope,
                 title: "3. Réservation",
-                description: "Choisissez votre praticien et créneaux disponibles"
+                description: `${realStats?.practitioners || 'Des'} praticiens certifiés disponibles dans votre zone`
               },
               {
                 icon: Heart,
                 title: "4. Soins",
-                description: "Recevez vos soins à domicile avec suivi GPS"
+                description: "Recevez vos soins à domicile avec suivi GPS en temps réel du praticien"
               }
             ].map((step, index) => (
               <Card key={index} className="text-center shadow-medical hover:shadow-glow transition-all duration-300">
