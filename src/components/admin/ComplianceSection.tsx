@@ -21,32 +21,43 @@ export function ComplianceSection() {
     version: '',
     content: '',
   });
+  const [consentsPage, setConsentsPage] = useState(1);
+  const [configPage, setConfigPage] = useState(1);
+  const consentsLimit = 50;
+  const configLimit = 100;
 
-  const { data: consentVersions = [], isLoading: consentsLoading } = useQuery({
-    queryKey: ['admin-consent-versions'],
+  const { data: consentsData, isLoading: consentsLoading } = useQuery({
+    queryKey: ['admin-consent-versions', consentsPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('consent_versions')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((consentsPage - 1) * consentsLimit, consentsPage * consentsLimit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { data: data || [], total: count || 0 };
     },
   });
 
-  const { data: systemConfig = [], isLoading: configLoading } = useQuery({
-    queryKey: ['admin-system-config'],
+  const { data: configData, isLoading: configLoading } = useQuery({
+    queryKey: ['admin-system-config', configPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('system_config')
-        .select('*')
-        .order('key', { ascending: true });
+        .select('*', { count: 'exact' })
+        .order('key', { ascending: true })
+        .range((configPage - 1) * configLimit, configPage * configLimit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { data: data || [], total: count || 0 };
     },
   });
+
+  const consentVersions = consentsData?.data || [];
+  const systemConfig = configData?.data || [];
+  const consentsTotal = consentsData?.total || 0;
+  const configTotal = configData?.total || 0;
 
   const createConsentMutation = useMutation({
     mutationFn: async (data: typeof newConsentForm) => {
@@ -228,6 +239,33 @@ export function ComplianceSection() {
                   </TableBody>
                 </Table>
               )}
+
+              {/* Pagination */}
+              {!consentsLoading && consentVersions.length > 0 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Affichage {(consentsPage - 1) * consentsLimit + 1} à {Math.min(consentsPage * consentsLimit, consentsTotal)} sur {consentsTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConsentsPage(p => Math.max(1, p - 1))}
+                      disabled={consentsPage === 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConsentsPage(p => p + 1)}
+                      disabled={consentsPage * consentsLimit >= consentsTotal}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -272,6 +310,33 @@ export function ComplianceSection() {
                       </div>
                     ))
                   )}
+                </div>
+              )}
+
+              {/* Pagination */}
+              {!configLoading && systemConfig.length > 0 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Affichage {(configPage - 1) * configLimit + 1} à {Math.min(configPage * configLimit, configTotal)} sur {configTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfigPage(p => Math.max(1, p - 1))}
+                      disabled={configPage === 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfigPage(p => p + 1)}
+                      disabled={configPage * configLimit >= configTotal}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

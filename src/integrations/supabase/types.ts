@@ -2187,6 +2187,15 @@ export type Database = {
       }
     }
     Views: {
+      admin_dashboard_stats: {
+        Row: {
+          appointments_count: number | null
+          patients_count: number | null
+          practitioners_count: number | null
+          total_revenue: number | null
+        }
+        Relationships: []
+      }
       admin_finance_stats: {
         Row: {
           completed_payments: number | null

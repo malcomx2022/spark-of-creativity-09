@@ -6,85 +6,20 @@ export function useAdminStats() {
   return useQuery({
     queryKey: ['admin-stats'],
     queryFn: async () => {
-      // Exclure les utilisateurs avec un rôle admin ou enregistrés comme praticiens
-      const { data: adminRoles, error: adminRolesError } = await withTimeout(
+      const { data, error } = await withTimeout(
         supabase
-          .from('user_roles')
-          .select('user_id')
+          .from('admin_dashboard_stats')
+          .select('*')
+          .single()
       );
 
-      if (adminRolesError) throw adminRolesError;
-
-      const { data: practitionerUsers, error: practitionersError } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .select('user_id')
-      );
-
-      if (practitionersError) throw practitionersError;
-
-      const excludedUserIds = Array.from(
-        new Set([
-          ...(adminRoles?.map((role) => role.user_id) ?? []),
-          ...(practitionerUsers?.map((practitioner) => practitioner.user_id) ?? []),
-        ])
-      ).filter(Boolean);
-
-      let patientsCount = 0;
-
-      if (excludedUserIds.length === 0) {
-        const { count, error: patientsError } = await withTimeout(
-          supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-        );
-
-        if (patientsError) throw patientsError;
-        patientsCount = count ?? 0;
-      } else {
-        const quotedIds = excludedUserIds.map((id) => `"${id}"`);
-        const formattedIds = `(${quotedIds.join(',')})`;
-
-        const { count, error: patientsError } = await withTimeout(
-          supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .not('id', 'in', formattedIds)
-        );
-
-        if (patientsError) throw patientsError;
-        patientsCount = count ?? 0;
-      }
-
-      // Compter les praticiens
-      const { count: practitionersCount } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .select('*', { count: 'exact', head: true })
-      );
-
-      // Compter les rendez-vous
-      const { count: appointmentsCount } = await withTimeout(
-        supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true })
-      );
-
-      // Calculer les revenus
-      const { data: payments } = await withTimeout(
-        supabase
-          .from('payments')
-          .select('amount, status')
-          .eq('status', 'completed')
-      );
-
-      const totalRevenue = payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+      if (error) throw error;
 
       return {
-        patientsCount,
-        practitionersCount: practitionersCount || 0,
-        appointmentsCount: appointmentsCount || 0,
-        totalRevenue,
+        patientsCount: data?.patients_count || 0,
+        practitionersCount: data?.practitioners_count || 0,
+        appointmentsCount: data?.appointments_count || 0,
+        totalRevenue: data?.total_revenue || 0,
       };
     },
   });
