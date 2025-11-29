@@ -9,7 +9,6 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
-import logo from "@/assets/logo.png";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { supabase } from "@/integrations/supabase/client";
@@ -167,7 +166,6 @@ const Index = () => {
             "name": "DomiCares",
             "description": "Plateforme de soins de santé à domicile en Afrique",
             "url": "https://domicares.com",
-            "logo": logo,
             "image": heroImage,
             "telephone": "+229-XXXXXXXX",
             "address": {
