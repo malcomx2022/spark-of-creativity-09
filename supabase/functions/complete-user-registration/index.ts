@@ -133,20 +133,55 @@ async function processPatientRegistration(
     throw new Error('Adresse trop courte (minimum 10 caractères)');
   }
 
-  // ✅ Vérification unicité du téléphone (exclure l'utilisateur courant pour permettre les retry)
-  const { data: existingPhone, error: phoneCheckError } = await supabase
+  // ✅ Vérification unicité du téléphone pour les PATIENTS uniquement
+  // On vérifie si le téléphone existe déjà pour un autre utilisateur qui n'est PAS praticien
+  const { data: existingPhoneUsers, error: phoneCheckError } = await supabase
     .from('profiles')
     .select('id')
     .eq('phone', data.profile.phone)
-    .neq('id', userId)
-    .maybeSingle();
+    .neq('id', userId);
 
   if (phoneCheckError && phoneCheckError.code !== 'PGRST116') {
     throw phoneCheckError;
   }
 
-  if (existingPhone) {
-    throw new Error('Ce numéro de téléphone est déjà utilisé');
+  if (existingPhoneUsers && existingPhoneUsers.length > 0) {
+    // Vérifier si ces utilisateurs sont UNIQUEMENT patients (pas praticiens)
+    const { data: practitionerCheck } = await supabase
+      .from('practitioners')
+      .select('user_id')
+      .in('user_id', existingPhoneUsers.map((u: any) => u.id));
+    
+    // Si aucun n'est praticien, c'est un doublon patient
+    if (!practitionerCheck || practitionerCheck.length === 0) {
+      throw new Error('Ce numéro de téléphone est déjà utilisé par un autre patient');
+    }
+  }
+
+  // ✅ Vérification unicité de l'email pour les PATIENTS uniquement
+  // Récupérer l'email de l'utilisateur courant
+  const { data: currentUserData } = await supabase.auth.admin.getUserById(userId);
+  
+  if (currentUserData?.user?.email) {
+    // Chercher d'autres utilisateurs avec le même email
+    const { data: usersWithEmail } = await supabase.auth.admin.listUsers();
+    const otherUsersWithEmail = usersWithEmail?.users?.filter(
+      (u: any) => u.email === currentUserData.user.email && u.id !== userId
+    ) || [];
+
+    if (otherUsersWithEmail.length > 0) {
+      // Vérifier si ces utilisateurs sont des praticiens
+      const otherUserIds = otherUsersWithEmail.map((u: any) => u.id);
+      const { data: practitionerCheck } = await supabase
+        .from('practitioners')
+        .select('user_id')
+        .in('user_id', otherUserIds);
+      
+      // Si au moins un n'est pas praticien (donc c'est un patient), c'est un doublon
+      if (!practitionerCheck || practitionerCheck.length < otherUserIds.length) {
+        throw new Error('Cette adresse email est déjà utilisée par un autre patient');
+      }
+    }
   }
 
   // 1. Créer/Mettre à jour le profil
