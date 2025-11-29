@@ -204,22 +204,43 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
       if (existingPayment) {
         console.log('✅ Paiement existant trouvé:', existingPayment.id, 'Status:', existingPayment.status);
-        
+
         // Vérifier si le paiement a plus de 10 minutes (expiré)
         const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
         const tenMinutes = 10 * 60 * 1000;
-        
+
         if (paymentAge > tenMinutes) {
-          console.log('⏰ Paiement expiré, suppression...');
-          await supabase.from('payments').delete().eq('id', existingPayment.id);
-          toast({
-            title: 'Paiement expiré',
-            description: 'Le paiement précédent a expiré. Vous pouvez créer un nouveau paiement.',
-          });
+          console.log('⏰ Paiement expiré, annulation via cancel-pending-payment...');
+
+          // Utiliser la fonction cancel-pending-payment pour annuler proprement
+          try {
+            const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+              body: { appointmentId }
+            });
+
+            if (cancelError) {
+              console.error('Error canceling expired payment:', cancelError);
+              // Fallback: suppression simple
+              await supabase.from('payments').delete().eq('id', existingPayment.id);
+            }
+
+            toast({
+              title: 'Paiement expiré',
+              description: 'Le paiement précédent a expiré et a été annulé. Vous pouvez créer un nouveau paiement.',
+            });
+          } catch (error) {
+            console.error('Error in cancellation:', error);
+            toast({
+              title: 'Paiement expiré',
+              description: 'Le paiement précédent a expiré. Veuillez réessayer.',
+              variant: 'destructive',
+            });
+          }
+
           setExistingPaymentChecked(true);
           return;
         }
-        
+
         // Si le paiement a une URL, l'utiliser
         if (existingPayment.fedapay_payment_url) {
           setPaymentId(existingPayment.id);
@@ -229,7 +250,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           setPollCount(0);
 
           const remainingMinutes = Math.ceil((tenMinutes - paymentAge) / 60000);
-          
+
           toast({
             title: 'Paiement en cours',
             description: `Un paiement est déjà en cours pour ce rendez-vous (expire dans ${remainingMinutes} min). Complétez-le dans la fenêtre qui vient de s'ouvrir.`,
@@ -237,13 +258,32 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
           window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
         } else {
-          // Paiement sans URL (probablement échoué), le supprimer
-          console.log('⚠️ Paiement sans URL détecté, suppression...');
-          await supabase.from('payments').delete().eq('id', existingPayment.id);
-          toast({
-            title: 'Paiement invalide',
-            description: 'Un paiement incomplet a été nettoyé. Vous pouvez créer un nouveau paiement.',
-          });
+          // Paiement sans URL (probablement échoué), l'annuler proprement
+          console.log('⚠️ Paiement sans URL détecté, annulation...');
+
+          try {
+            const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+              body: { appointmentId }
+            });
+
+            if (cancelError) {
+              console.error('Error canceling incomplete payment:', cancelError);
+              // Fallback: suppression simple
+              await supabase.from('payments').delete().eq('id', existingPayment.id);
+            }
+
+            toast({
+              title: 'Paiement incomplet',
+              description: 'Un paiement incomplet a été nettoyé. Vous pouvez créer un nouveau paiement.',
+            });
+          } catch (error) {
+            console.error('Error in cancellation:', error);
+            toast({
+              title: 'Erreur',
+              description: 'Impossible de nettoyer le paiement incomplet. Veuillez contacter le support.',
+              variant: 'destructive',
+            });
+          }
         }
       } else {
         console.log('ℹ️ Aucun paiement en cours trouvé, création possible');
@@ -398,6 +438,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     }
 
     const sanitizedPhoneNumber = normalizePhoneNumber(resolvedPhoneNumber);
+
+    // Helper: Format phone number for FedaPay (remove +229 prefix for Benin)
+    const formatPhoneForFedaPay = (phone: string | null): string => {
+      if (!phone) return '';
+      // Pour le Bénin, retirer le préfixe +229 pour sandbox FedaPay
+      return phone.replace(/^\+229/, '');
+    };
 
     if (!sanitizedPhoneNumber) {
       setIsCreatingPayment(false);
@@ -713,8 +760,8 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           },
           customer: {
             phone_number: {
-              number: sanitizedPhoneNumber,
-              country: 'BJ',
+              number: formatPhoneForFedaPay(sanitizedPhoneNumber),
+              country: 'bj', // ✅ CORRECTION: Minuscules requis par FedaPay
             },
           },
           currency: {

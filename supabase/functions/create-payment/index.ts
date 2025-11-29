@@ -372,8 +372,8 @@ serve(async (req) => {
             lastname,
             email: customerEmail,
             phone_number: {
-              number: phoneNumber,
-              country: 'BJ'
+              number: phoneNumber.replace(/^\+229/, ''), // Retirer +229 pour sandbox
+              country: 'bj' // ✅ CORRECTION: Minuscules requis par FedaPay
             }
           },
           custom_metadata: {

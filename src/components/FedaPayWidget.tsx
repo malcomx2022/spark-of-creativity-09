@@ -148,6 +148,13 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     // Validation et normalisation du numéro de téléphone
     const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
+    // Helper: Format phone number for FedaPay (remove +229 prefix for Benin)
+    const formatPhoneForFedaPay = (phone: string | null): string => {
+      if (!phone) return '';
+      // Pour le Bénin, retirer le préfixe +229 pour sandbox FedaPay
+      return phone.replace(/^\+229/, '');
+    };
+
     if (!sanitizedPhoneNumber) {
       toast({
         title: 'Erreur',
@@ -349,8 +356,13 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         },
         customer: {
           phone_number: {
+<<<<<<< HEAD
             number: sanitizedPhoneNumber,
             country: 'BJ',
+=======
+            number: formatPhoneForFedaPay(sanitizedPhoneNumber),
+            country: 'bj', // ✅ CORRECTION: Minuscules requis par FedaPay
+>>>>>>> 06bc5c8 (Fix: Résoudre la page blanche lors du lancement du paiement)
           },
         },
         currency: {
@@ -377,47 +389,48 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                   console.error('Error saving payment method:', saveError);
                 }
               }
-
-              // ✅ Nettoyer l'état de paiement persisté
-              clearPersistedPaymentState();
-
-              toast({
-                title: 'Paiement réussi !',
-                description: 'Votre rendez-vous a été confirmé.',
-              });
-
-              if (onSuccess) {
-                onSuccess();
-              }
-
-              if (onComplete) {
-                onComplete();
-              }
-
-              setTimeout(() => {
-                resetState();
-                onOpenChange(false);
-              }, 2000);
-            } else if (payload.reason === DIALOG_DISMISSED) {
-              // User closed the dialog
-              setPaymentStatus('error');
-              setIsProcessing(false);
-
-              // ✅ Nettoyer l'état de paiement persisté
-              clearPersistedPaymentState();
-
-              toast({
-                title: 'Paiement annulé',
-                description: 'Vous avez annulé le paiement.',
-                variant: 'destructive',
-              });
-
-              if (onError) {
-                onError(new Error('Paiement annulé par l\'utilisateur'));
-              }
             }
-          },
-        });
+
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
+
+            toast({
+              title: 'Paiement réussi !',
+              description: 'Votre rendez-vous a été confirmé.',
+            });
+
+            if (onSuccess) {
+              onSuccess();
+            }
+
+            if (onComplete) {
+              onComplete();
+            }
+
+            setTimeout(() => {
+              resetState();
+              onOpenChange(false);
+            }, 2000);
+          } else if (payload.reason === DIALOG_DISMISSED) {
+            // User closed the dialog
+            setPaymentStatus('error');
+            setIsProcessing(false);
+
+            // ✅ Nettoyer l'état de paiement persisté
+            clearPersistedPaymentState();
+
+            toast({
+              title: 'Paiement annulé',
+              description: 'Vous avez annulé le paiement.',
+              variant: 'destructive',
+            });
+
+            if (onError) {
+              onError(new Error('Paiement annulé par l\'utilisateur'));
+            }
+          }
+        },
+      });
 
       if (!widget) {
         throw new Error('Impossible d\'initialiser le widget de paiement');
