@@ -80,9 +80,11 @@ interface PaymentDialogProps {
   appointmentId: string;
   amount: number;
   onSuccess?: () => void;
+  onComplete?: () => void;
+  onError?: (error: Error) => void;
 }
 
-export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuccess }: PaymentDialogProps) {
+export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuccess, onComplete, onError }: PaymentDialogProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [payerName, setPayerName] = useState('');
@@ -587,7 +589,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           onComplete: async (payload) => {
             console.log('Payment completed:', payload);
 
-            if (payload.reason === CHECKOUT_COMPLETED) {
+              if (payload.reason === CHECKOUT_COMPLETED) {
               // Paiement réussi
               setPaymentStatus('success');
               setIsProcessing(false);
@@ -611,8 +613,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 description: 'Votre rendez-vous a été confirmé.',
               });
 
+              clearPersistedPaymentState();
+
               if (onSuccess) {
                 onSuccess();
+              }
+
+              if (onComplete) {
+                onComplete();
               }
 
               setTimeout(() => {
@@ -630,6 +638,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
                 description: 'Vous avez annulé le paiement.',
                 variant: 'destructive',
               });
+
+              if (onError) {
+                onError(new Error('Paiement annulé par l\'utilisateur'));
+              }
             }
           },
         });
@@ -679,6 +691,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         variant: 'destructive',
         duration: isPaymentInProgress ? 8000 : 5000,
       });
+
+      if (onError) {
+        onError(error instanceof Error ? error : new Error(errorMessage));
+      }
     }
   };
 
@@ -777,8 +793,14 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             description: "Votre rendez-vous a été confirmé.",
           });
           
+          clearPersistedPaymentState();
+          
           if (onSuccess) {
             onSuccess();
+          }
+          
+          if (onComplete) {
+            onComplete();
           }
           
           setTimeout(() => {

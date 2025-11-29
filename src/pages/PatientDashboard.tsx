@@ -239,13 +239,36 @@ export default function PatientDashboard() {
     queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
   }, [patientId, queryClient]);
 
-  const handlePaymentDialogOpenChange = (open: boolean) => {
-    setPaymentDialogOpen(open);
+  const handlePaymentDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
+      // Si un paiement est en cours, demander confirmation
+      const persisted = getPersistedPaymentState();
+      if (persisted && persisted.paymentStatus === 'pending') {
+        const shouldKeep = window.confirm(
+          'Voulez-vous finaliser ce paiement plus tard ?\n\n' +
+          'Oui = Le paiement restera disponible\n' +
+          'Non = Le paiement sera annulé'
+        );
+
+        if (!shouldKeep) {
+          clearPersistedPaymentState();
+        }
+      }
+
       setAppointmentIdForPayment(null);
       setPaymentAmount(null);
     }
-  };
+    setPaymentDialogOpen(open);
+  }, []);
+
+  const handlePaymentError = useCallback((error: Error) => {
+    console.error('❌ Erreur de paiement:', error);
+    toast({
+      title: 'Erreur de paiement',
+      description: error.message,
+      variant: 'destructive',
+    });
+  }, []);
 
   const handleCancel = async (id: string) => {
     try {
@@ -683,6 +706,8 @@ export default function PatientDashboard() {
           appointmentId={appointmentIdForPayment}
           amount={paymentAmount}
           onSuccess={handlePaymentSuccess}
+          onComplete={handlePaymentSuccess}
+          onError={handlePaymentError}
         />
       )}
     </div>
