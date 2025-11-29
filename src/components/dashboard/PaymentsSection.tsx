@@ -53,6 +53,7 @@ const escapeCSV = (value: any): string => {
 export function PaymentsSection() {
   const { data: user } = useSupabaseUser();
   const [page, setPage] = useState(0);
+  const [limit, setLimit] = useState(20);
   const pageSize = 20;
   const [isPaymentMethodDialogOpen, setIsPaymentMethodDialogOpen] = useState(false);
   const [paymentProvider, setPaymentProvider] = useState('mtn');
@@ -68,7 +69,7 @@ export function PaymentsSection() {
   } = useSavedPaymentMethods();
 
   const { data: paymentsResult, isLoading } = useQuery({
-    queryKey: ['payments', user?.id, page],
+    queryKey: ['payments', user?.id, limit],
     queryFn: async () => {
       if (!user?.id) return { data: [], count: 0 };
       
@@ -77,7 +78,7 @@ export function PaymentsSection() {
         .select('*', { count: 'exact' })
         .eq('patient_id', user.id)
         .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+        .limit(limit);
 
       if (error) throw error;
       return { data: data || [], count: count || 0 };
@@ -87,7 +88,7 @@ export function PaymentsSection() {
 
   const payments = paymentsResult?.data || [];
   const totalCount = paymentsResult?.count || 0;
-  const totalPages = Math.ceil(totalCount / pageSize);
+  const hasMore = totalCount > limit;
 
   const resolveStatusVariant = (status: string) => {
     if (status in PAYMENT_STATUS_VARIANTS) {
@@ -331,32 +332,21 @@ export function PaymentsSection() {
                     </Button>
                   </div>
                 </div>
-              ))}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage(p => Math.max(0, p - 1))}
-                    disabled={page === 0}
+               ))}
+              <div className="mt-4 text-center space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  {limit} paiement(s) affiché(s) sur {totalCount} total
+                </p>
+                {hasMore && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setLimit(l => l + 20)}
+                    className="w-full"
                   >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Précédent
+                    Voir plus
                   </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {page + 1} sur {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                    disabled={page >= totalPages - 1}
-                  >
-                    Suivant
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
-              )}
+                )}
+              </div>
                <div className="mt-4">
                  <Button variant="outline" onClick={handleExportPayments} className="w-full">
                    <Download className="h-4 w-4 mr-2" />

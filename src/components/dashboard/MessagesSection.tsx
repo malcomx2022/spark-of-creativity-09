@@ -13,11 +13,11 @@ export function MessagesSection() {
 
   // Auto-select first conversation when loaded (only once)
   useEffect(() => {
-    if (!selectedConversation && conversations.length > 0 && !hasAutoSelected.current) {
+    if (!hasAutoSelected.current && !selectedConversation && conversations.length > 0) {
       setSelectedConversation(conversations[0]);
       hasAutoSelected.current = true;
     }
-  }, [conversations]);
+  }, [conversations, selectedConversation]);
 
   if (isLoading) {
     return (
