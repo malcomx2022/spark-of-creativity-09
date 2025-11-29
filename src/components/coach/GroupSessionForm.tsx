@@ -4,6 +4,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { MIN_SESSION_PRICE } from "@/lib/session-validation";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 
 export interface GroupSessionFormData {
   session_name: string;
@@ -24,6 +29,42 @@ interface GroupSessionFormProps {
 }
 
 export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) {
+  const { data: user } = useSupabaseUser();
+  
+  // Vérifier que l'utilisateur est bien un coach sportif
+  const { data: practitionerProfile } = useQuery({
+    queryKey: ['practitioner-profile', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      const { data, error } = await supabase
+        .from('practitioners')
+        .select('practitioner_type')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id
+  });
+
+  // Si ce n'est pas un coach sportif, afficher un message
+  if (practitionerProfile && practitionerProfile.practitioner_type !== 'coach_sportif') {
+    return (
+      <Card className="p-6">
+        <div className="text-center space-y-4">
+          <div className="text-5xl">🏋️</div>
+          <h3 className="text-xl font-semibold">Fonctionnalité réservée aux coachs sportifs</h3>
+          <p className="text-muted-foreground">
+            Les séances de groupe sont uniquement disponibles pour les praticiens de type "Coach sportif".
+            Votre type actuel est : <Badge>{practitionerProfile.practitioner_type}</Badge>
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   const updateField = (field: keyof GroupSessionFormData, value: any) => {
     onChange({ ...formData, [field]: value });
   };
