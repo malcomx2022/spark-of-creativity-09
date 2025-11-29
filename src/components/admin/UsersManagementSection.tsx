@@ -57,11 +57,22 @@ export function UsersManagementSection() {
       if (rolesError) throw rolesError;
       const adminUserIds = adminRoles?.map(r => r.user_id) || [];
 
+      // Récupérer les IDs des utilisateurs qui sont praticiens
+      const { data: practitioners, error: practitionersError } = await supabase
+        .from('practitioners')
+        .select('user_id');
+
+      if (practitionersError) throw practitionersError;
+      const practitionerUserIds = practitioners?.map(p => p.user_id) || [];
+
+      // Combiner les IDs à exclure (admins + praticiens)
+      const excludedUserIds = [...adminUserIds, ...practitionerUserIds];
+
       // Requête paginée avec filtrage
       let query = supabase
         .from('profiles')
         .select('*', { count: 'exact' })
-        .not('id', 'in', `(${adminUserIds.join(',') || 'null'})`)
+        .not('id', 'in', `(${excludedUserIds.join(',') || 'null'})`)
         .order('created_at', { ascending: false })
         .range(profilesPage * pageSize, (profilesPage + 1) * pageSize - 1);
 
