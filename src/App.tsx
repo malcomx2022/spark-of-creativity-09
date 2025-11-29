@@ -33,6 +33,7 @@ import Contact from "./pages/Contact";
 import CreateTestAccounts from "./pages/CreateTestAccounts";
 import ConfirmEmail from "./pages/ConfirmEmail";
 import RegistrationSuccess from "./pages/RegistrationSuccess";
+import CompleteRegistration from "./pages/CompleteRegistration";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +66,7 @@ const App = () => (
           <Route path="/signup/patient" element={<PatientSignup />} />
           <Route path="/signup/practitioner" element={<PractitionerSignup />} />
           <Route path="/registration-success" element={<RegistrationSuccess />} />
+          <Route path="/complete-registration" element={<CompleteRegistration />} />
           <Route path="/triage" element={<Triage />} />
           <Route path="/search-practitioners" element={<PractitionerSearch />} />
           <Route path="/search-coaches" element={<CoachSearch />} />

@@ -441,7 +441,17 @@ serve(async (req) => {
 
       if (profileError) {
         console.error('❌ Erreur profil:', profileError);
-        throw new Error(`Échec création profil: ${profileError.message}`);
+        
+        // Détecter les erreurs spécifiques pour des messages clairs
+        let errorMessage = profileError.message;
+        if (profileError.message.includes('Phone number') && profileError.message.includes('already exists')) {
+          errorMessage = 'Ce numéro de téléphone est déjà utilisé par un autre utilisateur';
+        } else if (profileError.code === 'P0001') {
+          // Code erreur pour les exceptions RAISE dans les triggers
+          errorMessage = profileError.message;
+        }
+        
+        throw new Error(`Échec création profil: ${errorMessage}`);
       }
       profileCreated = true;
       console.log('✅ Profil créé');

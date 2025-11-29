@@ -60,6 +60,21 @@ export default function PractitionerSignup() {
   useEffect(() => {
     const redirectAuthenticatedUser = async () => {
       if (!isLoading && user) {
+        // Vérifier si c'est un compte orphelin (métadonnées practitioner mais pas de profil praticien)
+        if (user.user_metadata?.user_type === 'practitioner') {
+          const { data: practitioner } = await supabase
+            .from('practitioners')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          
+          // Si pas de praticien trouvé, c'est un compte orphelin
+          if (!practitioner) {
+            navigate('/complete-registration', { replace: true });
+            return;
+          }
+        }
+        
         const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
         const dashboardPath = await getDashboardPathForUser(user.id);
         navigate(dashboardPath, { replace: true });
@@ -451,49 +466,62 @@ export default function PractitionerSignup() {
     setIsSubmitting(true);
 
     try {
-      // ✅ Vérifier l'unicité du téléphone AVANT inscription (avec timeout)
-      let existingPractitioner = null;
+      // ✅ Vérifier l'unicité du téléphone dans profiles ET practitioners AVANT inscription
+      let existingPhone = false;
       try {
-        const phoneCheckResult = await withTimeout(
+        // Vérifier dans profiles (prioritaire car c'est là que le trigger check_phone_uniqueness vérifie)
+        const profileCheckResult = await withTimeout(
           supabase
-            .from('practitioners')
-            .select('id')
+            .from('profiles')
+            .select('id, full_name')
             .eq('phone', formData.phone)
             .maybeSingle(),
-          8000 // 8 secondes de timeout
+          8000
         );
 
-        if (phoneCheckResult.error && phoneCheckResult.error.code !== 'PGRST116') {
-          console.warn('Erreur vérification téléphone:', phoneCheckResult.error);
-          // Ne pas bloquer l'inscription si la vérification échoue, continuer quand même
-          // L'edge function vérifiera également l'unicité côté backend
-        } else {
-          existingPractitioner = phoneCheckResult.data;
+        if (profileCheckResult.error && profileCheckResult.error.code !== 'PGRST116') {
+          console.warn('Erreur vérification téléphone dans profiles:', profileCheckResult.error);
+        } else if (profileCheckResult.data) {
+          existingPhone = true;
+        }
+
+        // Vérifier aussi dans practitioners au cas où
+        if (!existingPhone) {
+          const practitionerCheckResult = await withTimeout(
+            supabase
+              .from('practitioners')
+              .select('id')
+              .eq('phone', formData.phone)
+              .maybeSingle(),
+            8000
+          );
+
+          if (practitionerCheckResult.error && practitionerCheckResult.error.code !== 'PGRST116') {
+            console.warn('Erreur vérification téléphone dans practitioners:', practitionerCheckResult.error);
+          } else if (practitionerCheckResult.data) {
+            existingPhone = true;
+          }
         }
       } catch (phoneCheckError) {
         if (phoneCheckError instanceof NetworkTimeoutError) {
           console.warn('Timeout lors de la vérification du téléphone, on continue quand même');
-          // L'edge function vérifiera l'unicité
         } else {
           console.warn('Erreur réseau vérification téléphone:', phoneCheckError);
-          // Ne pas bloquer, l'edge function vérifiera
         }
       }
 
-      if (existingPractitioner) {
-        // Mettre en évidence le champ téléphone avec l'erreur
+      if (existingPhone) {
         setFieldErrors(prev => ({
           ...prev,
-          phone: "Ce numéro de téléphone est déjà utilisé par un autre praticien"
+          phone: "Ce numéro de téléphone est déjà utilisé"
         }));
         
         toast({
           title: "Numéro de téléphone déjà utilisé",
-          description: "Ce numéro de téléphone est déjà enregistré. Veuillez en utiliser un autre ou vous connecter si c'est votre compte.",
+          description: "Ce numéro de téléphone est déjà enregistré dans notre système. Veuillez en utiliser un autre ou vous connecter si c'est votre compte.",
           variant: "destructive"
         });
         
-        // Scroller vers le champ téléphone
         const phoneInput = document.getElementById('phone');
         if (phoneInput) {
           phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
