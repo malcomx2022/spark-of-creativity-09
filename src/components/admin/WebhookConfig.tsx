@@ -53,8 +53,12 @@ export function WebhookConfig() {
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert>
-          <AlertDescription>
-            <strong>Important:</strong> Sans cette configuration, les paiements ne seront pas confirmés automatiquement.
+          <AlertDescription className="space-y-2">
+            <div><strong>Important:</strong> Sans cette configuration, les paiements ne seront pas confirmés automatiquement.</div>
+            <div className="text-xs mt-2">
+              <strong>⚠️ Mode Sandbox:</strong> Les paiements test doivent être approuvés manuellement dans le dashboard FedaPay 
+              ou via l'outil de simulation admin. En production, FedaPay envoie automatiquement les webhooks d'approbation.
+            </div>
           </AlertDescription>
         </Alert>
 
