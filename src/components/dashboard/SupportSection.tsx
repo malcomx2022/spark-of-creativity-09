@@ -4,12 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { HelpCircle, Shield, Plus, Download } from 'lucide-react';
+import { HelpCircle, Shield, Plus, Download, AlertCircle } from 'lucide-react';
 import { useSupportTickets, useCreateSupportTicket } from '@/hooks/useSupportTickets';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
@@ -21,6 +22,8 @@ export function SupportSection() {
   const createTicket = useCreateSupportTicket();
 
   const [showForm, setShowForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     subject: '',
     description: '',
@@ -30,6 +33,9 @@ export function SupportSection() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) return;
+
+    setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
       await createTicket.mutateAsync({
@@ -43,11 +49,15 @@ export function SupportSection() {
         description: 'Notre équipe vous répondra dans les plus brefs délais.',
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Impossible de créer le ticket.';
+      setSubmitError(errorMessage);
       toast({
         title: 'Erreur',
-        description: 'Impossible de créer le ticket.',
+        description: errorMessage,
         variant: 'destructive',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -158,6 +168,12 @@ export function SupportSection() {
         <CardContent className="space-y-6">
           {showForm && (
             <form onSubmit={handleSubmit} className="space-y-4 p-4 border rounded-lg bg-muted/50">
+              {submitError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              )}
               <div>
                 <Label htmlFor="subject">Sujet</Label>
                 <Input
@@ -196,10 +212,13 @@ export function SupportSection() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button type="submit" disabled={createTicket.isPending}>
-                  {createTicket.isPending ? 'Envoi...' : 'Créer le ticket'}
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Envoi...' : 'Créer le ticket'}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                <Button type="button" variant="outline" onClick={() => {
+                  setShowForm(false);
+                  setSubmitError(null);
+                }}>
                   Annuler
                 </Button>
               </div>
