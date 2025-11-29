@@ -22,6 +22,8 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { AddressSearchInput } from './AddressSearchInput';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 
 const formSchema = z.object({
   specialty: z.string().min(1, '❌ Vous devez sélectionner une spécialité médicale'),
@@ -49,7 +51,11 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const handleOpenChange = onOpenChange || setInternalOpen;
   const [isSearchingPractitioner, setIsSearchingPractitioner] = useState(false);
   const [locationMode, setLocationMode] = useState<'auto' | 'manual'>('auto');
-  const [manualAddress, setManualAddress] = useState('');
+  const [manualLocation, setManualLocation] = useState<{ address: string; latitude: number | null; longitude: number | null }>({
+    address: '',
+    latitude: null,
+    longitude: null
+  });
   
   // Protection renforcée contre double soumission
   const isSubmittingRef = useRef(false);
@@ -76,7 +82,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
 
     if (!newOpen) {
       setLocationMode('auto');
-      setManualAddress('');
+      setManualLocation({ address: '', latitude: null, longitude: null });
       // Reset protection double soumission
       isSubmittingRef.current = false;
       submissionTimestampRef.current = 0;
@@ -106,7 +112,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     
     // Vérifier si une soumission est déjà en cours
     if (isSubmittingRef.current) {
-      console.warn('⚠️ Soumission déjà en cours (via ref), requête bloquée');
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Soumission déjà en cours (via ref), requête bloquée');
+      }
       toast({
         title: '⏳ Traitement en cours',
         description: 'Votre demande est déjà en cours de traitement. Veuillez patienter.',
@@ -118,7 +126,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     // Vérifier si une soumission récente a eu lieu (protection temporelle)
     if (now - submissionTimestampRef.current < MIN_DELAY_BETWEEN_SUBMISSIONS) {
       const remainingMs = MIN_DELAY_BETWEEN_SUBMISSIONS - (now - submissionTimestampRef.current);
-      console.warn(`⚠️ Soumission trop rapide, veuillez patienter ${Math.ceil(remainingMs / 1000)}s`);
+      if (import.meta.env.DEV) {
+        console.warn(`⚠️ Soumission trop rapide, veuillez patienter ${Math.ceil(remainingMs / 1000)}s`);
+      }
       toast({
         title: '⚠️ Veuillez patienter',
         description: `Merci d'attendre ${Math.ceil(remainingMs / 1000)} seconde(s) avant de soumettre à nouveau.`,
@@ -131,18 +141,24 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     // Marquer comme en cours de soumission
     isSubmittingRef.current = true;
     submissionTimestampRef.current = now;
-    console.log('🔒 Soumission verrouillée');
+    if (import.meta.env.DEV) {
+      console.log('🔒 Soumission verrouillée');
+    }
     
     // Protection additionnelle
     if (isSearchingPractitioner) {
-      console.warn('⚠️ Recherche de praticien déjà en cours');
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Recherche de praticien déjà en cours');
+      }
       isSubmittingRef.current = false;
       return;
     }
 
     // Bloquer la soumission pendant le chargement GPS
     if (locationMode === 'auto' && geoLoading) {
-      console.warn('⚠️ Géolocalisation en cours');
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Géolocalisation en cours');
+      }
       isSubmittingRef.current = false;
       toast({
         title: '📍 Géolocalisation en cours',
@@ -153,7 +169,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       return;
     }
 
-    console.log('🔵 Formulaire soumis avec les données:', data);
+    if (import.meta.env.DEV) {
+      console.log('🔵 Formulaire soumis avec les données:', data);
+    }
 
 
     // Vérification de la géolocalisation en mode automatique AVANT tout traitement
@@ -194,24 +212,32 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       const positionAge = Date.now() - position.timestamp;
       
       if (positionAge > CACHE_MAX_AGE_MS) {
-        console.warn('⚠️ Position en cache obsolète, demande de rafraîchissement');
-        isSubmittingRef.current = false;
+        if (import.meta.env.DEV) {
+          console.warn('⚠️ Position en cache obsolète, rafraîchissement automatique');
+        }
+        
+        // Rafraîchir automatiquement la position
+        requestPosition();
+
         toast({
-          title: '🔄 Position obsolète',
-          description: 'Votre position GPS est trop ancienne. Cliquez sur "Réessayer la géolocalisation" pour obtenir votre position actuelle.',
-          variant: 'destructive',
-          duration: 6000,
+          title: '🔄 Rafraîchissement de la position',
+          description: 'Votre position GPS est obsolète. Rafraîchissement automatique en cours...',
+          duration: 5000,
         });
+
+        isSubmittingRef.current = false;
         return;
       }
 
-      console.log(`✅ Position valide - Précision: ${Math.round(position.accuracy)}m, Age: ${Math.round(positionAge / 1000)}s`);
+      if (import.meta.env.DEV) {
+        console.log(`✅ Position valide - Précision: ${Math.round(position.accuracy)}m, Age: ${Math.round(positionAge / 1000)}s`);
+      }
     }
 
 
     if (locationMode === 'manual') {
       // Validation de l'adresse manuelle
-      if (!manualAddress.trim()) {
+      if (!manualLocation.address.trim()) {
         isSubmittingRef.current = false;
         toast({
           title: '❌ Adresse requise',
@@ -222,11 +248,22 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         return;
       }
 
-      if (manualAddress.trim().length < 10) {
+      if (manualLocation.address.trim().length < 10) {
         isSubmittingRef.current = false;
         toast({
           title: '❌ Adresse incomplète',
           description: 'L\'adresse semble trop courte. Veuillez fournir une adresse complète (rue, quartier, ville).',
+          variant: 'destructive',
+          duration: 5000,
+        });
+        return;
+      }
+
+      if (!manualLocation.latitude || !manualLocation.longitude) {
+        isSubmittingRef.current = false;
+        toast({
+          title: '📍 Coordonnées GPS requises',
+          description: 'Veuillez sélectionner une adresse dans la liste de suggestion pour obtenir les coordonnées GPS nécessaires à la recherche de praticien.',
           variant: 'destructive',
           duration: 5000,
         });
@@ -242,10 +279,14 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           time: data.time,
           reason: data.reason,
           urgencyLevel: data.urgencyLevel,
-          addressOverride: manualAddress,
+          addressOverride: manualLocation.address,
+          patientLat: manualLocation.latitude,
+          patientLon: manualLocation.longitude,
         };
 
-        console.log('📤 Envoi de la demande avec adresse manuelle...');
+        if (import.meta.env.DEV) {
+          console.log('📤 Envoi de la demande avec adresse manuelle...');
+        }
         const createdAppointment = await onSubmit(appointmentPayload);
 
         // Validation stricte du retour
@@ -258,11 +299,15 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         }
 
         if (!('id' in createdAppointment) || !createdAppointment.id) {
-          console.error('❌ Réponse invalide:', createdAppointment);
+          if (import.meta.env.DEV) {
+            console.error('❌ Réponse invalide:', createdAppointment);
+          }
           throw new Error('💾 L\'ID du rendez-vous n\'a pas été retourné par le serveur. Le rendez-vous n\'a peut-être pas été créé correctement.');
         }
 
-        console.log('✅ Rendez-vous créé avec ID:', createdAppointment.id);
+        if (import.meta.env.DEV) {
+          console.log('✅ Rendez-vous créé avec ID:', createdAppointment.id);
+        }
 
         toast({
           title: '✅ Demande enregistrée avec succès',
@@ -274,7 +319,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         setIsSearchingPractitioner(false);
         isSubmittingRef.current = false;
         setLocationMode('auto');
-        setManualAddress('');
+        setManualLocation({ address: '', latitude: null, longitude: null });
         form.reset({
           specialty: '',
           date: undefined,
@@ -284,7 +329,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         });
         
       } catch (error) {
-        console.error('❌ Erreur création rendez-vous (mode manuel):', error);
+        if (import.meta.env.DEV) {
+          console.error('❌ Erreur création rendez-vous (mode manuel):', error);
+        }
         setIsSearchingPractitioner(false);
         isSubmittingRef.current = false;
         
@@ -317,7 +364,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     
     try {
       // 1. Rechercher un praticien disponible
-      console.log('🔍 Recherche d\'un praticien disponible...');
+      if (import.meta.env.DEV) {
+        console.log('🔍 Recherche d\'un praticien disponible...');
+      }
       
       // Formater la date en YYYY-MM-DD en utilisant le fuseau horaire local
       const year = data.date.getFullYear();
@@ -325,9 +374,11 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       const day = String(data.date.getDate()).padStart(2, '0');
       const appointmentDate = `${year}-${month}-${day}`;
       
-      console.log('📅 Date formatée pour la recherche:', appointmentDate);
-      console.log('📍 Position:', { lat: position.latitude, lon: position.longitude });
-      console.log('🔎 Paramètres:', { specialty: data.specialty, date: appointmentDate, time: data.time });
+      if (import.meta.env.DEV) {
+        console.log('📅 Date formatée pour la recherche:', appointmentDate);
+        console.log('📍 Position:', { lat: position.latitude, lon: position.longitude });
+        console.log('🔎 Paramètres:', { specialty: data.specialty, date: appointmentDate, time: data.time });
+      }
       
       // Appeler l'edge function avec retry et callback de progression
       const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry<FindPractitionerResponse>(
@@ -344,7 +395,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         },
         3, // 3 tentatives max
         (attempt, error) => {
-          console.warn(`⚠️ Tentative ${attempt} échouée:`, error.message);
+          if (import.meta.env.DEV) {
+            console.warn(`⚠️ Tentative ${attempt} échouée:`, error.message);
+          }
           if (attempt === 1) {
             toast({
               title: '🔄 Recherche en cours...',
@@ -357,7 +410,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
 
       // Validation de la réponse de l'edge function
       if (practitionerError) {
-        console.error('❌ Erreur de l\'edge function find-available-practitioner:', practitionerError);
+        if (import.meta.env.DEV) {
+          console.error('❌ Erreur de l\'edge function find-available-practitioner:', practitionerError);
+        }
         
         const errorMessage = practitionerError.message || 'Erreur inconnue';
         
@@ -373,12 +428,16 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
 
       // Validation de la structure de la réponse
       if (!practitionerData) {
-        console.error('❌ Réponse invalide: pas de données retournées');
+        if (import.meta.env.DEV) {
+          console.error('❌ Réponse invalide: pas de données retournées');
+        }
         throw new Error('🔧 Le serveur a retourné une réponse invalide. Veuillez contacter le support.');
       }
 
       if (typeof practitionerData !== 'object') {
-        console.error('❌ Réponse invalide: type incorrect', typeof practitionerData);
+        if (import.meta.env.DEV) {
+          console.error('❌ Réponse invalide: type incorrect', typeof practitionerData);
+        }
         throw new Error('🔧 Le serveur a retourné des données dans un format invalide.');
       }
 
@@ -389,13 +448,52 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         // Formater la date pour l'affichage en français
         const formattedDate = format(data.date, 'dd/MM/yyyy', { locale: fr });
         
-        console.warn('⚠️ Aucun praticien disponible dans les critères recherchés');
+        if (import.meta.env.DEV) {
+          console.warn('⚠️ Aucun praticien disponible dans les critères recherchés');
+        }
         
         toast({
           title: '😔 Aucun praticien disponible',
-          description: `Aucun ${data.specialty} disponible dans un rayon de 100 km le ${formattedDate} à ${data.time}.\n\nSuggestions:\n• Essayez une autre date ou heure\n• Choisissez un créneau plus tard dans la journée\n• Vérifiez les jours suivants`,
+          description: `Aucun ${data.specialty} disponible dans un rayon de 100 km le ${formattedDate} à ${data.time}.`,
           variant: 'destructive',
           duration: 8000,
+          action: (
+            <Button 
+              size="sm"
+              onClick={async () => {
+                // Créer une demande sans praticien assigné (mode manuel)
+                try {
+                  const fallbackPayload = {
+                    specialty: data.specialty,
+                    date: data.date.toISOString(),
+                    time: data.time,
+                    reason: data.reason,
+                    urgencyLevel: data.urgencyLevel,
+                    fallbackMode: true,
+                  };
+
+                  const createdAppointment = await onSubmit(fallbackPayload);
+
+                  if (createdAppointment?.id) {
+                    toast({
+                      title: '✅ Demande enregistrée',
+                      description: 'Votre demande a été enregistrée. Notre équipe vous contactera sous 30 minutes pour trouver un praticien disponible.',
+                      duration: 6000,
+                    });
+                    handleOpenChange(false);
+                  }
+                } catch (error) {
+                  toast({
+                    title: 'Erreur',
+                    description: 'Impossible d\'enregistrer la demande',
+                    variant: 'destructive'
+                  });
+                }
+              }}
+            >
+              Enregistrer quand même
+            </Button>
+          ),
         });
         return;
       }
@@ -403,11 +501,15 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       // Validation de l'objet praticien
       const practitioner = practitionerData.practitioner;
       if (!practitioner.id || !practitioner.name) {
-        console.error('❌ Données praticien invalides:', practitioner);
+        if (import.meta.env.DEV) {
+          console.error('❌ Données praticien invalides:', practitioner);
+        }
         throw new Error('🔧 Les informations du praticien sont incomplètes. Veuillez réessayer.');
       }
 
-      console.log('✅ Praticien trouvé:', practitioner);
+      if (import.meta.env.DEV) {
+        console.log('✅ Praticien trouvé:', practitioner);
+      }
 
       toast({
         title: 'Praticien trouvé !',
@@ -425,9 +527,13 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         practitionerName: practitioner.name,
       };
       
-      console.log('🔵 Création du rendez-vous en attente de confirmation du praticien...');
+      if (import.meta.env.DEV) {
+        console.log('🔵 Création du rendez-vous en attente de confirmation du praticien...');
+      }
       const createdAppointment = await onSubmit(appointmentPayload);
-      console.log('✅ Rendez-vous créé, vérification de la réponse...', createdAppointment);
+      if (import.meta.env.DEV) {
+        console.log('✅ Rendez-vous créé, vérification de la réponse...', createdAppointment);
+      }
       
       // Validation stricte du retour
       if (!createdAppointment) {
@@ -439,17 +545,21 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       }
 
       if (!('id' in createdAppointment) || !createdAppointment.id) {
-        console.error('❌ Réponse invalide du serveur:', createdAppointment);
+        if (import.meta.env.DEV) {
+          console.error('❌ Réponse invalide du serveur:', createdAppointment);
+        }
         throw new Error('💾 L\'ID du rendez-vous n\'a pas été retourné par le serveur. Le rendez-vous n\'a peut-être pas été créé correctement.');
       }
 
-      console.log('✅ Rendez-vous créé avec succès - ID:', createdAppointment.id);
+      if (import.meta.env.DEV) {
+        console.log('✅ Rendez-vous créé avec succès - ID:', createdAppointment.id);
+      }
       
       handleOpenChange(false);
       setIsSearchingPractitioner(false);
       isSubmittingRef.current = false;
       setLocationMode('auto');
-      setManualAddress('');
+      setManualLocation({ address: '', latitude: null, longitude: null });
       form.reset({
         specialty: '',
         date: undefined,
@@ -465,7 +575,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       });
       
     } catch (error) {
-      console.error('❌ Erreur lors de la création du rendez-vous:', error);
+      if (import.meta.env.DEV) {
+        console.error('❌ Erreur lors de la création du rendez-vous:', error);
+      }
       setIsSearchingPractitioner(false);
       isSubmittingRef.current = false;
       
@@ -518,10 +630,24 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     });
   };
 
-  const specialties = [
-    'Médecine Générale',
-    'Coaching Sportif',
-  ];
+  // Query dynamique pour récupérer les spécialités disponibles
+  const { data: availableSpecialties = [] } = useQuery({
+    queryKey: ['available-specialties'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('practitioners')
+        .select('specialty')
+        .eq('available', true)
+        .eq('kyc_status', 'approved');
+
+      if (error) throw error;
+
+      // Extraire les specialties uniques
+      const specialties = [...new Set(data?.map(p => p.specialty) || [])];
+      return specialties.filter(s => s && s.trim().length > 0).sort();
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const timeSlots = [
     '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
@@ -660,7 +786,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               // Empêcher la soumission avec Enter si déjà en cours
               if (e.key === 'Enter' && (isFormSubmitting || isSubmittingRef.current || isSearchingPractitioner)) {
                 e.preventDefault();
-                console.warn('⚠️ Soumission via Enter bloquée - déjà en cours');
+                if (import.meta.env.DEV) {
+                  console.warn('⚠️ Soumission via Enter bloquée - déjà en cours');
+                }
               }
             }}
           >
@@ -699,8 +827,14 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               {locationMode === 'manual' && (
                 <AddressSearchInput
                   label="Adresse complète"
-                  value={manualAddress}
-                  onChange={(location) => setManualAddress(location.address)}
+                  value={manualLocation.address}
+                  onChange={(location) => {
+                    setManualLocation({
+                      address: location.address,
+                      latitude: location.latitude ?? null,
+                      longitude: location.longitude ?? null
+                    });
+                  }}
                   placeholder="Rechercher votre adresse au Bénin..."
                   required
                 />
@@ -722,11 +856,15 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {specialties.map((specialty) => (
-                        <SelectItem key={specialty} value={specialty}>
-                          {specialty}
-                        </SelectItem>
-                      ))}
+                      {availableSpecialties.length === 0 ? (
+                        <div className="p-2 text-sm text-muted-foreground">Aucune spécialité disponible</div>
+                      ) : (
+                        availableSpecialties.map((specialty) => (
+                          <SelectItem key={specialty} value={specialty}>
+                            {specialty}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   <FormMessage className="text-xs font-medium" />

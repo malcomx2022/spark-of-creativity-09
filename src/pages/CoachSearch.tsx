@@ -47,7 +47,7 @@ export default function CoachSearch() {
   const { data: allPractitioners = [], isLoading: isLoadingCoaches } = usePractitioners();
   
   const coaches = useMemo(() => 
-    allPractitioners.filter(p => p.specialty === "Coach sportif"),
+    allPractitioners.filter(p => p.practitioner_type === "coach_sportif"),
     [allPractitioners]
   );
 
@@ -65,7 +65,7 @@ export default function CoachSearch() {
   // Zones d'intervention uniques
   const zones = useMemo(() => {
     const allZones = coaches
-      .map(c => c.address)
+      .map(c => c.intervention_zone || c.address)
       .filter((z): z is string => !!z);
     return ['all', ...Array.from(new Set(allZones))];
   }, [coaches]);
@@ -73,7 +73,7 @@ export default function CoachSearch() {
   // Filtrer les coachs par zone
   const filteredCoaches = useMemo(() => {
     if (selectedZone === 'all') return coaches;
-    return coaches.filter(c => c.address === selectedZone);
+    return coaches.filter(c => c.intervention_zone === selectedZone || c.address === selectedZone);
   }, [coaches, selectedZone]);
 
   const handleBookSession = (session: any) => {
