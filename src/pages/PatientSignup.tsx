@@ -19,6 +19,7 @@ import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
+import { checkPatientPhoneDuplication, hasPatientProfile } from "@/lib/profileDuplicationCheck";
 import { z } from "zod";
 
 // Schéma de validation Zod
@@ -208,23 +209,14 @@ export default function PatientSignup() {
 
     // Inscription avec Supabase
     try {
-      // ✅ Vérifier si le téléphone est déjà utilisé
-      const { data: existingProfile, error: profileCheckError } = await supabase
-        .from('profiles')
-        .select('id, phone')
-        .eq('phone', formData.phone)
-        .maybeSingle();
+      // ✅ Vérifier si le téléphone est déjà utilisé par un autre patient
+      // (Permet le même téléphone si l'utilisateur a déjà un profil praticien)
+      const phoneDuplicationCheck = await checkPatientPhoneDuplication(formData.phone);
 
-      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
-        // PGRST116 = not found (ce qui est bon)
-        throw profileCheckError;
-      }
-
-      if (existingProfile) {
-        // Téléphone déjà utilisé
+      if (phoneDuplicationCheck.isDuplicate) {
         toast({
           title: "Téléphone déjà utilisé",
-          description: "Ce numéro de téléphone est déjà lié à un compte. Veuillez vous connecter ou utiliser un autre numéro.",
+          description: phoneDuplicationCheck.message,
           variant: "destructive",
           action: (
             <Button size="sm" onClick={() => navigate('/login')}>

@@ -22,6 +22,7 @@ import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
+import { checkPractitionerPhoneDuplication, hasPractitionerProfile } from "@/lib/profileDuplicationCheck";
 
 interface SignupFormData {
   firstName: string;
@@ -449,55 +450,30 @@ export default function PractitionerSignup() {
     setIsSubmitting(true);
 
     try {
-      // ✅ Vérifier l'unicité du téléphone AVANT inscription (avec timeout)
-      let existingPractitioner = null;
-      try {
-        const phoneCheckResult = await withTimeout(
-          supabase
-            .from('practitioners')
-            .select('id')
-            .eq('phone', formData.phone)
-            .maybeSingle(),
-          8000 // 8 secondes de timeout
-        );
+      // ✅ Vérifier si le téléphone est déjà utilisé par un autre praticien
+      // (Permet le même téléphone si l'utilisateur a déjà un profil patient)
+      const phoneDuplicationCheck = await checkPractitionerPhoneDuplication(formData.phone);
 
-        if (phoneCheckResult.error && phoneCheckResult.error.code !== 'PGRST116') {
-          console.warn('Erreur vérification téléphone:', phoneCheckResult.error);
-          // Ne pas bloquer l'inscription si la vérification échoue, continuer quand même
-          // L'edge function vérifiera également l'unicité côté backend
-        } else {
-          existingPractitioner = phoneCheckResult.data;
-        }
-      } catch (phoneCheckError) {
-        if (phoneCheckError instanceof NetworkTimeoutError) {
-          console.warn('Timeout lors de la vérification du téléphone, on continue quand même');
-          // L'edge function vérifiera l'unicité
-        } else {
-          console.warn('Erreur réseau vérification téléphone:', phoneCheckError);
-          // Ne pas bloquer, l'edge function vérifiera
-        }
-      }
-
-      if (existingPractitioner) {
+      if (phoneDuplicationCheck.isDuplicate) {
         // Mettre en évidence le champ téléphone avec l'erreur
         setFieldErrors(prev => ({
           ...prev,
-          phone: "Ce numéro de téléphone est déjà utilisé par un autre praticien"
+          phone: phoneDuplicationCheck.message
         }));
-        
+
         toast({
           title: "Numéro de téléphone déjà utilisé",
-          description: "Ce numéro de téléphone est déjà enregistré. Veuillez en utiliser un autre ou vous connecter si c'est votre compte.",
+          description: phoneDuplicationCheck.message,
           variant: "destructive"
         });
-        
+
         // Scroller vers le champ téléphone
         const phoneInput = document.getElementById('phone');
         if (phoneInput) {
           phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
           phoneInput.focus();
         }
-        
+
         setIsSubmitting(false);
         return;
       }

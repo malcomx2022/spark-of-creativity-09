@@ -9,7 +9,16 @@ const COACH_TYPE = "coach_sportif";
  */
 export interface UserRoleResult {
   role: AppRole;
-  source: 'user_roles' | 'practitioners' | 'user_metadata' | 'default';
+  source: 'user_roles' | 'practitioners' | 'profiles' | 'user_metadata' | 'default';
+}
+
+/**
+ * Interface pour le résultat de résolution multi-profils
+ */
+export interface MultiProfileResult {
+  roles: AppRole[];
+  primaryRole: AppRole;
+  hasMultipleProfiles: boolean;
 }
 
 /**
@@ -99,6 +108,88 @@ export async function resolveUserRoleFromAuth(): Promise<UserRoleResult> {
   }
 
   return resolveUserRole(data.user.id);
+}
+
+/**
+ * Résout TOUS les rôles d'un utilisateur (support multi-profils)
+ * Un utilisateur peut avoir plusieurs profils simultanément :
+ * - Patient (table profiles)
+ * - Praticien/Coach (table practitioners)
+ * - Admin (table user_roles)
+ *
+ * @param userId - L'ID de l'utilisateur à vérifier
+ * @returns Tous les rôles de l'utilisateur avec le rôle principal
+ */
+export async function resolveAllUserRoles(userId: string): Promise<MultiProfileResult> {
+  const roles: AppRole[] = [];
+
+  try {
+    // Vérifier si l'utilisateur est admin
+    const { data: adminRole } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (adminRole?.role) {
+      roles.push('admin');
+    }
+
+    // Vérifier si l'utilisateur est praticien/coach
+    const { data: practitionerData } = await supabase
+      .from('practitioners')
+      .select('practitioner_type')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (practitionerData) {
+      if (practitionerData.practitioner_type === COACH_TYPE) {
+        roles.push('coach');
+      } else {
+        roles.push('practitioner');
+      }
+    }
+
+    // Vérifier si l'utilisateur est patient
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileData) {
+      roles.push('patient');
+    }
+
+    // Déterminer le rôle principal (ordre de priorité)
+    let primaryRole: AppRole;
+    if (roles.includes('admin')) {
+      primaryRole = 'admin';
+    } else if (roles.includes('coach')) {
+      primaryRole = 'coach';
+    } else if (roles.includes('practitioner')) {
+      primaryRole = 'practitioner';
+    } else if (roles.includes('patient')) {
+      primaryRole = 'patient';
+    } else {
+      // Fallback : patient par défaut
+      primaryRole = 'patient';
+      roles.push('patient');
+    }
+
+    return {
+      roles,
+      primaryRole,
+      hasMultipleProfiles: roles.length > 1,
+    };
+  } catch (error) {
+    console.error('Error resolving all user roles:', error);
+    return {
+      roles: ['patient'],
+      primaryRole: 'patient',
+      hasMultipleProfiles: false,
+    };
+  }
 }
 
 /**
