@@ -363,9 +363,10 @@ serve(async (req) => {
           currency: {
             iso: 'XOF'
           },
-          // Utiliser notify_url (webhook serveur) plutôt que callback_url pour suivre les statuts.
-          // callback_url sert uniquement au retour client et n'est pas appelée en sandbox.
+          // notify_url: webhook serveur pour suivi des statuts (appelé par FedaPay)
           notify_url: `${supabaseUrl}/functions/v1/payment-webhook`,
+          // callback_url: redirection client après paiement (FedaPay ajoutera transaction_id automatiquement)
+          callback_url: `https://a6f5c529-824c-4e8e-a92c-c4acad4413c7.lovableproject.com/payment/callback?appointment_id=${appointmentId}`,
           customer: {
             firstname,
             lastname,
