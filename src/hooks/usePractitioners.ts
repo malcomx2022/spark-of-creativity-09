@@ -27,7 +27,7 @@ async function fetchPractitioners() {
     const { data, error } = await supabase
       .from('practitioners')
       .select('*')
-      .eq('available', true)
+      .or('available.eq.true,can_accept_missions.eq.true')
       .eq('kyc_status', 'approved')
       .order('name', { ascending: true });
 
@@ -53,7 +53,7 @@ async function fetchPractitioners() {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('practitioners')
         .select('id, name, specialty, address, latitude, longitude, available, rating, practitioner_type')
-        .eq('available', true)
+        .or('available.eq.true,can_accept_missions.eq.true')
         .eq('kyc_status', 'approved')
         .limit(50)
         .order('name', { ascending: true });
