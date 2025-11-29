@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,37 +8,45 @@ import {
   Bell,
   HelpCircle,
   Users,
-  TrendingUp,
   DollarSign,
-  ClipboardList
+  ClipboardList,
+  Loader2
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
-import { NotificationsSection } from "@/components/dashboard/NotificationsSection";
-import { ProfessionalProfileSection } from "@/components/dashboard/practitioner/ProfessionalProfileSection";
-import { SupportSection } from "@/components/dashboard/SupportSection";
-import { GroupSessionCard } from "@/components/coach/GroupSessionCard";
-import { CreateGroupSessionDialog } from "@/components/coach/CreateGroupSessionDialog";
-import { EditGroupSessionDialog } from "@/components/coach/EditGroupSessionDialog";
 import { useGroupSessions } from "@/hooks/useGroupSessions";
 import { usePractitionerAppointments, useMutateAppointment } from "@/hooks/useAppointments";
-import { AppointmentCard } from "@/components/AppointmentCard";
 import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
-import AvailabilitySection from "@/components/dashboard/practitioner/AvailabilitySection";
-import { PaymentInfoSection } from "@/components/dashboard/practitioner/PaymentInfoSection";
-import { PractitionerRatesSection } from "@/components/dashboard/practitioner/PractitionerRatesSection";
-import { DocumentsSection } from "@/components/dashboard/practitioner/DocumentsSection";
+
+// Lazy load tabs
+const SessionsTab = lazy(() => import("@/components/dashboard/coach/tabs/SessionsTab"));
+const AppointmentsTab = lazy(() => import("@/components/dashboard/coach/tabs/AppointmentsTab"));
+const AvailabilityTab = lazy(() => import("@/components/dashboard/coach/tabs/AvailabilityTab"));
+const ProfileTab = lazy(() => import("@/components/dashboard/coach/tabs/ProfileTab"));
+const NotificationsTab = lazy(() => import("@/components/dashboard/coach/tabs/NotificationsTab"));
+const SupportTab = lazy(() => import("@/components/dashboard/coach/tabs/SupportTab"));
 
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [editingSession, setEditingSession] = useState<any>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   // Fetch coach profile
   const { data: coach, isLoading: isLoadingCoach } = useQuery({
@@ -72,44 +80,48 @@ export default function CoachDashboard() {
   const mutateAppointment = useMutateAppointment();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
 
-  // Calculate stats
-  const upcomingSessions = sessions?.filter(s => 
-    s.status === 'planifiee' || s.status === 'confirmee'
-  ).length || 0;
-
-  const upcomingAppointments = appointments?.filter(a => 
-    a.status === 'confirmed' || a.status === 'pending'
-  ).length || 0;
-
-  const totalParticipants = sessions?.reduce((sum, s) => 
-    sum + (s.current_participants || 0), 0
-  ) || 0;
-
-  // Calculate revenue only on first 100 visible items
-  const totalRevenue = sessions.filter(s => s.status === 'terminee')
-    .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * 0.63), 0) || 0;
-
-  const appointmentsRevenue = appointments.filter(a => a.status === 'completed')
-    .reduce((sum, a) => sum + ((a.paymentAmount || 0) * 0.63), 0) || 0;
-
-  const handleEditSession = (sessionId: string) => {
-    const session = sessions?.find(s => s.id === sessionId);
-    if (session) {
-      setEditingSession(session);
-      setEditDialogOpen(true);
-    }
-  };
+  // Memoize stats calculations
+  const stats = useMemo(() => ({
+    upcomingSessions: sessions?.filter(s => 
+      s.status === 'planifiee' || s.status === 'confirmee'
+    ).length || 0,
+    upcomingAppointments: appointments?.filter(a => 
+      a.status === 'confirmed' || a.status === 'pending'
+    ).length || 0,
+    totalParticipants: sessions?.reduce((sum, s) => 
+      sum + (s.current_participants || 0), 0
+    ) || 0,
+    // 95% pour le coach (5% commission plateforme)
+    totalRevenue: sessions?.filter(s => s.status === 'terminee')
+      .reduce((sum, s) => sum + (s.price_per_person * (s.current_participants || 0) * 0.95), 0) || 0,
+    appointmentsRevenue: appointments?.filter(a => a.status === 'completed')
+      .reduce((sum, a) => sum + ((a.paymentAmount || 0) * 0.95), 0) || 0,
+  }), [sessions, appointments]);
 
   const handleCancelSession = (sessionId: string) => {
-    if (confirm("Êtes-vous sûr de vouloir annuler cette séance ?")) {
-      cancelSession(sessionId);
+    setSelectedSessionId(sessionId);
+    setCancelDialogOpen(true);
+  };
+
+  const handleConfirmCancelSession = () => {
+    if (selectedSessionId) {
+      cancelSession(selectedSessionId);
     }
+    setCancelDialogOpen(false);
+    setSelectedSessionId(null);
   };
 
   const handleConfirmSession = (sessionId: string) => {
-    if (confirm("Confirmer cette séance ? Les participants seront notifiés.")) {
-      confirmSession(sessionId);
+    setSelectedSessionId(sessionId);
+    setConfirmDialogOpen(true);
+  };
+
+  const handleConfirmConfirmSession = () => {
+    if (selectedSessionId) {
+      confirmSession(selectedSessionId);
     }
+    setConfirmDialogOpen(false);
+    setSelectedSessionId(null);
   };
 
   const handleAcceptAppointment = async (appointmentId: string) => {
@@ -142,7 +154,9 @@ export default function CoachDashboard() {
         description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
       });
     } catch (error) {
-      console.error('Erreur lors de l\'acceptation', error);
+      if (import.meta.env.DEV) {
+        console.error('Error:', error);
+      }
       toast({
         title: 'Erreur',
         description: 'Impossible d\'accepter le rendez-vous.',
@@ -183,7 +197,9 @@ export default function CoachDashboard() {
         description: 'Le patient a été notifié.'
       });
     } catch (error) {
-      console.error('Erreur lors du refus', error);
+      if (import.meta.env.DEV) {
+        console.error('Error:', error);
+      }
       toast({
         title: 'Erreur',
         description: 'Impossible de refuser le rendez-vous.',
@@ -256,9 +272,9 @@ export default function CoachDashboard() {
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-3xl font-bold">{upcomingSessions + upcomingAppointments}</span>
+                    <span className="text-3xl font-bold">{stats.upcomingSessions + stats.upcomingAppointments}</span>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {upcomingSessions} séances + {upcomingAppointments} RDV
+                      {stats.upcomingSessions} séances + {stats.upcomingAppointments} RDV
                     </p>
                   </div>
                   <Calendar className="h-8 w-8 text-primary" />
@@ -274,7 +290,7 @@ export default function CoachDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold">{totalParticipants}</span>
+                  <span className="text-3xl font-bold">{stats.totalParticipants}</span>
                   <Users className="h-8 w-8 text-secondary" />
                 </div>
               </CardContent>
@@ -289,7 +305,7 @@ export default function CoachDashboard() {
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-3xl font-bold">{Math.round(totalRevenue + appointmentsRevenue).toLocaleString()} F</span>
+                    <span className="text-3xl font-bold">{Math.round(stats.totalRevenue + stats.appointmentsRevenue).toLocaleString()} F</span>
                     <p className="text-xs text-muted-foreground mt-1">
                       Séances + consultations
                     </p>
@@ -328,175 +344,116 @@ export default function CoachDashboard() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="sessions" className="space-y-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-2xl font-bold">Mes séances de groupe</h2>
-                  <CardDescription>Gérez et créez vos séances de coaching</CardDescription>
+            <TabsContent value="sessions">
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-                <CreateGroupSessionDialog 
-                  coachId={coach.id}
+              }>
+                <SessionsTab 
+                  coach={coach}
+                  sessions={sessions}
+                  isLoadingSessions={isLoadingSessions}
+                  onCancelSession={handleCancelSession}
+                  onConfirmSession={handleConfirmSession}
                 />
-              </div>
-
-              {isLoadingSessions ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                  <p className="text-muted-foreground">Chargement des séances...</p>
-                </div>
-              ) : sessions && sessions.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {sessions.map((session) => (
-                    <GroupSessionCard
-                      key={session.id}
-                      session={session}
-                      isCoachView
-                      onEdit={handleEditSession}
-                      onCancel={handleCancelSession}
-                      onConfirm={handleConfirmSession}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground mb-4">
-                      Aucune séance créée pour le moment
-                    </p>
-                    <CreateGroupSessionDialog 
-                      coachId={coach.id}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-
-              <EditGroupSessionDialog
-                session={editingSession}
-                open={editDialogOpen}
-                onOpenChange={setEditDialogOpen}
-              />
+              </Suspense>
             </TabsContent>
 
-            <TabsContent value="appointments" className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold mb-2">Rendez-vous individuels</h2>
-                <CardDescription>Gérez vos consultations et coachings individuels</CardDescription>
-              </div>
-
-              {isLoadingAppointments ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                  <p className="text-muted-foreground">Chargement des rendez-vous...</p>
+            <TabsContent value="appointments">
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : (
-                <>
-                  {/* Rendez-vous en attente */}
-                  {appointments?.filter(a => a.status === 'pending').length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">En attente de validation</h3>
-                      <div className="grid gap-4">
-                        {appointments
-                          .filter(a => a.status === 'pending')
-                          .map((appointment) => (
-                            <AppointmentCard
-                              key={appointment.id}
-                              appointment={appointment}
-                              userRole="practitioner"
-                              onConfirm={() => handleAcceptAppointment(appointment.id)}
-                              onReject={() => handleRejectAppointment(appointment.id)}
-                            />
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rendez-vous confirmés */}
-                  {appointments?.filter(a => a.status === 'confirmed' || a.status === 'in-progress').length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">Confirmés</h3>
-                      <div className="grid gap-4">
-                        {appointments
-                          .filter(a => a.status === 'confirmed' || a.status === 'in-progress')
-                          .map((appointment) => (
-                            <AppointmentCard
-                              key={appointment.id}
-                              appointment={appointment}
-                              userRole="practitioner"
-                            />
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rendez-vous terminés */}
-                  {appointments?.filter(a => a.status === 'completed').length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">Terminés</h3>
-                      <div className="grid gap-4">
-                        {appointments
-                          .filter(a => a.status === 'completed')
-                          .slice(0, 5)
-                          .map((appointment) => (
-                            <AppointmentCard
-                              key={appointment.id}
-                              appointment={appointment}
-                              userRole="practitioner"
-                            />
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {appointments?.length === 0 && (
-                    <Card>
-                      <CardContent className="py-12 text-center">
-                        <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground mb-2">
-                          Aucun rendez-vous individuel pour le moment
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Les patients pourront réserver des consultations une fois votre profil validé
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
-              )}
+              }>
+                <AppointmentsTab
+                  appointments={appointments}
+                  isLoadingAppointments={isLoadingAppointments}
+                  processingAppointment={processingAppointment}
+                  onAcceptAppointment={handleAcceptAppointment}
+                  onRejectAppointment={handleRejectAppointment}
+                />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="availability">
-              <div className="space-y-6">
-                <PractitionerRatesSection practitionerId={coach.id} />
-                <AvailabilitySection 
-                  practitionerId={coach.id}
-                  practitionerData={coach}
-                />
-                <PaymentInfoSection practitionerId={coach.id} />
-              </div>
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              }>
+                <AvailabilityTab practitionerId={coach.id} practitionerData={coach} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="profile">
-              <div className="space-y-6">
-                <ProfessionalProfileSection
-                  practitionerId={coach.id}
-                  practitionerData={coach}
-                  isCoach
-                />
-                <DocumentsSection practitionerData={coach} />
-              </div>
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              }>
+                <ProfileTab practitionerId={coach.id} practitionerData={coach} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="notifications">
-              <NotificationsSection />
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              }>
+                <NotificationsTab />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="support">
-              <SupportSection />
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              }>
+                <SupportTab />
+              </Suspense>
             </TabsContent>
           </Tabs>
         </div>
       </main>
+
+      {/* Cancel Session Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Annuler la séance ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Les participants seront notifiés de l'annulation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Non</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCancelSession}>
+              Oui, annuler
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Session Dialog */}
+      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la séance ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Les participants seront notifiés de la confirmation de la séance.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Non</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmConfirmSession}>
+              Oui, confirmer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
