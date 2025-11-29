@@ -154,11 +154,11 @@ export default function LoginPage() {
                   {isSubmitting ? "Connexion en cours..." : "Se connecter"}
                 </Button>
 
-                <div className="text-center pt-4">
-                  <Link
-                    to="/login-otp"
-                    className="text-sm text-primary hover:underline"
-                  >
+                <div className="text-center space-y-2 pt-4">
+                  <Link to="/forgot-password" className="block text-sm text-primary hover:underline">
+                    Mot de passe oublié ?
+                  </Link>
+                  <Link to="/login" className="block text-sm text-primary hover:underline">
                     Se connecter avec numéro de téléphone (OTP)
                   </Link>
                 </div>

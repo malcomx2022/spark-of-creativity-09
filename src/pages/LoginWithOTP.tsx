@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -176,22 +176,23 @@ export default function LoginWithOTP() {
                 <form onSubmit={handleVerifyOTP} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="code">Code de vérification</Label>
-                    <Input
-                      id="code"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]{6}"
-                      placeholder="000000"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      maxLength={6}
-                      required
-                      autoFocus
-                      autoComplete="one-time-code"
-                      aria-label="Code de vérification à 6 chiffres"
-                      disabled={verifyingOTP}
-                      className="text-center text-2xl tracking-widest"
-                    />
+                    <div className="flex justify-center">
+                      <InputOTP
+                        maxLength={6}
+                        value={code}
+                        onChange={(value) => setCode(value)}
+                        disabled={verifyingOTP}
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
                     <p className="text-xs text-muted-foreground text-center">
                       Code envoyé au {phoneNumber}
                     </p>
