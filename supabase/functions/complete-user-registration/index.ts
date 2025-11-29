@@ -34,19 +34,29 @@ interface PractitionerRegistrationData {
 type RegistrationData = PatientRegistrationData | PractitionerRegistrationData;
 
 serve(async (req: Request) => {
+  console.log('[complete-user-registration] ===== FUNCTION CALLED =====');
+  console.log('[complete-user-registration] Method:', req.method);
+  console.log('[complete-user-registration] URL:', req.url);
+  
   const origin = req.headers.get('origin');
   const corsHeaders = getSecureCorsHeaders(origin);
   
   if (req.method === 'OPTIONS') {
+    console.log('[complete-user-registration] OPTIONS request handled');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    console.log('[complete-user-registration] Initializing Supabase client...');
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { userId, data }: { userId: string; data: RegistrationData } = await req.json();
+    console.log('[complete-user-registration] Parsing request body...');
+    const requestBody = await req.json();
+    console.log('[complete-user-registration] Request body:', JSON.stringify(requestBody, null, 2));
+    
+    const { userId, data }: { userId: string; data: RegistrationData } = requestBody;
 
     console.log('[complete-user-registration] Starting registration for user:', userId, 'type:', data.userType);
 
