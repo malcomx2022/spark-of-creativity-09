@@ -242,9 +242,9 @@ serve(async (req) => {
     if (existingPayments && existingPayments.length > 0) {
       const existingPayment = existingPayments[0];
       const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-      const PAYMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+      const PAYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
       
-      // Si le paiement a plus de 15 minutes, le marquer comme expiré
+      // Si le paiement a plus de 10 minutes, le marquer comme expiré
       if (paymentAge > PAYMENT_TIMEOUT_MS) {
         console.log('Existing payment expired, marking as failed:', existingPayment.id);
         await supabase
