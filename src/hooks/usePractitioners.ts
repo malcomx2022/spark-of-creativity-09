@@ -45,8 +45,24 @@ async function fetchPractitioners() {
       .order('name', { ascending: true });
 
     if (error) {
-      console.error('Erreur chargement praticiens publics:', error);
-      throw error;
+      if (import.meta.env.DEV) {
+        console.error('Erreur chargement praticiens publics:', error);
+      }
+
+      // Fallback: essayer de récupérer une liste limitée depuis practitioners
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('practitioners')
+        .select('id, name, specialty, address, latitude, longitude, available, rating, practitioner_type')
+        .eq('available', true)
+        .eq('kyc_status', 'approved')
+        .limit(50)
+        .order('name', { ascending: true });
+
+      if (fallbackError) {
+        throw new Error('Impossible de charger la liste des praticiens. Veuillez réessayer.');
+      }
+
+      return (fallbackData ?? []).map(mapPractitioner);
     }
 
     return (data ?? []).map(mapPractitioner);
