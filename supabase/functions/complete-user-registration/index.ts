@@ -89,12 +89,13 @@ async function processPatientRegistration(
   userId: string,
   data: PatientRegistrationData
 ) {
-  console.log('[processPatientRegistration] Creating profile for user:', userId);
+  console.log('[processPatientRegistration] Starting for user:', userId);
+  console.log('[processPatientRegistration] Data received:', JSON.stringify(data, null, 2));
 
   // ✅ VALIDATION BACKEND
-  // Validation téléphone
-  if (!data.profile.phone || !/^\+229\d{8}$/.test(data.profile.phone)) {
-    throw new Error('Numéro de téléphone invalide (format requis: +229XXXXXXXX)');
+  // Validation téléphone - Format international
+  if (!data.profile.phone || !/^\+[1-9]\d{7,14}$/.test(data.profile.phone)) {
+    throw new Error('Numéro de téléphone invalide (format requis: +XXX...)');
   }
 
   // Validation nom complet
@@ -120,8 +121,8 @@ async function processPatientRegistration(
 
   // Validation contact d'urgence
   if (data.emergencyContact) {
-    if (!data.emergencyContact.phone || !/^\+229\d{8}$/.test(data.emergencyContact.phone)) {
-      throw new Error('Numéro de contact d\'urgence invalide');
+    if (!data.emergencyContact.phone || !/^\+[1-9]\d{7,14}$/.test(data.emergencyContact.phone)) {
+      throw new Error('Numéro de contact d\'urgence invalide (format requis: +XXX...)');
     }
     if (!data.emergencyContact.name || data.emergencyContact.name.trim().length < 2) {
       throw new Error('Nom du contact d\'urgence invalide');
@@ -195,6 +196,14 @@ async function processPatientRegistration(
   const normalizedGender = data.profile.gender ? 
     (genderMap[data.profile.gender] || 'non_specifie') : 'non_specifie';
 
+  console.log('[processPatientRegistration] Creating profile with data:', {
+    id: userId,
+    full_name: data.profile.fullName,
+    phone: data.profile.phone,
+    gender: normalizedGender,
+    date_of_birth: data.profile.dateOfBirth || null,
+  });
+
   const { error: profileError } = await supabase
     .from('profiles')
     .upsert({
@@ -212,10 +221,12 @@ async function processPatientRegistration(
     console.error('[processPatientRegistration] Profile error:', profileError);
     throw new Error(`Erreur lors de la création du profil: ${profileError.message}`);
   }
+  
+  console.log('[processPatientRegistration] ✅ Profile created successfully');
 
   // 2. Créer l'adresse si fournie
   if (data.address && data.address.address.trim()) {
-    console.log('[processPatientRegistration] Creating address');
+    console.log('[processPatientRegistration] Creating address:', data.address);
     
     const { error: addressError } = await supabase
       .from('addresses')
@@ -230,11 +241,17 @@ async function processPatientRegistration(
       console.error('[processPatientRegistration] Address error:', addressError);
       throw new Error(`Erreur lors de la création de l'adresse: ${addressError.message}`);
     }
+    console.log('[processPatientRegistration] ✅ Address created');
+  } else {
+    console.log('[processPatientRegistration] ⚠️ No address provided');
   }
 
   // 3. Créer le contact d'urgence si fourni
   if (data.emergencyContact && data.emergencyContact.name.trim() && data.emergencyContact.phone.trim()) {
-    console.log('[processPatientRegistration] Creating emergency contact');
+    console.log('[processPatientRegistration] Creating emergency contact:', {
+      name: data.emergencyContact.name,
+      phone: data.emergencyContact.phone,
+    });
     
     const { error: contactError } = await supabase
       .from('emergency_contacts')
@@ -249,12 +266,14 @@ async function processPatientRegistration(
       console.error('[processPatientRegistration] Emergency contact error:', contactError);
       throw new Error(`Erreur lors de la création du contact d'urgence: ${contactError.message}`);
     }
+    console.log('[processPatientRegistration] ✅ Emergency contact created');
+  } else {
+    console.log('[processPatientRegistration] ⚠️ No emergency contact provided');
   }
 
   // 4. Créer le profil médical
-  console.log('[processPatientRegistration] Creating medical profile');
-  
   const chronicDiseases = (data.medicalHistory || []).join(', ') || null;
+  console.log('[processPatientRegistration] Creating medical profile:', { chronicDiseases });
 
   const { error: medicalError } = await supabase
     .from('medical_profiles')
@@ -268,6 +287,7 @@ async function processPatientRegistration(
     console.error('[processPatientRegistration] Medical profile error:', medicalError);
     throw new Error(`Erreur lors de la création du profil médical: ${medicalError.message}`);
   }
+  console.log('[processPatientRegistration] ✅ Medical profile created');
 
   // 5. Enregistrer le consentement
   console.log('[processPatientRegistration] Recording consent');
@@ -284,6 +304,8 @@ async function processPatientRegistration(
   if (consentError && consentError.code !== '23505') {
     console.error('[processPatientRegistration] Consent error:', consentError);
     // Non bloquant, on continue
+  } else {
+    console.log('[processPatientRegistration] ✅ Consent recorded');
   }
 
   // 6. Envoyer la notification
