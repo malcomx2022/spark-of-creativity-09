@@ -13,11 +13,64 @@ import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { ROUTES } from "@/lib/routes";
+
+const HeroImage = () => {
+  const [imageError, setImageError] = useState(false);
+
+  return (
+    <div className="relative z-10">
+      {!imageError ? (
+        <img
+          src={heroImage}
+          alt="Soins médicaux à domicile en Afrique - Médecin professionnel en consultation"
+          className="rounded-2xl shadow-2xl animate-float"
+          loading="lazy"
+          decoding="async"
+          width="800"
+          height="600"
+          onError={() => {
+            setImageError(true);
+          }}
+        />
+      ) : (
+        <div className="w-full h-96 bg-gradient-primary rounded-2xl flex items-center justify-center text-white">
+          <div className="text-center">
+            <Stethoscope className="h-24 w-24 mx-auto mb-4" />
+            <p className="text-xl font-semibold">Soins à domicile</p>
+            <p className="text-sm opacity-80">DomiCares - Afrique</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Index = () => {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
   const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  const { data: enabledFeatures } = useQuery<Record<string, boolean>>({
+    queryKey: ['enabled-features'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_config')
+        .select('key, value')
+        .in('key', [
+          'feature_consultation_247',
+          'feature_geolocation',
+          'feature_mobile_money',
+          'feature_continuous_training'
+        ]);
+
+      return data?.reduce((acc, item) => ({
+        ...acc,
+        [item.key]: item.value === true || item.value === 'true'
+      }), {} as Record<string, boolean>) || {};
+    },
+    staleTime: 10 * 60 * 1000,
+  });
 
   const { data: realStats } = useQuery({
     queryKey: ['homepage-stats'],
@@ -67,20 +120,20 @@ const Index = () => {
   };
 
   const patientFeatures = [
-    "Consultation à domicile 24/7",
+    enabledFeatures?.feature_consultation_247 && "Consultation à domicile 24/7",
     "Professionnels certifiés",
     "Suivi médical personnalisé",
-    "Paiement sécurisé Mobile Money",
-    "Géolocalisation en temps réel"
-  ];
+    enabledFeatures?.feature_mobile_money && "Paiement sécurisé Mobile Money",
+    enabledFeatures?.feature_geolocation && "Géolocalisation en temps réel"
+  ].filter(Boolean) as string[];
 
   const practitionerFeatures = [
     "Rejoignez un réseau professionnel",
     "Gestion d'agenda intelligente",
     "Paiements automatisés (63%)",
-    "Formation continue",
+    enabledFeatures?.feature_continuous_training && "Formation continue",
     "Support technique 24/7"
-  ];
+  ].filter(Boolean) as string[];
 
   return (
     <>
@@ -147,24 +200,24 @@ const Index = () => {
               ) : (
                 <>
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                    <Button
-                      variant="medical"
-                      size="xl"
-                      onClick={() => navigate("/signup/patient")}
-                      className="flex-1 min-h-[52px] text-base sm:text-lg"
-                    >
-                      <User className="h-5 w-5 mr-2" />
-                      Je suis patient
-                    </Button>
-                    <Button
-                      variant="practitioner"
-                      size="xl"
-                      onClick={() => navigate("/signup/practitioner")}
-                      className="flex-1 min-h-[52px] text-base sm:text-lg"
-                    >
-                      <Stethoscope className="h-5 w-5 mr-2" />
-                      Je suis praticien
-                    </Button>
+                  <Button
+                    variant="medical"
+                    size="xl"
+                    onClick={() => navigate(ROUTES.SIGNUP_PATIENT)}
+                    className="flex-1 min-h-[52px] text-base sm:text-lg"
+                  >
+                    <User className="h-5 w-5 mr-2" />
+                    Je suis patient
+                  </Button>
+                  <Button
+                    variant="practitioner"
+                    size="xl"
+                    onClick={() => navigate(ROUTES.SIGNUP_PRACTITIONER)}
+                    className="flex-1 min-h-[52px] text-base sm:text-lg"
+                  >
+                    <Stethoscope className="h-5 w-5 mr-2" />
+                    Je suis praticien
+                  </Button>
                   </div>
 
                   <div className="text-center pt-4">
@@ -174,7 +227,7 @@ const Index = () => {
                     <div className="flex flex-col sm:flex-row gap-2 justify-center">
                       <Button
                         variant="outline"
-                        onClick={() => navigate("/login")}
+                        onClick={() => navigate(ROUTES.LOGIN)}
                         className="gap-2"
                       >
                         <Phone className="h-4 w-4" />
@@ -182,7 +235,7 @@ const Index = () => {
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={() => navigate("/login-email")}
+                        onClick={() => navigate(ROUTES.LOGIN_EMAIL)}
                       >
                         Connexion par email
                       </Button>
@@ -213,20 +266,7 @@ const Index = () => {
             </div>
 
             <div className="relative hidden lg:block">
-              <div className="relative z-10">
-                <img
-                  src={heroImage}
-                  alt="Soins médicaux à domicile en Afrique - Médecin professionnel en consultation"
-                  className="rounded-2xl shadow-2xl animate-float"
-                  loading="lazy"
-                  decoding="async"
-                  width="800"
-                  height="600"
-                  onError={(e) => {
-                    e.currentTarget.src = '/placeholder-hero.jpg';
-                  }}
-                />
-              </div>
+              <HeroImage />
               <div className="absolute -top-4 -right-4 w-full h-full bg-gradient-primary rounded-2xl opacity-20 blur-xl" />
             </div>
           </div>
@@ -255,7 +295,7 @@ const Index = () => {
                 features={patientFeatures}
                 buttonText="Commencer en tant que patient"
                 variant="patient"
-                onSelect={() => navigate("/signup/patient")}
+                onSelect={() => navigate(ROUTES.SIGNUP_PATIENT)}
               />
 
               <UserTypeCard
@@ -265,7 +305,7 @@ const Index = () => {
                 features={practitionerFeatures}
                 buttonText="Rejoindre comme praticien"
                 variant="practitioner"
-                onSelect={() => navigate("/signup/practitioner")}
+                onSelect={() => navigate(ROUTES.SIGNUP_PRACTITIONER)}
               />
             </div>
           </div>
@@ -336,7 +376,7 @@ const Index = () => {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={() => navigate("/search-practitioners")}>
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={() => navigate(ROUTES.SEARCH_PRACTITIONERS)}>
               <CardHeader>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-16 h-16 gradient-primary rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -359,7 +399,7 @@ const Index = () => {
               </CardContent>
             </Card>
 
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={() => navigate("/search-coaches")}>
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={() => navigate(ROUTES.SEARCH_COACHES)}>
               <CardHeader>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -456,7 +496,7 @@ const Index = () => {
               <Button
                 variant="secondary"
                 size="xl"
-                onClick={() => navigate("/signup/patient")}
+                onClick={() => navigate(ROUTES.SIGNUP_PATIENT)}
                 className="bg-white text-primary hover:bg-white/90"
               >
                 <User className="h-5 w-5 mr-2" />
@@ -466,7 +506,7 @@ const Index = () => {
                 variant="outline"
                 size="xl"
                 className="border-white text-white hover:bg-white hover:text-primary"
-                onClick={() => navigate('/services')}
+                onClick={() => navigate(ROUTES.SERVICES)}
               >
                 En savoir plus
               </Button>

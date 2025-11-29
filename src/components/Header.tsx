@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
+import { ROUTES } from "@/lib/routes";
 import logo from "@/assets/logo.png";
 import {
   DropdownMenu,
@@ -33,7 +34,7 @@ export default function Header() {
     });
 
     await supabase.auth.signOut();
-    window.location.href = "/";
+    window.location.href = ROUTES.HOME;
   };
 
   return (
@@ -41,7 +42,7 @@ export default function Header() {
       <div className="container mx-auto px-3 sm:px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <button onClick={() => navigate("/")} className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
+          <button onClick={() => navigate(ROUTES.HOME)} className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
             <img src={logo} alt="DomiCares Logo" className="w-8 h-8 sm:w-10 sm:h-10" />
             <div>
               <h1 className="text-base sm:text-xl font-bold text-foreground">DomiCares</h1>
@@ -52,13 +53,13 @@ export default function Header() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
             <button 
-              onClick={() => navigate("/")}
+              onClick={() => navigate(ROUTES.HOME)}
               className="text-foreground hover:text-primary transition-colors"
             >
               Accueil
             </button>
             <button 
-              onClick={() => navigate("/services")}
+              onClick={() => navigate(ROUTES.SERVICES)}
               className="text-foreground hover:text-primary transition-colors"
             >
               Services
@@ -81,11 +82,11 @@ export default function Header() {
                 <ChevronDown className="h-3 w-3" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => navigate("/search-practitioners")}>
+                <DropdownMenuItem onClick={() => navigate(ROUTES.SEARCH_PRACTITIONERS)}>
                   <MapPin className="h-4 w-4 mr-2" />
                   Praticiens médicaux
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/search-coaches")}>
+                <DropdownMenuItem onClick={() => navigate(ROUTES.SEARCH_COACHES)}>
                   <Users className="h-4 w-4 mr-2" />
                   Coachs sportifs
                 </DropdownMenuItem>
@@ -117,7 +118,7 @@ export default function Header() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => navigate("/login")}
+                  onClick={() => navigate(ROUTES.LOGIN)}
                   className="hidden md:flex"
                 >
                   <LogIn className="h-4 w-4 mr-2" />
@@ -126,7 +127,7 @@ export default function Header() {
                 <Button 
                   variant="default" 
                   size="sm" 
-                  onClick={() => navigate("/signup")}
+                  onClick={() => navigate(ROUTES.SIGNUP)}
                   className="hidden md:flex"
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
@@ -153,7 +154,7 @@ export default function Header() {
               <button 
                 onClick={() => {
                   setIsMenuOpen(false);
-                  navigate("/");
+                  navigate(ROUTES.HOME);
                 }}
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
@@ -162,7 +163,7 @@ export default function Header() {
               <button 
                 onClick={() => {
                   setIsMenuOpen(false);
-                  navigate("/services");
+                  navigate(ROUTES.SERVICES);
                 }}
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
@@ -183,7 +184,7 @@ export default function Header() {
               <button 
                 onClick={() => {
                   setIsMenuOpen(false);
-                  navigate("/search-practitioners");
+                  navigate(ROUTES.SEARCH_PRACTITIONERS);
                 }}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
@@ -193,7 +194,7 @@ export default function Header() {
               <button 
                 onClick={() => {
                   setIsMenuOpen(false);
-                  navigate("/search-coaches");
+                  navigate(ROUTES.SEARCH_COACHES);
                 }}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
@@ -226,7 +227,7 @@ export default function Header() {
                     size="sm" 
                     onClick={() => {
                       setIsMenuOpen(false);
-                      navigate("/login");
+                      navigate(ROUTES.LOGIN);
                     }}
                     className="w-full"
                   >
@@ -238,7 +239,7 @@ export default function Header() {
                     size="sm" 
                     onClick={() => {
                       setIsMenuOpen(false);
-                      navigate("/signup");
+                      navigate(ROUTES.SIGNUP);
                     }}
                     className="w-full"
                   >
