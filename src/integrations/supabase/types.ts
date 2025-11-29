@@ -2350,6 +2350,15 @@ export type Database = {
       cleanup_old_otp_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_payment_attempts: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
+      get_admin_dashboard_stats: {
+        Args: never
+        Returns: {
+          appointments_count: number
+          patients_count: number
+          practitioners_count: number
+          total_revenue: number
+        }[]
+      }
       get_practitioner_id_for_user: {
         Args: { p_user_id: string }
         Returns: string
