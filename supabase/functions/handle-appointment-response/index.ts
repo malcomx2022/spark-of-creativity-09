@@ -163,17 +163,6 @@ serve(async (req) => {
       // Utiliser le nom du profile si disponible, sinon celui du rendez-vous
       const patientName = patientProfile.full_name || appointment.patient_name || 'Patient';
 
-      // ✅ NETTOYER les paiements en attente pour ce rendez-vous (éviter les conflits 409)
-      console.log('🧹 Nettoyage des paiements en attente pour ce rendez-vous');
-      await supabase
-        .from('payments')
-        .update({ 
-          status: 'failed',
-          payout_status: 'failed'
-        })
-        .eq('appointment_id', appointmentId)
-        .in('status', ['initiated', 'pending']);
-
       // ✅ Mettre à jour le statut du rendez-vous en 'confirmed' AVANT de créer le paiement
       console.log('📝 Mise à jour du rendez-vous en statut confirmed');
       const { error: preUpdateError } = await supabase

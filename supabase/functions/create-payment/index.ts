@@ -250,8 +250,23 @@ serve(async (req) => {
       const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
       const PAYMENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes pour améliorer l'UX
       
+      // ✅ CORRECTION RACE CONDITION: Si bypassAuth=true (appel depuis handle-appointment-response),
+      // nettoyer automatiquement les anciens paiements pour éviter le 409
+      if (bypassAuth) {
+        console.log('🧹 BypassAuth detected - force cleaning existing payment:', existingPayment.id);
+        await supabase
+          .from('payments')
+          .update({ 
+            status: 'failed',
+            payout_status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPayment.id);
+        
+        console.log('✅ Old payment cleaned, proceeding with new payment');
+      }
       // Si le paiement a plus de 2 minutes, le marquer comme expiré
-      if (paymentAge > PAYMENT_TIMEOUT_MS) {
+      else if (paymentAge > PAYMENT_TIMEOUT_MS) {
         console.log('Existing payment expired, marking as failed:', existingPayment.id);
         await supabase
           .from('payments')
@@ -273,7 +288,7 @@ serve(async (req) => {
           
         console.log('Expired payment cleaned up, proceeding with new payment');
       } else {
-        // Paiement récent, bloquer la création
+        // Paiement récent d'un vrai utilisateur, bloquer la création
         const remainingMinutes = Math.ceil((PAYMENT_TIMEOUT_MS - paymentAge) / 60000);
         console.log('Existing pending payment found:', existingPayment);
         return new Response(
