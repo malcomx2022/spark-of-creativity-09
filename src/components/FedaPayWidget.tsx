@@ -247,8 +247,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           setPaymentStatus('error');
           
           toast({
-            title: 'Paiement en cours',
-            description: errorDetails.error || 'Un paiement est déjà en attente',
+            title: '⏳ Paiement déjà en cours',
+            description: errorDetails.error || 'Un paiement est déjà en attente pour ce rendez-vous.',
             variant: 'destructive',
             duration: 10000,
             action: (
@@ -264,7 +264,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                     if (cancelError) throw cancelError;
                     
                     toast({
-                      title: 'Paiement annulé',
+                      title: '✅ Paiement annulé',
                       description: 'Vous pouvez maintenant créer un nouveau paiement.',
                     });
                     

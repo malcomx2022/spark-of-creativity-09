@@ -275,14 +275,51 @@ export default function PatientDashboard() {
 
   const handleCancel = async (id: string) => {
     try {
+      // 1. Vérifier et annuler le paiement en attente s'il existe
+      const pendingPayment = payments?.find(p => 
+        p.appointment_id === id && 
+        (p.status === 'initiated' || p.status === 'pending')
+      );
+
+      if (pendingPayment) {
+        console.log('Annulation du paiement en attente:', pendingPayment.id);
+        
+        // Annuler le paiement via l'edge function
+        const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+          body: { appointmentId: id }
+        });
+
+        if (cancelError) {
+          console.warn('Erreur lors de l\'annulation du paiement:', cancelError);
+          // Ne pas bloquer l'annulation du rendez-vous si le paiement échoue
+        } else {
+          console.log('Paiement annulé avec succès');
+        }
+      }
+
+      // 2. Annuler le rendez-vous
       await mutateAppointment.mutateAsync({
         id,
         data: { status: 'cancelled' }
       });
+
+      // 3. Nettoyer l'état de paiement persisté si c'était le rendez-vous en cours
+      if (appointmentIdForPayment === id) {
+        clearPersistedPaymentState();
+        setPaymentDialogOpen(false);
+        setAppointmentIdForPayment(null);
+      }
+
       toast({
-        title: 'Rendez-vous annulé',
-        description: 'Le rendez-vous a été annulé avec succès.'
+        title: '✅ Rendez-vous annulé',
+        description: pendingPayment 
+          ? 'Le rendez-vous et le paiement en attente ont été annulés.'
+          : 'Le rendez-vous a été annulé avec succès.'
       });
+
+      // Rafraîchir les données
+      queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
+      
     } catch (error) {
       console.error('Erreur lors de l\'annulation du rendez-vous', error);
       toast({

@@ -216,6 +216,24 @@ export default function PractitionerDashboard() {
     }
 
     try {
+      // Si on annule le rendez-vous, annuler aussi le paiement en attente
+      if (status === 'cancelled') {
+        console.log('Vérification et annulation du paiement en attente pour:', id);
+        
+        // Appeler l'edge function pour annuler le paiement
+        const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
+          body: { appointmentId: id }
+        });
+
+        if (cancelError) {
+          // Log l'erreur mais ne pas bloquer l'annulation du rendez-vous
+          console.warn('Erreur lors de l\'annulation du paiement:', cancelError);
+        } else {
+          console.log('Paiement en attente annulé avec succès');
+        }
+      }
+
+      // Mettre à jour le statut du rendez-vous
       await mutateAppointment.mutateAsync({
         id,
         data: {
@@ -231,8 +249,8 @@ export default function PractitionerDashboard() {
           description: 'Le rendez-vous a été marqué comme terminé.'
         },
         cancelled: {
-          title: 'Rendez-vous annulé',
-          description: 'Le patient a été notifié de l\'annulation.',
+          title: '✅ Rendez-vous annulé',
+          description: 'Le patient a été notifié. Le paiement en attente a été annulé si nécessaire.',
           variant: 'destructive' as const
         }
       } as const;

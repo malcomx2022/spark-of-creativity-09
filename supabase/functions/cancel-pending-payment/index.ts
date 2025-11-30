@@ -49,7 +49,7 @@ serve(async (req) => {
     // Trouver le paiement en attente
     const { data: pendingPayments, error: fetchError } = await supabase
       .from('payments')
-      .select('id, patient_id, practitioner_id, net_amount')
+      .select('id, patient_id, appointment_id, practitioner_id, net_amount')
       .eq('appointment_id', appointmentId)
       .in('status', ['initiated', 'pending'])
       .order('created_at', { ascending: false })
@@ -72,13 +72,44 @@ serve(async (req) => {
 
     const payment = pendingPayments[0];
 
-    // Vérifier que l'utilisateur est bien le patient
-    if (payment.patient_id !== user.id) {
+    // Vérifier que l'utilisateur est soit le patient, soit le praticien du rendez-vous
+    const { data: appointment, error: appointmentError } = await supabase
+      .from('appointments')
+      .select('patient_id, practitioner_id')
+      .eq('id', appointmentId)
+      .single();
+
+    if (appointmentError || !appointment) {
+      return new Response(
+        JSON.stringify({ error: 'Rendez-vous non trouvé' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Vérifier les permissions : patient OU praticien
+    const isPatient = appointment.patient_id === user.id;
+    
+    // Pour le praticien, vérifier via la table practitioners
+    let isPractitioner = false;
+    if (!isPatient) {
+      const { data: practitionerData } = await supabase
+        .from('practitioners')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('id', appointment.practitioner_id)
+        .maybeSingle();
+      
+      isPractitioner = !!practitionerData;
+    }
+
+    if (!isPatient && !isPractitioner) {
       return new Response(
         JSON.stringify({ error: 'Non autorisé à annuler ce paiement' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log('User authorized to cancel payment:', isPatient ? 'patient' : 'practitioner');
 
     // Annuler le paiement de manière atomique avec mise à jour du balance
     if (payment.practitioner_id && payment.net_amount) {
