@@ -3,10 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { FileText, Calendar, User, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, Calendar, User, AlertCircle, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { toast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Report {
   id: string;
@@ -88,6 +91,106 @@ export function PatientConsultationReportsVirtualized({
         return 'Autre (voir commentaires)';
       default:
         return timeframe;
+    }
+  };
+
+  const handleDownloadPDF = (report: Report) => {
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let yPosition = 20;
+
+      // EN-TÊTE
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RAPPORT DE CONSULTATION MÉDICALE', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15;
+
+      // INFORMATIONS GÉNÉRALES
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+
+      const headerInfo = [
+        ['Date de consultation', format(new Date(report.consultation_date), 'PPP à HH:mm', { locale: fr })],
+        ['Praticien', report.appointments?.practitioner_name || 'Non spécifié'],
+        ['Type de consultation', getConsultationType(report.consultation_type)],
+        ['Niveau de gravité', report.severity_level.toUpperCase()],
+      ];
+
+      autoTable(doc, {
+        startY: yPosition,
+        body: headerInfo,
+        theme: 'plain',
+        styles: { fontSize: 10, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { cellWidth: 'auto' },
+        },
+      });
+
+      yPosition = (doc as any).lastAutoTable.finalY + 10;
+
+      // SECTIONS DE CONTENU
+      const addSection = (title: string, content: string) => {
+        if (!content) return;
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(title, 20, yPosition);
+        yPosition += 7;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const lines = doc.splitTextToSize(content, pageWidth - 40);
+        doc.text(lines, 20, yPosition);
+        yPosition += lines.length * 5 + 8;
+
+        // Nouvelle page si nécessaire
+        if (yPosition > 270) {
+          doc.addPage();
+          yPosition = 20;
+        }
+      };
+
+      addSection('MOTIF DE LA CONSULTATION', report.consultation_reason || 'Non spécifié');
+      addSection('CONSTATS CLINIQUES / SIGNES OBSERVÉS', report.clinical_findings || 'Non spécifié');
+      addSection('DIAGNOSTIC PRINCIPAL', report.primary_diagnosis || 'Non spécifié');
+      addSection('TRAITEMENT / PRESCRIPTION', report.treatment_prescription || 'Non spécifié');
+
+      if (report.follow_up_recommendation) {
+        addSection(
+          `RECOMMANDATIONS DE SUIVI (${getFollowUpLabel(report.follow_up_timeframe)})`,
+          report.follow_up_recommendation
+        );
+      }
+
+      if (report.additional_comments) {
+        addSection('COMMENTAIRES COMPLÉMENTAIRES', report.additional_comments);
+      }
+
+      // FOOTER
+      if (report.share_with_doctor) {
+        yPosition += 5;
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'italic');
+        doc.text('✓ Ce rapport peut être partagé avec votre médecin traitant', 20, yPosition);
+      }
+
+      // TÉLÉCHARGEMENT
+      const fileName = `Rapport_Consultation_${format(new Date(report.consultation_date), 'yyyy-MM-dd')}.pdf`;
+      doc.save(fileName);
+
+      toast({
+        title: 'Rapport téléchargé',
+        description: 'Le rapport a été téléchargé avec succès.',
+      });
+    } catch (error) {
+      console.error('Erreur lors de la génération du PDF:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de générer le PDF du rapport.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -234,6 +337,17 @@ export function PatientConsultationReportsVirtualized({
                         </p>
                       </div>
                     )}
+
+                    <div className="mt-6 pt-4 border-t">
+                      <Button
+                        onClick={() => handleDownloadPDF(report)}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Télécharger le rapport en PDF
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
