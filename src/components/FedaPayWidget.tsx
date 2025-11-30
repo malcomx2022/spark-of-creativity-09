@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -14,7 +14,6 @@ import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
-import { FedaCheckoutButton } from 'fedapay-reactjs';
 import { clearPersistedPaymentState } from '@/lib/payment-storage';
 
 type PaymentMethod = 'mtn' | 'moov';
@@ -39,6 +38,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
+  const [widgetInitialized, setWidgetInitialized] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
 
@@ -313,9 +314,9 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         amount
       });
 
-      // Show pending status to display the embedded checkout
+      // Initialize FedaPay widget with embedded mode
       setPaymentStatus('pending');
-      setIsProcessing(false); // Allow user to interact with the embedded form
+      setIsProcessing(false);
       
     } catch (error) {
       console.error('Payment error:', error);
@@ -353,6 +354,12 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPayerName('');
     setPayerEmail('');
     setSaveMethod(false);
+    setWidgetInitialized(false);
+    
+    // Clear container
+    if (containerRef.current) {
+      containerRef.current.innerHTML = '';
+    }
     
     // ✅ Nettoyer l'état de paiement persisté
     clearPersistedPaymentState();
@@ -371,9 +378,103 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     onOpenChange(false);
   };
 
+  // Initialize FedaPay widget when we have transactionId
+  useEffect(() => {
+    if (paymentStatus === 'pending' && transactionId && fedapayConfig && containerRef.current && !widgetInitialized) {
+      console.log('Initializing FedaPay widget with transaction:', transactionId);
+      
+      // Clear container first
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+      
+      // Check if FedaPay is loaded
+      if (typeof window !== 'undefined' && (window as any).FedaPay) {
+        try {
+          const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+          const phoneForFedaPay = sanitizedPhoneNumber ? sanitizedPhoneNumber.replace(/^\+229/, '') : '';
+          
+          // Initialize FedaPay widget in embedded mode
+          const widget = (window as any).FedaPay.init({
+            public_key: fedapayConfig.publicKey,
+            transaction: {
+              id: transactionId,
+              amount: amount,
+              description: `Paiement rendez-vous médical #${appointmentId.substring(0, 8)}`,
+            },
+            customer: {
+              email: payerEmail || undefined,
+              firstname: payerName.split(' ')[0] || 'Patient',
+              lastname: payerName.split(' ').slice(1).join(' ') || 'Test',
+              phone_number: phoneForFedaPay ? {
+                number: phoneForFedaPay,
+                country: 'bj',
+              } : undefined,
+            },
+            currency: {
+              iso: 'XOF',
+            },
+            container: '#fedapay-container',
+            onComplete: (data: any) => {
+              console.log('FedaPay onComplete:', data);
+              
+              if (data.reason === 1) { // CHECKOUT_COMPLETED
+                console.log('Payment completed successfully');
+                setPaymentStatus('success');
+                setIsProcessing(false);
+                
+                toast({
+                  title: '✅ Paiement réussi',
+                  description: 'Votre paiement a été confirmé avec succès',
+                });
+                
+                if (onSuccess) onSuccess();
+                if (onComplete) onComplete();
+                
+                setTimeout(() => {
+                  resetState();
+                  onOpenChange(false);
+                }, 2000);
+              } else if (data.reason === 2) { // DIALOG_DISMISSED
+                console.log('Payment dialog dismissed');
+                setPaymentStatus('error');
+                setIsProcessing(false);
+                
+                toast({
+                  title: '❌ Paiement annulé',
+                  description: 'Vous avez fermé la fenêtre de paiement',
+                  variant: 'destructive',
+                });
+              }
+            },
+          });
+          
+          setWidgetInitialized(true);
+          console.log('FedaPay widget initialized successfully');
+        } catch (error) {
+          console.error('Error initializing FedaPay widget:', error);
+          setPaymentStatus('error');
+          toast({
+            title: 'Erreur d\'initialisation',
+            description: 'Impossible d\'initialiser le formulaire de paiement. Veuillez réessayer.',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        console.error('FedaPay script not loaded');
+        setPaymentStatus('error');
+        toast({
+          title: 'Erreur de chargement',
+          description: 'Le service de paiement n\'est pas disponible. Veuillez rafraîchir la page.',
+          variant: 'destructive',
+        });
+      }
+    }
+  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, phoneNumber, payerName, payerEmail, amount, appointmentId]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Paiement sécurisé</DialogTitle>
           <DialogDescription>
@@ -525,159 +626,19 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             <Alert className="border-primary/50 bg-primary/5">
               <AlertTriangle className="h-4 w-4 text-primary" />
               <AlertDescription>
-                Cliquez sur le bouton pour ouvrir la fenêtre de paiement {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}
+                <p className="font-semibold mb-2">Complétez votre paiement</p>
+                <p className="text-sm text-muted-foreground">
+                  Remplissez le formulaire ci-dessous pour finaliser votre paiement sécurisé via FedaPay.
+                </p>
               </AlertDescription>
             </Alert>
-
-            <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Moyen de paiement:</span>
-                <span className="font-medium">{MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Numéro:</span>
-                <span className="font-medium">{phoneNumber}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Nom:</span>
-                <span className="font-medium">{payerName}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Montant:</span>
-                <span className="font-medium text-lg">{formatAmount(amount)}</span>
-              </div>
-            </div>
             
-            <FedaCheckoutButton
-              options={{
-                public_key: fedapayConfig.publicKey,
-                environment: fedapayConfig.environment as 'sandbox' | 'live',
-                transaction: {
-                  id: transactionId,
-                  amount: amount,
-                  description: `Paiement rendez-vous médical #${appointmentId}`,
-                },
-                customer: {
-                  firstname: payerName.split(' ')[0],
-                  lastname: payerName.split(' ').slice(1).join(' ') || payerName.split(' ')[0],
-                  email: payerEmail || undefined,
-                  phone_number: {
-                    number: phoneNumber.replace(/\s/g, ''),
-                    country: 'bj',
-                  },
-                },
-                currency: {
-                  iso: 'XOF',
-                },
-                button: {
-                  class: 'w-full bg-primary text-primary-foreground hover:bg-primary/90 font-medium py-3 px-4 rounded-md transition-colors',
-                  text: `Payer ${formatAmount(amount)}`,
-                },
-                locale: 'fr',
-                onComplete: async (resp: any) => {
-                  const FedaPay = (window as any).FedaPay;
-                  
-                  if (resp.reason === FedaPay?.CHECKOUT_COMPLETED) {
-                    console.log('✅ FedaPay payment completed successfully:', resp.transaction);
-                    
-                    // Payment successful
-                    setPaymentStatus('success');
-                    setIsProcessing(false);
-
-                    // ✅ Vérifier et mettre à jour le statut dans la DB
-                    try {
-                      console.log('🔄 Waiting for webhook to process payment...');
-                      // Attendre 3 secondes que le webhook traite le paiement
-                      await new Promise(resolve => setTimeout(resolve, 3000));
-                      
-                      // Vérifier le statut dans la base de données
-                      const { data: payment, error: paymentError } = await supabase
-                        .from('payments')
-                        .select('id, status')
-                        .eq('appointment_id', appointmentId)
-                        .eq('fedapay_transaction_id', String(resp.transaction.id))
-                        .single();
-                      
-                      if (paymentError) {
-                        console.error('❌ Error fetching payment:', paymentError);
-                      } else if (payment) {
-                        console.log('📊 Payment status in DB:', payment.status);
-                        
-                        // Si le statut n'est pas encore 'paid', attendre encore un peu
-                        if (payment.status !== 'paid') {
-                          console.log('⏳ Payment not yet marked as paid, waiting more...');
-                          await new Promise(resolve => setTimeout(resolve, 2000));
-                          
-                          // Vérifier à nouveau
-                          const { data: updatedPayment } = await supabase
-                            .from('payments')
-                            .select('id, status')
-                            .eq('id', payment.id)
-                            .single();
-                          
-                          if (updatedPayment) {
-                            console.log('📊 Updated payment status:', updatedPayment.status);
-                          }
-                        } else {
-                          console.log('✅ Payment already marked as paid in DB');
-                        }
-                      }
-                    } catch (error) {
-                      console.error('⚠️ Error checking payment status:', error);
-                    }
-
-                    // Save payment method if requested
-                    if (saveMethod) {
-                      try {
-                        await addPaymentMethod({
-                          provider: paymentMethod,
-                          phoneNumber: phoneNumber.replace(/\s/g, ''),
-                          setAsDefault: paymentMethods.length === 0,
-                        });
-                      } catch (saveError) {
-                        console.error('Error saving payment method:', saveError);
-                      }
-                    }
-
-                    clearPersistedPaymentState();
-
-                    toast({
-                      title: 'Paiement réussi !',
-                      description: 'Votre rendez-vous a été confirmé.',
-                      duration: 5000,
-                    });
-
-                    if (onSuccess) {
-                      onSuccess();
-                    }
-
-                    if (onComplete) {
-                      onComplete();
-                    }
-
-                    setTimeout(() => {
-                      resetState();
-                      onOpenChange(false);
-                    }, 2000);
-                  } else if (resp.reason === FedaPay?.DIALOG_DISMISSED) {
-                    // User closed or cancelled
-                    console.log('Payment dialog dismissed by user');
-                    setPaymentStatus('idle');
-                    setIsProcessing(false);
-                    setTransactionId(null);
-                    
-                    toast({
-                      title: 'Paiement annulé',
-                      description: 'Vous avez fermé la fenêtre de paiement. Vous pouvez réessayer.',
-                      variant: 'destructive',
-                    });
-                    
-                    if (onError) {
-                      onError(new Error('User cancelled payment'));
-                    }
-                  }
-                },
-              }}
+            {/* FedaPay Embedded Container */}
+            <div 
+              id="fedapay-container" 
+              ref={containerRef}
+              className="w-full min-h-[420px] border rounded-lg overflow-hidden"
+              style={{ height: '420px' }}
             />
             
             <Button 
