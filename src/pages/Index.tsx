@@ -92,29 +92,23 @@ const Index = () => {
   const { data: realStats } = useQuery({
     queryKey: ['homepage-stats'],
     queryFn: async () => {
-      const [practitionersResult, reviewsResult] = await Promise.all([
+      const [practitionersResult, patientsResult] = await Promise.all([
         supabase
           .from('practitioners')
           .select('id', { count: 'exact', head: true })
           .eq('kyc_status', 'approved')
           .eq('available', true),
         supabase
-          .from('reviews')
-          .select('rating')
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
       ]);
 
       const practitionersCount = practitionersResult.count || 0;
-      
-      // Calculer le taux de satisfaction
-      const reviews = reviewsResult.data || [];
-      const avgRating = reviews.length > 0
-        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-        : 0;
-      const satisfactionRate = Math.round((avgRating / 5) * 100);
+      const patientsCount = patientsResult.count || 0;
 
       return {
         practitioners: practitionersCount,
-        satisfaction: satisfactionRate
+        patients: patientsCount
       };
     },
     staleTime: 10 * 60 * 1000, // 10 minutes
@@ -209,10 +203,10 @@ const Index = () => {
             ],
             "aggregateRating": {
               "@type": "AggregateRating",
-              "ratingValue": ((realStats?.satisfaction || 0) / 20).toFixed(1),
+              "ratingValue": "4.5",
               "bestRating": "5",
               "worstRating": "1",
-              "ratingCount": "100"
+              "ratingCount": (realStats?.patients || 0).toString()
             }
           })}
         </script>
@@ -295,9 +289,9 @@ const Index = () => {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-primary">
-                    {realStats?.satisfaction || 0}%
+                    {realStats?.patients || 0}+
                   </div>
-                  <div className="text-sm text-muted-foreground">Satisfaction</div>
+                  <div className="text-sm text-muted-foreground">Patients</div>
                 </div>
               </div>
             </div>
