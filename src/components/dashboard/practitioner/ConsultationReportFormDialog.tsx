@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2, Info } from 'lucide-react';
 import { useCreateConsultationReport } from '@/hooks/useConsultationReports';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -111,10 +111,16 @@ export const ConsultationReportFormDialog = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Créer un rapport de consultation
+            Créer un Rapport de Consultation
           </DialogTitle>
-          <DialogDescription>
-            Remplissez les détails de la consultation pour {patientName}
+          <DialogDescription className="space-y-2">
+            <p>Rapport formel et détaillé pour consultation importante</p>
+            <div className="flex items-start gap-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-900">
+              <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p>
+                Pour des notes cliniques rapides, utilisez plutôt l'onglet <strong>Notes de Soin (SOAP)</strong>.
+              </p>
+            </div>
           </DialogDescription>
         </DialogHeader>
 
