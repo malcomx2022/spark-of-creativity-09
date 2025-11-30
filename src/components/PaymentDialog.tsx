@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText, AlertTriangle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ReceiptText, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
@@ -253,10 +253,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
           toast({
             title: 'Paiement en cours',
-            description: `Un paiement est déjà en cours pour ce rendez-vous (expire dans ${remainingMinutes} min). Complétez-le dans la fenêtre qui vient de s'ouvrir.`,
+            description: `Un paiement est déjà en cours pour ce rendez-vous (expire dans ${remainingMinutes} min). Le formulaire s'affichera ci-dessous.`,
           });
 
-          window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+          // ✅ Ne plus utiliser window.open(), le widget s'affichera dans le conteneur embarqué
         } else {
           // Paiement sans URL (probablement échoué), l'annuler proprement
           console.log('⚠️ Paiement sans URL détecté, annulation...');
@@ -527,10 +527,10 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
           toast({
             title: 'Paiement en cours',
-            description: `Complétez le paiement dans la fenêtre qui vient de s'ouvrir (expire dans ${remainingMinutes} min).`,
+            description: `Complétez le paiement dans le formulaire qui s'affichera ci-dessous (expire dans ${remainingMinutes} min).`,
           });
 
-          window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+          // ✅ Ne plus utiliser window.open(), le widget s'affichera dans le conteneur embarqué
           return;
         } else {
           // Paiement sans URL, le supprimer
@@ -749,7 +749,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
           amount
         });
 
-        // Initialiser le widget FedaPay
+        // ✅ CORRECTION CRITIQUE #2: Utiliser le mode embarqué (container) pour éviter les popups bloquées
         const widget = initFedaPayWidget({
           public_key: fedapayConfig.publicKey,
           environment: fedapayConfig.environment as 'sandbox' | 'live',
@@ -768,6 +768,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             iso: 'XOF',
           },
           locale: 'fr',
+          container: '#fedapay-embed', // ✅ Mode embarqué pour éviter les popups
           onComplete: async (payload) => {
             console.log('Payment completed:', payload);
 
@@ -834,19 +835,13 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
 
         widgetRef.current = widget;
 
-        // Ouvrir le widget de paiement avec gestion d'erreur
-        try {
-          widget.open();
-          
-          toast({
-            title: 'Fenêtre de paiement ouverte',
-            description: 'Complétez le paiement dans la fenêtre popup. Si elle ne s\'affiche pas, veuillez autoriser les popups pour ce site.',
-            duration: 5000,
-          });
-        } catch (openError) {
-          console.error('Error opening FedaPay popup:', openError);
-          throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.');
-        }
+        // ✅ En mode embarqué, le widget s'affiche automatiquement dans le conteneur
+        // Pas besoin d'appeler widget.open()
+        toast({
+          title: 'Formulaire de paiement chargé',
+          description: 'Complétez le paiement dans le formulaire ci-dessous.',
+          duration: 4000,
+        });
       } else {
         setIsCreatingPayment(false);
         throw new Error('Format de réponse invalide du serveur');
@@ -1132,12 +1127,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     }
   }, [open, appointmentId]);
 
-  const handleReopenPaymentWindow = () => {
-    if (!paymentUrl) return;
-
-    const features = 'width=600,height=700,scrollbars=yes,location=yes';
-    window.open(paymentUrl, '_blank', features);
-  };
+  // ✅ Fonction retirée car on utilise maintenant le mode embarqué au lieu des popups
 
   const formatExpiry = (value: string | null) => {
     if (!value) return null;
@@ -1163,44 +1153,29 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       case 'pending':
         return (
           <div className="space-y-4">
-            <div className="flex flex-col items-center justify-center py-6 space-y-3">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-lg font-semibold">Redirection vers FedaPay</p>
-              <p className="text-sm text-muted-foreground text-center">
-                Une requête USSD est envoyée sur votre téléphone : saisissez votre code PIN Mobile Money pour valider la transaction.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Vérification {pollCount} / {Math.floor(MAX_POLL_TIME / POLL_INTERVAL)}
-              </p>
-              {formatExpiry(expiresAt) && (
-                <p className="text-xs text-muted-foreground">
-                  Expiration du lien : {formatExpiry(expiresAt)}
-                </p>
-              )}
+            {/* ✅ Conteneur embarqué pour le widget FedaPay */}
+            <div
+              id="fedapay-embed"
+              className="w-full min-h-[420px] rounded-lg border bg-background"
+              style={{ minHeight: '420px' }}
+            />
+
+            <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+              <div className="flex items-center gap-2 font-semibold">
+                <Clock className="h-4 w-4" />
+                Instructions de paiement
+              </div>
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                <li>Complétez le formulaire de paiement ci-dessus.</li>
+                <li>Sur votre mobile, entrez le code PIN sur la requête USSD reçue ou utilisez le code OTP envoyé par SMS.</li>
+                <li>Le statut du paiement sera mis à jour automatiquement.</li>
+              </ol>
               {transactionId && (
-                <p className="text-xs font-mono text-muted-foreground">
+                <p className="text-xs font-mono text-muted-foreground pt-2 border-t">
                   Transaction FedaPay : {transactionId}
                 </p>
               )}
-            </div>
-
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center gap-2 font-semibold">
-                <Clock className="h-4 w-4" />
-                Suivi du paiement
-              </div>
-              <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-                <li>Confirmez le paiement dans l&apos;onglet FedaPay qui vient de s&apos;ouvrir.</li>
-                <li>Sur votre mobile, entrez le code PIN sur la requête USSD reçue ou utilisez le code OTP envoyé par SMS.</li>
-                <li>Revenez ici : nous mettons à jour le statut automatiquement.</li>
-              </ol>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                {paymentUrl && (
-                  <Button className="flex-1" variant="secondary" onClick={handleReopenPaymentWindow}>
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Ré-ouvrir FedaPay
-                  </Button>
-                )}
+              <div className="flex flex-col gap-2 sm:flex-row pt-2">
                 <Button className="flex-1" variant="outline" onClick={closeDialog}>
                   Annuler
                 </Button>
@@ -1449,26 +1424,15 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             <Button variant="outline" onClick={closeDialog} className="flex-1">
               Annuler
             </Button>
-            <Button 
-              onClick={() => {
-                if (paymentUrl) {
-                  window.open(paymentUrl, '_blank', 'noopener,noreferrer');
-                } else {
-                  handlePayment();
-                }
-              }} 
-              disabled={isProcessing} 
+            <Button
+              onClick={handlePayment}
+              disabled={isProcessing}
               className="flex-1"
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Traitement...
-                </>
-              ) : paymentUrl ? (
-                <>
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Ouvrir le paiement
                 </>
               ) : (
                 'Payer'
