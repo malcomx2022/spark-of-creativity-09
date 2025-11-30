@@ -278,10 +278,11 @@ serve(async (req) => {
         console.log('Existing pending payment found:', existingPayment);
         return new Response(
           JSON.stringify({ 
-            error: `Un paiement est déjà en cours pour ce rendez-vous. Veuillez patienter ${remainingMinutes} minute(s) ou annuler le paiement en attente.`,
+            error: `⏳ Un paiement est en cours de traitement.\n\nVeuillez patienter ${remainingMinutes} minute(s) ou cliquez sur "Annuler et réessayer" pour créer un nouveau paiement.`,
             paymentId: existingPayment.id,
             retryAfter: remainingMinutes,
-            existingPaymentStatus: existingPayment.status
+            existingPaymentStatus: existingPayment.status,
+            message: `Si vous avez fermé la fenêtre de paiement par erreur, patientez ${remainingMinutes} minute(s) ou annulez ce paiement pour recommencer.`
           }),
           { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
