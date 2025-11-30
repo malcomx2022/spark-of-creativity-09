@@ -238,8 +238,11 @@ export default function PatientDashboard() {
     setAppointmentIdForPayment(null);
     setPaymentAmount(null);
 
-    queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
-    queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
+    // Invalider et refetch toutes les queries liées
+    queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    queryClient.invalidateQueries({ queryKey: ['payments'] });
+    queryClient.refetchQueries({ queryKey: ['appointments', 'patient', patientId] });
+    queryClient.refetchQueries({ queryKey: ['payments', patientId] });
   }, [patientId, queryClient]);
 
   const handlePaymentDialogOpenChange = useCallback((open: boolean) => {
