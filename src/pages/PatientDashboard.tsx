@@ -455,7 +455,7 @@ export default function PatientDashboard() {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <div className="border-b">
+          <div className="border-b lg:hidden">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
               <TabsList className="inline-flex h-auto w-full min-w-max justify-start bg-transparent p-0 gap-0">
                 <TabsTrigger 
@@ -559,7 +559,166 @@ export default function PatientDashboard() {
           </div>
 
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Grille de navigation rapide sur desktop */}
+            <div className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="appointments"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Rendez-vous</CardTitle>
+                  <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Gérez vos consultations</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="group-sessions"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Séances de groupe</CardTitle>
+                  <Users className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Sessions collectives</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="triage"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Évaluation santé</CardTitle>
+                  <Shield className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Triage médical</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="reports"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Rapports</CardTitle>
+                  <ClipboardCheck className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Consultations détaillées</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="care-notes"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Notes SOAP</CardTitle>
+                  <ClipboardList className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Notes de soin</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="messages"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Messages</CardTitle>
+                  <MessageSquare className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Conversations</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="profile"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Mon profil</CardTitle>
+                  <User className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Informations personnelles</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="medical"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Dossier médical</CardTitle>
+                  <Heart className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Historique de santé</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="payments"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Paiements</CardTitle>
+                  <CreditCard className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Transactions</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="notifications"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Notifications</CardTitle>
+                  <Bell className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Alertes et rappels</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="reviews"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Avis</CardTitle>
+                  <Star className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Évaluations</p>
+                </CardContent>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="support"]')?.click()}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Support</CardTitle>
+                  <HelpCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">Aide et contact</p>
+                </CardContent>
+              </Card>
+            </div>
+            {/* Statistiques visibles sur mobile et tablet seulement */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:hidden">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium">Rendez-vous à venir</CardTitle>
