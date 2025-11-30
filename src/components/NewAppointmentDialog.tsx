@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { AddressSearchInput } from './AddressSearchInput';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import { getCategoryLabel } from '@/lib/practitioner-categories';
 
 // Système de queue de toasts pour éviter l'affichage simultané
 const toastQueue: Array<{ id: string; toast: any }> = [];
@@ -55,7 +56,7 @@ const processToastQueue = () => {
 };
 
 const formSchema = z.object({
-  specialty: z.string().min(1, '❌ Vous devez sélectionner une spécialité médicale'),
+  specialty: z.string().min(1, '❌ Vous devez sélectionner une catégorie de praticien'),
   date: z.date({ 
     message: '❌ Vous devez sélectionner une date pour le rendez-vous'
   }),
@@ -662,21 +663,21 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     });
   };
 
-  // Query dynamique pour récupérer les spécialités disponibles
-  const { data: availableSpecialties = [] } = useQuery({
-    queryKey: ['available-specialties'],
+  // Query dynamique pour récupérer les catégories disponibles
+  const { data: availableCategories = [] } = useQuery({
+    queryKey: ['available-categories'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('practitioners')
-        .select('specialty')
+        .select('practitioner_type')
         .eq('available', true)
         .eq('kyc_status', 'approved');
 
       if (error) throw error;
 
-      // Extraire les specialties uniques
-      const specialties = [...new Set(data?.map(p => p.specialty) || [])];
-      return specialties.filter(s => s && s.trim().length > 0).sort();
+      // Extraire les practitioner_type uniques
+      const types = [...new Set(data?.map(p => p.practitioner_type) || [])];
+      return types.filter(t => t && t.trim().length > 0);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -879,21 +880,21 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium">
-                    Spécialité recherchée <span className="text-destructive">*</span>
+                    Catégorie de praticien <span className="text-destructive">*</span>
                   </FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
-                        <SelectValue placeholder="Choisissez une spécialité..." />
+                        <SelectValue placeholder="Choisissez une catégorie..." />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {availableSpecialties.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground">Aucune spécialité disponible</div>
+                      {availableCategories.length === 0 ? (
+                        <div className="p-2 text-sm text-muted-foreground">Aucune catégorie disponible</div>
                       ) : (
-                        availableSpecialties.map((specialty) => (
-                          <SelectItem key={specialty} value={specialty}>
-                            {specialty}
+                        availableCategories.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {getCategoryLabel(category)}
                           </SelectItem>
                         ))
                       )}
