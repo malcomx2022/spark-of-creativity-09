@@ -36,6 +36,7 @@ import { formatAmount } from '@/lib/payment-config';
 import { getPersistedPaymentState, clearPersistedPaymentState } from '@/lib/payment-storage';
 
 export default function PatientDashboard() {
+  const [activeTab, setActiveTab] = useState("overview");
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
@@ -454,7 +455,7 @@ export default function PatientDashboard() {
           )}
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="border-b lg:hidden">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
               <TabsList className="inline-flex h-auto w-full min-w-max justify-start bg-transparent p-0 gap-0">
@@ -563,7 +564,7 @@ export default function PatientDashboard() {
             <div className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="appointments"]')?.click()}
+                onClick={() => setActiveTab("appointments")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Rendez-vous</CardTitle>
@@ -576,7 +577,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="group-sessions"]')?.click()}
+                onClick={() => setActiveTab("group-sessions")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Séances de groupe</CardTitle>
@@ -589,7 +590,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="triage"]')?.click()}
+                onClick={() => setActiveTab("triage")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Évaluation santé</CardTitle>
@@ -602,7 +603,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="reports"]')?.click()}
+                onClick={() => setActiveTab("reports")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Rapports</CardTitle>
@@ -615,7 +616,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="care-notes"]')?.click()}
+                onClick={() => setActiveTab("care-notes")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Notes SOAP</CardTitle>
@@ -628,7 +629,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="messages"]')?.click()}
+                onClick={() => setActiveTab("messages")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Messages</CardTitle>
@@ -641,7 +642,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="profile"]')?.click()}
+                onClick={() => setActiveTab("profile")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Mon profil</CardTitle>
@@ -654,7 +655,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="medical"]')?.click()}
+                onClick={() => setActiveTab("medical")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Dossier médical</CardTitle>
@@ -667,7 +668,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="payments"]')?.click()}
+                onClick={() => setActiveTab("payments")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Paiements</CardTitle>
@@ -680,7 +681,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="notifications"]')?.click()}
+                onClick={() => setActiveTab("notifications")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Notifications</CardTitle>
@@ -693,7 +694,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="reviews"]')?.click()}
+                onClick={() => setActiveTab("reviews")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Avis</CardTitle>
@@ -706,7 +707,7 @@ export default function PatientDashboard() {
 
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="support"]')?.click()}
+                onClick={() => setActiveTab("support")}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                   <CardTitle className="text-sm font-medium">Support</CardTitle>
