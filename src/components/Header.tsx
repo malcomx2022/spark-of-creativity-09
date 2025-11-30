@@ -74,13 +74,7 @@ export default function Header() {
               Accueil
             </button>
             <button 
-              onClick={() => {
-                navigate(ROUTES.HOME);
-                setTimeout(() => {
-                  const element = document.getElementById('services');
-                  element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 100);
-              }}
+              onClick={() => navigate(ROUTES.SERVICES)}
               className="text-foreground hover:text-primary transition-colors"
             >
               Services
