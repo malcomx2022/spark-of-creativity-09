@@ -6,7 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { FileText, Share2 } from "lucide-react";
+import { FileText, Share2, HelpCircle, Info } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote } from '@/hooks/useCareNotes';
@@ -244,8 +251,37 @@ export default function CareNotesSection() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Note de soin (Format SOAP)</CardTitle>
-              <CardDescription>Subjectif, Objectif, Analyse, Plan</CardDescription>
+              <CardTitle>
+                <div className="flex items-center gap-2">
+                  Note de soin (Format SOAP)
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs" side="right">
+                        <div className="space-y-2">
+                          <p className="font-semibold">Quand utiliser les Notes SOAP ?</p>
+                          <ul className="list-disc list-inside space-y-1 text-sm">
+                            <li>Suivis rapides et consultations de routine</li>
+                            <li>Notes cliniques quotidiennes</li>
+                            <li>Documentation structurée mais concise</li>
+                            <li>Partage rapide avec le patient</li>
+                          </ul>
+                          <div className="mt-3 p-2 bg-muted rounded text-xs">
+                            <p className="font-semibold mb-1">Format SOAP :</p>
+                            <p><strong>S</strong>ubjectif : Plaintes du patient</p>
+                            <p><strong>O</strong>bjectif : Observations cliniques</p>
+                            <p><strong>A</strong>nalyse : Diagnostic/Évaluation</p>
+                            <p><strong>P</strong>lan : Traitement/Recommandations</p>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </CardTitle>
+              <CardDescription>Notes cliniques rapides au format SOAP • Subjectif, Objectif, Analyse, Plan</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Label htmlFor="share">Partager avec le patient</Label>
@@ -258,6 +294,13 @@ export default function CareNotesSection() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Alert className="mb-4">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Notes SOAP</strong> : Pour suivis rapides et notes cliniques quotidiennes.
+              Utilisez <strong>Rapports de Consultation</strong> pour documentations formelles (onglet séparé).
+            </AlertDescription>
+          </Alert>
           {!selectedAppointmentId ? (
             <div className="text-center py-8 text-muted-foreground">
               Sélectionnez une consultation pour créer ou modifier une note

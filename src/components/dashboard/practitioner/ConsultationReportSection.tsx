@@ -5,8 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { FileText, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { FileText, AlertCircle, ChevronLeft, ChevronRight, Plus, HelpCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
 import { AppointmentSelectionDialog } from './AppointmentSelectionDialog';
 import { ConsultationReportFormDialog } from './ConsultationReportFormDialog';
@@ -85,9 +91,30 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
                 Rapports de consultation
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs" side="right">
+                      <div className="space-y-2">
+                        <p className="font-semibold">Quand utiliser les Rapports de Consultation ?</p>
+                        <ul className="list-disc list-inside space-y-1 text-sm">
+                          <li>Consultations importantes</li>
+                          <li>Diagnostics formels et détaillés</li>
+                          <li>Documentation complète pour médecin traitant</li>
+                          <li>Cas nécessitant un suivi médical spécifique</li>
+                        </ul>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          ℹ️ Ces rapports peuvent être partagés avec le médecin traitant du patient.
+                        </p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </CardTitle>
               <CardDescription>
-                {totalCount} rapport(s) de consultation au total
+                Rapports formels et détaillés pour consultations importantes • {totalCount} rapport(s) au total
               </CardDescription>
             </div>
             <Button onClick={() => setShowAppointmentSelection(true)}>
@@ -96,7 +123,14 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
             </Button>
           </div>
         </CardHeader>
-      <CardContent className="space-y-4">
+        <CardContent className="space-y-4">
+          <Alert className="mb-4">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Rapports de Consultation</strong> : Pour documentations formelles et détaillées.
+              Utilisez <strong>Notes SOAP</strong> pour suivis rapides (onglet séparé).
+            </AlertDescription>
+          </Alert>
         {reports.length === 0 ? (
           <Alert>
             <AlertCircle className="h-4 w-4" />
