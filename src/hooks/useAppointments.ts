@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import type { Appointment, AppointmentStatus, CreateAppointmentData } from '@/types/appointment';
 import { withTimeout } from '@/lib/network-timeout';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 function toAppointment(row: Tables<'appointments'>): Appointment {
   return {
@@ -134,6 +136,32 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
 
       const currentUser = await supabase.auth.getUser();
       if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
+
+      // ✅ VALIDATION ANTI-DOUBLON : Vérifier s'il existe déjà un RDV actif avec ce praticien à cette date
+      if (data.practitionerId) {
+        const appointmentDate = new Date(data.date).toISOString().split('T')[0];
+        
+        const { data: existingAppointments, error: checkError } = await withTimeout(
+          supabase
+            .from('appointments')
+            .select('date, time, practitioner_name')
+            .eq('patient_id', patientId)
+            .eq('practitioner_id', data.practitionerId)
+            .eq('date', appointmentDate)
+            .not('status', 'in', '(cancelled,rejected,completed,cancelled_unpaid)')
+        );
+
+        if (checkError) throw checkError;
+
+        if (existingAppointments && existingAppointments.length > 0) {
+          const existing = existingAppointments[0];
+          const formattedDate = format(new Date(existing.date), 'EEEE d MMMM yyyy', { locale: fr });
+          throw new Error(
+            `Vous avez déjà un rendez-vous prévu avec ${existing.practitioner_name} le ${formattedDate} à ${existing.time}.\n\n` +
+            `Veuillez choisir une autre date ou annuler le rendez-vous existant.`
+          );
+        }
+      }
       
       const profile = await withTimeout(
         supabase
