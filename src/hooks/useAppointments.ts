@@ -134,7 +134,35 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
 
       const currentUser = await supabase.auth.getUser();
       if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
-      
+
+      // ✅ VALIDATION: Vérifier si le patient a déjà un rendez-vous à cette date avec ce praticien
+      if (data.practitionerId) {
+        const appointmentDate = new Date(data.date).toISOString().split('T')[0];
+
+        const { data: existingAppointments, error: checkError } = await withTimeout(
+          supabase
+            .from('appointments')
+            .select('id, practitioner_name, time, status')
+            .eq('patient_id', patientId)
+            .eq('practitioner_id', data.practitionerId)
+            .eq('date', appointmentDate)
+            .not('status', 'in', '(cancelled,rejected,completed)')
+        );
+
+        if (checkError) {
+          console.error('Erreur lors de la vérification des rendez-vous existants:', checkError);
+        }
+
+        if (existingAppointments && existingAppointments.length > 0) {
+          const existing = existingAppointments[0];
+          throw new Error(
+            `Vous avez déjà un rendez-vous avec ${data.practitionerName || existing.practitioner_name} ` +
+            `le ${new Date(appointmentDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} ` +
+            `à ${existing.time}. Veuillez choisir une autre date.`
+          );
+        }
+      }
+
       const profile = await withTimeout(
         supabase
           .from('profiles')
