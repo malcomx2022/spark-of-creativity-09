@@ -365,11 +365,11 @@ export default function PractitionerDashboard() {
 
 
         {/* Cartes de résumé */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">À traiter</CardTitle>
-              <AlertCircle className="h-4 w-4 text-orange-500" />
+              <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{categorizedAppointments.awaiting.length}</div>
@@ -378,9 +378,9 @@ export default function PractitionerDashboard() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Confirmés</CardTitle>
-              <Calendar className="h-4 w-4 text-green-500" />
+              <Calendar className="h-4 w-4 text-green-500 flex-shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{categorizedAppointments.confirmed.length}</div>
@@ -389,9 +389,9 @@ export default function PractitionerDashboard() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Terminés</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-blue-500" />
+              <CheckCircle2 className="h-4 w-4 text-blue-500 flex-shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{categorizedAppointments.completed.length}</div>
@@ -400,9 +400,9 @@ export default function PractitionerDashboard() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Temps total</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
+              <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -414,53 +414,54 @@ export default function PractitionerDashboard() {
         </div>
 
         <Tabs defaultValue="appointments" className="space-y-6">
-          <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-10 gap-1 sm:gap-2">
-              <TabsTrigger value="appointments" className="gap-2 whitespace-nowrap">
-                <Calendar className="h-4 w-4" />
-                <span className="hidden sm:inline">RDV</span>
-              </TabsTrigger>
-              <TabsTrigger value="profile" className="gap-2 whitespace-nowrap">
-                <User className="h-4 w-4" />
-                <span className="hidden sm:inline">Profil</span>
-              </TabsTrigger>
-              <TabsTrigger value="availability" className="gap-2 whitespace-nowrap">
-                <Clock className="h-4 w-4" />
-                <span className="hidden sm:inline">Disponibilités</span>
-              </TabsTrigger>
-              <TabsTrigger value="payment-info" className="gap-2 whitespace-nowrap">
-                <Wallet className="h-4 w-4" />
-                <span className="hidden sm:inline">Coordonnées paiement</span>
-              </TabsTrigger>
-              <TabsTrigger value="payouts" className="gap-2 whitespace-nowrap">
-                <DollarSign className="h-4 w-4" />
-                <span className="hidden sm:inline">Revenus</span>
-              </TabsTrigger>
-              <TabsTrigger value="notes" className="gap-2 whitespace-nowrap">
-                <FileText className="h-4 w-4" />
-                <span className="hidden sm:inline">Notes</span>
-              </TabsTrigger>
-              <TabsTrigger value="reports" className="gap-2 whitespace-nowrap">
-                <ClipboardCheck className="h-4 w-4" />
-                <span className="hidden sm:inline">Rapports</span>
-              </TabsTrigger>
-              <TabsTrigger value="reviews" className="gap-2 whitespace-nowrap">
-                <Star className="h-4 w-4" />
-                <span className="hidden sm:inline">Avis</span>
-              </TabsTrigger>
-              <TabsTrigger value="messages" className="gap-2 whitespace-nowrap">
-                <MessageSquare className="h-4 w-4" />
-                <span className="hidden sm:inline">Messages</span>
-              </TabsTrigger>
-              <TabsTrigger value="notifications" className="gap-2 whitespace-nowrap">
-                <Shield className="h-4 w-4" />
-                <span className="hidden sm:inline">Notifications</span>
-              </TabsTrigger>
-              <TabsTrigger value="support" className="gap-2 whitespace-nowrap">
-                <HelpCircle className="h-4 w-4" />
-                <span className="hidden sm:inline">Support</span>
-              </TabsTrigger>
-            </TabsList>
+          <div className="border-b">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+              <TabsList className="inline-flex h-auto w-full min-w-max justify-start bg-transparent p-0 gap-0">
+                <TabsTrigger value="appointments" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <Calendar className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">RDV</span>
+                </TabsTrigger>
+                <TabsTrigger value="profile" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <User className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">Profil</span>
+                </TabsTrigger>
+                <TabsTrigger value="availability" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <Clock className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm hidden sm:inline">Disponibilités</span>
+                  <span className="text-sm sm:hidden">Dispo</span>
+                </TabsTrigger>
+                <TabsTrigger value="payment-info" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <Wallet className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm hidden md:inline">Coordonnées</span>
+                  <span className="text-sm md:hidden">Pay</span>
+                </TabsTrigger>
+                <TabsTrigger value="payouts" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <DollarSign className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">Revenus</span>
+                </TabsTrigger>
+                <TabsTrigger value="care-notes" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <FileText className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm hidden sm:inline">Notes SOAP</span>
+                  <span className="text-sm sm:hidden">Notes</span>
+                </TabsTrigger>
+                <TabsTrigger value="reports" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <ClipboardCheck className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">Rapports</span>
+                </TabsTrigger>
+                <TabsTrigger value="messages" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">Messages</span>
+                </TabsTrigger>
+                <TabsTrigger value="reviews" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <Star className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">Avis</span>
+                </TabsTrigger>
+                <TabsTrigger value="support" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                  <HelpCircle className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">Support</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
           </div>
 
           {/* Onglet Rendez-vous */}
