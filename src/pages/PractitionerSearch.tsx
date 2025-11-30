@@ -20,6 +20,7 @@ import { Star, Phone, Navigation } from 'lucide-react';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import { getCategoryLabel } from '@/lib/practitioner-categories';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -38,7 +39,7 @@ export default function PractitionerSearch() {
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
-  const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchRadius, setSearchRadius] = useState<string>('100');
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
   const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
@@ -132,8 +133,8 @@ export default function PractitionerSearch() {
   useEffect(() => {
     let filtered = practitioners;
 
-    if (selectedSpecialty !== 'all') {
-      filtered = filtered.filter(p => p.specialty === selectedSpecialty);
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(p => p.practitioner_type === selectedCategory);
     }
 
     // Si l'utilisateur a une position, filtrer par rayon
@@ -144,10 +145,10 @@ export default function PractitionerSearch() {
     }
 
     setFilteredPractitioners(filtered);
-  }, [practitioners, selectedSpecialty, searchRadius, userLocation]);
+  }, [practitioners, selectedCategory, searchRadius, userLocation]);
 
-  const specialties = useMemo(
-    () => ['all', ...Array.from(new Set(practitionersData.map(p => p.specialty)))],
+  const categories = useMemo(
+    () => ['all', ...Array.from(new Set(practitionersData.map(p => p.practitioner_type).filter(Boolean)))],
     [practitionersData]
   );
 
@@ -231,14 +232,14 @@ export default function PractitionerSearch() {
                     <Search className="h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Rechercher un praticien" />
                   </div>
-                  <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Spécialité" />
+                      <SelectValue placeholder="Catégorie" />
                     </SelectTrigger>
                     <SelectContent>
-                      {specialties.map(specialty => (
-                        <SelectItem key={specialty} value={specialty}>
-                          {specialty === 'all' ? 'Toutes les spécialités' : specialty}
+                      {categories.map(category => (
+                        <SelectItem key={category} value={category}>
+                          {category === 'all' ? 'Toutes les catégories' : getCategoryLabel(category)}
                         </SelectItem>
                       ))}
                     </SelectContent>

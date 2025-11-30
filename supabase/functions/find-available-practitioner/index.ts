@@ -4,7 +4,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 interface FindPractitionerRequest {
   patientLat: number;
   patientLon: number;
-  specialty: string;
+  specialty: string; // Maintenant contient le practitioner_type (catégorie)
   appointmentDate: string;
   appointmentTime: string;
   maxRadius?: number;
@@ -124,17 +124,18 @@ Deno.serve(async (req) => {
     console.log('🔍 Recherche de praticien:', {
       patientLat,
       patientLon,
-      specialty,
+      specialty, // Contient maintenant practitioner_type (catégorie)
       appointmentDate,
       appointmentTime,
       maxRadius,
     });
 
     // Récupérer tous les praticiens actifs, validés KYC et autorisés à accepter des missions
+    // On cherche par practitioner_type (catégorie) au lieu de specialty
     const { data: practitioners, error: practitionersError } = await supabase
       .from('practitioners')
       .select('*')
-      .eq('specialty', specialty)
+      .eq('practitioner_type', specialty)
       .eq('available', true)
       .eq('can_accept_missions', true)
       .eq('kyc_status', 'approved')
@@ -142,7 +143,7 @@ Deno.serve(async (req) => {
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
     
-    console.log(`📊 ${practitioners?.length || 0} praticien(s) trouvé(s) avec la spécialité "${specialty}"`);
+    console.log(`📊 ${practitioners?.length || 0} praticien(s) trouvé(s) pour la catégorie "${specialty}"`);
 
     if (practitionersError) {
       throw practitionersError;
@@ -152,7 +153,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          message: `Aucun praticien disponible trouvé pour la spécialité "${specialty}"`,
+          message: `Aucun praticien disponible trouvé pour la catégorie "${specialty}"`,
         }),
         { 
           status: 200,
