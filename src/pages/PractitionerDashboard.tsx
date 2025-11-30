@@ -8,7 +8,6 @@ import {
   Clock, 
   CheckCircle2,
   AlertCircle,
-  TrendingUp,
   Loader2,
   User,
   DollarSign,
@@ -413,14 +412,10 @@ export default function PractitionerDashboard() {
           </Card>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs defaultValue="appointments" className="space-y-6">
           <div className="border-b">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
               <TabsList className="inline-flex h-auto w-full min-w-max justify-start bg-transparent p-0 gap-0">
-                <TabsTrigger value="overview" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent lg:hidden">
-                  <TrendingUp className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-sm">Accueil</span>
-                </TabsTrigger>
                 <TabsTrigger value="appointments" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
                   <Calendar className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm">RDV</span>
@@ -468,141 +463,6 @@ export default function PractitionerDashboard() {
             </div>
           </div>
 
-          {/* Overview Tab - Grille de navigation sur desktop */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="appointments"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Rendez-vous</CardTitle>
-                  <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold mb-1">{categorizedAppointments.awaiting.length}</div>
-                  <p className="text-xs text-muted-foreground">À traiter</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="profile"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Mon profil</CardTitle>
-                  <User className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Informations professionnelles</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="availability"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Disponibilités</CardTitle>
-                  <Clock className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Gérer mon agenda</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="payment-info"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Coordonnées bancaires</CardTitle>
-                  <Wallet className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Infos de paiement</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="payouts"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Revenus</CardTitle>
-                  <DollarSign className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Versements et historique</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="care-notes"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Notes SOAP</CardTitle>
-                  <FileText className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Notes de soin</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="reports"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Rapports</CardTitle>
-                  <ClipboardCheck className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Rapports de consultation</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="messages"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Messages</CardTitle>
-                  <MessageSquare className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Conversations patients</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="reviews"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Avis</CardTitle>
-                  <Star className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Évaluations patients</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => document.querySelector<HTMLButtonElement>('[value="support"]')?.click()}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Support</CardTitle>
-                  <HelpCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Aide et contact</p>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
           <TabsContent value="appointments" className="space-y-6">
             <div className="mb-6">
               <h2 className="text-2xl font-bold">Mes consultations</h2>
@@ -700,7 +560,7 @@ export default function PractitionerDashboard() {
                 {categorizedAppointments.completed.length === 0 ? (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
-                      <TrendingUp className="h-12 w-12 text-muted-foreground mb-4" />
+                      <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
                       <p className="text-muted-foreground">Aucune consultation terminée</p>
                     </CardContent>
                   </Card>
