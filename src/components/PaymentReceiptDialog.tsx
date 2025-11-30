@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Download, X } from 'lucide-react';
 import type { Payment } from '@/types/payment';
 import { formatAmount, PAYMENT_STATUS_LABELS } from '@/lib/payment-config';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { toast } from '@/hooks/use-toast';
 
 interface PaymentReceiptDialogProps {
   open: boolean;
@@ -14,18 +17,130 @@ export function PaymentReceiptDialog({ open, onOpenChange, payment }: PaymentRec
   if (!payment) return null;
 
   const handleDownloadPDF = () => {
-    // TODO: Générer et télécharger le PDF du reçu
-    const receiptData = {
-      invoiceNumber: payment.invoice_number,
-      date: new Date(payment.created_at).toLocaleDateString('fr-FR'),
-      amount: payment.amount,
-      currency: payment.currency,
-      paymentMethod: payment.payment_method.toUpperCase(),
-      status: payment.status,
-    };
-
-    console.log('Downloading receipt:', receiptData);
-    // Implémenter la génération PDF ici
+    try {
+      const doc = new jsPDF();
+      
+      // Générer le numéro de facture si non disponible
+      const invoiceNumber = payment.invoice_number || `PAY-${payment.id.substring(0, 8).toUpperCase()}`;
+      const dateStr = new Date(payment.created_at).toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).replace(/\//g, '-');
+      
+      // En-tête
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text('REÇU DE PAIEMENT', 105, 20, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text('DomiCares - Soins de santé à domicile', 105, 28, { align: 'center' });
+      
+      // Ligne de séparation
+      doc.setDrawColor(200, 200, 200);
+      doc.line(20, 35, 190, 35);
+      
+      // Tableau des informations principales
+      autoTable(doc, {
+        startY: 45,
+        head: [['Information', 'Détail']],
+        body: [
+          ['Numéro de facture', invoiceNumber],
+          ['Date de paiement', new Date(payment.created_at).toLocaleDateString('fr-FR', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })],
+          ['Méthode de paiement', payment.payment_method.toUpperCase()],
+          ['Statut', PAYMENT_STATUS_LABELS[payment.status as keyof typeof PAYMENT_STATUS_LABELS] || payment.status],
+          ...(payment.fedapay_transaction_id ? [['Transaction FedaPay ID', payment.fedapay_transaction_id]] : [])
+        ],
+        theme: 'grid',
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        styles: {
+          fontSize: 10,
+          cellPadding: 5
+        }
+      });
+      
+      // Calculer le montant net
+      const commissionAmount = payment.commission_amount || 0;
+      const feesAmount = payment.fees_amount || 0;
+      const netAmount = payment.amount - commissionAmount - feesAmount;
+      
+      // Tableau des détails financiers
+      const financialData = [
+        ['Montant total', formatAmount(payment.amount, payment.currency)]
+      ];
+      
+      if (commissionAmount > 0) {
+        financialData.push(['Commission plateforme', `-${formatAmount(commissionAmount, payment.currency)}`]);
+      }
+      
+      if (feesAmount > 0) {
+        financialData.push(['Frais de transaction', `-${formatAmount(feesAmount, payment.currency)}`]);
+      }
+      
+      financialData.push(['Montant net', formatAmount(netAmount, payment.currency)]);
+      
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 10,
+        head: [['Description', 'Montant']],
+        body: financialData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [52, 152, 219],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        styles: {
+          fontSize: 10,
+          cellPadding: 5
+        },
+        footStyles: {
+          fillColor: [241, 241, 241],
+          textColor: 0,
+          fontStyle: 'bold'
+        }
+      });
+      
+      // Pied de page
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(
+        `Document généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`,
+        105,
+        pageHeight - 15,
+        { align: 'center' }
+      );
+      doc.text(
+        'Ce reçu constitue une preuve de paiement. Conservez-le pour vos archives.',
+        105,
+        pageHeight - 10,
+        { align: 'center' }
+      );
+      
+      // Télécharger le PDF
+      doc.save(`Recu_${invoiceNumber}_${dateStr}.pdf`);
+      
+      toast({
+        title: 'Reçu téléchargé',
+        description: 'Le reçu PDF a été généré et téléchargé avec succès.',
+      });
+    } catch (error) {
+      console.error('Erreur lors de la génération du PDF:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de générer le reçu PDF. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
