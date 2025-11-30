@@ -1,8 +1,9 @@
+import { useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Calendar } from 'lucide-react';
+import { MessageSquare, Calendar, Loader2 } from 'lucide-react';
 import { type Conversation } from '@/hooks/useConversations';
 import { Button } from '@/components/ui/button';
 
@@ -11,6 +12,9 @@ interface ConversationsListProps {
   selectedConversation?: Conversation;
   onSelectConversation: (conversation: Conversation) => void;
   userType: 'patient' | 'practitioner';
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  fetchNextPage?: () => void;
 }
 
 export function ConversationsList({
@@ -18,7 +22,29 @@ export function ConversationsList({
   selectedConversation,
   onSelectConversation,
   userType,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
 }: ConversationsListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Infinite scroll : détecter quand on atteint le bas
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement || !hasNextPage || isFetchingNextPage) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+
+      // Si on est à 100px du bas, charger plus
+      if (scrollHeight - scrollTop - clientHeight < 100) {
+        fetchNextPage?.();
+      }
+    };
+
+    scrollElement.addEventListener('scroll', handleScroll);
+    return () => scrollElement.removeEventListener('scroll', handleScroll);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -92,7 +118,7 @@ export function ConversationsList({
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[calc(100vh-16rem)]">
+        <ScrollArea className="h-[calc(100vh-16rem)]" ref={scrollRef}>
           <div className="divide-y">
             {conversations.map((conversation) => {
               const otherUserName = userType === 'patient' 
@@ -148,6 +174,23 @@ export function ConversationsList({
                 </Button>
               );
             })}
+
+            {/* Indicateur de chargement en bas */}
+            {isFetchingNextPage && (
+              <div className="flex items-center justify-center p-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">
+                  Chargement...
+                </span>
+              </div>
+            )}
+
+            {/* Message si plus de conversations */}
+            {!hasNextPage && conversations.length > 0 && (
+              <div className="text-center p-4 text-sm text-muted-foreground">
+                Toutes les conversations chargées
+              </div>
+            )}
           </div>
         </ScrollArea>
       </CardContent>

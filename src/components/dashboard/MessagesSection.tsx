@@ -7,9 +7,18 @@ import type { Conversation } from '@/hooks/useConversations';
 
 export function MessagesSection() {
   const { data: user } = useSupabaseUser();
-  const { data: conversations = [], isLoading } = useConversations(user?.id, 'patient');
+  const {
+    data,
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useConversations(user?.id, 'patient');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
   const hasAutoSelected = useRef(false);
+
+  // Aplatir les pages de conversations
+  const conversations = data?.pages.flatMap(page => page.conversations) || [];
 
   // Auto-select first conversation when loaded (only once)
   useEffect(() => {
@@ -35,6 +44,9 @@ export function MessagesSection() {
           selectedConversation={selectedConversation}
           onSelectConversation={setSelectedConversation}
           userType="patient"
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          fetchNextPage={fetchNextPage}
         />
       </div>
       <div className="lg:col-span-2">
