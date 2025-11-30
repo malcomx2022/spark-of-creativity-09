@@ -58,6 +58,7 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
               ? `patient_id.eq.${userId}`
               : `practitioner_id.eq.${userId}`
           )
+          .in('status', ['confirmed', 'completed'])
           .order('created_at', { ascending: false })
           .limit(50) // ✅ Limiter les conversations chargées
       );
