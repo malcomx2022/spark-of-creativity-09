@@ -36,7 +36,7 @@ import { formatAmount } from '@/lib/payment-config';
 import { getPersistedPaymentState, clearPersistedPaymentState } from '@/lib/payment-storage';
 
 export default function PatientDashboard() {
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("appointments");
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
@@ -455,16 +455,175 @@ export default function PatientDashboard() {
           )}
         </div>
 
+        {/* Grille de navigation sur desktop */}
+        <div className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("appointments")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Rendez-vous</CardTitle>
+              <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Gérez vos consultations</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("group-sessions")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Séances de groupe</CardTitle>
+              <Users className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Sessions collectives</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("triage")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Évaluation santé</CardTitle>
+              <Shield className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Triage médical</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("reports")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Rapports</CardTitle>
+              <ClipboardCheck className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Consultations détaillées</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("care-notes")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Notes SOAP</CardTitle>
+              <ClipboardList className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Notes de soin</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("messages")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Messages</CardTitle>
+              <MessageSquare className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Conversations</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("profile")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Mon profil</CardTitle>
+              <User className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Informations personnelles</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("medical")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Dossier médical</CardTitle>
+              <Heart className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Historique de santé</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("payments")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Paiements</CardTitle>
+              <CreditCard className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Transactions</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("notifications")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Notifications</CardTitle>
+              <Bell className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Alertes et rappels</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("reviews")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Avis</CardTitle>
+              <Star className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Évaluations</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+            onClick={() => setActiveTab("support")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Support</CardTitle>
+              <HelpCircle className="h-5 w-5 text-primary flex-shrink-0" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Aide et contact</p>
+            </CardContent>
+          </Card>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="border-b lg:hidden">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
               <TabsList className="inline-flex h-auto w-full min-w-max justify-start bg-transparent p-0 gap-0">
                 <TabsTrigger 
-                  value="overview" 
+                  value="appointments" 
                   className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent"
                 >
-                  <Activity className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-sm">Accueil</span>
+                  <Calendar className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">RDV</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="appointments" 
@@ -559,237 +718,6 @@ export default function PatientDashboard() {
             </div>
           </div>
 
-          <TabsContent value="overview" className="space-y-6">
-            {/* Grille de navigation rapide sur desktop */}
-            <div className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("appointments")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Rendez-vous</CardTitle>
-                  <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Gérez vos consultations</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("group-sessions")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Séances de groupe</CardTitle>
-                  <Users className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Sessions collectives</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("triage")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Évaluation santé</CardTitle>
-                  <Shield className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Triage médical</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("reports")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Rapports</CardTitle>
-                  <ClipboardCheck className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Consultations détaillées</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("care-notes")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Notes SOAP</CardTitle>
-                  <ClipboardList className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Notes de soin</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("messages")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Messages</CardTitle>
-                  <MessageSquare className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Conversations</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("profile")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Mon profil</CardTitle>
-                  <User className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Informations personnelles</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("medical")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Dossier médical</CardTitle>
-                  <Heart className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Historique de santé</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("payments")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Paiements</CardTitle>
-                  <CreditCard className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Transactions</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("notifications")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Notifications</CardTitle>
-                  <Bell className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Alertes et rappels</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("reviews")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Avis</CardTitle>
-                  <Star className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Évaluations</p>
-                </CardContent>
-              </Card>
-
-              <Card 
-                className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-                onClick={() => setActiveTab("support")}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Support</CardTitle>
-                  <HelpCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">Aide et contact</p>
-                </CardContent>
-              </Card>
-            </div>
-            {/* Statistiques visibles sur mobile et tablet seulement */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:hidden">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Rendez-vous à venir</CardTitle>
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{upcomingAppointments.length}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">En attente</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Consultations totales</CardTitle>
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {appointments.filter(apt => apt.status === 'completed').length}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Prochains rendez-vous</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {upcomingAppointments.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
-                    {patientId && (
-                      <NewAppointmentDialog 
-                        onSubmit={handleNewAppointment}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {upcomingAppointments.slice(0, 3).map(appointment => (
-                      <div key={appointment.id} className="space-y-4">
-                        <AppointmentCard
-                          appointment={appointment}
-                          userRole="patient"
-                          onCancel={handleCancel}
-                          onPaymentRequired={handlePaymentRequired}
-                        />
-                        {appointment.status === 'confirmed' && (
-                          <GPSTracking appointment={appointment} />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           <TabsContent value="appointments" className="space-y-6">
             <Suspense fallback={
