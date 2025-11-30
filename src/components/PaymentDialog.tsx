@@ -32,6 +32,7 @@ import {
 } from '@/lib/fedapay-widget';
 
 type PaymentMethod = 'mtn' | 'moov';
+type PaymentContext = 'appointment' | 'group_session';
 
 interface PaymentResponse {
   success?: boolean;
@@ -77,14 +78,39 @@ function isPaymentResponse(payload: unknown): payload is PaymentResponse {
 interface PaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  appointmentId: string;
+  appointmentId?: string;
+  sessionId?: string;
   amount: number;
+  context?: PaymentContext;
+  sessionDetails?: {
+    session_name: string;
+    scheduled_date: string;
+    start_time: string;
+    current_participants?: number;
+    max_participants?: number;
+  };
   onSuccess?: () => void;
   onComplete?: () => void;
   onError?: (error: Error) => void;
 }
 
-export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuccess, onComplete, onError }: PaymentDialogProps) {
+export function PaymentDialog({ 
+  open, 
+  onOpenChange, 
+  appointmentId, 
+  sessionId,
+  amount, 
+  context = 'appointment',
+  sessionDetails,
+  onSuccess, 
+  onComplete, 
+  onError 
+}: PaymentDialogProps) {
+  const contextId = context === 'appointment' ? appointmentId : sessionId;
+  
+  if (!contextId) {
+    throw new Error(`${context === 'appointment' ? 'appointmentId' : 'sessionId'} is required`);
+  }
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [payerName, setPayerName] = useState('');
@@ -189,18 +215,44 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     if (!open || existingPaymentChecked) return;
 
     const checkExistingPayment = async () => {
-      console.log('🔍 Vérification d\'un paiement existant pour le rendez-vous:', appointmentId);
+      console.log(`🔍 Vérification d'un paiement existant pour ${context}:`, contextId);
       
-      const { data: existingPayment } = await withTimeout(
-        supabase
-          .from('payments')
-          .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
-          .eq('appointment_id', appointmentId)
-          .in('status', ['initiated', 'pending'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      );
+      // Pour les rendez-vous, on vérifie via appointment_id
+      // Pour les séances de groupe, on vérifie via group_session_participants
+      let existingPayment = null;
+      
+      if (context === 'appointment') {
+        const { data } = await withTimeout(
+          supabase
+            .from('payments')
+            .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
+            .eq('appointment_id', contextId)
+            .in('status', ['initiated', 'pending'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        );
+        existingPayment = data;
+      } else {
+        // Pour les séances de groupe, vérifier via participants
+        const { data: participant } = await withTimeout(
+          supabase
+            .from('group_session_participants')
+            .select('id, payment_status')
+            .eq('session_id', contextId)
+            .eq('patient_id', (await supabase.auth.getUser()).data.user?.id || '')
+            .eq('payment_status', 'pending')
+            .maybeSingle()
+        );
+        
+        if (participant) {
+          // Chercher le paiement associé via les events
+          console.log('Participant en attente trouvé, séance déjà réservée');
+          existingPayment = null; // Laisser continuer le flow normal
+        }
+      }
+      
+      const { data: existingPaymentData } = existingPayment ? { data: existingPayment } : { data: null };
 
       if (existingPayment) {
         console.log('✅ Paiement existant trouvé:', existingPayment.id, 'Status:', existingPayment.status);
@@ -314,7 +366,7 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
       if (!session) return;
 
       await supabase.from('payment_attempts').insert({
-        appointment_id: appointmentId,
+        appointment_id: context === 'appointment' ? contextId : null,
         user_id: session.user.id,
         attempt_number: attemptNumber + 1,
         status,
@@ -489,72 +541,37 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         throw new Error('Vous devez être connecté pour effectuer un paiement');
       }
 
-      console.log('Initiating payment:', { appointmentId, amount, paymentMethod });
+      console.log('Initiating payment:', { contextId, context, amount, paymentMethod });
 
-      // ✅ Vérifier une dernière fois qu'aucun paiement n'existe
-      const { data: existingPayment } = await withTimeout(
-        supabase
-          .from('payments')
-          .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
-          .eq('appointment_id', appointmentId)
-          .in('status', ['initiated', 'pending'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      );
+      // ✅ Appeler l'edge function appropriée selon le contexte
+      let edgeFunctionName: string;
+      let edgeFunctionBody: any;
 
-      // Si un paiement existe, vérifier son état
-      if (existingPayment) {
-        const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-        const tenMinutes = 10 * 60 * 1000;
-        
-        // Si le paiement a expiré, le supprimer
-        if (paymentAge > tenMinutes) {
-          console.log('⏰ Paiement expiré lors de la vérification, suppression...');
-          await supabase.from('payments').delete().eq('id', existingPayment.id);
-        } else if (existingPayment.fedapay_payment_url) {
-          // Si le paiement est valide avec URL, l'utiliser
-          console.log('✅ Paiement existant trouvé, réutilisation');
-          
-          setPaymentUrl(existingPayment.fedapay_payment_url);
-          setPaymentId(existingPayment.id);
-          setTransactionId(existingPayment.fedapay_transaction_id || null);
-          setPaymentStatus('pending');
-          setPollCount(0);
-          setIsCreatingPayment(false);
-
-          const remainingMinutes = Math.ceil((tenMinutes - paymentAge) / 60000);
-
-          toast({
-            title: 'Paiement en cours',
-            description: `Complétez le paiement dans la fenêtre qui vient de s'ouvrir (expire dans ${remainingMinutes} min).`,
-          });
-
-          window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
-          return;
-        } else {
-          // Paiement sans URL, le supprimer
-          console.log('⚠️ Paiement sans URL lors de la vérification, suppression...');
-          await supabase.from('payments').delete().eq('id', existingPayment.id);
-        }
+      if (context === 'appointment') {
+        edgeFunctionName = 'create-payment';
+        edgeFunctionBody = {
+          appointmentId: contextId,
+          amount,
+          paymentMethod,
+          phoneNumber: sanitizedPhoneNumber,
+          payerName: payerName.trim(),
+          payerEmail: payerEmail.trim() || undefined,
+        };
+      } else {
+        edgeFunctionName = 'register-group-session';
+        edgeFunctionBody = {
+          sessionId: contextId,
+          patientId: session.user.id,
+          amount,
+          paymentMethod,
+          phoneNumber: sanitizedPhoneNumber,
+        };
       }
-
-      // Sinon, créer un nouveau paiement
-      console.log('💳 Création d\'un nouveau paiement');
 
       // Appel avec retry et notification à chaque tentative
       const { data: result, error } = await invokeEdgeFunctionWithRetry(
-        'create-payment',
-        {
-          body: {
-            appointmentId,
-            amount,
-            paymentMethod,
-            phoneNumber: sanitizedPhoneNumber,
-            payerName: payerName.trim(),
-            payerEmail: payerEmail.trim() || undefined,
-          },
-        },
+        edgeFunctionName,
+        { body: edgeFunctionBody },
         3, // 3 tentatives max
         (attempt, retryError) => {
           // Toast d'information lors des retries
@@ -1230,7 +1247,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
             </div>
             
             {/* Afficher l'historique des tentatives en cas d'erreur */}
-            <PaymentAttemptsHistory appointmentId={appointmentId} />
+            {context === 'appointment' && (
+              <PaymentAttemptsHistory appointmentId={contextId} />
+            )}
             
             <Button onClick={() => setPaymentStatus('idle')} variant="outline" className="w-full">
               Réessayer
@@ -1246,9 +1265,26 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Payer le rendez-vous</DialogTitle>
+          <DialogTitle>
+            {context === 'appointment' 
+              ? 'Payer le rendez-vous' 
+              : `Inscription - ${sessionDetails?.session_name || 'Séance de groupe'}`
+            }
+          </DialogTitle>
           <DialogDescription>
-            Montant à payer: {formatAmount(amount)}
+            {context === 'appointment' 
+              ? `Montant à payer: ${formatAmount(amount)}`
+              : `Montant de l'inscription: ${formatAmount(amount)}`
+            }
+            {sessionDetails && (
+              <div className="text-xs mt-1">
+                {new Date(sessionDetails.scheduled_date).toLocaleDateString('fr-FR', { 
+                  weekday: 'long', 
+                  day: 'numeric', 
+                  month: 'long' 
+                })} à {sessionDetails.start_time}
+              </div>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -1438,9 +1474,9 @@ export function PaymentDialog({ open, onOpenChange, appointmentId, amount, onSuc
         )}
 
         {/* Historique des tentatives */}
-        {paymentStatus === 'idle' && (
+        {paymentStatus === 'idle' && context === 'appointment' && (
           <div className="mt-4">
-            <PaymentAttemptsHistory appointmentId={appointmentId} />
+            <PaymentAttemptsHistory appointmentId={contextId} />
           </div>
         )}
 
