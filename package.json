@@ -49,7 +49,6 @@
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
     "fedapay": "^1.2.5",
-    "fedapay-reactjs": "^1.1.2",
     "input-otp": "^1.4.2",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
