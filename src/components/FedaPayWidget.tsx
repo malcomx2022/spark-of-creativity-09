@@ -15,6 +15,7 @@ import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 import { clearPersistedPaymentState } from '@/lib/payment-storage';
+import { useQueryClient } from '@tanstack/react-query';
 
 type PaymentMethod = 'mtn' | 'moov';
 
@@ -41,6 +42,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [widgetInitialized, setWidgetInitialized] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
+  const queryClient = useQueryClient();
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
 
   // Load FedaPay configuration
@@ -428,6 +430,14 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                 console.log('Payment completed successfully');
                 setPaymentStatus('success');
                 setIsProcessing(false);
+                
+                // Effacer le paiement persisté
+                clearPersistedPaymentState();
+                
+                // Invalider les queries pour rafraîchir l'interface
+                queryClient.invalidateQueries({ queryKey: ['payments'] });
+                queryClient.invalidateQueries({ queryKey: ['appointments'] });
+                queryClient.invalidateQueries({ queryKey: ['patient-appointments'] });
                 
                 toast({
                   title: '✅ Paiement réussi',
