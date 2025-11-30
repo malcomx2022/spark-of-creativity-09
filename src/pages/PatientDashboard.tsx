@@ -25,7 +25,7 @@ import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
 import { PatientGroupSessionsSection } from '@/components/dashboard/PatientGroupSessionsSection';
-import { FedaPayWidget } from '@/components/FedaPayWidget';
+import { PaymentDialog } from '@/components/PaymentDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -691,7 +691,7 @@ export default function PatientDashboard() {
 
       {/* Payment Dialog - géré au niveau du dashboard */}
       {appointmentIdForPayment && paymentAmount !== null && (
-        <FedaPayWidget
+        <PaymentDialog
           open={paymentDialogOpen}
           onOpenChange={handlePaymentDialogOpenChange}
           appointmentId={appointmentIdForPayment}
