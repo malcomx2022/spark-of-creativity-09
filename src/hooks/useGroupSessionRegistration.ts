@@ -12,12 +12,20 @@ interface RegisterSessionParams {
   phoneNumber: string;
 }
 
+interface RegisterSessionResponse {
+  success: boolean;
+  participantId?: string;
+  transactionId?: string;
+  paymentUrl?: string;
+  error?: string;
+}
+
 export function useGroupSessionRegistration() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const register = useMutation({
-    mutationFn: async (params: RegisterSessionParams) => {
+    mutationFn: async (params: RegisterSessionParams): Promise<RegisterSessionResponse> => {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -74,20 +82,20 @@ export function useGroupSessionRegistration() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error || 'Erreur lors de l\'inscription');
 
-      return data;
+      // ✅ Retourner les données au lieu de rediriger
+      return {
+        success: true,
+        participantId: data.participantId,
+        transactionId: data.transactionId,
+        paymentUrl: data.paymentUrl,
+      };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['patient-group-sessions'] });
       
-      toast({
-        title: "Inscription en cours",
-        description: "Veuillez procéder au paiement pour confirmer votre participation",
-      });
-
-      // Rediriger vers le paiement
-      if (data.paymentUrl) {
-        window.location.href = data.paymentUrl;
-      }
+      // ✅ Plus de redirection automatique - géré par PaymentDialog
+      console.log('✅ Inscription créée avec succès:', data);
     },
     onError: (error: any) => {
       const isTimeoutError = error instanceof NetworkTimeoutError;
