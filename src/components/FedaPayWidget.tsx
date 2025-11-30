@@ -418,7 +418,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               iso: 'XOF',
             },
             container: '#fedapay-container',
-            onComplete: (data: any) => {
+            onComplete: async (data: any) => {
               console.log('FedaPay onComplete:', data);
               
               // Check for successful payment - FedaPay returns "CHECKOUT COMPLETE" as string
@@ -434,24 +434,59 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                 // Effacer le paiement persisté
                 clearPersistedPaymentState();
                 
-                // Invalider les queries pour rafraîchir l'interface
-                queryClient.invalidateQueries({ queryKey: ['payments'] });
-                queryClient.invalidateQueries({ queryKey: ['appointments'] });
-                queryClient.invalidateQueries({ queryKey: ['patient-appointments'] });
+                // Synchroniser avec FedaPay et rafraîchir
+                const syncAndRefresh = async () => {
+                  try {
+                    // Attendre un peu pour le webhook
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // Forcer la synchronisation du statut avec FedaPay
+                    console.log('Syncing payment status with FedaPay...');
+                    const { data: payments } = await supabase
+                      .from('payments')
+                      .select('id')
+                      .eq('appointment_id', appointmentId)
+                      .in('status', ['initiated', 'pending'])
+                      .order('created_at', { ascending: false })
+                      .limit(1);
+                    
+                    if (payments && payments.length > 0) {
+                      await supabase.functions.invoke('sync-payment-status', {
+                        body: { paymentId: payments[0].id }
+                      });
+                    }
+                    
+                    // Attendre encore un peu
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // Invalider et refetch les queries
+                    console.log('Refreshing data...');
+                    await queryClient.invalidateQueries({ queryKey: ['payments'] });
+                    await queryClient.invalidateQueries({ queryKey: ['appointments'] });
+                    await queryClient.invalidateQueries({ queryKey: ['patient-appointments'] });
+                    await queryClient.refetchQueries({ queryKey: ['payments'] });
+                    await queryClient.refetchQueries({ queryKey: ['patient-appointments'] });
+                    
+                    toast({
+                      title: '✅ Paiement confirmé',
+                      description: 'Votre rendez-vous est maintenant validé',
+                      duration: 5000,
+                    });
+                  } catch (error) {
+                    console.error('Sync/refresh error:', error);
+                  }
+                };
                 
-                toast({
-                  title: '✅ Paiement réussi',
-                  description: 'Votre paiement a été confirmé avec succès',
-                });
+                syncAndRefresh();
                 
                 if (onSuccess) onSuccess();
                 if (onComplete) onComplete();
                 
-                // Close immediately after success
+                // Fermer après avoir tout rafraîchi
                 setTimeout(() => {
                   resetState();
                   onOpenChange(false);
-                }, 500);
+                }, 4000);
               } else if (data.reason === 2 || data.reason === "DIALOG_DISMISSED") {
                 console.log('Payment dialog dismissed');
                 setPaymentStatus('error');
