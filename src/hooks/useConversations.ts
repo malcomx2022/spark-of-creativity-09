@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient, QueryFunctionContext } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
@@ -30,16 +30,16 @@ export interface Message {
   attachment_size?: number | null;
 }
 
-// Get all conversations for a user (optimized with single query)
+// Get all conversations for a user (with infinite pagination)
 export function useConversations(userId?: string, userType?: 'patient' | 'practitioner') {
   const queryClient = useQueryClient();
+  const pageSize = 20; // Charger 20 conversations par page
 
-  const query = useQuery<Conversation[]>({
+  const query = useInfiniteQuery({
     queryKey: ['conversations', userId, userType],
-    queryFn: async () => {
-      if (!userId) return [];
+    queryFn: async ({ pageParam = 0 }: QueryFunctionContext<readonly [string, string | undefined, string | undefined], number>) => {
+      if (!userId) return { conversations: [], hasMore: false };
       
-      // ✅ Limiter à 50 conversations récentes pour améliorer les performances
       const { data: appointments, error: aptError } = await withTimeout(
         supabase
           .from('appointments')
@@ -60,11 +60,13 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
           )
           .in('status', ['confirmed', 'completed'])
           .order('created_at', { ascending: false })
-          .limit(50) // ✅ Limiter les conversations chargées
+          .range(pageParam * pageSize, (pageParam + 1) * pageSize - 1)
       );
 
       if (aptError) throw aptError;
-      if (!appointments || appointments.length === 0) return [];
+      if (!appointments || appointments.length === 0) {
+        return { conversations: [], hasMore: false };
+      }
 
       // Process conversations from appointments
       const conversations: Conversation[] = appointments.map((apt: any) => {
@@ -92,14 +94,23 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
         };
       });
 
-      return conversations.sort((a, b) => 
+      const sortedConversations = conversations.sort((a, b) => 
         new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
       );
+
+      // Déterminer s'il y a plus de pages
+      const hasMore = appointments.length === pageSize;
+
+      return { conversations: sortedConversations, hasMore };
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.hasMore ? allPages.length : undefined;
     },
     enabled: !!userId,
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
-    staleTime: 10000, // ✅ Cache pendant 10 secondes
+    staleTime: 10000,
+    initialPageParam: 0,
   });
 
   // Set up realtime subscription for new messages to update conversations list

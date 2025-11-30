@@ -7,15 +7,24 @@ import type { Conversation } from '@/hooks/useConversations';
 
 export function PractitionerMessagesSection() {
   const { data: user } = useSupabaseUser();
-  const { data: conversations = [], isLoading } = useConversations(user?.id, 'practitioner');
+  const {
+    data,
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useConversations(user?.id, 'practitioner');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
+
+  // Aplatir les pages de conversations
+  const conversations = data?.pages.flatMap(page => page.conversations) || [];
 
   // Auto-select first conversation when loaded (only once)
   useEffect(() => {
     if (!selectedConversation && conversations.length > 0) {
       setSelectedConversation(conversations[0]);
     }
-  }, [conversations.length]);
+  }, [conversations.length, selectedConversation]);
 
   if (isLoading) {
     return (
@@ -33,6 +42,9 @@ export function PractitionerMessagesSection() {
           selectedConversation={selectedConversation}
           onSelectConversation={setSelectedConversation}
           userType="practitioner"
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          fetchNextPage={fetchNextPage}
         />
       </div>
       <div className="lg:col-span-2">
