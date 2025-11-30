@@ -14,7 +14,7 @@ import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
-import { FedaCheckoutContainer } from 'fedapay-reactjs';
+import { FedaCheckoutButton } from 'fedapay-reactjs';
 import { clearPersistedPaymentState } from '@/lib/payment-storage';
 
 type PaymentMethod = 'mtn' | 'moov';
@@ -525,137 +525,160 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             <Alert className="border-primary/50 bg-primary/5">
               <AlertTriangle className="h-4 w-4 text-primary" />
               <AlertDescription>
-                Complétez votre paiement ci-dessous via {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}
+                Cliquez sur le bouton pour ouvrir la fenêtre de paiement {MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}
               </AlertDescription>
             </Alert>
+
+            <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Moyen de paiement:</span>
+                <span className="font-medium">{MOBILE_MONEY_PROVIDERS[paymentMethod]?.name}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Numéro:</span>
+                <span className="font-medium">{phoneNumber}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Nom:</span>
+                <span className="font-medium">{payerName}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Montant:</span>
+                <span className="font-medium text-lg">{formatAmount(amount)}</span>
+              </div>
+            </div>
             
-            <div className="border rounded-lg overflow-hidden min-h-[500px]">
-              <FedaCheckoutContainer
-                options={{
-                  public_key: fedapayConfig.publicKey,
-                  environment: fedapayConfig.environment as 'sandbox' | 'live',
-                  transaction: {
-                    id: transactionId,
-                    amount: amount,
-                    description: `Paiement rendez-vous médical #${appointmentId}`,
+            <FedaCheckoutButton
+              options={{
+                public_key: fedapayConfig.publicKey,
+                environment: fedapayConfig.environment as 'sandbox' | 'live',
+                transaction: {
+                  id: transactionId,
+                  amount: amount,
+                  description: `Paiement rendez-vous médical #${appointmentId}`,
+                },
+                customer: {
+                  firstname: payerName.split(' ')[0],
+                  lastname: payerName.split(' ').slice(1).join(' ') || payerName.split(' ')[0],
+                  email: payerEmail || undefined,
+                  phone_number: {
+                    number: phoneNumber.replace(/\s/g, ''),
+                    country: 'bj',
                   },
-                  customer: {
-                    firstname: payerName.split(' ')[0],
-                    lastname: payerName.split(' ').slice(1).join(' ') || payerName.split(' ')[0],
-                    email: payerEmail || undefined,
-                    phone_number: {
-                      number: phoneNumber.replace(/\s/g, ''),
-                      country: 'bj',
-                    },
-                  },
-                  currency: {
-                    iso: 'XOF',
-                  },
-                  locale: 'fr',
-                  onComplete: async (resp: any) => {
-                    const FedaPay = (window as any).FedaPay;
+                },
+                currency: {
+                  iso: 'XOF',
+                },
+                button: {
+                  class: 'w-full bg-primary text-primary-foreground hover:bg-primary/90 font-medium py-3 px-4 rounded-md transition-colors',
+                  text: `Payer ${formatAmount(amount)}`,
+                },
+                locale: 'fr',
+                onComplete: async (resp: any) => {
+                  const FedaPay = (window as any).FedaPay;
+                  
+                  if (resp.reason === FedaPay?.CHECKOUT_COMPLETED) {
+                    console.log('✅ FedaPay payment completed successfully:', resp.transaction);
                     
-                    if (resp.reason === FedaPay?.CHECKOUT_COMPLETED) {
-                      console.log('✅ FedaPay payment completed successfully:', resp.transaction);
-                      
-                      // Payment successful
-                      setPaymentStatus('success');
-                      setIsProcessing(false);
+                    // Payment successful
+                    setPaymentStatus('success');
+                    setIsProcessing(false);
 
-                      // ✅ CORRECTION CRITIQUE: Vérifier et mettre à jour le statut dans la DB
-                      try {
-                        console.log('🔄 Waiting for webhook to process payment...');
-                        // Attendre 3 secondes que le webhook traite le paiement
-                        await new Promise(resolve => setTimeout(resolve, 3000));
+                    // ✅ Vérifier et mettre à jour le statut dans la DB
+                    try {
+                      console.log('🔄 Waiting for webhook to process payment...');
+                      // Attendre 3 secondes que le webhook traite le paiement
+                      await new Promise(resolve => setTimeout(resolve, 3000));
+                      
+                      // Vérifier le statut dans la base de données
+                      const { data: payment, error: paymentError } = await supabase
+                        .from('payments')
+                        .select('id, status')
+                        .eq('appointment_id', appointmentId)
+                        .eq('fedapay_transaction_id', String(resp.transaction.id))
+                        .single();
+                      
+                      if (paymentError) {
+                        console.error('❌ Error fetching payment:', paymentError);
+                      } else if (payment) {
+                        console.log('📊 Payment status in DB:', payment.status);
                         
-                        // Vérifier le statut dans la base de données
-                        const { data: payment, error: paymentError } = await supabase
-                          .from('payments')
-                          .select('id, status')
-                          .eq('appointment_id', appointmentId)
-                          .eq('fedapay_transaction_id', String(resp.transaction.id))
-                          .single();
-                        
-                        if (paymentError) {
-                          console.error('❌ Error fetching payment:', paymentError);
-                        } else if (payment) {
-                          console.log('📊 Payment status in DB:', payment.status);
+                        // Si le statut n'est pas encore 'paid', attendre encore un peu
+                        if (payment.status !== 'paid') {
+                          console.log('⏳ Payment not yet marked as paid, waiting more...');
+                          await new Promise(resolve => setTimeout(resolve, 2000));
                           
-                          // Si le statut n'est pas encore 'paid', attendre encore un peu
-                          if (payment.status !== 'paid') {
-                            console.log('⏳ Payment not yet marked as paid, waiting more...');
-                            await new Promise(resolve => setTimeout(resolve, 2000));
-                            
-                            // Vérifier à nouveau
-                            const { data: updatedPayment } = await supabase
-                              .from('payments')
-                              .select('id, status')
-                              .eq('id', payment.id)
-                              .single();
-                            
-                            if (updatedPayment) {
-                              console.log('📊 Updated payment status:', updatedPayment.status);
-                            }
-                          } else {
-                            console.log('✅ Payment already marked as paid in DB');
+                          // Vérifier à nouveau
+                          const { data: updatedPayment } = await supabase
+                            .from('payments')
+                            .select('id, status')
+                            .eq('id', payment.id)
+                            .single();
+                          
+                          if (updatedPayment) {
+                            console.log('📊 Updated payment status:', updatedPayment.status);
                           }
-                        }
-                      } catch (error) {
-                        console.error('⚠️ Error checking payment status:', error);
-                      }
-
-                      // Save payment method if requested
-                      if (saveMethod) {
-                        try {
-                          await addPaymentMethod({
-                            provider: paymentMethod,
-                            phoneNumber: phoneNumber.replace(/\s/g, ''),
-                            setAsDefault: paymentMethods.length === 0,
-                          });
-                        } catch (saveError) {
-                          console.error('Error saving payment method:', saveError);
+                        } else {
+                          console.log('✅ Payment already marked as paid in DB');
                         }
                       }
+                    } catch (error) {
+                      console.error('⚠️ Error checking payment status:', error);
+                    }
 
-                      clearPersistedPaymentState();
-
-                      toast({
-                        title: 'Paiement réussi !',
-                        description: 'Votre rendez-vous a été confirmé. Le statut sera mis à jour dans quelques instants.',
-                        duration: 5000,
-                      });
-
-                      if (onSuccess) {
-                        onSuccess();
-                      }
-
-                      if (onComplete) {
-                        onComplete();
-                      }
-
-                      setTimeout(() => {
-                        resetState();
-                        onOpenChange(false);
-                      }, 2000);
-                    } else if (resp.reason === FedaPay?.DIALOG_DISMISSED) {
-                      // User closed or cancelled
-                      setPaymentStatus('error');
-                      setIsProcessing(false);
-                      
-                      toast({
-                        title: 'Paiement annulé',
-                        description: 'Vous avez annulé le paiement',
-                        variant: 'destructive',
-                      });
-                      
-                      if (onError) {
-                        onError(new Error('User cancelled payment'));
+                    // Save payment method if requested
+                    if (saveMethod) {
+                      try {
+                        await addPaymentMethod({
+                          provider: paymentMethod,
+                          phoneNumber: phoneNumber.replace(/\s/g, ''),
+                          setAsDefault: paymentMethods.length === 0,
+                        });
+                      } catch (saveError) {
+                        console.error('Error saving payment method:', saveError);
                       }
                     }
-                  },
-                }}
-              />
-            </div>
+
+                    clearPersistedPaymentState();
+
+                    toast({
+                      title: 'Paiement réussi !',
+                      description: 'Votre rendez-vous a été confirmé.',
+                      duration: 5000,
+                    });
+
+                    if (onSuccess) {
+                      onSuccess();
+                    }
+
+                    if (onComplete) {
+                      onComplete();
+                    }
+
+                    setTimeout(() => {
+                      resetState();
+                      onOpenChange(false);
+                    }, 2000);
+                  } else if (resp.reason === FedaPay?.DIALOG_DISMISSED) {
+                    // User closed or cancelled
+                    console.log('Payment dialog dismissed by user');
+                    setPaymentStatus('idle');
+                    setIsProcessing(false);
+                    setTransactionId(null);
+                    
+                    toast({
+                      title: 'Paiement annulé',
+                      description: 'Vous avez fermé la fenêtre de paiement. Vous pouvez réessayer.',
+                      variant: 'destructive',
+                    });
+                    
+                    if (onError) {
+                      onError(new Error('User cancelled payment'));
+                    }
+                  }
+                },
+              }}
+            />
             
             <Button 
               variant="outline" 
