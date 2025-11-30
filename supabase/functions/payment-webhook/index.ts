@@ -228,12 +228,63 @@ async function handleTransactionEvent(
           .eq('id', participantId);
           
         console.log(`Group session participant ${participantId} payment confirmed`);
+        
+        // Notifier le coach
+        if (practitionerId) {
+          const { data: practitionerData } = await supabase
+            .from('practitioners')
+            .select('user_id, name')
+            .eq('id', practitionerId)
+            .single();
+            
+          if (practitionerData?.user_id) {
+            await dispatchNotification({
+              supabase,
+              supabaseUrl,
+              serviceRoleKey: supabaseKey,
+              userId: practitionerData.user_id,
+              title: '💰 Nouveau paiement reçu',
+              message: `Un participant a payé pour votre séance de groupe. Montant: ${netAmount} XOF`,
+              type: 'payment',
+              link: '/dashboard/practitioner?tab=sessions',
+            });
+          }
+        }
       } else {
         // RDV classique
         await supabase
           .from('appointments')
           .update({ status: 'confirmed' })
           .eq('id', payment.appointment_id);
+          
+        // Récupérer les détails du rendez-vous pour notifier le praticien
+        const { data: appointmentData } = await supabase
+          .from('appointments')
+          .select('practitioner_id, patient_name, date, time, specialty')
+          .eq('id', payment.appointment_id)
+          .single();
+          
+        if (appointmentData) {
+          // Notifier le praticien
+          const { data: practitionerData } = await supabase
+            .from('practitioners')
+            .select('user_id, name')
+            .eq('id', appointmentData.practitioner_id)
+            .single();
+            
+          if (practitionerData?.user_id) {
+            await dispatchNotification({
+              supabase,
+              supabaseUrl,
+              serviceRoleKey: supabaseKey,
+              userId: practitionerData.user_id,
+              title: '✅ Nouveau rendez-vous confirmé',
+              message: `Rendez-vous avec ${appointmentData.patient_name} confirmé pour le ${appointmentData.date} à ${appointmentData.time}. Montant reçu: ${netAmount} XOF`,
+              type: 'appointment',
+              link: '/dashboard/practitioner?tab=appointments',
+            });
+          }
+        }
       }
     } else if (['failed', 'canceled'].includes(paymentStatus)) {
       if (payment.appointment_id && payment.appointment_id.startsWith('group_session_')) {
@@ -255,12 +306,12 @@ async function handleTransactionEvent(
       }
     }
 
-    // Envoyer notifications
+    // Envoyer notifications au patient
     const notificationMessages = {
-      'paid': `Votre paiement de ${payment.amount} XOF a été confirmé avec succès !`,
-      'failed': `Le paiement de ${payment.amount} XOF a échoué. Veuillez réessayer.`,
-      'canceled': `Le paiement de ${payment.amount} XOF a été annulé.`,
-      'refunded': `Votre paiement de ${payment.amount} XOF a été remboursé.`
+      'paid': `✅ Votre paiement de ${payment.amount} XOF a été confirmé avec succès ! Votre rendez-vous est maintenant validé.`,
+      'failed': `❌ Le paiement de ${payment.amount} XOF a échoué. Veuillez réessayer pour confirmer votre rendez-vous.`,
+      'canceled': `❌ Le paiement de ${payment.amount} XOF a été annulé.`,
+      'refunded': `💰 Votre paiement de ${payment.amount} XOF a été remboursé.`
     };
 
     if (notificationMessages[paymentStatus as keyof typeof notificationMessages]) {
