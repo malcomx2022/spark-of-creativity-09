@@ -366,7 +366,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   };
 
   const handleClose = () => {
-    if (paymentStatus === 'pending' || isProcessing) {
+    // Only block closing if payment is actively pending (not if it's successful)
+    if ((paymentStatus === 'pending' || isProcessing) && paymentStatus !== 'success') {
       toast({
         title: 'Paiement en cours',
         description: 'Veuillez compléter ou annuler le paiement avant de fermer.',
@@ -418,7 +419,12 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             onComplete: (data: any) => {
               console.log('FedaPay onComplete:', data);
               
-              if (data.reason === 1) { // CHECKOUT_COMPLETED
+              // Check for successful payment - FedaPay returns "CHECKOUT COMPLETE" as string
+              const isSuccess = data.reason === "CHECKOUT COMPLETE" || 
+                               data.reason === 1 || 
+                               data.transaction?.status === "approved";
+              
+              if (isSuccess) {
                 console.log('Payment completed successfully');
                 setPaymentStatus('success');
                 setIsProcessing(false);
@@ -431,11 +437,12 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                 if (onSuccess) onSuccess();
                 if (onComplete) onComplete();
                 
+                // Close immediately after success
                 setTimeout(() => {
                   resetState();
                   onOpenChange(false);
-                }, 2000);
-              } else if (data.reason === 2) { // DIALOG_DISMISSED
+                }, 500);
+              } else if (data.reason === 2 || data.reason === "DIALOG_DISMISSED") {
                 console.log('Payment dialog dismissed');
                 setPaymentStatus('error');
                 setIsProcessing(false);
