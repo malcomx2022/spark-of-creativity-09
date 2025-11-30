@@ -8,7 +8,7 @@ import GPSTracking from '@/components/GPSTracking';
 const AppointmentsTab = lazy(() => import('@/components/dashboard/tabs/AppointmentsTab'));
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users } from 'lucide-react';
+import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users, ClipboardList } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
@@ -25,6 +25,7 @@ import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
 import { PatientGroupSessionsSection } from '@/components/dashboard/PatientGroupSessionsSection';
+import { PatientCareNotesSection } from '@/components/dashboard/PatientCareNotesSection';
 import { FedaPayWidget } from '@/components/FedaPayWidget';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -455,7 +456,7 @@ export default function PatientDashboard() {
 
         <Tabs defaultValue="overview" className="space-y-6">
           <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:grid-cols-12 gap-1 sm:gap-2">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:grid-cols-13 gap-1 sm:gap-2">
               <TabsTrigger value="overview" className="flex items-center gap-2 whitespace-nowrap">
                 <Activity className="h-4 w-4" />
                 <span className="hidden sm:inline">Accueil</span>
@@ -475,6 +476,10 @@ export default function PatientDashboard() {
               <TabsTrigger value="reports" className="flex items-center gap-2 whitespace-nowrap">
                 <ClipboardCheck className="h-4 w-4" />
                 <span className="hidden sm:inline">Rapports</span>
+              </TabsTrigger>
+              <TabsTrigger value="care-notes" className="flex items-center gap-2 whitespace-nowrap">
+                <ClipboardList className="h-4 w-4" />
+                <span className="hidden sm:inline">Notes SOAP</span>
               </TabsTrigger>
               <TabsTrigger value="profile" className="flex items-center gap-2 whitespace-nowrap">
                 <User className="h-4 w-4" />
@@ -617,6 +622,16 @@ export default function PatientDashboard() {
               </div>
             }>
               <PatientConsultationReportsSection />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="care-notes">
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }>
+              <PatientCareNotesSection />
             </Suspense>
           </TabsContent>
 
