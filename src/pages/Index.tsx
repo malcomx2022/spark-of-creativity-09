@@ -92,7 +92,7 @@ const Index = () => {
   const { data: realStats } = useQuery({
     queryKey: ['homepage-stats'],
     queryFn: async () => {
-      const [practitionersResult, patientsResult] = await Promise.all([
+      const [practitionersResult, allProfilesResult, practitionerUsersResult, adminUsersResult] = await Promise.all([
         supabase
           .from('practitioners')
           .select('id', { count: 'exact', head: true })
@@ -100,11 +100,22 @@ const Index = () => {
           .eq('available', true),
         supabase
           .from('profiles')
-          .select('id', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true }),
+        supabase
+          .from('practitioners')
+          .select('user_id', { count: 'exact', head: true }),
+        supabase
+          .from('user_roles')
+          .select('user_id', { count: 'exact', head: true })
       ]);
 
       const practitionersCount = practitionersResult.count || 0;
-      const patientsCount = patientsResult.count || 0;
+      const allProfilesCount = allProfilesResult.count || 0;
+      const practitionerUsersCount = practitionerUsersResult.count || 0;
+      const adminUsersCount = adminUsersResult.count || 0;
+      
+      // Patients = tous les profiles - praticiens - admins
+      const patientsCount = Math.max(0, allProfilesCount - practitionerUsersCount - adminUsersCount);
 
       return {
         practitioners: practitionersCount,
