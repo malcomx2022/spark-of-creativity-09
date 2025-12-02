@@ -104,3 +104,21 @@ verify_jwt = false
 
 [functions.retry-failed-webhooks]
 verify_jwt = true
+
+[functions.sync-payment-status]
+verify_jwt = true
+
+[functions.delete-single-user]
+verify_jwt = true
+
+[functions.diagnose-stuck-payments]
+verify_jwt = true
+
+[functions.cancel-pending-payment]
+verify_jwt = true
+
+[functions.cleanup-stuck-payments]
+verify_jwt = true
+
+[functions.test-fedapay-connectivity]
+verify_jwt = false

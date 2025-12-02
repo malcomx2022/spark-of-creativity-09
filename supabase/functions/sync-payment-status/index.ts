@@ -75,11 +75,22 @@ serve(async (req) => {
     );
 
     if (!fedapayResponse.ok) {
+      const errorText = await fedapayResponse.text();
+      console.error('FedaPay API error:', fedapayResponse.status, errorText);
       throw new Error(`FedaPay API error: ${fedapayResponse.status}`);
     }
 
     const fedapayData = await fedapayResponse.json();
-    const fedapayStatus = fedapayData.v1.status;
+    console.log('FedaPay response:', JSON.stringify(fedapayData));
+    
+    // FedaPay retourne la transaction sous "v1/transaction" et non "v1"
+    const transactionData = fedapayData['v1/transaction'] || fedapayData.v1?.transaction || fedapayData;
+    const fedapayStatus = transactionData?.status;
+    
+    if (!fedapayStatus) {
+      console.error('Could not extract status from FedaPay response:', fedapayData);
+      throw new Error('Invalid FedaPay response: status not found');
+    }
 
     console.log('FedaPay status:', fedapayStatus);
 
