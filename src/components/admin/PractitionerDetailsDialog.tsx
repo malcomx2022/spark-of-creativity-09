@@ -1,12 +1,17 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   User, Phone, MapPin, Calendar, Stethoscope, Star, 
-  FileCheck, Shield, Clock, Languages, Award, Briefcase 
+  FileCheck, Shield, Clock, Languages, Award, Briefcase, Trash2 
 } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from '@/hooks/use-toast';
 
 interface PractitionerDetailsDialogProps {
   practitionerId: string | null;
@@ -14,6 +19,35 @@ interface PractitionerDetailsDialogProps {
 }
 
 export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: PractitionerDetailsDialogProps) {
+  const [confirmText, setConfirmText] = useState('');
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const { data, error } = await supabase.functions.invoke('delete-single-user', {
+        body: { userId, userType: 'practitioner' }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Praticien supprimé",
+        description: "Le praticien a été supprimé définitivement.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-practitioners'] });
+      setConfirmText('');
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const { data: practitioner, isLoading: practitionerLoading } = useQuery({
     queryKey: ['admin-practitioner-details', practitionerId],
     queryFn: async () => {
@@ -437,6 +471,47 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
               ) : (
                 <p className="text-sm text-muted-foreground">Aucun rendez-vous</p>
               )}
+            </div>
+
+            <Separator />
+
+            {/* Actions de suppression */}
+            <div className="pt-4">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="w-full">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer définitivement ce praticien
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cette action supprimera définitivement le praticien "{practitioner.name}" et toutes ses données associées.
+                      Cette action est irréversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="py-4">
+                    <Input
+                      placeholder="Tapez SUPPRIMER pour confirmer"
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      className="font-mono"
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setConfirmText('')}>Annuler</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteMutation.mutate(practitioner.user_id)}
+                      disabled={confirmText !== 'SUPPRIMER' || deleteMutation.isPending}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                    >
+                      {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ) : (

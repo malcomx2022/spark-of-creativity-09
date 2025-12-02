@@ -1,10 +1,15 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { usePatientProfileData } from '@/hooks/usePatientProfileData';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { User, Phone, MapPin, Heart, Calendar, Stethoscope } from 'lucide-react';
+import { User, Phone, MapPin, Heart, Calendar, Stethoscope, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from '@/hooks/use-toast';
 
 interface PatientDetailsDialogProps {
   patientId: string | null;
@@ -12,7 +17,35 @@ interface PatientDetailsDialogProps {
 }
 
 export function PatientDetailsDialog({ patientId, onOpenChange }: PatientDetailsDialogProps) {
+  const [confirmText, setConfirmText] = useState('');
+  const queryClient = useQueryClient();
   const { data: patientData, isLoading: profileLoading } = usePatientProfileData(patientId || undefined);
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('delete-single-user', {
+        body: { userId: patientId, userType: 'patient' }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Patient supprimé",
+        description: "Le patient a été supprimé définitivement.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
+      setConfirmText('');
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
   
   const { data: medicalProfile, isLoading: medicalLoading } = useQuery({
     queryKey: ['patient-medical-profile', patientId],
@@ -246,6 +279,47 @@ export function PatientDetailsDialog({ patientId, onOpenChange }: PatientDetails
               ) : (
                 <p className="text-sm text-muted-foreground">Aucun rendez-vous</p>
               )}
+            </div>
+
+            <Separator />
+
+            {/* Actions de suppression */}
+            <div className="pt-4">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="w-full">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer définitivement ce patient
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cette action supprimera définitivement le patient "{profile?.full_name}" et toutes ses données associées.
+                      Cette action est irréversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="py-4">
+                    <Input
+                      placeholder="Tapez SUPPRIMER pour confirmer"
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      className="font-mono"
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setConfirmText('')}>Annuler</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteMutation.mutate()}
+                      disabled={confirmText !== 'SUPPRIMER' || deleteMutation.isPending}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                    >
+                      {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         )}
