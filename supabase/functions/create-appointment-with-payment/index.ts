@@ -205,6 +205,20 @@ serve(async (req) => {
         ? '/dashboard/coach' 
         : '/dashboard/practitioner';
 
+      // Helper pour formater la date correctement (YYYY-MM-DD -> date locale)
+      const formatDateForDisplay = (dateStr: string): string => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        return dateObj.toLocaleDateString('fr-FR', {
+          weekday: 'long',
+          day: 'numeric', 
+          month: 'long',
+          year: 'numeric'
+        });
+      };
+      
+      const formattedDate = formatDateForDisplay(body.date);
+
       // 5. Envoyer une notification au praticien
       if (practitionerUserId) {
         try {
@@ -214,11 +228,11 @@ serve(async (req) => {
             serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
             userId: practitionerUserId,
             title: '🩺 Nouvelle demande de rendez-vous',
-          message: `${body.patientName} souhaite prendre rendez-vous le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time}. Raison: ${body.reason}`,
-          type: 'appointment',
-          link: dashboardLink,
-          channels: ['email', 'sms', 'push'],
-        });
+            message: `${body.patientName} souhaite prendre rendez-vous le ${formattedDate} à ${body.time}. Raison: ${body.reason}`,
+            type: 'appointment',
+            link: dashboardLink,
+            channels: ['email', 'sms', 'push'],
+          });
           console.log('✅ Notification envoyée au praticien');
         } catch (notifError) {
           console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
@@ -235,7 +249,7 @@ serve(async (req) => {
           serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
           userId: body.patientId,
           title: '✅ Demande de rendez-vous envoyée',
-          message: `Votre demande de rendez-vous avec ${body.practitionerName} pour le ${new Date(body.date).toLocaleDateString('fr-FR')} à ${body.time} a été envoyée. Le praticien répondra généralement sous 30 minutes.`,
+          message: `Votre demande de rendez-vous avec ${body.practitionerName} pour le ${formattedDate} à ${body.time} a été envoyée. Le praticien répondra généralement sous 30 minutes.`,
           type: 'appointment',
           link: '/dashboard/patient',
           channels: ['email', 'push'],

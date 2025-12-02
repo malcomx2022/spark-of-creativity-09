@@ -5,8 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, MapPin, User, AlertCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { formatAmount } from '@/lib/payment-config';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { formatDateWithDateFns } from '@/lib/date-utils';
 
 interface AppointmentSummaryProps {
   appointmentData: {
@@ -69,7 +68,7 @@ export function AppointmentSummary({
             <div className="flex items-center gap-3 text-sm">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">
-                {format(new Date(date), "EEEE d MMMM yyyy", { locale: fr })}
+                {formatDateWithDateFns(date)}
               </span>
             </div>
             
