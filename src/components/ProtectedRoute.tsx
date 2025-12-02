@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { type AppRole, resolveUserRole, getDashboardPathForRole } from '@/lib/userRoleResolver';
+import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 
 function ProtectedRouteSkeleton() {
   return (
@@ -30,6 +31,9 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [roleStatus, setRoleStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
   const location = useLocation();
+  
+  // Initialize idle timeout for auto-logout
+  useIdleTimeout();
 
   useEffect(() => {
     let isMounted = true;
