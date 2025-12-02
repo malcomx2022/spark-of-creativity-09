@@ -78,19 +78,20 @@ export const usePatientConsultationReports = (patientId?: string, page = 0, page
     queryFn: async () => {
       if (!patientId) return { data: [], count: 0 };
       
-      // ✅ Optimiser en ne récupérant que les IDs d'abord
+      // ✅ Récupérer les rendez-vous avec le nom du praticien
       const { data: appointments, error: appointmentsError } = await withTimeout(
         supabase
           .from('appointments')
-          .select('id')
+          .select('id, practitioner_name')
           .eq('patient_id', patientId)
-          .limit(100) // ✅ Limiter aux 100 derniers rendez-vous
+          .limit(100)
       );
       
       if (appointmentsError) throw appointmentsError;
       if (!appointments || appointments.length === 0) return { data: [], count: 0 };
       
       const appointmentIds = appointments.map(apt => apt.id);
+      const appointmentMap = new Map(appointments.map(apt => [apt.id, apt.practitioner_name]));
       
       // ✅ Récupérer les rapports de consultation
       const { data, error, count } = await withTimeout(
@@ -103,9 +104,18 @@ export const usePatientConsultationReports = (patientId?: string, page = 0, page
       );
       
       if (error) throw error;
-      return { data: (data as ConsultationReport[]) || [], count: count || 0 };
+      
+      // ✅ Enrichir les rapports avec le nom du praticien
+      const enrichedData = (data || []).map(report => ({
+        ...report,
+        appointments: {
+          practitioner_name: appointmentMap.get(report.appointment_id) || 'Praticien'
+        }
+      }));
+      
+      return { data: enrichedData, count: count || 0 };
     },
     enabled: !!patientId,
-    staleTime: 30000, // ✅ Cache pendant 30 secondes
+    staleTime: 30000,
   });
 };
