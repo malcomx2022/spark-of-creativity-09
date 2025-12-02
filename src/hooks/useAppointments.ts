@@ -3,8 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import type { Appointment, AppointmentStatus, CreateAppointmentData } from '@/types/appointment';
 import { withTimeout } from '@/lib/network-timeout';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { formatDateWithDateFns } from '@/lib/date-utils';
 
 function toAppointment(row: Tables<'appointments'>): Appointment {
   return {
@@ -139,7 +138,12 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
 
       // ✅ VALIDATION ANTI-DOUBLON : Vérifier s'il existe déjà un RDV actif avec ce praticien à cette date
       if (data.practitionerId) {
-        const appointmentDate = new Date(data.date).toISOString().split('T')[0];
+        // Utiliser le formatage local pour éviter les décalages de fuseau horaire
+        const dateObj = new Date(data.date);
+        const year = dateObj.getFullYear();
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        const appointmentDate = `${year}-${month}-${day}`;
         
         const { data: existingAppointments, error: checkError } = await withTimeout(
           supabase
@@ -155,7 +159,7 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
 
         if (existingAppointments && existingAppointments.length > 0) {
           const existing = existingAppointments[0];
-          const formattedDate = format(new Date(existing.date), 'EEEE d MMMM yyyy', { locale: fr });
+          const formattedDate = formatDateWithDateFns(existing.date);
           throw new Error(
             `Vous avez déjà un rendez-vous prévu avec ${existing.practitioner_name} le ${formattedDate} à ${existing.time}.\n\n` +
             `Veuillez choisir une autre date ou annuler le rendez-vous existant.`
@@ -180,13 +184,20 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
           .maybeSingle()
       );
 
+      // Formater la date en utilisant le fuseau horaire local pour éviter les décalages UTC
+      const dateObj = new Date(data.date);
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const formattedDate = `${year}-${month}-${day}`;
+
       return insertAppointment({
         patient_id: patientId,
         patient_name: profile.data?.full_name || patientName || 'Patient',
         practitioner_id: data.practitionerId || '',
         practitioner_name: data.practitionerName || '',
         specialty: data.specialty,
-        date: new Date(data.date).toISOString().split('T')[0],
+        date: formattedDate,
         time: data.time,
         reason: data.reason,
         urgency_level: data.urgencyLevel,

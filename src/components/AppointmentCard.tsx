@@ -7,6 +7,7 @@ import type { Appointment } from '@/types/appointment';
 import { ContactDialog } from '@/components/ContactDialog';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { formatDateFull } from '@/lib/date-utils';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -87,12 +88,7 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="flex items-center gap-2 text-sm">
             <Calendar className="h-4 w-4 text-muted-foreground" />
-            <span>{new Date(appointment.date).toLocaleDateString('fr-FR', { 
-              weekday: 'long', 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
-            })}</span>
+            <span>{formatDateFull(appointment.date)}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Clock className="h-4 w-4 text-muted-foreground" />
