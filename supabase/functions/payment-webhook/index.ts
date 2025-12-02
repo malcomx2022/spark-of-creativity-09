@@ -108,7 +108,7 @@ async function handleTransactionEvent(
   // Récupérer le paiement pour les mises à jour
   const { data: payment } = await supabase
     .from('payments')
-    .select('id, net_amount, appointment_id')
+    .select('id, net_amount, appointment_id, patient_id, amount')
     .eq('fedapay_transaction_id', transactionId.toString())
     .single();
 
@@ -589,7 +589,8 @@ serve(async (req) => {
       }
     }
 
-    const eventType = webhookData.type;
+    // FedaPay utilise 'name' pour l'événement, pas 'type'
+    const eventType = webhookData.name || webhookData.type;
     const entityType = eventType?.includes('transfer') ? 'transfer' : 'transaction';
     const transactionId = webhookData.entity?.id;
     const status = webhookData.entity?.status;
