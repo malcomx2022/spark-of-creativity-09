@@ -12,6 +12,7 @@ import { toast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { PatientDetailsDialog } from './PatientDetailsDialog';
+import { PractitionerDetailsDialog } from './PractitionerDetailsDialog';
 
 export function UsersManagementSection() {
   const [searchInput, setSearchInput] = useState('');
@@ -20,6 +21,7 @@ export function UsersManagementSection() {
   const [practitionersPage, setPractitionersPage] = useState(0);
   const [confirmText, setConfirmText] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedPractitionerId, setSelectedPractitionerId] = useState<string | null>(null);
   const pageSize = 50;
   const queryClient = useQueryClient();
 
@@ -289,7 +291,11 @@ export function UsersManagementSection() {
                     </TableHeader>
                     <TableBody>
                       {practitioners.map((practitioner) => (
-                        <TableRow key={practitioner.id}>
+                        <TableRow 
+                          key={practitioner.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedPractitionerId(practitioner.id)}
+                        >
                           <TableCell className="font-medium">{practitioner.name}</TableCell>
                           <TableCell>{practitioner.specialty}</TableCell>
                           <TableCell>{practitioner.phone || 'N/A'}</TableCell>
@@ -353,6 +359,11 @@ export function UsersManagementSection() {
       <PatientDetailsDialog 
         patientId={selectedPatientId}
         onOpenChange={(open) => !open && setSelectedPatientId(null)}
+      />
+
+      <PractitionerDetailsDialog 
+        practitionerId={selectedPractitionerId}
+        onOpenChange={(open) => !open && setSelectedPractitionerId(null)}
       />
     </div>
   );
