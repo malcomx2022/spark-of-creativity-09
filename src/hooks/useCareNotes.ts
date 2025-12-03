@@ -5,8 +5,17 @@ import { withTimeout } from '@/lib/network-timeout';
 
 export type CareNote = Tables<'care_notes'>;
 
+export interface CareNoteWithAppointment extends CareNote {
+  appointments?: {
+    practitioner_name: string;
+    patient_name: string;
+    date: string;
+    specialty: string;
+  };
+}
+
 export function useCareNotes(practitionerId?: string) {
-  return useQuery<CareNote[]>({
+  return useQuery<CareNoteWithAppointment[]>({
     queryKey: ['care-notes', practitionerId],
     queryFn: async () => {
       if (!practitionerId) return [];
@@ -14,13 +23,21 @@ export function useCareNotes(practitionerId?: string) {
       const { data, error } = await withTimeout(
         supabase
           .from('care_notes')
-          .select('*')
+          .select(`
+            *,
+            appointments!inner (
+              practitioner_name,
+              patient_name,
+              date,
+              specialty
+            )
+          `)
           .eq('practitioner_id', practitionerId)
           .order('created_at', { ascending: false })
       );
 
       if (error) throw error;
-      return data || [];
+      return (data || []) as CareNoteWithAppointment[];
     },
     enabled: !!practitionerId,
   });

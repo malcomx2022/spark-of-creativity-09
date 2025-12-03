@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { FileText, Share2, HelpCircle, Info } from "lucide-react";
+import { FileText, Share2, HelpCircle, Info, Eye, Download } from "lucide-react";
+import { CareNoteDetailDialog } from '../CareNoteDetailDialog';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Tooltip,
@@ -16,8 +16,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
-import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote } from '@/hooks/useCareNotes';
+import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote, useCareNotes, type CareNoteWithAppointment } from '@/hooks/useCareNotes';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { CareNotesConfirmDialog } from './CareNotesConfirmDialog';
@@ -28,6 +30,8 @@ export default function CareNotesSection() {
   const [shareWithPatient, setShareWithPatient] = useState(false);
   const [notesLimit, setNotesLimit] = useState(10);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [selectedNoteForDetail, setSelectedNoteForDetail] = useState<any>(null);
   const [formData, setFormData] = useState({
     subjective: '',
     objective: '',
@@ -54,6 +58,12 @@ export default function CareNotesSection() {
   const completedAppointments = appointments.filter(a => a.status === 'completed');
 
   const { data: currentNote } = useCareNoteByAppointment(selectedAppointmentId || undefined);
+  const { data: allNotes = [] } = useCareNotes(practitioner?.id);
+
+  const handleViewNoteDetail = (note: CareNoteWithAppointment) => {
+    setSelectedNoteForDetail(note);
+    setShowDetailDialog(true);
+  };
   const createNote = useCreateCareNote();
   const updateNote = useUpdateCareNote();
   const queryClient = useQueryClient();
@@ -375,6 +385,53 @@ export default function CareNotesSection() {
         </CardContent>
       </Card>
 
+      {/* Liste des notes existantes */}
+      {allNotes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Notes de soin enregistrées
+            </CardTitle>
+            <CardDescription>
+              Cliquez sur une note pour voir les détails et la télécharger
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {allNotes.map((note) => (
+                <div
+                  key={note.id}
+                  className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => handleViewNoteDetail(note)}
+                >
+                  <div className="flex-1">
+                    <p className="font-medium">{note.appointments?.patient_name || 'Patient'}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {note.appointments?.date && format(new Date(note.appointments.date), 'PPP', { locale: fr })}
+                      {note.appointments?.specialty && ` • ${note.appointments.specialty}`}
+                    </p>
+                    {note.assessment && (
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                        Analyse: {note.assessment}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {note.shared_with_patient && (
+                      <Badge variant="secondary">Partagé</Badge>
+                    )}
+                    <Button variant="ghost" size="icon">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <CareNotesConfirmDialog
         open={showConfirmDialog}
         onOpenChange={setShowConfirmDialog}
@@ -389,6 +446,13 @@ export default function CareNotesSection() {
               ).toLocaleDateString('fr-FR')
             : ''
         }
+      />
+
+      <CareNoteDetailDialog
+        open={showDetailDialog}
+        onOpenChange={setShowDetailDialog}
+        note={selectedNoteForDetail}
+        userType="practitioner"
       />
     </div>
   );

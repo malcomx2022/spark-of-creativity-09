@@ -4,22 +4,41 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   FileText,
-  MessageSquare,
   Eye,
-  Stethoscope,
-  ClipboardList,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  Calendar,
+  User
 } from 'lucide-react';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { usePatientCareNotes } from '@/hooks/usePatientCareNotes';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { CareNoteDetailDialog } from './CareNoteDetailDialog';
+
+interface CareNote {
+  id: string;
+  appointment_id: string;
+  practitioner_id: string;
+  subjective: string | null;
+  objective: string | null;
+  assessment: string | null;
+  plan: string | null;
+  shared_with_patient: boolean;
+  created_at: string;
+  updated_at: string;
+  appointments?: {
+    practitioner_name: string;
+    date: string;
+  };
+}
 
 export function PatientCareNotesSection() {
   const { data: user } = useSupabaseUser();
   const [page, setPage] = useState(1);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<CareNote | null>(null);
   const pageSize = 10;
 
   const { data: result, isLoading } = usePatientCareNotes(
@@ -31,6 +50,11 @@ export function PatientCareNotesSection() {
   const notes = result?.data || [];
   const totalCount = result?.count || 0;
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  const handleViewNote = (note: CareNote) => {
+    setSelectedNote(note);
+    setShowDetailDialog(true);
+  };
 
   if (isLoading) {
     return (
@@ -60,7 +84,7 @@ export function PatientCareNotesSection() {
         <div>
           <h2 className="text-2xl font-bold mb-2">Mes Notes de Soin</h2>
           <p className="text-muted-foreground">
-            Notes cliniques au format SOAP partagées par vos praticiens
+            Cliquez sur une note pour voir les détails et la télécharger
           </p>
         </div>
         {totalCount > 0 && (
@@ -70,69 +94,52 @@ export function PatientCareNotesSection() {
         )}
       </div>
 
-      <div className="space-y-6">
-        {notes.map((note) => (
-          <Card key={note.id}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Note de Soin - {note.appointments?.practitioner_name}
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    {note.appointments?.date &&
-                      format(new Date(note.appointments.date), 'PPP', { locale: fr })
-                    }
-                  </CardDescription>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Notes cliniques SOAP
+          </CardTitle>
+          <CardDescription>
+            Notes de suivi partagées par vos praticiens
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {notes.map((note) => (
+              <div
+                key={note.id}
+                className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => handleViewNote(note)}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <p className="font-medium">{note.appointments?.practitioner_name || 'Praticien'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-3 w-3" />
+                    <span>
+                      {note.appointments?.date && format(new Date(note.appointments.date), 'PPP', { locale: fr })}
+                    </span>
+                  </div>
+                  {note.assessment && (
+                    <p className="text-sm text-muted-foreground mt-2 line-clamp-1">
+                      Analyse: {note.assessment}
+                    </p>
+                  )}
                 </div>
-                <Badge variant="secondary">SOAP</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">SOAP</Badge>
+                  <Button variant="ghost" size="icon">
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {note.subjective && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MessageSquare className="h-4 w-4 text-blue-600" />
-                    <h4 className="font-semibold text-blue-900">S - Subjectif</h4>
-                  </div>
-                  <p className="text-sm text-blue-800 whitespace-pre-wrap">{note.subjective}</p>
-                </div>
-              )}
-
-              {note.objective && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Eye className="h-4 w-4 text-green-600" />
-                    <h4 className="font-semibold text-green-900">O - Objectif</h4>
-                  </div>
-                  <p className="text-sm text-green-800 whitespace-pre-wrap">{note.objective}</p>
-                </div>
-              )}
-
-              {note.assessment && (
-                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Stethoscope className="h-4 w-4 text-purple-600" />
-                    <h4 className="font-semibold text-purple-900">A - Analyse</h4>
-                  </div>
-                  <p className="text-sm text-purple-800 whitespace-pre-wrap">{note.assessment}</p>
-                </div>
-              )}
-
-              {note.plan && (
-                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <ClipboardList className="h-4 w-4 text-orange-600" />
-                    <h4 className="font-semibold text-orange-900">P - Plan</h4>
-                  </div>
-                  <p className="text-sm text-orange-800 whitespace-pre-wrap">{note.plan}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2 mt-6">
@@ -159,6 +166,13 @@ export function PatientCareNotesSection() {
           </Button>
         </div>
       )}
+
+      <CareNoteDetailDialog
+        open={showDetailDialog}
+        onOpenChange={setShowDetailDialog}
+        note={selectedNote}
+        userType="patient"
+      />
     </div>
   );
 }
