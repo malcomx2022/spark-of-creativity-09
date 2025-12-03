@@ -49,6 +49,7 @@ interface SignupFormData {
   interventionZone: string;
   interventionRadius: string;
   certifications: string;
+  communesServed: string;
 }
 
 export default function PractitionerSignup() {
@@ -83,6 +84,7 @@ export default function PractitionerSignup() {
     interventionZone: "",
     interventionRadius: "",
     certifications: "",
+    communesServed: "",
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -212,6 +214,14 @@ export default function PractitionerSignup() {
         return isCoachSportif && (!value || (Array.isArray(value) && value.length === 0))
           ? "Au moins un type de séance requis"
           : "";
+      case 'communesServed': {
+        if (!isCoachSportif) return "";
+        const communesValue = typeof value === 'string' ? value : String(value || '');
+        const communes = communesValue.trim();
+        if (!communes) return "Communes desservies requises";
+        if (communes.length < 3) return "Minimum 3 caractères requis";
+        return communes.length > 500 ? "Maximum 500 caractères" : "";
+      }
       case 'acceptTerms':
         return value !== true ? "Vous devez accepter la charte d'engagement" : "";
       default:
@@ -471,6 +481,16 @@ export default function PractitionerSignup() {
       // Certifications (optionnel mais avec limite)
       if (formData.certifications && formData.certifications.length > 500) {
         errors.certifications = "Les certifications ne peuvent pas dépasser 500 caractères";
+      }
+      
+      // Communes desservies
+      const communes = formData.communesServed.trim();
+      if (!communes) {
+        errors.communesServed = "Communes desservies requises";
+      } else if (communes.length < 3) {
+        errors.communesServed = "Minimum 3 caractères requis";
+      } else if (communes.length > 500) {
+        errors.communesServed = "Maximum 500 caractères";
       }
     } else {
       // Pour autres praticiens: autorisation d'exercice obligatoire
@@ -735,6 +755,9 @@ export default function PractitionerSignup() {
         intervention_radius: formData.profession === "Coach sportif" ? interventionRadius : null,
         certifications: formData.profession === "Coach sportif" && formData.certifications
           ? formData.certifications.split(",").map(cert => cert.trim()).filter(Boolean)
+          : null,
+        communes_served: formData.profession === "Coach sportif" && formData.communesServed
+          ? formData.communesServed.split(",").map(c => c.trim()).filter(Boolean)
           : null,
       };
 
@@ -1422,6 +1445,27 @@ export default function PractitionerSignup() {
                         rows={3}
                         className="min-h-[80px]"
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="communesServed" className="text-sm sm:text-base">
+                        Communes desservies <span className="text-destructive">*</span>
+                      </Label>
+                      <Textarea
+                        id="communesServed"
+                        placeholder="Ex: Cotonou, Porto-Novo, Abomey-Calavi, Parakou, Bohicon, Natitingou, Ouidah, Lokossa..."
+                        value={formData.communesServed}
+                        onChange={(e) => handleInputChange('communesServed', e.target.value)}
+                        rows={2}
+                        required
+                        className={`min-h-[60px] ${fieldErrors.communesServed ? 'border-destructive' : ''}`}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Séparez les communes par des virgules
+                      </p>
+                      {fieldErrors.communesServed && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.communesServed}</p>
+                      )}
                     </div>
                   </div>
                 )}

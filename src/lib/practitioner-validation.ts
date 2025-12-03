@@ -86,6 +86,11 @@ export const practitionerSignupSchema = z.object({
     .max(500, "Les certifications ne peuvent pas dépasser 500 caractères")
     .optional(),
   
+  communesServed: z.string()
+    .trim()
+    .max(500, "Les communes desservies ne peuvent pas dépasser 500 caractères")
+    .optional(),
+  
   // Documents
   profilePhoto: z.any().optional(),
   idDocument: z.any(),
@@ -155,6 +160,10 @@ export const validateCoachSportifFields = (data: any) => {
   
   if (!data.diploma) {
     errors.diploma = "Diplôme ou certification requis pour les coachs sportifs";
+  }
+  
+  if (!data.communesServed || data.communesServed.trim().length < 3) {
+    errors.communesServed = "Communes desservies requises (minimum 3 caractères)";
   }
   
   return errors;
