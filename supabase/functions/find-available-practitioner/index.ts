@@ -58,6 +58,33 @@ function toRadians(degrees: number): number {
   return degrees * (Math.PI / 180);
 }
 
+// Parse une date YYYY-MM-DD en jour de la semaine local (0=Dimanche, 6=Samedi)
+function getDayOfWeekFromDateString(dateString: string): number {
+  // Parse YYYY-MM-DD directement sans conversion UTC
+  const parts = dateString.split('-');
+  if (parts.length !== 3) {
+    console.error('❌ Format de date invalide:', dateString);
+    return -1;
+  }
+  
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1; // Mois 0-indexé
+  const day = parseInt(parts[2], 10);
+  
+  // Créer la date en utilisant les composants locaux
+  const date = new Date(year, month, day);
+  return date.getDay();
+}
+
+// Compare deux heures au format HH:MM
+function compareTime(time1: string, time2: string): number {
+  const [h1, m1] = time1.split(':').map(Number);
+  const [h2, m2] = time2.split(':').map(Number);
+  
+  if (h1 !== h2) return h1 - h2;
+  return m1 - m2;
+}
+
 // Vérifie si un praticien est disponible à une date et heure données
 function isPractitionerAvailable(
   practitioner: Practitioner,
@@ -66,8 +93,15 @@ function isPractitionerAvailable(
   availability: AvailabilitySlot[],
   exceptions: Exception[]
 ): boolean {
-  const date = new Date(appointmentDate);
-  const dayOfWeek = date.getDay();
+  // Obtenir le jour de la semaine depuis la chaîne de date (évite les problèmes UTC)
+  const dayOfWeek = getDayOfWeekFromDateString(appointmentDate);
+  
+  if (dayOfWeek === -1) {
+    console.error(`❌ Impossible de déterminer le jour pour ${appointmentDate}`);
+    return false;
+  }
+  
+  console.log(`📅 Date: ${appointmentDate}, Jour de la semaine: ${dayOfWeek} (0=Dim, 1=Lun, ..., 6=Sam)`);
   
   // Vérifier les exceptions (jours spéciaux)
   const exception = exceptions.find(e => 
@@ -76,6 +110,7 @@ function isPractitionerAvailable(
   );
   
   if (exception) {
+    console.log(`⚠️ Exception trouvée pour ${practitioner.name}: ${exception.is_available ? 'Disponible' : 'Indisponible'}`);
     return exception.is_available;
   }
   
@@ -83,20 +118,36 @@ function isPractitionerAvailable(
   const dayAvailability = availability.filter(a =>
     a.practitioner_id === practitioner.id &&
     a.day_of_week === dayOfWeek &&
-    a.is_active
+    a.is_active !== false // Inclure si is_active est true ou null
   );
   
+  console.log(`📊 ${practitioner.name}: ${dayAvailability.length} créneau(x) pour jour ${dayOfWeek}`);
+  
   if (dayAvailability.length === 0) {
+    console.log(`❌ ${practitioner.name}: Aucun créneau défini pour ce jour`);
     return false;
   }
   
+  // Normaliser l'heure du rendez-vous (s'assurer du format HH:MM)
+  const normalizedAppointmentTime = appointmentTime.substring(0, 5);
+  
   // Vérifier si l'heure demandée est dans un créneau disponible
   for (const slot of dayAvailability) {
-    if (appointmentTime >= slot.start_time && appointmentTime <= slot.end_time) {
+    // Normaliser les heures du créneau
+    const slotStart = slot.start_time.substring(0, 5);
+    const slotEnd = slot.end_time.substring(0, 5);
+    
+    console.log(`🕐 Vérification créneau: ${slotStart} - ${slotEnd} pour RDV à ${normalizedAppointmentTime}`);
+    
+    // L'heure doit être >= début ET < fin (pas <= car le RDV a une durée)
+    if (compareTime(normalizedAppointmentTime, slotStart) >= 0 && 
+        compareTime(normalizedAppointmentTime, slotEnd) < 0) {
+      console.log(`✅ ${practitioner.name}: Créneau valide trouvé (${slotStart}-${slotEnd})`);
       return true;
     }
   }
   
+  console.log(`❌ ${practitioner.name}: Aucun créneau ne correspond à ${normalizedAppointmentTime}`);
   return false;
 }
 
