@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -8,22 +9,54 @@ const WARNING_BEFORE_TIMEOUT = 60 * 1000; // 1 minute warning
 
 export function useIdleTimeout() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const warningRef = useRef<NodeJS.Timeout | null>(null);
   const [showWarning, setShowWarning] = useState(false);
 
   const logout = useCallback(async () => {
     setShowWarning(false);
-    await supabase.auth.signOut();
+    
+    // Clear all timers first
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (warningRef.current) {
+      clearTimeout(warningRef.current);
+      warningRef.current = null;
+    }
+    
+    try {
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+    
+    // Clear all localStorage items related to auth
     localStorage.removeItem('user_type');
     localStorage.removeItem('practitioner_id');
+    localStorage.removeItem('sb-kskkufjliwdfqqyemcpf-auth-token');
+    
+    // Clear all React Query cache to reset app state
+    queryClient.clear();
+    
+    // Show toast notification
     toast({
       title: "Session expirée",
       description: "Vous avez été déconnecté pour inactivité.",
       variant: "destructive",
     });
-    navigate('/login', { replace: true });
-  }, [navigate]);
+    
+    // Navigate to home page and force reload to reset all state
+    navigate('/', { replace: true });
+    
+    // Force page reload to completely reset the app state
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 100);
+  }, [navigate, queryClient]);
 
   const showWarningMessage = useCallback(() => {
     setShowWarning(true);
