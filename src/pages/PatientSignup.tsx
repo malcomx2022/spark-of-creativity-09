@@ -20,6 +20,7 @@ import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 import { z } from "zod";
+import { TermsDialog, useTermsDialogs } from "@/components/TermsDialog";
 
 // Schéma de validation Zod
 const patientSignupSchema = z.object({
@@ -100,6 +101,7 @@ export default function PatientSignup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: user, isLoading } = useSupabaseUser();
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const termsDialogs = useTermsDialogs();
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -660,27 +662,54 @@ export default function PatientSignup() {
 
                 {/* Conditions */}
                 <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-start space-x-2">
                     <Checkbox
                       id="terms"
                       checked={formData.acceptTerms}
                       onCheckedChange={(checked) => setFormData(prev => ({ ...prev, acceptTerms: checked as boolean }))}
+                      className="mt-1"
                     />
-                    <Label htmlFor="terms" className="text-sm">
+                    <Label htmlFor="terms" className="text-sm leading-relaxed">
                       J'accepte les{" "}
-                      <a href="/terms-of-service" className="text-primary hover:underline">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          termsDialogs.openCGU();
+                        }}
+                        className="text-primary hover:underline font-medium"
+                      >
                         Conditions Générales d'Utilisation
-                      </a>{" "}
+                      </button>{" "}
                       et la{" "}
-                      <a href="/privacy-policy" className="text-primary hover:underline">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          termsDialogs.openPrivacy();
+                        }}
+                        className="text-primary hover:underline font-medium"
+                      >
                         Politique de Confidentialité
-                      </a>
+                      </button>
                     </Label>
                   </div>
                   {validationErrors.acceptTerms && (
                     <p className="text-sm text-destructive">{validationErrors.acceptTerms}</p>
                   )}
                 </div>
+
+                {/* Dialogues des termes */}
+                <TermsDialog
+                  open={termsDialogs.isOpen('cgu')}
+                  onOpenChange={termsDialogs.closeDialog}
+                  type="cgu"
+                />
+                <TermsDialog
+                  open={termsDialogs.isOpen('privacy')}
+                  onOpenChange={termsDialogs.closeDialog}
+                  type="privacy"
+                />
 
                 <Button
                   type="submit"
