@@ -2269,7 +2269,6 @@ export type Database = {
       }
       practitioners_public_view: {
         Row: {
-          address: string | null
           available: boolean | null
           bio: string | null
           certifications: string[] | null
@@ -2279,8 +2278,6 @@ export type Database = {
           intervention_radius: number | null
           intervention_zone: string | null
           languages: string[] | null
-          latitude: number | null
-          longitude: number | null
           name: string | null
           practitioner_type:
             | Database["public"]["Enums"]["practitioner_type"]
@@ -2291,7 +2288,6 @@ export type Database = {
           years_experience: number | null
         }
         Insert: {
-          address?: string | null
           available?: boolean | null
           bio?: string | null
           certifications?: string[] | null
@@ -2301,8 +2297,6 @@ export type Database = {
           intervention_radius?: number | null
           intervention_zone?: string | null
           languages?: string[] | null
-          latitude?: number | null
-          longitude?: number | null
           name?: string | null
           practitioner_type?:
             | Database["public"]["Enums"]["practitioner_type"]
@@ -2313,7 +2307,6 @@ export type Database = {
           years_experience?: number | null
         }
         Update: {
-          address?: string | null
           available?: boolean | null
           bio?: string | null
           certifications?: string[] | null
@@ -2323,8 +2316,6 @@ export type Database = {
           intervention_radius?: number | null
           intervention_zone?: string | null
           languages?: string[] | null
-          latitude?: number | null
-          longitude?: number | null
           name?: string | null
           practitioner_type?:
             | Database["public"]["Enums"]["practitioner_type"]
