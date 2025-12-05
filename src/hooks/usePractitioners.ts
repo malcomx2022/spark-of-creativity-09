@@ -2,19 +2,25 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PractitionerLocation } from '@/types/practitioner';
 
-function mapPractitioner(row: any): PractitionerLocation {
+function mapPractitioner(row: any, isPublicView: boolean = false): PractitionerLocation {
   return {
     id: row.id,
     name: row.name,
     specialty: row.specialty ?? 'Spécialité non renseignée',
-    address: row.address ?? 'Adresse à préciser',
-    latitude: row.latitude ?? 0,
-    longitude: row.longitude ?? 0,
+    // Pour la vue publique, pas d'adresse ni de coordonnées GPS exactes
+    address: isPublicView ? (row.intervention_zone ?? row.communes_served?.[0] ?? 'Zone non précisée') : (row.address ?? 'Adresse à préciser'),
+    latitude: isPublicView ? 0 : (row.latitude ?? 0),
+    longitude: isPublicView ? 0 : (row.longitude ?? 0),
     available: row.available ?? false,
     rating: row.rating ?? 0,
-    phone: row.phone ?? '',
+    phone: isPublicView ? '' : (row.phone ?? ''),
     image: row.image ?? undefined,
     practitioner_type: row.practitioner_type ?? undefined,
+    // Données supplémentaires de la vue publique
+    bio: row.bio ?? undefined,
+    years_experience: row.years_experience ?? undefined,
+    communes_served: row.communes_served ?? undefined,
+    intervention_zone: row.intervention_zone ?? undefined,
   };
 }
 
@@ -38,9 +44,9 @@ async function fetchPractitioners() {
       throw error;
     }
 
-    return (data ?? []).map(mapPractitioner);
+    return (data ?? []).map(row => mapPractitioner(row, false));
   } else {
-    // Unauthenticated users use the public view with limited data
+    // Unauthenticated users use the public view with limited data (no GPS, phone, address)
     const { data, error } = await supabase
       .from('practitioners_public_view')
       .select('*')
@@ -50,24 +56,10 @@ async function fetchPractitioners() {
       if (import.meta.env.DEV) {
         console.error('Erreur chargement praticiens publics:', error);
       }
-
-      // Fallback: essayer de récupérer une liste limitée depuis practitioners
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('practitioners')
-        .select('id, name, specialty, address, latitude, longitude, available, rating, practitioner_type')
-        .or('available.eq.true,can_accept_missions.eq.true')
-        .eq('kyc_status', 'approved')
-        .limit(50)
-        .order('name', { ascending: true });
-
-      if (fallbackError) {
-        throw new Error('Impossible de charger la liste des praticiens. Veuillez réessayer.');
-      }
-
-      return (fallbackData ?? []).map(mapPractitioner);
+      throw new Error('Impossible de charger la liste des praticiens. Veuillez vous connecter pour plus de détails.');
     }
 
-    return (data ?? []).map(mapPractitioner);
+    return (data ?? []).map(row => mapPractitioner(row, true));
   }
 }
 

@@ -12,6 +12,9 @@ export interface PractitionerLocation {
   image?: string;
   practitioner_type?: string;
   intervention_zone?: string;
+  bio?: string;
+  years_experience?: number;
+  communes_served?: string[];
 }
 
 export interface UserLocation {
