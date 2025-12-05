@@ -100,10 +100,9 @@ export default function PractitionerSearch() {
       return;
     }
 
-    // Pour les utilisateurs anonymes, les coordonnées GPS ne sont pas disponibles (0,0)
-    // On affiche quand même les praticiens dans la liste mais pas sur la carte
+    // Enrichir les praticiens avec la distance si les coordonnées sont disponibles
     const enriched = practitionersData.map(practitioner => {
-      // Vérifier si le praticien a des coordonnées GPS valides
+      // Vérifier si le praticien a des coordonnées GPS valides (non nulles et non 0,0)
       const hasValidCoords = practitioner.latitude != null && 
                              practitioner.longitude != null && 
                              !isNaN(practitioner.latitude) && 
@@ -112,7 +111,8 @@ export default function PractitionerSearch() {
                              practitioner.longitude !== 0;
 
       if (!userLocation || !hasValidCoords) {
-        return practitioner;
+        // Sans coordonnées valides, pas de calcul de distance
+        return { ...practitioner, distance: undefined };
       }
 
       return {
@@ -126,9 +126,18 @@ export default function PractitionerSearch() {
       };
     });
 
-    const sorted = userLocation
-      ? [...enriched].sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))
-      : enriched;
+    // Trier par distance si disponible
+    const sorted = [...enriched].sort((a, b) => {
+      // Praticiens avec distance en premier, triés par proximité
+      if (a.distance !== undefined && b.distance !== undefined) {
+        return a.distance - b.distance;
+      }
+      // Praticiens avec distance avant ceux sans
+      if (a.distance !== undefined) return -1;
+      if (b.distance !== undefined) return 1;
+      // Pour ceux sans distance, trier par nom
+      return a.name.localeCompare(b.name);
+    });
 
     setPractitioners(sorted);
   }, [practitionersData, userLocation]);
@@ -136,16 +145,23 @@ export default function PractitionerSearch() {
   useEffect(() => {
     let filtered = practitioners;
 
+    // Filtrer par catégorie
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(p => p.practitioner_type === selectedCategory);
     }
 
-    // Si l'utilisateur a une position ET les praticiens ont des coordonnées, filtrer par rayon
-    // Sinon, afficher tous les praticiens (cas anonyme sans GPS)
+    // Filtrer par rayon de recherche
     const radius = parseFloat(searchRadius);
     if (!Number.isNaN(radius) && userLocation) {
-      // Ne filtrer que les praticiens qui ont une distance calculée (coordonnées valides)
-      filtered = filtered.filter(p => p.distance === undefined || p.distance <= radius);
+      // Garder uniquement les praticiens dans le rayon OU ceux sans coordonnées GPS
+      // Pour les utilisateurs authentifiés: filtrage strict par distance
+      // Pour les anonymes: les praticiens n'ont pas de GPS, on les garde tous
+      filtered = filtered.filter(p => {
+        // Si pas de distance calculée (pas de GPS), inclure le praticien
+        if (p.distance === undefined) return true;
+        // Sinon, vérifier si dans le rayon
+        return p.distance <= radius;
+      });
     }
 
     setFilteredPractitioners(filtered);
@@ -341,13 +357,20 @@ export default function PractitionerSearch() {
                         <p className="text-sm text-muted-foreground">{practitioner.specialty}</p>
                         <p className="text-sm text-muted-foreground flex items-center gap-2 mt-2">
                           <MapPin className="h-4 w-4" />
-                          {practitioner.address}
-                          {typeof practitioner.distance === 'number' && (
-                            <span className="text-xs text-muted-foreground">
+                          {/* Afficher zone d'intervention ou adresse générique, jamais les coordonnées GPS */}
+                          {practitioner.intervention_zone || practitioner.address || 'Zone non précisée'}
+                          {typeof practitioner.distance === 'number' && userLocation && (
+                            <span className="text-xs font-medium text-primary">
                               ({practitioner.distance.toFixed(1)} km)
                             </span>
                           )}
                         </p>
+                        {practitioner.communes_served && practitioner.communes_served.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Communes: {practitioner.communes_served.slice(0, 3).join(', ')}
+                            {practitioner.communes_served.length > 3 && '...'}
+                          </p>
+                        )}
                       </div>
                        <div className="flex items-center justify-between">
                         <Button 
