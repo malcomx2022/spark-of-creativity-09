@@ -1,63 +1,36 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyCsrfToken, getSecureCorsHeaders } from "../_shared/csrf.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-csrf-token',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 /**
  * Normalise un numéro de téléphone au format E.164
- * Ajoute le + si manquant et valide le format international
  */
 function normalizePhoneNumber(phone: string): string {
-  // Remove all non-digit characters except +
   let normalized = phone.replace(/[^\d+]/g, '');
-  
-  // Add + prefix if missing
   if (!normalized.startsWith('+')) {
     normalized = '+' + normalized;
   }
-  
   return normalized;
 }
 
 /**
  * Valide le format d'un numéro de téléphone E.164
- * Format: +[country code][subscriber number]
- * Exemple: +22890123456 (Bénin)
  */
 function validatePhoneNumber(phone: string): boolean {
-  // E.164 format: + followed by 1-3 digits country code and 4-15 total digits
   const e164Regex = /^\+[1-9]\d{1,14}$/;
   return e164Regex.test(phone);
 }
 
 /**
  * EPIC 1: Envoi de codes OTP via Twilio Verify
- * 
- * Fonctionnalités:
- * - Normalisation et validation du numéro de téléphone
- * - Envoi d'OTP via SMS, WhatsApp ou appel vocal
- * - Traçabilité des tentatives dans otp_attempts
- * - Gestion d'erreurs complète avec messages clairs
  */
-serve(async (req) => {
-  const origin = req.headers.get('origin');
-  const corsHeaders = getSecureCorsHeaders(origin);
-
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
-  }
-
-  // Vérifier CSRF
-  const csrfCheck = verifyCsrfToken(req);
-  if (!csrfCheck.valid) {
-    console.warn('CSRF verification failed:', csrfCheck.error);
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: 'Security verification failed. Please refresh the page and try again.' 
-      }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -70,7 +43,14 @@ serve(async (req) => {
     const twilioVerifyServiceSid = Deno.env.get('TWILIO_VERIFY_SERVICE_SID');
 
     if (!twilioAccountSid || !twilioAuthToken || !twilioVerifyServiceSid) {
-      throw new Error('Twilio credentials not configured');
+      console.error('Twilio credentials missing');
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Service de SMS non configuré. Contactez le support.' 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const { phoneNumber, channel = 'sms' } = await req.json();
@@ -79,7 +59,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Phone number is required' 
+          error: 'Numéro de téléphone requis' 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -91,7 +71,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: `Invalid channel. Must be one of: ${validChannels.join(', ')}` 
+          error: `Canal invalide. Utilisez: ${validChannels.join(', ')}` 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -106,19 +86,19 @@ serve(async (req) => {
         phone_number: phoneNumber,
         channel,
         status: 'failed',
-        error_message: 'Invalid phone number format',
+        error_message: 'Format de numéro invalide',
       });
 
       return new Response(
         JSON.stringify({ 
           success: false,
-          error: 'Invalid phone number format. Use international format (e.g., +22890123456 or 22890123456)' 
+          error: 'Format de numéro invalide. Utilisez le format international (ex: +22890123456)' 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check rate limiting using new function
+    // Check rate limiting
     const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_otp_rate_limit', {
       phone: normalizedPhone
     });
@@ -131,8 +111,8 @@ serve(async (req) => {
         channel,
         status: 'failed',
         error_message: rateLimitCheck.reason === 'blocked' 
-          ? 'Account temporarily blocked' 
-          : 'Rate limit exceeded',
+          ? 'Compte temporairement bloqué' 
+          : 'Limite de tentatives atteinte',
       });
 
       const message = rateLimitCheck.reason === 'blocked'
@@ -147,30 +127,6 @@ serve(async (req) => {
         }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    }
-
-    // Notify admins if approaching limit (4 attempts = warning)
-    if (rateLimitCheck && rateLimitCheck.remaining === 1) {
-      console.log('User approaching OTP limit, notifying admins:', normalizedPhone);
-      
-      const { data: adminRoles } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .in('role', ['admin', 'super_admin']);
-      
-      if (adminRoles && adminRoles.length > 0) {
-        const notifications = adminRoles.map(admin => ({
-          user_id: admin.user_id,
-          title: '⚠️ Utilisateur proche du blocage OTP',
-          message: `L'utilisateur ${normalizedPhone} approche de la limite OTP (1 tentative restante).`,
-          type: 'security',
-          link: '/admin?tab=otp',
-          is_read: false,
-        }));
-        
-        await supabase.from('notifications').insert(notifications);
-        console.log(`Notified ${adminRoles.length} admin(s) about user approaching limit`);
-      }
     }
 
     console.log('Sending OTP to:', normalizedPhone, 'via', channel);
@@ -194,13 +150,9 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error('Twilio error response:', JSON.stringify(responseData, null, 2));
-      console.error('Request details - Phone:', normalizedPhone, 'Channel:', channel);
-      console.error('Verify Service SID:', twilioVerifyServiceSid);
       
-      // Extract error message from Twilio response
-      const errorMessage = responseData.message || `Twilio API error: ${response.status}`;
+      const errorMessage = responseData.message || `Erreur Twilio: ${response.status}`;
       
-      // Log failed attempt with full details
       await supabase.from('otp_attempts').insert({
         phone_number: normalizedPhone,
         channel,
@@ -212,12 +164,6 @@ serve(async (req) => {
         JSON.stringify({ 
           success: false,
           error: errorMessage,
-          details: responseData,
-          debug: {
-            phone: normalizedPhone,
-            channel,
-            serviceSid: twilioVerifyServiceSid?.substring(0, 10) + '...' // Partial SID for debugging
-          }
         }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -236,19 +182,17 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'OTP sent successfully',
+        message: 'Code envoyé avec succès',
         status: responseData.status,
         channel: responseData.channel,
-        to: responseData.to,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error in send-otp:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
     
-    // Log unexpected error
     try {
       await supabase.from('otp_attempts').insert({
         phone_number: 'unknown',
