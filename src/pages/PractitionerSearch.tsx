@@ -100,15 +100,18 @@ export default function PractitionerSearch() {
       return;
     }
 
-    // Filtrer les praticiens avec des coordonnées GPS valides pour la carte
-    const validPractitioners = practitionersData.filter(
-      p => p.latitude != null && p.longitude != null && 
-           !isNaN(p.latitude) && !isNaN(p.longitude) &&
-           p.latitude !== 0 && p.longitude !== 0
-    );
+    // Pour les utilisateurs anonymes, les coordonnées GPS ne sont pas disponibles (0,0)
+    // On affiche quand même les praticiens dans la liste mais pas sur la carte
+    const enriched = practitionersData.map(practitioner => {
+      // Vérifier si le praticien a des coordonnées GPS valides
+      const hasValidCoords = practitioner.latitude != null && 
+                             practitioner.longitude != null && 
+                             !isNaN(practitioner.latitude) && 
+                             !isNaN(practitioner.longitude) &&
+                             practitioner.latitude !== 0 && 
+                             practitioner.longitude !== 0;
 
-    const enriched = validPractitioners.map(practitioner => {
-      if (!userLocation) {
+      if (!userLocation || !hasValidCoords) {
         return practitioner;
       }
 
@@ -137,11 +140,12 @@ export default function PractitionerSearch() {
       filtered = filtered.filter(p => p.practitioner_type === selectedCategory);
     }
 
-    // Si l'utilisateur a une position, filtrer par rayon
-    // Sinon, afficher tous les praticiens valides
+    // Si l'utilisateur a une position ET les praticiens ont des coordonnées, filtrer par rayon
+    // Sinon, afficher tous les praticiens (cas anonyme sans GPS)
     const radius = parseFloat(searchRadius);
     if (!Number.isNaN(radius) && userLocation) {
-      filtered = filtered.filter(p => (p.distance ?? Infinity) <= radius);
+      // Ne filtrer que les praticiens qui ont une distance calculée (coordonnées valides)
+      filtered = filtered.filter(p => p.distance === undefined || p.distance <= radius);
     }
 
     setFilteredPractitioners(filtered);
