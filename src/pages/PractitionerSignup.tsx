@@ -22,6 +22,7 @@ import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
+import { TermsDialog, useTermsDialogs } from "@/components/TermsDialog";
 
 interface SignupFormData {
   firstName: string;
@@ -57,6 +58,7 @@ export default function PractitionerSignup() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: user, isLoading } = useSupabaseUser();
+  const termsDialogs = useTermsDialogs();
 
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
@@ -1634,28 +1636,54 @@ export default function PractitionerSignup() {
 
                 {/* Conditions */}
                 <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-start space-x-2">
                     <Checkbox
                       id="terms"
                       checked={formData.acceptTerms}
                       onCheckedChange={(checked) => handleInputChange('acceptTerms', checked as boolean)}
-                      className={fieldErrors.acceptTerms ? 'border-destructive' : ''}
+                      className={`mt-1 ${fieldErrors.acceptTerms ? 'border-destructive' : ''}`}
                     />
                     <Label htmlFor="terms" className="text-sm sm:text-base font-normal leading-relaxed cursor-pointer">
                       J'accepte la{" "}
-                      <a href="/terms-of-service#charte-praticiens" className="text-primary hover:underline">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          termsDialogs.openCharte();
+                        }}
+                        className="text-primary hover:underline font-medium"
+                      >
                         Charte d'engagement des praticiens DomiCares
-                      </a>{" "}
+                      </button>{" "}
                       et les{" "}
-                      <a href="/terms-of-service" className="text-primary hover:underline">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          termsDialogs.openCGU();
+                        }}
+                        className="text-primary hover:underline font-medium"
+                      >
                         CGU
-                      </a>
+                      </button>
                     </Label>
                   </div>
                   {fieldErrors.acceptTerms && (
                     <p className="text-xs text-destructive">{fieldErrors.acceptTerms}</p>
                   )}
                 </div>
+
+                {/* Dialogues des termes */}
+                <TermsDialog
+                  open={termsDialogs.isOpen('charte')}
+                  onOpenChange={termsDialogs.closeDialog}
+                  type="charte"
+                />
+                <TermsDialog
+                  open={termsDialogs.isOpen('cgu')}
+                  onOpenChange={termsDialogs.closeDialog}
+                  type="cgu"
+                />
 
                 <Button
                   type="submit"
