@@ -2267,6 +2267,13 @@ export type Database = {
         }
         Relationships: []
       }
+      homepage_stats: {
+        Row: {
+          patients_count: number | null
+          practitioners_count: number | null
+        }
+        Relationships: []
+      }
       practitioners_public_view: {
         Row: {
           available: boolean | null
