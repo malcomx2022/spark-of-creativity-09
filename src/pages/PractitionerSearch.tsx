@@ -40,7 +40,8 @@ export default function PractitionerSearch() {
   const [practitioners, setPractitioners] = useState<PractitionerLocation[]>([]);
   const [filteredPractitioners, setFilteredPractitioners] = useState<PractitionerLocation[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [searchRadius, setSearchRadius] = useState<string>('100');
+  const [searchRadius, setSearchRadius] = useState<string>('50');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
   const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
 
@@ -145,27 +146,41 @@ export default function PractitionerSearch() {
   useEffect(() => {
     let filtered = practitioners;
 
+    // Filtrer par recherche textuelle (nom, spécialité, zone)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(query) ||
+        p.specialty.toLowerCase().includes(query) ||
+        p.address?.toLowerCase().includes(query) ||
+        p.intervention_zone?.toLowerCase().includes(query) ||
+        p.communes_served?.some(c => c.toLowerCase().includes(query))
+      );
+    }
+
     // Filtrer par catégorie
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(p => p.practitioner_type === selectedCategory);
     }
 
-    // Filtrer par rayon de recherche
+    // Filtrer par rayon de recherche (uniquement si on a la position utilisateur)
     const radius = parseFloat(searchRadius);
     if (!Number.isNaN(radius) && userLocation) {
-      // Garder uniquement les praticiens dans le rayon OU ceux sans coordonnées GPS
-      // Pour les utilisateurs authentifiés: filtrage strict par distance
-      // Pour les anonymes: les praticiens n'ont pas de GPS, on les garde tous
       filtered = filtered.filter(p => {
-        // Si pas de distance calculée (pas de GPS), inclure le praticien
-        if (p.distance === undefined) return true;
-        // Sinon, vérifier si dans le rayon
+        // Si pas de distance calculée, ne pas inclure dans le filtrage par rayon
+        // (sauf si aucune distance n'est disponible pour aucun praticien)
+        if (p.distance === undefined) {
+          // Vérifier si au moins un praticien a une distance
+          const anyHasDistance = practitioners.some(pr => pr.distance !== undefined);
+          // Si aucun n'a de distance, on garde tous les praticiens
+          return !anyHasDistance;
+        }
         return p.distance <= radius;
       });
     }
 
     setFilteredPractitioners(filtered);
-  }, [practitioners, selectedCategory, searchRadius, userLocation]);
+  }, [practitioners, selectedCategory, searchRadius, userLocation, searchQuery]);
 
   const categories = useMemo(
     () => ['all', ...Array.from(new Set(practitionersData.map(p => p.practitioner_type).filter(Boolean)))],
@@ -250,7 +265,11 @@ export default function PractitionerSearch() {
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="md:col-span-2 flex items-center gap-2">
                     <Search className="h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Rechercher un praticien" />
+                    <Input 
+                      placeholder="Rechercher par nom, spécialité ou zone..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                   </div>
                   <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                     <SelectTrigger>
@@ -265,20 +284,25 @@ export default function PractitionerSearch() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Rayon de recherche :</span>
-                  <Select value={searchRadius} onValueChange={setSearchRadius}>
-                    <SelectTrigger className="w-[160px]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Rayon :</span>
+                  <Select value={searchRadius} onValueChange={setSearchRadius} disabled={!userLocation}>
+                    <SelectTrigger className="w-[120px]">
                       <SelectValue placeholder="Rayon" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['5', '10', '25', '40', '55', '70', '85', '100'].map(radius => (
+                      {['5', '10', '25', '50', '75', '100'].map(radius => (
                         <SelectItem key={radius} value={radius}>
                           {radius} km
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {!userLocation && (
+                    <span className="text-xs text-muted-foreground">
+                      (Activez la géolocalisation pour filtrer par distance)
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>
