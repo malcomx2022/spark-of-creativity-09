@@ -626,13 +626,6 @@ export default function PatientDashboard() {
                   <span className="text-sm">RDV</span>
                 </TabsTrigger>
                 <TabsTrigger 
-                  value="appointments" 
-                  className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent"
-                >
-                  <Calendar className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-sm">RDV</span>
-                </TabsTrigger>
-                <TabsTrigger 
                   value="group-sessions" 
                   className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent"
                 >
