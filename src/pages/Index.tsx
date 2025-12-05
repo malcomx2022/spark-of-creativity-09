@@ -92,37 +92,22 @@ const Index = () => {
   const { data: realStats } = useQuery({
     queryKey: ['homepage-stats'],
     queryFn: async () => {
-      const [practitionersResult, allProfilesResult, practitionerUsersResult, adminUsersResult] = await Promise.all([
-        supabase
-          .from('practitioners')
-          .select('id', { count: 'exact', head: true })
-          .eq('kyc_status', 'approved')
-          .eq('available', true),
-        supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true }),
-        supabase
-          .from('practitioners')
-          .select('user_id', { count: 'exact', head: true }),
-        supabase
-          .from('user_roles')
-          .select('user_id', { count: 'exact', head: true })
-      ]);
+      const { data, error } = await supabase
+        .from('homepage_stats')
+        .select('*')
+        .single();
 
-      const practitionersCount = practitionersResult.count || 0;
-      const allProfilesCount = allProfilesResult.count || 0;
-      const practitionerUsersCount = practitionerUsersResult.count || 0;
-      const adminUsersCount = adminUsersResult.count || 0;
-      
-      // Patients = tous les profiles - praticiens - admins
-      const patientsCount = Math.max(0, allProfilesCount - practitionerUsersCount - adminUsersCount);
+      if (error) {
+        console.error('Error fetching homepage stats:', error);
+        return { practitioners: 0, patients: 0 };
+      }
 
       return {
-        practitioners: practitionersCount,
-        patients: patientsCount
+        practitioners: data?.practitioners_count || 0,
+        patients: data?.patients_count || 0
       };
     },
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const handleDashboardClick = async () => {
