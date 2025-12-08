@@ -69,13 +69,20 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+interface PreselectedPractitioner {
+  id: string;
+  name: string;
+  specialty: string;
+}
+
 interface NewAppointmentDialogProps {
   onSubmit: (data: CreateAppointmentData) => Promise<any>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  preselectedPractitioner?: PreselectedPractitioner;
 }
 
-export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChange }: NewAppointmentDialogProps) {
+export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChange, preselectedPractitioner }: NewAppointmentDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
   const handleOpenChange = onOpenChange || setInternalOpen;
@@ -96,7 +103,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      specialty: '',
+      specialty: preselectedPractitioner?.specialty || '',
       time: '',
       reason: '',
       urgencyLevel: 'non-urgent'
@@ -117,7 +124,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       isSubmittingRef.current = false;
       submissionTimestampRef.current = 0;
       form.reset({
-        specialty: '',
+        specialty: preselectedPractitioner?.specialty || '',
         date: undefined,
         time: '',
         reason: '',
@@ -183,6 +190,73 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       }
       isSubmittingRef.current = false;
       return;
+    }
+
+    // Si un praticien est pré-sélectionné (ex: coach choisi), créer directement le RDV
+    // sans vérification GPS car le praticien viendra à l'adresse du patient
+    if (preselectedPractitioner) {
+      setIsSearchingPractitioner(true);
+      
+      try {
+        if (import.meta.env.DEV) {
+          console.log('📌 Praticien pré-sélectionné:', preselectedPractitioner);
+        }
+
+        const appointmentPayload = {
+          specialty: preselectedPractitioner.specialty,
+          date: data.date.toISOString(),
+          time: data.time,
+          reason: data.reason,
+          urgencyLevel: data.urgencyLevel,
+          practitionerId: preselectedPractitioner.id,
+          practitionerName: preselectedPractitioner.name,
+        };
+
+        if (import.meta.env.DEV) {
+          console.log('🔵 Création du rendez-vous avec praticien pré-sélectionné...');
+        }
+        const createdAppointment = await onSubmit(appointmentPayload);
+
+        if (!createdAppointment?.id) {
+          throw new Error('💾 Erreur lors de la création du rendez-vous.');
+        }
+
+        if (import.meta.env.DEV) {
+          console.log('✅ Rendez-vous créé avec ID:', createdAppointment.id);
+        }
+
+        showToast({
+          title: '✅ Demande envoyée',
+          description: `Votre demande a été envoyée à ${preselectedPractitioner.name}. Vous serez notifié dès qu'il aura accepté.`,
+          duration: 6000,
+        });
+
+        handleOpenChange(false);
+        setIsSearchingPractitioner(false);
+        isSubmittingRef.current = false;
+        form.reset({
+          specialty: preselectedPractitioner.specialty,
+          date: undefined,
+          time: '',
+          reason: '',
+          urgencyLevel: 'non-urgent'
+        });
+        return;
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.error('❌ Erreur création rendez-vous (praticien pré-sélectionné):', error);
+        }
+        setIsSearchingPractitioner(false);
+        isSubmittingRef.current = false;
+        
+        showToast({
+          title: '❌ Échec de création',
+          description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous.',
+          variant: 'destructive',
+          duration: 6000,
+        });
+        return;
+      }
     }
 
     // Bloquer la soumission pendant le chargement GPS
@@ -740,13 +814,20 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Demander un rendez-vous</DialogTitle>
+          <DialogTitle>
+            {preselectedPractitioner 
+              ? `Demander un rendez-vous avec ${preselectedPractitioner.name}` 
+              : 'Demander un rendez-vous'}
+          </DialogTitle>
           <DialogDescription>
-            Remplissez le formulaire pour demander un rendez-vous à domicile
+            {preselectedPractitioner
+              ? `Choisissez une date et un créneau pour votre rendez-vous avec ${preselectedPractitioner.name}`
+              : 'Remplissez le formulaire pour demander un rendez-vous à domicile'}
           </DialogDescription>
         </DialogHeader>
 
-        {locationMode === 'auto' && position && (
+        {/* Alertes GPS - masquées si praticien pré-sélectionné */}
+        {!preselectedPractitioner && locationMode === 'auto' && position && (
           <Alert className={cn(
             "mb-4 border-2",
             quality?.level === 'excellent' ? "bg-green-50 border-green-300" :
@@ -777,7 +858,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           </Alert>
         )}
 
-        {locationMode === 'auto' && geoLoading && !position && (
+        {!preselectedPractitioner && locationMode === 'auto' && geoLoading && !position && (
           <Alert className="mb-4 bg-blue-50 border-blue-200">
             <Loader2 className="h-4 w-4 animate-spin" />
             <AlertDescription className="flex items-center justify-between">
@@ -786,7 +867,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           </Alert>
         )}
 
-        {locationMode === 'auto' && geoError && (
+        {!preselectedPractitioner && locationMode === 'auto' && geoError && (
           <Alert variant="destructive" className="mb-4">
             <AlertDescription className="space-y-2">
               <p>{geoError}</p>
@@ -825,85 +906,99 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               }
             }}
           >
-            <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
-              <p className="text-sm font-medium">Comment souhaitez-vous préciser le lieu d'intervention ?</p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant={locationMode === 'auto' ? 'default' : 'outline'}
-                  onClick={() => {
-                    setLocationMode('auto');
-                    if (!position && !geoLoading) {
-                      requestPosition();
-                    }
-                  }}
-                  size="sm"
-                  className="relative"
-                >
-                  📍 Géolocalisation automatique
-                  {locationMode === 'auto' && !position && !geoLoading && !geoError && (
-                    <span className="ml-2 text-xs opacity-70">(Cliquez pour activer)</span>
-                  )}
-                  {locationMode === 'auto' && position && (
-                    <span className="ml-2">✓</span>
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant={locationMode === 'manual' ? 'default' : 'outline'}
-                  onClick={() => setLocationMode('manual')}
-                  size="sm"
-                >
-                  ✍️ Saisir l'adresse manuellement
-                </Button>
+            {/* Section localisation - masquée si praticien pré-sélectionné */}
+            {!preselectedPractitioner && (
+              <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+                <p className="text-sm font-medium">Comment souhaitez-vous préciser le lieu d'intervention ?</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={locationMode === 'auto' ? 'default' : 'outline'}
+                    onClick={() => {
+                      setLocationMode('auto');
+                      if (!position && !geoLoading) {
+                        requestPosition();
+                      }
+                    }}
+                    size="sm"
+                    className="relative"
+                  >
+                    📍 Géolocalisation automatique
+                    {locationMode === 'auto' && !position && !geoLoading && !geoError && (
+                      <span className="ml-2 text-xs opacity-70">(Cliquez pour activer)</span>
+                    )}
+                    {locationMode === 'auto' && position && (
+                      <span className="ml-2">✓</span>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={locationMode === 'manual' ? 'default' : 'outline'}
+                    onClick={() => setLocationMode('manual')}
+                    size="sm"
+                  >
+                    ✍️ Saisir l'adresse manuellement
+                  </Button>
+                </div>
+                {locationMode === 'manual' && (
+                  <AddressSearchInput
+                    label="Adresse complète"
+                    value={manualLocation.address}
+                    onChange={(location) => {
+                      setManualLocation({
+                        address: location.address,
+                        latitude: location.latitude ?? null,
+                        longitude: location.longitude ?? null
+                      });
+                    }}
+                    placeholder="Rechercher votre adresse au Bénin..."
+                    required
+                  />
+                )}
               </div>
-              {locationMode === 'manual' && (
-                <AddressSearchInput
-                  label="Adresse complète"
-                  value={manualLocation.address}
-                  onChange={(location) => {
-                    setManualLocation({
-                      address: location.address,
-                      latitude: location.latitude ?? null,
-                      longitude: location.longitude ?? null
-                    });
-                  }}
-                  placeholder="Rechercher votre adresse au Bénin..."
-                  required
-                />
-              )}
-            </div>
+            )}
 
-            <FormField
-              control={form.control}
-              name="specialty"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Catégorie de praticien <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
-                        <SelectValue placeholder="Choisissez une catégorie..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {availableCategories.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground">Aucune catégorie disponible</div>
-                      ) : (
-                        availableCategories.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {getCategoryLabel(category)}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage className="text-xs font-medium" />
-                </FormItem>
-              )}
-            />
+            {/* Afficher le praticien pré-sélectionné ou le sélecteur de spécialité */}
+            {preselectedPractitioner ? (
+              <div className="rounded-lg border p-4 bg-primary/5">
+                <p className="text-sm font-medium text-muted-foreground mb-1">Praticien sélectionné</p>
+                <p className="text-lg font-semibold">{preselectedPractitioner.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {getCategoryLabel(preselectedPractitioner.specialty)}
+                </p>
+              </div>
+            ) : (
+              <FormField
+                control={form.control}
+                name="specialty"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Catégorie de praticien <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
+                          <SelectValue placeholder="Choisissez une catégorie..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableCategories.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground">Aucune catégorie disponible</div>
+                        ) : (
+                          availableCategories.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {getCategoryLabel(category)}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage className="text-xs font-medium" />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
