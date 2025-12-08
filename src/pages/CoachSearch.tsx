@@ -401,6 +401,11 @@ export default function CoachSearch() {
             if (!open) setSelectedCoach(null);
           }}
           onSubmit={createAppointment.mutateAsync}
+          preselectedPractitioner={{
+            id: selectedCoach.id,
+            name: selectedCoach.name,
+            specialty: 'coach_sportif'
+          }}
         />
       )}
     </div>
