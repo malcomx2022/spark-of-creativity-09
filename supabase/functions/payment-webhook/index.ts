@@ -246,7 +246,8 @@ async function handleTransactionEvent(
               title: '💰 Nouveau paiement reçu',
               message: `Un participant a payé pour votre séance de groupe. Montant: ${netAmount} XOF`,
               type: 'payment',
-              link: '/dashboard/practitioner?tab=sessions',
+              link: '/dashboard/coach?tab=sessions',
+              channels: ['email', 'sms', 'push'],
             });
           }
         }
@@ -282,6 +283,7 @@ async function handleTransactionEvent(
               message: `Rendez-vous avec ${appointmentData.patient_name} confirmé pour le ${appointmentData.date} à ${appointmentData.time}. Montant reçu: ${netAmount} XOF`,
               type: 'appointment',
               link: '/dashboard/practitioner?tab=appointments',
+              channels: ['email', 'sms', 'push'],
             });
           }
         }
