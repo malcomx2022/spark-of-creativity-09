@@ -10,8 +10,20 @@ import { fetchWithTimeout } from "./fetch-with-timeout.ts";
 const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
 // Validation schema avec Zod
+// ✅ CORRECTION: Accepter UUID standard OU format group_session_{uuid}_{uuid}
+const appointmentIdSchema = z.string().refine(
+  (val) => {
+    // UUID standard
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    // Format séance de groupe: group_session_{sessionId}_{participantId}
+    const groupSessionRegex = /^group_session_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(val) || groupSessionRegex.test(val);
+  },
+  { message: "Format d'identifiant invalide (UUID ou group_session_{uuid}_{uuid} attendu)" }
+);
+
 const PaymentRequestSchema = z.object({
-  appointmentId: z.string().uuid({ message: "Format d'identifiant de rendez-vous invalide" }),
+  appointmentId: appointmentIdSchema,
   amount: z.number()
     .min(100, { message: "Le montant doit être d'au moins 100 XOF" })
     .max(1000000, { message: "Le montant ne doit pas dépasser 1 000 000 XOF" })
@@ -119,49 +131,108 @@ serve(async (req) => {
       user = authUser;
     }
 
-    // Vérifier que l'appointment existe et appartient à l'utilisateur
-    const { data: appointment, error: appointmentError } = await supabase
-      .from('appointments')
-      .select('id, patient_id, status, payment_amount, practitioner_id, specialty')
-      .eq('id', appointmentId)
-      .single();
-
-    if (appointmentError || !appointment) {
-      console.error('Appointment not found:', appointmentError);
-      return new Response(
-        JSON.stringify({ error: 'Rendez-vous non trouvé' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Vérifier les droits (sauf si bypassAuth)
+    // ✅ CORRECTION: Gérer différemment les séances de groupe et les rendez-vous classiques
+    const isGroupSession = appointmentId.startsWith('group_session_');
     const paymentUserId = requestBypassAuth && requestPatientId ? requestPatientId : user!.id;
-    if (!bypassAuth && appointment.patient_id !== paymentUserId) {
-      console.error('Unauthorized access to appointment');
-      return new Response(
-        JSON.stringify({ error: 'Vous n\'êtes pas autorisé à payer pour ce rendez-vous' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let amountToCharge: number;
+
+    if (isGroupSession) {
+      // 🏋️ SÉANCE DE GROUPE
+      console.log('🏋️ Paiement de séance de groupe détecté');
+      const parts = appointmentId.split('_');
+      const sessionId = parts[2];
+      const participantId = parts[3];
+
+      // Vérifier que la séance existe
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('group_sessions')
+        .select('id, price_per_person, status, coach_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessionError || !sessionData) {
+        console.error('Group session not found:', sessionError);
+        return new Response(
+          JSON.stringify({ error: 'Séance de groupe non trouvée' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Vérifier que le participant existe et appartient à l'utilisateur
+      const { data: participantData, error: participantError } = await supabase
+        .from('group_session_participants')
+        .select('id, patient_id, payment_status')
+        .eq('id', participantId)
+        .single();
+
+      if (participantError || !participantData) {
+        console.error('Participant not found:', participantError);
+        return new Response(
+          JSON.stringify({ error: 'Inscription non trouvée' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!bypassAuth && participantData.patient_id !== paymentUserId) {
+        console.error('Unauthorized access to group session');
+        return new Response(
+          JSON.stringify({ error: 'Vous n\'êtes pas autorisé à payer pour cette inscription' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Vérifier que le paiement n'est pas déjà effectué
+      if (participantData.payment_status === 'paid') {
+        return new Response(
+          JSON.stringify({ error: 'Cette inscription est déjà payée' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      amountToCharge = requestedAmount ?? sessionData.price_per_person;
+      console.log('Group session payment:', { sessionId, participantId, amountToCharge });
+
+    } else {
+      // 📋 RENDEZ-VOUS CLASSIQUE
+      const { data: appointment, error: appointmentError } = await supabase
+        .from('appointments')
+        .select('id, patient_id, status, payment_amount, practitioner_id, specialty')
+        .eq('id', appointmentId)
+        .single();
+
+      if (appointmentError || !appointment) {
+        console.error('Appointment not found:', appointmentError);
+        return new Response(
+          JSON.stringify({ error: 'Rendez-vous non trouvé' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!bypassAuth && appointment.patient_id !== paymentUserId) {
+        console.error('Unauthorized access to appointment');
+        return new Response(
+          JSON.stringify({ error: 'Vous n\'êtes pas autorisé à payer pour ce rendez-vous' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const payableStatuses = ['confirmed', 'pending_payment', 'pending'];
+      if (!payableStatuses.includes(appointment.status)) {
+        console.error('Appointment not in a payable state:', appointment.status);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Ce rendez-vous n\'est pas dans un état payable',
+            currentStatus: appointment.status,
+            allowedStatuses: payableStatuses
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      amountToCharge = requestedAmount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
     }
 
-    // Vérifier le statut de l'appointment
-    // Accepter: confirmed, pending_payment, pending (après confirmation praticien)
-    const payableStatuses = ['confirmed', 'pending_payment', 'pending'];
-    if (!payableStatuses.includes(appointment.status)) {
-      console.error('Appointment not in a payable state:', appointment.status);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Ce rendez-vous n\'est pas dans un état payable',
-          currentStatus: appointment.status,
-          allowedStatuses: payableStatuses
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Déterminer le montant à facturer
-    const amountToCharge = requestedAmount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
-    console.log('Payment initiated:', { appointmentId, amountToCharge, paymentMethod, phoneNumber });
+    console.log('Payment initiated:', { appointmentId, amountToCharge, paymentMethod, phoneNumber, isGroupSession });
 
     // ✅ CORRECTION CRITIQUE #3: Récupérer practitioner_id AVANT de créer la transaction FedaPay
     let practitionerId: string | null = null;
@@ -374,7 +445,9 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          description: `Paiement rendez-vous médical #${appointmentId}`,
+          description: isGroupSession 
+            ? `Paiement séance de groupe #${appointmentId.split('_')[2]}`
+            : `Paiement rendez-vous médical #${appointmentId}`,
           amount: amountToCharge,
           currency: {
             iso: 'XOF'
@@ -611,14 +684,21 @@ serve(async (req) => {
       link: null
     });
 
-    // Mettre à jour le statut de l'appointment
-    await supabase
-      .from('appointments')
-      .update({ 
-        status: 'pending_payment',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', appointmentId);
+    // ✅ CORRECTION: Mettre à jour le statut selon le type (appointment vs group_session)
+    if (isGroupSession) {
+      // Pour les séances de groupe, le participant est déjà créé avec payment_status='pending'
+      // Pas besoin de mise à jour ici, le webhook s'en chargera
+      console.log('Group session payment initiated, waiting for webhook confirmation');
+    } else {
+      // Mettre à jour le statut de l'appointment classique
+      await supabase
+        .from('appointments')
+        .update({ 
+          status: 'pending_payment',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', appointmentId);
+    }
 
     return new Response(
       JSON.stringify({ 
