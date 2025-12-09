@@ -89,7 +89,8 @@ async function sendSmsNotification(to: string, body: string): Promise<ChannelRes
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
   const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-  const fromNumber = Deno.env.get("TWILIO_FROM_NUMBER");
+  // Support both TWILIO_FROM_NUMBER and TWILIO_PHONE_NUMBER for backwards compatibility
+  const fromNumber = Deno.env.get("TWILIO_FROM_NUMBER") || Deno.env.get("TWILIO_PHONE_NUMBER");
 
   if (!accountSid || !authToken || (!messagingServiceSid && !fromNumber)) {
     console.warn("SMS notification skipped: missing Twilio configuration");
@@ -200,9 +201,10 @@ export async function dispatchNotification(options: DispatchNotificationOptions)
     .eq("user_id", userId)
     .maybeSingle();
 
+  // Default: SMS enabled for important notifications like appointments
   const effectivePreferences: NotificationPreferences = preferences ?? {
     email_enabled: true,
-    sms_enabled: false,
+    sms_enabled: true,
     push_enabled: true,
   };
 
