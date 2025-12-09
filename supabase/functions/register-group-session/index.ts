@@ -159,9 +159,11 @@ serve(async (req) => {
           supabaseUrl,
           serviceRoleKey,
           userId: coach.user_id,
-          title: 'Nouvelle inscription',
+          title: '🏋️ Nouvelle inscription',
           message: `${patientProfile?.full_name || 'Un participant'} s'est inscrit à votre séance "${session.session_name}"`,
-          type: 'appointment'
+          type: 'appointment',
+          link: '/dashboard/coach?tab=sessions',
+          channels: ['email', 'sms', 'push'],
         });
       }
 
