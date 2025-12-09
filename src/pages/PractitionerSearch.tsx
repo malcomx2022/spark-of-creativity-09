@@ -397,15 +397,19 @@ export default function PractitionerSearch() {
                         )}
                       </div>
                        <div className="flex items-center justify-between">
-                        <Button 
-                          asChild
-                          disabled={!practitioner.phone}
-                        >
-                          <a href={practitioner.phone ? `tel:${practitioner.phone}` : undefined}>
+                        {practitioner.phone ? (
+                          <Button asChild>
+                            <a href={`tel:${practitioner.phone}`}>
+                              <Phone className="h-4 w-4 mr-2" />
+                              Contacter
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button disabled variant="outline">
                             <Phone className="h-4 w-4 mr-2" />
-                            Contacter
-                          </a>
-                        </Button>
+                            Non disponible
+                          </Button>
+                        )}
                         <Button 
                           variant="outline" 
                           onClick={() => {
