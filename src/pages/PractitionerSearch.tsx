@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/Header';
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MapPin, Search, Loader2, AlertCircle } from 'lucide-react';
+import { MapPin, Search, Loader2, AlertCircle, LogIn, Lock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
 import { usePractitioners } from '@/hooks/usePractitioners';
@@ -21,6 +21,7 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { getCategoryLabel } from '@/lib/practitioner-categories';
+import { useSearchActivityLog } from '@/hooks/useSearchActivityLog';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -46,9 +47,69 @@ export default function PractitionerSearch() {
   const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
 
   const { data: user } = useSupabaseUser();
+  const { logActivity, isAuthenticated } = useSearchActivityLog();
   
   // Utiliser le hook de géolocalisation amélioré
   const { position, requestPosition, loading: geoLoading, error: geoError, quality, isRefining } = useGeolocation();
+
+  // Log page view on mount
+  useEffect(() => {
+    logActivity({ actionType: 'view_search_page' });
+  }, [logActivity]);
+
+  // Log filter changes with debounce
+  const handleCategoryChange = useCallback((value: string) => {
+    setSelectedCategory(value);
+    logActivity({ 
+      actionType: 'filter_specialty', 
+      searchFilters: { category: value } 
+    });
+  }, [logActivity]);
+
+  const handleViewPractitionerDetails = useCallback((practitioner: PractitionerLocation) => {
+    setViewedPractitioner(practitioner);
+    logActivity({ 
+      actionType: 'view_practitioner_details', 
+      practitionerId: practitioner.id,
+      metadata: { practitioner_name: practitioner.name, specialty: practitioner.specialty }
+    });
+  }, [logActivity]);
+
+  const handleClickContact = useCallback((practitioner: PractitionerLocation) => {
+    logActivity({ 
+      actionType: 'click_contact', 
+      practitionerId: practitioner.id 
+    });
+  }, [logActivity]);
+
+  const handleClickAppointment = useCallback((practitioner: PractitionerLocation) => {
+    logActivity({ 
+      actionType: 'click_appointment', 
+      practitionerId: practitioner.id 
+    });
+    
+    if (!user) {
+      toast({
+        title: 'Connexion requise',
+        description: 'Veuillez vous connecter pour demander un rendez-vous.',
+        variant: 'destructive'
+      });
+      navigate('/patient-login?redirect=/search-practitioners');
+      return;
+    }
+    setSelectedPractitioner(practitioner);
+  }, [logActivity, user, navigate]);
+
+  const handleClickItinerary = useCallback((practitioner: PractitionerLocation) => {
+    logActivity({ 
+      actionType: 'click_itinerary', 
+      practitionerId: practitioner.id 
+    });
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&destination=${practitioner.latitude},${practitioner.longitude}`,
+      '_blank'
+    );
+  }, [logActivity]);
 
   // Récupérer le token Mapbox via l'edge function
   const { data: mapboxData, isLoading: isLoadingMapbox } = useQuery({
@@ -271,7 +332,7 @@ export default function PractitionerSearch() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <Select value={selectedCategory} onValueChange={handleCategoryChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Catégorie" />
                     </SelectTrigger>
@@ -396,34 +457,34 @@ export default function PractitionerSearch() {
                           </p>
                         )}
                       </div>
-                       <div className="flex items-center justify-between">
-                        {practitioner.phone ? (
-                          <Button asChild>
-                            <a href={`tel:${practitioner.phone}`}>
+                       <div className="flex items-center justify-between flex-wrap gap-2">
+                        {/* Bouton Contacter - masqué pour anonymes */}
+                        {isAuthenticated ? (
+                          practitioner.phone ? (
+                            <Button asChild onClick={() => handleClickContact(practitioner)}>
+                              <a href={`tel:${practitioner.phone}`}>
+                                <Phone className="h-4 w-4 mr-2" />
+                                Contacter
+                              </a>
+                            </Button>
+                          ) : (
+                            <Button disabled variant="outline">
                               <Phone className="h-4 w-4 mr-2" />
-                              Contacter
-                            </a>
-                          </Button>
+                              Non disponible
+                            </Button>
+                          )
                         ) : (
-                          <Button disabled variant="outline">
-                            <Phone className="h-4 w-4 mr-2" />
-                            Non disponible
+                          <Button 
+                            variant="outline" 
+                            onClick={() => navigate('/patient-login?redirect=/search-practitioners')}
+                          >
+                            <Lock className="h-4 w-4 mr-2" />
+                            Connectez-vous pour contacter
                           </Button>
                         )}
                         <Button 
                           variant="outline" 
-                          onClick={() => {
-                            if (!user) {
-                              toast({
-                                title: 'Connexion requise',
-                                description: 'Veuillez vous connecter pour demander un rendez-vous.',
-                                variant: 'destructive'
-                              });
-                              navigate('/login');
-                              return;
-                            }
-                            setSelectedPractitioner(practitioner);
-                          }}
+                          onClick={() => handleClickAppointment(practitioner)}
                         >
                           Demander un rendez-vous
                         </Button>
@@ -461,7 +522,7 @@ export default function PractitionerSearch() {
                     <LazyPractitionerMap
                       practitioners={filteredPractitioners}
                       userLocation={userLocation}
-                      onPractitionerSelect={setViewedPractitioner}
+                      onPractitionerSelect={handleViewPractitionerDetails}
                       mapboxToken={mapboxToken}
                     />
                   )}
@@ -581,17 +642,31 @@ export default function PractitionerSearch() {
                 <div className="flex items-start gap-2 text-sm">
                   <MapPin className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-medium">Adresse</p>
-                    <p className="text-muted-foreground">{viewedPractitioner.address}</p>
-                    {typeof viewedPractitioner.distance === 'number' && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        À {viewedPractitioner.distance.toFixed(1)} km de vous
-                      </p>
+                    <p className="font-medium">Localisation</p>
+                    {isAuthenticated ? (
+                      <>
+                        <p className="text-muted-foreground">{viewedPractitioner.address}</p>
+                        {typeof viewedPractitioner.distance === 'number' && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            À {viewedPractitioner.distance.toFixed(1)} km de vous
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <div className="bg-muted/50 rounded-lg p-3 mt-1">
+                        <p className="text-muted-foreground">
+                          {viewedPractitioner.intervention_zone || 'Zone d\'intervention non précisée'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2 text-sm text-primary">
+                          <Lock className="h-4 w-4" />
+                          <span>Connectez-vous pour voir l'adresse exacte</span>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {viewedPractitioner.phone && (
+                {isAuthenticated && viewedPractitioner.phone && (
                   <div className="flex items-center gap-2 text-sm">
                     <Phone className="h-5 w-5 text-muted-foreground" />
                     <div>
@@ -602,37 +677,49 @@ export default function PractitionerSearch() {
                 )}
               </div>
 
+              {/* Bannière pour utilisateurs anonymes */}
+              {!isAuthenticated && (
+                <Alert className="bg-primary/5 border-primary/20">
+                  <LogIn className="h-4 w-4" />
+                  <AlertDescription>
+                    <p className="font-medium">Connectez-vous pour plus de détails</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Accédez à l'adresse exacte, au numéro de téléphone et à l'itinéraire vers ce praticien.
+                    </p>
+                    <Button 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => navigate('/patient-login?redirect=/search-practitioners')}
+                    >
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Se connecter / S'inscrire
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex gap-2">
                 <Button 
                   className="flex-1"
                   onClick={() => {
-                    if (!user) {
-                      toast({
-                        title: 'Connexion requise',
-                        description: 'Veuillez vous connecter pour demander un rendez-vous.',
-                        variant: 'destructive'
-                      });
-                      navigate('/login');
-                      return;
+                    handleClickAppointment(viewedPractitioner);
+                    if (user) {
+                      setViewedPractitioner(null);
                     }
-                    setSelectedPractitioner(viewedPractitioner);
-                    setViewedPractitioner(null);
                   }}
                 >
                   Demander un rendez-vous
                 </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => {
-                    window.open(
-                      `https://www.google.com/maps/dir/?api=1&destination=${viewedPractitioner.latitude},${viewedPractitioner.longitude}`,
-                      '_blank'
-                    );
-                  }}
-                >
-                  <Navigation className="h-4 w-4 mr-2" />
-                  Itinéraire
-                </Button>
+                {/* Bouton Itinéraire - uniquement pour utilisateurs connectés avec GPS disponible */}
+                {isAuthenticated && viewedPractitioner.latitude !== 0 && viewedPractitioner.longitude !== 0 && (
+                  <Button 
+                    variant="outline"
+                    onClick={() => handleClickItinerary(viewedPractitioner)}
+                  >
+                    <Navigation className="h-4 w-4 mr-2" />
+                    Itinéraire
+                  </Button>
+                )}
               </div>
             </div>
           </DialogContent>

@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
-import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2, Webhook } from "lucide-react";
+import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2, Webhook, Search } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { useAdminStats } from "@/hooks/useAdminStats";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
@@ -26,6 +26,7 @@ const AuditLogs = lazy(() => import("@/components/admin/AuditLogs").then(m => ({
 const WebhooksSection = lazy(() => import("@/components/admin/WebhooksSection").then(m => ({ default: m.WebhooksSection })));
 const WebhookConfig = lazy(() => import("@/components/admin/WebhookConfig").then(m => ({ default: m.WebhookConfig })));
 const SandboxPaymentTester = lazy(() => import("@/components/admin/SandboxPaymentTester").then(m => ({ default: m.SandboxPaymentTester })));
+const SearchActivitySection = lazy(() => import("@/components/admin/SearchActivitySection"));
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -152,7 +153,7 @@ export default function AdminDashboard() {
         {/* Main Admin Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-11 gap-1">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-12 gap-1">
               <TabsTrigger value="dashboard" className="whitespace-nowrap">
                 <Activity className="h-4 w-4 mr-2" />
                 Vue d'ensemble
@@ -203,6 +204,10 @@ export default function AdminDashboard() {
               <TabsTrigger value="webhooks" className="whitespace-nowrap">
                 <Webhook className="h-4 w-4 mr-2" />
                 Webhooks
+              </TabsTrigger>
+              <TabsTrigger value="search-activity" className="whitespace-nowrap">
+                <Search className="h-4 w-4 mr-2" />
+                Recherches
               </TabsTrigger>
             </TabsList>
           </div>
@@ -274,6 +279,12 @@ export default function AdminDashboard() {
               <WebhookConfig />
               <SandboxPaymentTester />
               <WebhooksSection />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="search-activity">
+            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+              <SearchActivitySection />
             </Suspense>
           </TabsContent>
         </Tabs>

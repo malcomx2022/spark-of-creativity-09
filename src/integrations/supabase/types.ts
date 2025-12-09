@@ -1994,6 +1994,60 @@ export type Database = {
         }
         Relationships: []
       }
+      search_activity_logs: {
+        Row: {
+          action_type: string
+          created_at: string
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          practitioner_id: string | null
+          search_filters: Json | null
+          session_id: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          practitioner_id?: string | null
+          search_filters?: Json | null
+          session_id: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          practitioner_id?: string | null
+          search_filters?: Json | null
+          session_id?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_activity_logs_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "search_activity_logs_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_audit_log: {
         Row: {
           action: string
@@ -2347,6 +2401,7 @@ export type Database = {
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
       cleanup_old_otp_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_payment_attempts: { Args: never; Returns: undefined }
+      cleanup_old_search_activity_logs: { Args: never; Returns: undefined }
       generate_invoice_number: { Args: never; Returns: string }
       get_admin_dashboard_stats: {
         Args: never
