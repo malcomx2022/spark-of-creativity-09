@@ -221,10 +221,11 @@ serve(async (req) => {
       supabaseUrl,
       serviceRoleKey: supabaseKey,
       userId: practitioner.user_id,
-      title: 'Reversement initié',
+      title: '💰 Reversement initié',
       message: `Un reversement de ${payoutAmount} XOF a été initié pour la période du ${periodStart} au ${periodEnd}. Les fonds arriveront sous 2-3 jours ouvrés.`,
       type: 'payout',
-      link: '/dashboard/practitioner',
+      link: '/dashboard/practitioner?tab=payouts',
+      channels: ['email', 'sms', 'push'],
     });
 
     // Log audit

@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
+import { dispatchNotification } from '../_shared/notifications.ts';
 
 const DEFAULT_APPOINTMENT_AMOUNT = 10000;
 
@@ -237,15 +238,20 @@ serve(async (req) => {
       }
 
       // Créer une notification avec le lien de paiement pour le patient
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: appointment.patient_id,
-          title: '💳 Paiement requis - Rendez-vous confirmé',
-          message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Cliquez pour payer ${paymentAmount} XOF et finaliser la réservation.`,
-          type: 'payment_required',
-          link: paymentData.paymentUrl, // Lien direct vers FedaPay
-        });
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      
+      await dispatchNotification({
+        supabase,
+        supabaseUrl,
+        serviceRoleKey,
+        userId: appointment.patient_id,
+        title: '💳 Paiement requis - Rendez-vous confirmé',
+        message: `${appointment.practitioner_name} a accepté votre rendez-vous le ${appointment.date} à ${appointment.time}. Payez ${paymentAmount} XOF pour finaliser.`,
+        type: 'payment_required',
+        link: paymentData.paymentUrl,
+        channels: ['email', 'sms', 'push'],
+      });
 
       console.log('✅ Rendez-vous confirmé, paiement créé et notification envoyée');
 
@@ -263,6 +269,10 @@ serve(async (req) => {
     if (action === 'reject') {
       console.log('🔍 Recherche d\'un praticien alternatif...');
 
+      // Variables pour dispatchNotification
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
       // Marquer le rendez-vous comme rejeté temporairement
       await supabase
         .from('appointments')
@@ -279,14 +289,17 @@ serve(async (req) => {
 
       if (!patientAddress?.latitude || !patientAddress?.longitude) {
         // Pas de localisation → notifier le patient
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: appointment.patient_id,
-            title: 'Rendez-vous refusé',
-            message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif trouvé. Veuillez réessayer.',
-            type: 'appointment',
-          });
+        await dispatchNotification({
+          supabase,
+          supabaseUrl,
+          serviceRoleKey,
+          userId: appointment.patient_id,
+          title: '❌ Rendez-vous refusé',
+          message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif trouvé. Veuillez réessayer.',
+          type: 'appointment',
+          link: '/dashboard/patient',
+          channels: ['email', 'sms', 'push'],
+        });
 
         return new Response(
           JSON.stringify({ success: true, message: 'Rendez-vous refusé, aucun praticien alternatif' }),
@@ -313,14 +326,17 @@ serve(async (req) => {
 
       if (!practitioners || practitioners.length === 0) {
         // Aucun praticien alternatif → notifier le patient
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: appointment.patient_id,
-            title: 'Rendez-vous refusé',
-            message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif disponible. Veuillez réessayer.',
-            type: 'appointment',
-          });
+        await dispatchNotification({
+          supabase,
+          supabaseUrl,
+          serviceRoleKey,
+          userId: appointment.patient_id,
+          title: '❌ Rendez-vous refusé',
+          message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif disponible. Veuillez réessayer.',
+          type: 'appointment',
+          link: '/dashboard/patient',
+          channels: ['email', 'sms', 'push'],
+        });
 
         console.log('❌ Aucun praticien alternatif trouvé');
 
@@ -350,14 +366,17 @@ serve(async (req) => {
         .sort((a, b) => a.distance - b.distance);
 
       if (nearbyPractitioners.length === 0) {
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: appointment.patient_id,
-            title: 'Rendez-vous refusé',
-            message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif dans la zone. Veuillez réessayer.',
-            type: 'appointment',
-          });
+        await dispatchNotification({
+          supabase,
+          supabaseUrl,
+          serviceRoleKey,
+          userId: appointment.patient_id,
+          title: '❌ Rendez-vous refusé',
+          message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif dans la zone. Veuillez réessayer.',
+          type: 'appointment',
+          link: '/dashboard/patient',
+          channels: ['email', 'sms', 'push'],
+        });
 
         console.log('❌ Aucun praticien dans la zone');
 
@@ -399,26 +418,31 @@ serve(async (req) => {
 
           if (reassignError) throw reassignError;
 
-          // Notifier le nouveau praticien
-          await supabase
-            .from('notifications')
-            .insert({
-              user_id: prac.user_id,
-              title: 'Nouvelle demande de rendez-vous',
-              message: `${appointment.patient_name} souhaite un rendez-vous le ${appointment.date} à ${appointment.time}.`,
-              type: 'appointment',
-              link: `/dashboard/practitioner`,
-            });
+          // Notifier le nouveau praticien avec SMS
+          await dispatchNotification({
+            supabase,
+            supabaseUrl,
+            serviceRoleKey,
+            userId: prac.user_id,
+            title: '🩺 Nouvelle demande de rendez-vous',
+            message: `${appointment.patient_name} souhaite un rendez-vous le ${appointment.date} à ${appointment.time}.`,
+            type: 'appointment',
+            link: '/dashboard/practitioner',
+            channels: ['email', 'sms', 'push'],
+          });
 
-          // Notifier le patient
-          await supabase
-            .from('notifications')
-            .insert({
-              user_id: appointment.patient_id,
-              title: 'Nouveau praticien assigné',
-              message: `Un nouveau praticien (${prac.name}) a été assigné à votre demande.`,
-              type: 'appointment',
-            });
+          // Notifier le patient avec SMS
+          await dispatchNotification({
+            supabase,
+            supabaseUrl,
+            serviceRoleKey,
+            userId: appointment.patient_id,
+            title: '🔄 Nouveau praticien assigné',
+            message: `Un nouveau praticien (${prac.name}) a été assigné à votre demande.`,
+            type: 'appointment',
+            link: '/dashboard/patient',
+            channels: ['email', 'sms', 'push'],
+          });
 
           console.log(`✅ Rendez-vous réassigné à ${prac.name}`);
 
@@ -434,14 +458,17 @@ serve(async (req) => {
       }
 
       // Aucun praticien alternatif disponible
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: appointment.patient_id,
-          title: 'Rendez-vous refusé',
-          message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif disponible à cette date. Veuillez choisir une autre date.',
-          type: 'appointment',
-        });
+      await dispatchNotification({
+        supabase,
+        supabaseUrl,
+        serviceRoleKey,
+        userId: appointment.patient_id,
+        title: '❌ Rendez-vous refusé',
+        message: 'Le praticien a refusé votre rendez-vous. Aucun praticien alternatif disponible à cette date. Veuillez choisir une autre date.',
+        type: 'appointment',
+        link: '/dashboard/patient',
+        channels: ['email', 'sms', 'push'],
+      });
 
       console.log('❌ Aucun praticien alternatif disponible');
 
