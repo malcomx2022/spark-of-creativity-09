@@ -533,62 +533,87 @@ export default function PractitionerSearch() {
         </div>
       </main>
 
-      {selectedPractitioner && user && (
-        <NewAppointmentDialog
-          onSubmit={async (data) => {
-            try {
-              const { data: session } = await supabase.auth.getSession();
-              if (!session?.session?.user) {
-                throw new Error('Utilisateur non authentifié');
-              }
-
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('full_name')
-                .eq('id', session.session.user.id)
-                .single();
-
-              const appointmentData = {
-                patient_id: session.session.user.id,
-                patient_name: profile?.full_name || 'Patient',
-                practitioner_id: selectedPractitioner.id,
-                practitioner_name: selectedPractitioner.name,
-                specialty: data.specialty,
-                date: new Date(data.date).toISOString().split('T')[0],
-                time: data.time,
-                status: 'awaiting_practitioner',
-                address: selectedPractitioner.address,
-                reason: data.reason,
-                urgency_level: data.urgencyLevel,
-              };
-
-              const { data: appointment, error } = await supabase
-                .from('appointments')
-                .insert([appointmentData])
-                .select()
-                .single();
-
-              if (error) throw error;
-
-              toast({
-                title: 'Demande envoyée',
-                description: 'Votre demande de rendez-vous a été envoyée avec succès.',
-              });
-
-              setSelectedPractitioner(null);
-              return appointment;
-            } catch (error) {
-              console.error('Erreur création RDV:', error);
-              toast({
-                title: 'Erreur',
-                description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous',
-                variant: 'destructive'
-              });
-              throw error;
+      {/* Dialog de prise de rendez-vous avec praticien pré-sélectionné */}
+      <NewAppointmentDialog
+        open={!!selectedPractitioner && !!user}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedPractitioner(null);
+          }
+        }}
+        preselectedPractitioner={selectedPractitioner ? {
+          id: selectedPractitioner.id,
+          name: selectedPractitioner.name,
+          specialty: selectedPractitioner.specialty
+        } : undefined}
+        onSubmit={async (data) => {
+          if (!selectedPractitioner || !user) {
+            throw new Error('Praticien ou utilisateur non défini');
+          }
+          
+          try {
+            const { data: session } = await supabase.auth.getSession();
+            if (!session?.session?.user) {
+              throw new Error('Utilisateur non authentifié');
             }
-          }}
-        />
-      )}
+
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', session.session.user.id)
+              .single();
+
+            // Utiliser les données du praticien pré-sélectionné
+            const appointmentData = {
+              patient_id: session.session.user.id,
+              patient_name: profile?.full_name || 'Patient',
+              practitioner_id: selectedPractitioner.id,
+              practitioner_name: selectedPractitioner.name,
+              specialty: data.specialty || selectedPractitioner.specialty,
+              date: new Date(data.date).toISOString().split('T')[0],
+              time: data.time,
+              status: 'awaiting_practitioner',
+              address: data.addressOverride || selectedPractitioner.address || 'Adresse à confirmer',
+              reason: data.reason,
+              urgency_level: data.urgencyLevel,
+            };
+
+            const { data: appointment, error } = await supabase
+              .from('appointments')
+              .insert([appointmentData])
+              .select()
+              .single();
+
+            if (error) throw error;
+
+            // Log l'activité de création de RDV
+            logActivity({
+              actionType: 'appointment_created',
+              practitionerId: selectedPractitioner.id,
+              metadata: { 
+                appointment_id: appointment.id,
+                practitioner_name: selectedPractitioner.name 
+              }
+            });
+
+            toast({
+              title: '✅ Demande envoyée',
+              description: `Votre demande de rendez-vous a été envoyée à ${selectedPractitioner.name}. Vous serez notifié dès qu'il aura accepté.`,
+            });
+
+            setSelectedPractitioner(null);
+            return appointment;
+          } catch (error) {
+            console.error('Erreur création RDV:', error);
+            toast({
+              title: 'Erreur',
+              description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous',
+              variant: 'destructive'
+            });
+            throw error;
+          }
+        }}
+      />
 
       {viewedPractitioner && (
         <Dialog open={!!viewedPractitioner} onOpenChange={() => setViewedPractitioner(null)}>

@@ -11,7 +11,8 @@ export type SearchActionType =
   | 'click_appointment'
   | 'click_itinerary'
   | 'close_practitioner_details'
-  | 'search_text';
+  | 'search_text'
+  | 'appointment_created';
 
 interface LogSearchActivityParams {
   actionType: SearchActionType;
