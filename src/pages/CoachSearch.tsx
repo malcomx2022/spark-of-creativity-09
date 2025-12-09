@@ -198,6 +198,21 @@ export default function CoachSearch() {
 
           {/* Séances de groupe */}
           <TabsContent value="group" className="space-y-6">
+            {/* Message pour utilisateurs non connectés */}
+            {!user && (
+              <Alert className="border-primary/50 bg-primary/5">
+                <User className="h-4 w-4" />
+                <AlertDescription className="flex items-center justify-between">
+                  <span>
+                    Connectez-vous pour vous inscrire aux séances. Votre inscription sera validée par le coach et un paiement confirmera votre participation.
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/login')} className="ml-4 shrink-0">
+                    Se connecter
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {availableSessions.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
@@ -259,13 +274,24 @@ export default function CoachSearch() {
                           </div>
                         </div>
 
-                        <Button 
-                          className="w-full" 
-                          onClick={() => handleBookSession(session)}
-                          disabled={spotsLeft === 0}
-                        >
-                          {spotsLeft === 0 ? "Complet" : "Réserver"}
-                        </Button>
+                        {user ? (
+                          <Button 
+                            className="w-full" 
+                            onClick={() => handleBookSession(session)}
+                            disabled={spotsLeft === 0}
+                          >
+                            {spotsLeft === 0 ? "Complet" : "S'inscrire à la séance"}
+                          </Button>
+                        ) : (
+                          <Button 
+                            variant="outline"
+                            className="w-full" 
+                            onClick={() => navigate('/login')}
+                            disabled={spotsLeft === 0}
+                          >
+                            {spotsLeft === 0 ? "Complet" : "Se connecter pour s'inscrire"}
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   );
