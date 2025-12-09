@@ -773,7 +773,9 @@ export function PaymentDialog({
           transaction: {
             id: txId,
             amount: amount,
-            description: `Paiement rendez-vous médical #${appointmentId}`,
+            description: context === 'group_session' 
+              ? `Paiement séance de groupe`
+              : `Paiement rendez-vous médical #${contextId}`,
           },
           customer: {
             phone_number: {
