@@ -2465,6 +2465,10 @@ export type Database = {
         Args: { p_patient_id: string; p_session_id: string }
         Returns: Json
       }
+      sync_practitioner_balance_from_payments: {
+        Args: { p_practitioner_id: string }
+        Returns: Json
+      }
       update_payment_with_balance: {
         Args: {
           p_hold_until?: string
