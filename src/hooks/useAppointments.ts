@@ -191,7 +191,7 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       const day = String(dateObj.getDate()).padStart(2, '0');
       const formattedDate = `${year}-${month}-${day}`;
 
-      return insertAppointment({
+      const appointment = await insertAppointment({
         patient_id: patientId,
         patient_name: profile.data?.full_name || patientName || 'Patient',
         practitioner_id: data.practitionerId || '',
@@ -205,6 +205,28 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
         address: data.addressOverride || addresses.data?.address || 'Adresse à préciser',
         duration: 60,
       });
+
+      // Envoyer une notification au praticien après création du RDV
+      if (data.practitionerId) {
+        try {
+          await supabase.functions.invoke('notify-appointment-request', {
+            body: {
+              appointmentId: appointment.id,
+              practitionerId: data.practitionerId,
+              patientName: profile.data?.full_name || patientName || 'Patient',
+              date: formattedDate,
+              time: data.time,
+              reason: data.reason,
+              specialty: data.specialty,
+            }
+          });
+          console.log('✅ Notification envoyée au praticien');
+        } catch (notifError) {
+          console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
+        }
+      }
+
+      return appointment;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });

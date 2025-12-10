@@ -122,3 +122,6 @@ verify_jwt = true
 
 [functions.test-fedapay-connectivity]
 verify_jwt = false
+
+[functions.notify-appointment-request]
+verify_jwt = true
