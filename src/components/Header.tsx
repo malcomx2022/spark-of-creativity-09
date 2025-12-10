@@ -35,7 +35,11 @@ export default function Header() {
   };
 
   const handleLogout = async () => {
-    // Nettoyer seulement les données de l'app
+    // Marquer la déconnexion en cours AVANT signOut
+    // pour que ProtectedRoute redirige vers / au lieu de /login
+    sessionStorage.setItem('logging_out', 'true');
+    
+    // Nettoyer les données de l'app (sauf logging_out)
     const keysToRemove = [
       'supabase.auth.token',
       'recent_location_searches',
@@ -45,15 +49,11 @@ export default function Header() {
 
     keysToRemove.forEach(key => {
       localStorage.removeItem(key);
-      sessionStorage.removeItem(key);
     });
 
-    // Rediriger AVANT signOut pour éviter l'affichage de la page login
-    // Le signOut sera effectué après la navigation
-    const homeUrl = window.location.origin + ROUTES.HOME;
     await supabase.auth.signOut();
-    // Force un rechargement complet pour éviter les états intermédiaires
-    window.location.replace(homeUrl);
+    // La navigation vers / sera gérée par ProtectedRoute ou ici si on est sur une page publique
+    navigate(ROUTES.HOME, { replace: true });
   };
 
   return (
