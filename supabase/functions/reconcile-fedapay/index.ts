@@ -92,24 +92,27 @@ serve(async (req) => {
 
     if (reportError) throw reportError;
 
-    // Fetch FedaPay transactions using the new search endpoint
-    const fedapayApiUrl = fedapayMode === 'live' 
-      ? 'https://api.fedapay.com/v1/transactions/search'
-      : 'https://sandbox-api.fedapay.com/v1/transactions/search';
+    // Fetch FedaPay transactions using GET with query parameters
+    const baseUrl = fedapayMode === 'live' 
+      ? 'https://api.fedapay.com/v1/transactions'
+      : 'https://sandbox-api.fedapay.com/v1/transactions';
+    
+    // Build query parameters for filtering by date
+    const params = new URLSearchParams({
+      'per_page': '100',
+      'created_at[gte]': startDate.toISOString().split('T')[0],
+      'created_at[lte]': endDate.toISOString().split('T')[0],
+    });
+    
+    const fedapayApiUrl = `${baseUrl}?${params.toString()}`;
     
     console.log('Fetching FedaPay transactions from:', fedapayApiUrl);
     const fedapayResponse = await fetch(fedapayApiUrl, {
-      method: 'POST',
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${fedapaySecretKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        created_at: {
-          gte: startDate.toISOString(),
-          lte: endDate.toISOString()
-        }
-      })
     });
 
     if (!fedapayResponse.ok) {
@@ -125,10 +128,10 @@ serve(async (req) => {
     const fedapayData = await fedapayResponse.json();
     console.log('FedaPay response structure:', Object.keys(fedapayData));
     
-    // Handle both old and new API response formats
+    // Handle FedaPay API response format: { v1: { transactions: [...] } }
     const fedapayTransactions: FedaPayTransaction[] = 
-      fedapayData.data || 
       fedapayData.v1?.transactions || 
+      fedapayData.data || 
       fedapayData.transactions || 
       [];
     
