@@ -51,15 +51,64 @@ export function GroupSessionPaymentWidget({
   const [payerName, setPayerName] = useState('');
   const [payerEmail, setPayerEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error' | 'already_registered'>('idle');
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const [widgetInitialized, setWidgetInitialized] = useState(false);
+  const [existingRegistration, setExistingRegistration] = useState<any>(null);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const queryClient = useQueryClient();
   const { addPaymentMethod } = useSavedPaymentMethods();
+
+  // ✅ CONTRÔLE ANTI-DOUBLON: Vérifier si l'utilisateur est déjà inscrit à cette séance
+  useEffect(() => {
+    const checkExistingRegistration = async () => {
+      if (!open) return;
+      
+      setIsCheckingRegistration(true);
+      
+      try {
+        const { data: { session: authSession } } = await supabase.auth.getSession();
+        if (!authSession) {
+          setIsCheckingRegistration(false);
+          return;
+        }
+
+        // Vérifier si le patient est déjà inscrit à cette séance
+        const { data: existingParticipant, error } = await supabase
+          .from('group_session_participants')
+          .select('id, payment_status, joined_at')
+          .eq('session_id', session.id)
+          .eq('patient_id', authSession.user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Erreur vérification inscription:', error);
+        }
+
+        if (existingParticipant) {
+          console.log('🔍 Inscription existante trouvée:', existingParticipant);
+          setExistingRegistration(existingParticipant);
+          
+          if (existingParticipant.payment_status === 'paid' || existingParticipant.payment_status === 'confirmed') {
+            setPaymentStatus('already_registered');
+          } else if (existingParticipant.payment_status === 'pending') {
+            // Paiement en attente - permettre de continuer
+            console.log('⏳ Paiement en attente existant');
+          }
+        }
+      } catch (error) {
+        console.error('Erreur vérification inscription:', error);
+      } finally {
+        setIsCheckingRegistration(false);
+      }
+    };
+
+    checkExistingRegistration();
+  }, [open, session.id]);
 
   // Load FedaPay configuration
   useEffect(() => {
@@ -300,6 +349,8 @@ export function GroupSessionPaymentWidget({
     setTransactionId(null);
     setSaveMethod(false);
     setWidgetInitialized(false);
+    setExistingRegistration(null);
+    setIsCheckingRegistration(true);
     
     if (containerRef.current) {
       containerRef.current.innerHTML = '';
@@ -309,6 +360,13 @@ export function GroupSessionPaymentWidget({
   };
 
   const handleClose = () => {
+    // Permettre de fermer si déjà inscrit
+    if (paymentStatus === 'already_registered') {
+      resetState();
+      onOpenChange(false);
+      return;
+    }
+    
     if ((paymentStatus === 'pending' || isProcessing) && paymentStatus !== 'success') {
       toast({
         title: 'Paiement en cours',
@@ -479,6 +537,32 @@ export function GroupSessionPaymentWidget({
           </Alert>
         )}
 
+        {/* Chargement vérification inscription */}
+        {isCheckingRegistration && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-2">Vérification de votre inscription...</span>
+          </div>
+        )}
+
+        {/* Déjà inscrit */}
+        {paymentStatus === 'already_registered' && (
+          <div className="space-y-4">
+            <Alert className="border-green-500 bg-green-50 dark:bg-green-950/20">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800 dark:text-green-200">
+                <p className="font-semibold">Vous êtes déjà inscrit(e) à cette séance !</p>
+                <p className="text-sm mt-1">
+                  Votre inscription a été confirmée. Rendez-vous le {format(new Date(session.scheduled_date), 'd MMMM yyyy', { locale: fr })} à {session.start_time}.
+                </p>
+              </AlertDescription>
+            </Alert>
+            <Button onClick={handleClose} className="w-full">
+              Fermer
+            </Button>
+          </div>
+        )}
+
         {paymentStatus === 'success' && (
           <Alert className="border-success bg-success/10">
             <CheckCircle2 className="h-4 w-4 text-success" />
@@ -497,7 +581,7 @@ export function GroupSessionPaymentWidget({
           </Alert>
         )}
 
-        {paymentStatus === 'idle' && (
+        {paymentStatus === 'idle' && !isCheckingRegistration && (
           <form onSubmit={handlePayment} className="space-y-6">
             <div className="space-y-4">
               <div className="space-y-3">

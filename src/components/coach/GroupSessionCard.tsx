@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, Users, Loader2 } from "lucide-react";
+import { Calendar, Clock, MapPin, Users, Loader2, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { RegisterSessionDialog } from "./RegisterSessionDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 interface GroupSessionCardProps {
   session: {
@@ -32,6 +33,42 @@ interface GroupSessionCardProps {
 export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoachView = false }: GroupSessionCardProps) {
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
+
+  // ✅ Vérifier si l'utilisateur est déjà inscrit à cette séance
+  useEffect(() => {
+    const checkRegistration = async () => {
+      if (isCoachView) {
+        setIsCheckingRegistration(false);
+        return;
+      }
+
+      try {
+        const { data: { session: authSession } } = await supabase.auth.getSession();
+        if (!authSession) {
+          setIsCheckingRegistration(false);
+          return;
+        }
+
+        const { data: existingParticipant } = await supabase
+          .from('group_session_participants')
+          .select('id, payment_status')
+          .eq('session_id', session.id)
+          .eq('patient_id', authSession.user.id)
+          .in('payment_status', ['paid', 'confirmed', 'pending'])
+          .maybeSingle();
+
+        setIsAlreadyRegistered(!!existingParticipant);
+      } catch (error) {
+        console.error('Erreur vérification inscription:', error);
+      } finally {
+        setIsCheckingRegistration(false);
+      }
+    };
+
+    checkRegistration();
+  }, [session.id, isCoachView]);
   
   const statusColors = {
     planifiee: "bg-blue-500",
@@ -194,13 +231,25 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
             </div>
           ) : (
             <>
-              <Button 
-                variant="patient" 
-                disabled={spotsRemaining === 0 || (session.status !== "confirmee" && session.status !== "planifiee")}
-                onClick={() => setRegisterDialogOpen(true)}
-              >
-                {spotsRemaining === 0 ? "Complet" : "Réserver ma place"}
-              </Button>
+              {isCheckingRegistration ? (
+                <Button variant="outline" disabled>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Vérification...
+                </Button>
+              ) : isAlreadyRegistered ? (
+                <Button variant="outline" disabled className="bg-green-50 border-green-500 text-green-700">
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Déjà inscrit
+                </Button>
+              ) : (
+                <Button 
+                  variant="patient" 
+                  disabled={spotsRemaining === 0 || (session.status !== "confirmee" && session.status !== "planifiee")}
+                  onClick={() => setRegisterDialogOpen(true)}
+                >
+                  {spotsRemaining === 0 ? "Complet" : "Réserver ma place"}
+                </Button>
+              )}
               
               <RegisterSessionDialog
                 open={registerDialogOpen}
