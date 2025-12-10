@@ -27,6 +27,9 @@ verify_jwt = true
 [functions.create-payout]
 verify_jwt = true
 
+[functions.process-payout-batch]
+verify_jwt = true
+
 [functions.apply-ledger-entries]
 verify_jwt = true
 
