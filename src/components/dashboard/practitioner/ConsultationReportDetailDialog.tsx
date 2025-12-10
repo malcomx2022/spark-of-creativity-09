@@ -6,6 +6,8 @@ import { Download, X, FileText, Calendar, User, Stethoscope } from "lucide-react
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import jsPDF from "jspdf";
+import QRCode from "qrcode";
+import logoImage from "@/assets/logo.png";
 
 interface ConsultationReport {
   id: string;
@@ -65,64 +67,159 @@ export function ConsultationReportDetailDialog({
     return types[type] || type;
   };
 
-  const handleDownloadPDF = () => {
+  const generateSecureHash = (reportData: ConsultationReport): string => {
+    // Create a simple hash from report data for verification
+    const dataString = `${reportData.id}|${reportData.consultation_date}|${reportData.practitioner_id}`;
+    let hash = 0;
+    for (let i = 0; i < dataString.length; i++) {
+      const char = dataString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+  };
+
+  const handleDownloadPDF = async () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
-    let y = 20;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let y = 15;
     const lineHeight = 7;
     const margin = 20;
     const maxWidth = pageWidth - 2 * margin;
 
-    // Header
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text("RAPPORT DE CONSULTATION", pageWidth / 2, y, { align: "center" });
-    y += 15;
+    // Generate secure verification data
+    const secureHash = generateSecureHash(report);
+    const verificationUrl = `${window.location.origin}/verify-report/${report.id}?hash=${secureHash}`;
+    
+    // Generate QR code
+    let qrDataUrl = '';
+    try {
+      qrDataUrl = await QRCode.toDataURL(verificationUrl, {
+        width: 80,
+        margin: 1,
+        color: {
+          dark: '#1a365d',
+          light: '#ffffff'
+        }
+      });
+    } catch (err) {
+      console.error('Error generating QR code:', err);
+    }
 
-    // Date
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Date: ${format(new Date(report.consultation_date), 'dd MMMM yyyy', { locale: fr })}`, margin, y);
-    y += lineHeight;
+    // Load logo and add to PDF
+    const addLogoAndHeader = () => {
+      return new Promise<void>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          // Add logo (left side)
+          const logoWidth = 35;
+          const logoHeight = (img.height / img.width) * logoWidth;
+          doc.addImage(img, 'PNG', margin, y, logoWidth, logoHeight);
+          
+          // Company header text (right side of logo)
+          doc.setFontSize(16);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(26, 54, 93); // Dark blue
+          doc.text("DOMICARES", margin + logoWidth + 10, y + 8);
+          
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(100, 100, 100);
+          doc.text("Soins médicaux à domicile", margin + logoWidth + 10, y + 14);
+          doc.text("www.domicares.com", margin + logoWidth + 10, y + 19);
+          
+          // QR Code (right side)
+          if (qrDataUrl) {
+            const qrSize = 25;
+            doc.addImage(qrDataUrl, 'PNG', pageWidth - margin - qrSize, y, qrSize, qrSize);
+            doc.setFontSize(6);
+            doc.setTextColor(100, 100, 100);
+            doc.text("Scan pour vérifier", pageWidth - margin - qrSize + 2, y + qrSize + 4);
+          }
+          
+          resolve();
+        };
+        img.onerror = () => {
+          // If logo fails to load, just add text header
+          doc.setFontSize(16);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(26, 54, 93);
+          doc.text("DOMICARES", margin, y + 10);
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(100, 100, 100);
+          doc.text("Soins médicaux à domicile", margin, y + 16);
+          
+          if (qrDataUrl) {
+            const qrSize = 25;
+            doc.addImage(qrDataUrl, 'PNG', pageWidth - margin - qrSize, y, qrSize, qrSize);
+          }
+          
+          resolve();
+        };
+        img.src = logoImage;
+      });
+    };
 
-    // Patient
-    doc.text(`Patient: ${patientName}`, margin, y);
-    y += lineHeight;
-
-    // Praticien
-    doc.text(`Praticien: ${practitionerName}`, margin, y);
-    y += lineHeight;
-
-    // Type et sévérité
-    doc.text(`Type: ${getConsultationType(report.consultation_type)}`, margin, y);
-    y += lineHeight;
-    doc.text(`Sévérité: ${report.severity_level}`, margin, y);
-    y += 12;
-
-    // Separator line
-    doc.setDrawColor(200, 200, 200);
+    await addLogoAndHeader();
+    
+    y += 35;
+    
+    // Decorative line
+    doc.setDrawColor(26, 54, 93);
+    doc.setLineWidth(0.5);
     doc.line(margin, y, pageWidth - margin, y);
     y += 10;
+
+    // Title
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(26, 54, 93);
+    doc.text("RAPPORT DE CONSULTATION MÉDICALE", pageWidth / 2, y, { align: "center" });
+    y += 12;
+
+    // Report info box
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(margin, y, pageWidth - 2 * margin, 28, 3, 3, 'F');
+    y += 8;
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(60, 60, 60);
+    doc.text(`Date: ${format(new Date(report.consultation_date), 'dd MMMM yyyy', { locale: fr })}`, margin + 5, y);
+    doc.text(`Réf: ${report.id.substring(0, 8).toUpperCase()}`, pageWidth - margin - 40, y);
+    y += 7;
+    doc.text(`Patient: ${patientName}`, margin + 5, y);
+    y += 7;
+    doc.text(`Praticien: ${practitionerName}`, margin + 5, y);
+    doc.text(`Type: ${getConsultationType(report.consultation_type)}`, pageWidth / 2, y);
+    y += 15;
+
+    // Reset text color for content
+    doc.setTextColor(40, 40, 40);
 
     const addSection = (title: string, content: string | null) => {
       if (!content) return;
       
-      // Check if we need a new page
-      if (y > 260) {
+      if (y > 250) {
         doc.addPage();
         y = 20;
       }
       
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
+      doc.setTextColor(26, 54, 93);
       doc.text(title, margin, y);
       y += lineHeight;
       
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
       const lines = doc.splitTextToSize(content, maxWidth);
       lines.forEach((line: string) => {
-        if (y > 280) {
+        if (y > 275) {
           doc.addPage();
           y = 20;
         }
@@ -142,13 +239,24 @@ export function ConsultationReportDetailDialog({
     }
     addSection("Commentaires additionnels", report.additional_comments);
 
-    // Footer
-    y = doc.internal.pageSize.getHeight() - 20;
-    doc.setFontSize(8);
+    // Footer with security info
+    y = pageHeight - 25;
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 5;
+    
+    doc.setFontSize(7);
     doc.setTextColor(128, 128, 128);
-    doc.text(`Rapport généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}`, margin, y);
+    doc.text(`Document généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}`, margin, y);
+    doc.text(`Code de vérification: ${secureHash}`, margin, y + 4);
+    doc.text("Ce document est certifié par Domicares. Scannez le QR code pour vérifier son authenticité.", margin, y + 8);
+    
+    // Domicares branding footer
+    doc.setFontSize(8);
+    doc.setTextColor(26, 54, 93);
+    doc.text("DOMICARES - Votre santé, notre priorité", pageWidth - margin, y + 4, { align: "right" });
 
-    doc.save(`rapport-consultation-${format(new Date(report.consultation_date), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`rapport-consultation-domicares-${format(new Date(report.consultation_date), 'yyyy-MM-dd')}.pdf`);
   };
 
   return (
