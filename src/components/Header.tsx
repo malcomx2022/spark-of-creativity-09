@@ -48,8 +48,12 @@ export default function Header() {
       sessionStorage.removeItem(key);
     });
 
+    // Rediriger AVANT signOut pour éviter l'affichage de la page login
+    // Le signOut sera effectué après la navigation
+    const homeUrl = window.location.origin + ROUTES.HOME;
     await supabase.auth.signOut();
-    window.location.href = ROUTES.HOME;
+    // Force un rechargement complet pour éviter les états intermédiaires
+    window.location.replace(homeUrl);
   };
 
   return (
