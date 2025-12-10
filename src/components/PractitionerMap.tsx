@@ -198,19 +198,20 @@ export default function PractitionerMap({
         border-radius: 50%;
         color: white;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 3px rgba(255,255,255,0.3);
-        transition: all 0.2s;
+        transition: box-shadow 0.2s, filter 0.2s;
         border: 2px solid white;
       `;
       el.innerHTML = getPractitionerIconSVG(practitioner.practitioner_type);
       
+      // Utiliser filter au lieu de transform pour éviter le déplacement du marqueur
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.2)';
         el.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4), 0 0 0 4px rgba(255,255,255,0.4)';
+        el.style.filter = 'brightness(1.1)';
       });
       
       el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)';
         el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3), 0 0 0 3px rgba(255,255,255,0.3)';
+        el.style.filter = 'brightness(1)';
       });
 
       // Create popup content
