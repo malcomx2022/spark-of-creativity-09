@@ -784,6 +784,10 @@ export type Database = {
           created_at: string | null
           current_medications: string | null
           id: string
+          primary_doctor_email: string | null
+          primary_doctor_id: string | null
+          primary_doctor_name: string | null
+          primary_doctor_phone: string | null
           share_with_practitioner: boolean | null
           updated_at: string | null
           user_id: string
@@ -796,6 +800,10 @@ export type Database = {
           created_at?: string | null
           current_medications?: string | null
           id?: string
+          primary_doctor_email?: string | null
+          primary_doctor_id?: string | null
+          primary_doctor_name?: string | null
+          primary_doctor_phone?: string | null
           share_with_practitioner?: boolean | null
           updated_at?: string | null
           user_id: string
@@ -808,11 +816,30 @@ export type Database = {
           created_at?: string | null
           current_medications?: string | null
           id?: string
+          primary_doctor_email?: string | null
+          primary_doctor_id?: string | null
+          primary_doctor_name?: string | null
+          primary_doctor_phone?: string | null
           share_with_practitioner?: boolean | null
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "medical_profiles_primary_doctor_id_fkey"
+            columns: ["primary_doctor_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "medical_profiles_primary_doctor_id_fkey"
+            columns: ["primary_doctor_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       messages: {
         Row: {
