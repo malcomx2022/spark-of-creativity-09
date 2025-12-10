@@ -54,9 +54,15 @@ type GroupSessionPayment = {
   joined_at: string;
   price_per_person: number;
   scheduled_date: string;
+  // Données du paiement depuis la table payments
+  payment_id: string | null;
+  amount: number;
+  commission_amount: number;
+  net_amount: number;
+  payout_status: string | null;
 };
 
-const COACH_COMMISSION_RATE = 0.37; // 37% commission plateforme
+// La commission est configurée en base (system_config) et calculée par l'edge function
 
 export default function CoachPayoutsSection({ coachId, coachName }: CoachPayoutsSectionProps) {
   const { toast } = useToast();
@@ -172,43 +178,62 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
     },
   });
 
-  // Fetch group session payments
+  // Fetch group session payments from payments table (same as appointments)
   const { data: groupSessionPayments = [], isLoading: sessionsLoading } = useQuery({
     queryKey: ["coach-group-payments", coachId, dateFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("group_session_participants")
-        .select(`
-          id,
-          session_id,
-          patient_id,
-          payment_status,
-          joined_at,
-          group_sessions!inner (
-            id,
-            session_name,
-            coach_id,
-            price_per_person,
-            scheduled_date
-          )
-        `)
-        .eq("payment_status", "paid")
-        .eq("group_sessions.coach_id", coachId)
-        .order("joined_at", { ascending: false });
+      // Get all payments for group sessions belonging to this coach
+      const { data: sessions, error: sessionsError } = await supabase
+        .from("group_sessions")
+        .select("id, session_name, price_per_person, scheduled_date")
+        .eq("coach_id", coachId);
       
-      const { data, error } = await query;
-      if (error) throw error;
+      if (sessionsError) throw sessionsError;
+      if (!sessions || sessions.length === 0) return [];
 
-      return (data || []).map(item => ({
-        id: item.id,
-        session_id: item.session_id,
-        session_name: (item.group_sessions as any)?.session_name || 'Séance',
-        patient_id: item.patient_id,
-        payment_status: item.payment_status,
-        joined_at: item.joined_at || '',
-        price_per_person: (item.group_sessions as any)?.price_per_person || 0,
-        scheduled_date: (item.group_sessions as any)?.scheduled_date || '',
-      })) as GroupSessionPayment[];
+      // Get payments for these group sessions
+      const sessionIds = sessions.map(s => s.id);
+      const { data: payments, error: paymentsError } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("status", "paid")
+        .order("created_at", { ascending: false });
+      
+      if (paymentsError) throw paymentsError;
+
+      // Filter payments that are for group sessions of this coach
+      const groupPayments = (payments || []).filter(p => {
+        if (!p.appointment_id?.startsWith('group_session_')) return false;
+        // Extract session_id from appointment_id format: group_session_{session_id}_{participant_id}
+        const parts = p.appointment_id.split('_');
+        if (parts.length >= 3) {
+          const sessionId = parts[2]; // session UUID is the third part
+          return sessionIds.some(id => p.appointment_id.includes(id));
+        }
+        return false;
+      });
+
+      // Map payments with session info
+      return groupPayments.map(payment => {
+        // Extract session_id from appointment_id
+        const matchingSession = sessions.find(s => payment.appointment_id.includes(s.id));
+        return {
+          id: payment.id,
+          session_id: matchingSession?.id || '',
+          session_name: matchingSession?.session_name || 'Séance',
+          patient_id: payment.patient_id,
+          payment_status: payment.status,
+          joined_at: payment.created_at,
+          price_per_person: matchingSession?.price_per_person || payment.amount,
+          scheduled_date: matchingSession?.scheduled_date || '',
+          // Real payment data from database
+          payment_id: payment.id,
+          amount: payment.amount,
+          commission_amount: payment.commission_amount || 0,
+          net_amount: payment.net_amount || 0,
+          payout_status: payment.payout_status,
+        };
+      }) as GroupSessionPayment[];
     },
   });
 
@@ -242,18 +267,13 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
       count: acc.count + 1,
     }), { totalRevenue: 0, totalCommissions: 0, totalNet: 0, count: 0 });
 
-    // Group sessions revenue
-    const sessionStats = groupSessionPayments.reduce((acc, payment) => {
-      const amount = payment.price_per_person;
-      const commission = Math.round(amount * COACH_COMMISSION_RATE);
-      const net = amount - commission;
-      return {
-        totalRevenue: acc.totalRevenue + amount,
-        totalCommissions: acc.totalCommissions + commission,
-        totalNet: acc.totalNet + net,
-        count: acc.count + 1,
-      };
-    }, { totalRevenue: 0, totalCommissions: 0, totalNet: 0, count: 0 });
+    // Group sessions revenue - using real values from payments table
+    const sessionStats = groupSessionPayments.reduce((acc, payment) => ({
+      totalRevenue: acc.totalRevenue + (payment.amount || 0),
+      totalCommissions: acc.totalCommissions + (payment.commission_amount || 0),
+      totalNet: acc.totalNet + (payment.net_amount || 0),
+      count: acc.count + 1,
+    }), { totalRevenue: 0, totalCommissions: 0, totalNet: 0, count: 0 });
 
     return {
       appointments: appointmentStats,
@@ -304,8 +324,8 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
         };
       }
       
-      const netAmount = payment.price_per_person * (1 - COACH_COMMISSION_RATE);
-      monthlyData[monthKey].sessions += netAmount;
+      // Use real net_amount from payments table
+      monthlyData[monthKey].sessions += payment.net_amount || 0;
     });
     
     return Object.values(monthlyData).sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -423,9 +443,9 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
           body: groupSessionPayments.slice(0, 30).map(payment => [
             format(new Date(payment.joined_at || payment.scheduled_date), "dd/MM/yyyy", { locale: fr }),
             payment.session_name,
-            formatAmount(payment.price_per_person),
-            `-${formatAmount(Math.round(payment.price_per_person * COACH_COMMISSION_RATE))}`,
-            formatAmount(Math.round(payment.price_per_person * (1 - COACH_COMMISSION_RATE))),
+            formatAmount(payment.amount),
+            `-${formatAmount(payment.commission_amount)}`,
+            formatAmount(payment.net_amount),
           ]),
           styles: { fontSize: 8 },
           headStyles: { fillColor: [59, 130, 246] },
@@ -675,21 +695,17 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {groupSessionPayments.map((payment) => {
-                      const commission = Math.round(payment.price_per_person * COACH_COMMISSION_RATE);
-                      const net = payment.price_per_person - commission;
-                      return (
-                        <TableRow key={payment.id}>
-                          <TableCell>
-                            {format(new Date(payment.joined_at || payment.scheduled_date), "dd/MM/yyyy", { locale: fr })}
-                          </TableCell>
-                          <TableCell className="font-medium">{payment.session_name}</TableCell>
-                          <TableCell className="text-right">{formatAmount(payment.price_per_person)}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">-{formatAmount(commission)}</TableCell>
-                          <TableCell className="text-right font-medium text-green-600">{formatAmount(net)}</TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {groupSessionPayments.map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell>
+                          {format(new Date(payment.joined_at || payment.scheduled_date), "dd/MM/yyyy", { locale: fr })}
+                        </TableCell>
+                        <TableCell className="font-medium">{payment.session_name}</TableCell>
+                        <TableCell className="text-right">{formatAmount(payment.amount)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">-{formatAmount(payment.commission_amount)}</TableCell>
+                        <TableCell className="text-right font-medium text-green-600">{formatAmount(payment.net_amount)}</TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               )}
