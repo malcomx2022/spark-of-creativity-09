@@ -42,6 +42,7 @@ const ProfileTab = lazy(() => import("@/components/dashboard/coach/tabs/ProfileT
 const NotificationsTab = lazy(() => import("@/components/dashboard/coach/tabs/NotificationsTab"));
 const SupportTab = lazy(() => import("@/components/dashboard/coach/tabs/SupportTab"));
 const PayoutsSection = lazy(() => import("@/components/dashboard/practitioner/PayoutsSection"));
+const PaymentInfoSection = lazy(() => import("@/components/dashboard/practitioner/PaymentInfoSection").then(m => ({ default: m.PaymentInfoSection })));
 
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -408,7 +409,10 @@ export default function CoachDashboard() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               }>
-                <PayoutsSection practitionerId={coach.id} />
+                <div className="space-y-6">
+                  <PaymentInfoSection practitionerId={coach.id} practitionerName={coach.name} />
+                  <PayoutsSection practitionerId={coach.id} />
+                </div>
               </Suspense>
             </TabsContent>
 
