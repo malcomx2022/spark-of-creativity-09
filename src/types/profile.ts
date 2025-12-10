@@ -45,6 +45,11 @@ export interface MedicalProfile {
   current_medications?: string;
   additional_notes?: string;
   share_with_practitioner: boolean;
+  // Médecin traitant
+  primary_doctor_id?: string;
+  primary_doctor_name?: string;
+  primary_doctor_email?: string;
+  primary_doctor_phone?: string;
   created_at: string;
   updated_at: string;
 }
