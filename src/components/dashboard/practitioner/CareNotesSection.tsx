@@ -53,9 +53,15 @@ export default function CareNotesSection() {
     enabled: !!user?.id,
   });
 
-  const { data: appointmentsResult } = usePractitionerAppointments(practitioner?.id, 0, 100);
+  // Utiliser l'ID du praticien (conversion en string pour correspondre au format text de la table appointments)
+  const practitionerIdStr = practitioner?.id;
+  
+  const { data: appointmentsResult, isLoading: appointmentsLoading } = usePractitionerAppointments(practitionerIdStr, 0, 100);
   const appointments = appointmentsResult?.data || [];
   const completedAppointments = appointments.filter(a => a.status === 'completed');
+  
+  // Debug: Log pour vérifier les données
+  console.log('CareNotesSection - practitioner:', practitioner?.id, 'appointments:', appointments.length, 'completed:', completedAppointments.length);
 
   const { data: currentNote } = useCareNoteByAppointment(selectedAppointmentId || undefined);
   const { data: allNotes = [] } = useCareNotes(practitioner?.id);
@@ -213,9 +219,13 @@ export default function CareNotesSection() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {completedAppointments.length === 0 ? (
+          {appointmentsLoading ? (
               <p className="text-muted-foreground text-center py-4">
-                Aucune consultation terminée
+                Chargement des consultations...
+              </p>
+            ) : completedAppointments.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">
+                Aucune consultation terminée ({appointments.length} rendez-vous au total)
               </p>
             ) : (
               completedAppointments.slice(0, notesLimit).map((apt) => (
