@@ -34,7 +34,7 @@ const ProfessionalProfileSection = lazy(() => import('@/components/dashboard/pra
 const AvailabilitySection = lazy(() => import('@/components/dashboard/practitioner/AvailabilitySection'));
 const PayoutsSection = lazy(() => import('@/components/dashboard/practitioner/PayoutsSection'));
 const PaymentInfoSection = lazy(() => import('@/components/dashboard/practitioner/PaymentInfoSection').then(m => ({ default: m.PaymentInfoSection })));
-const CareNotesSection = lazy(() => import('@/components/dashboard/practitioner/CareNotesSection'));
+// CareNotesSection removed - using only ConsultationReportSection
 const ReviewsSection = lazy(() => import('@/components/dashboard/practitioner/ReviewsSection'));
 const NotificationsSection = lazy(() => import('@/components/dashboard/NotificationsSection').then(m => ({ default: m.NotificationsSection })));
 const PractitionerMessagesSection = lazy(() => import('@/components/dashboard/practitioner/PractitionerMessagesSection').then(m => ({ default: m.PractitionerMessagesSection })));
@@ -438,11 +438,6 @@ export default function PractitionerDashboard() {
                   <DollarSign className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm">Revenus</span>
                 </TabsTrigger>
-                <TabsTrigger value="care-notes" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
-                  <FileText className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-sm hidden sm:inline">Notes SOAP</span>
-                  <span className="text-sm sm:hidden">Notes</span>
-                </TabsTrigger>
                 <TabsTrigger value="reports" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
                   <ClipboardCheck className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm">Rapports</span>
@@ -628,11 +623,6 @@ export default function PractitionerDashboard() {
             </Suspense>
           </TabsContent>
 
-          <TabsContent value="notes">
-            <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
-              <CareNotesSection />
-            </Suspense>
-          </TabsContent>
 
           <TabsContent value="reports">
             <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>

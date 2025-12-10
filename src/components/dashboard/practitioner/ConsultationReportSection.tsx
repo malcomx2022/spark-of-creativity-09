@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { FileText, AlertCircle, ChevronLeft, ChevronRight, Plus, HelpCircle, Info } from 'lucide-react';
+import { FileText, AlertCircle, ChevronLeft, ChevronRight, Plus, HelpCircle, Eye, Download } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Tooltip,
@@ -16,6 +16,7 @@ import {
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
 import { AppointmentSelectionDialog } from './AppointmentSelectionDialog';
 import { ConsultationReportFormDialog } from './ConsultationReportFormDialog';
+import { ConsultationReportDetailDialog } from './ConsultationReportDetailDialog';
 
 interface ConsultationReportSectionProps {
   practitionerId: string;
@@ -25,6 +26,8 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
   const [page, setPage] = useState(0);
   const [showAppointmentSelection, setShowAppointmentSelection] = useState(false);
   const [showReportForm, setShowReportForm] = useState(false);
+  const [showReportDetail, setShowReportDetail] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<any>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<{
     id: string;
     patientName: string;
@@ -49,6 +52,11 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
   const handleReportCreated = () => {
     setSelectedAppointment(null);
     setShowReportForm(false);
+  };
+
+  const handleViewReport = (report: any, patientName: string) => {
+    setSelectedReport({ ...report, patientName });
+    setShowReportDetail(true);
   };
 
   if (isLoading) {
@@ -124,40 +132,43 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert className="mb-4">
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Rapports de Consultation</strong> : Pour documentations formelles et détaillées.
-              Utilisez <strong>Notes SOAP</strong> pour suivis rapides (onglet séparé).
-            </AlertDescription>
-          </Alert>
         {reports.length === 0 ? (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Aucun rapport de consultation pour le moment
+              Aucun rapport de consultation pour le moment. Cliquez sur "Nouveau rapport" pour en créer un.
             </AlertDescription>
           </Alert>
         ) : (
           <div className="space-y-4">
             {reports.map((report) => {
               const appointment = appointments.find(apt => apt.id === report.appointment_id);
+              const patientName = appointment?.patientName || 'Patient inconnu';
               return (
-                <div key={report.id} className="border rounded-lg p-4 space-y-2">
+                <div 
+                  key={report.id} 
+                  className="border rounded-lg p-4 space-y-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => handleViewReport(report, patientName)}
+                >
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{appointment?.patientName || 'Patient inconnu'}</p>
+                    <div className="flex-1">
+                      <p className="font-medium">{patientName}</p>
                       <p className="text-sm text-muted-foreground">
                         {format(new Date(report.consultation_date), 'dd MMMM yyyy', { locale: fr })}
                       </p>
                     </div>
-                    {getSeverityBadge(report.severity_level)}
+                    <div className="flex items-center gap-2">
+                      {getSeverityBadge(report.severity_level)}
+                      <Button variant="ghost" size="icon" title="Voir les détails">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   {report.primary_diagnosis && (
                     <p className="text-sm"><strong>Diagnostic:</strong> {report.primary_diagnosis}</p>
                   )}
                   {report.consultation_reason && (
-                    <p className="text-sm text-muted-foreground">{report.consultation_reason}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{report.consultation_reason}</p>
                   )}
                 </div>
               );
@@ -211,6 +222,13 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
         onSuccess={handleReportCreated}
       />
     )}
+
+    <ConsultationReportDetailDialog
+      open={showReportDetail}
+      onOpenChange={setShowReportDetail}
+      report={selectedReport}
+      patientName={selectedReport?.patientName}
+    />
     </>
   );
 };

@@ -25,7 +25,7 @@ import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
 import { PatientGroupSessionsSection } from '@/components/dashboard/PatientGroupSessionsSection';
-import { PatientCareNotesSection } from '@/components/dashboard/PatientCareNotesSection';
+// PatientCareNotesSection removed - using only PatientConsultationReportsSection
 import { FedaPayWidget } from '@/components/FedaPayWidget';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -485,18 +485,6 @@ export default function PatientDashboard() {
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
-            onClick={() => setActiveTab("care-notes")}
-          >
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Notes SOAP</CardTitle>
-              <ClipboardList className="h-5 w-5 text-primary flex-shrink-0" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground">Notes de soin</p>
-            </CardContent>
-          </Card>
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
@@ -624,14 +612,6 @@ export default function PatientDashboard() {
                   <span className="text-sm">Rapports</span>
                 </TabsTrigger>
                 <TabsTrigger 
-                  value="care-notes" 
-                  className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent"
-                >
-                  <ClipboardList className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-sm hidden sm:inline">Notes SOAP</span>
-                  <span className="text-sm sm:hidden">Notes</span>
-                </TabsTrigger>
-                <TabsTrigger 
                   value="profile" 
                   className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent"
                 >
@@ -728,15 +708,6 @@ export default function PatientDashboard() {
             </Suspense>
           </TabsContent>
 
-          <TabsContent value="care-notes">
-            <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            }>
-              <PatientCareNotesSection />
-            </Suspense>
-          </TabsContent>
 
           <TabsContent value="profile">
             <Suspense fallback={
