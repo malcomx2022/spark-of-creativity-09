@@ -41,7 +41,7 @@ const AvailabilityTab = lazy(() => import("@/components/dashboard/coach/tabs/Ava
 const ProfileTab = lazy(() => import("@/components/dashboard/coach/tabs/ProfileTab"));
 const NotificationsTab = lazy(() => import("@/components/dashboard/coach/tabs/NotificationsTab"));
 const SupportTab = lazy(() => import("@/components/dashboard/coach/tabs/SupportTab"));
-const PayoutsSection = lazy(() => import("@/components/dashboard/practitioner/PayoutsSection"));
+const CoachPayoutsSection = lazy(() => import("@/components/dashboard/coach/CoachPayoutsSection"));
 const PaymentInfoSection = lazy(() => import("@/components/dashboard/practitioner/PaymentInfoSection").then(m => ({ default: m.PaymentInfoSection })));
 
 export default function CoachDashboard() {
@@ -411,7 +411,7 @@ export default function CoachDashboard() {
               }>
                 <div className="space-y-6">
                   <PaymentInfoSection practitionerId={coach.id} practitionerName={coach.name} />
-                  <PayoutsSection practitionerId={coach.id} />
+                  <CoachPayoutsSection coachId={coach.id} coachName={coach.name} />
                 </div>
               </Suspense>
             </TabsContent>
