@@ -8,6 +8,7 @@ import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { ROUTES } from "@/lib/routes";
 import { toast } from "@/hooks/use-toast";
 import logo from "@/assets/logo.png";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,7 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: user } = useSupabaseUser();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const handleEmergencyCall = () => {
     if (typeof window !== 'undefined' && 'ontouchstart' in window) {
@@ -36,10 +38,13 @@ export default function Header() {
 
   const handleLogout = async () => {
     // Marquer la déconnexion en cours AVANT signOut
-    // pour que ProtectedRoute redirige vers / au lieu de /login
     sessionStorage.setItem('logging_out', 'true');
     
-    // Nettoyer les données de l'app (sauf logging_out)
+    // Invalider immédiatement le cache utilisateur pour que l'UI se mette à jour
+    queryClient.setQueryData(['supabase', 'auth', 'user'], null);
+    queryClient.invalidateQueries({ queryKey: ['supabase', 'auth', 'user'] });
+    
+    // Nettoyer les données de l'app
     const keysToRemove = [
       'supabase.auth.token',
       'recent_location_searches',
@@ -52,7 +57,11 @@ export default function Header() {
     });
 
     await supabase.auth.signOut();
-    // La navigation vers / sera gérée par ProtectedRoute ou ici si on est sur une page publique
+    
+    // Fermer le menu mobile si ouvert
+    setIsMenuOpen(false);
+    
+    // Naviguer vers la page d'accueil
     navigate(ROUTES.HOME, { replace: true });
   };
 
