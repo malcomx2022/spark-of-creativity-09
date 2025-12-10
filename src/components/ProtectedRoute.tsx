@@ -110,6 +110,12 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   }
 
   if (status === 'unauthenticated') {
+    // Si une déconnexion est en cours, rediriger vers l'accueil au lieu de login
+    const isLoggingOut = sessionStorage.getItem('logging_out') === 'true';
+    if (isLoggingOut) {
+      sessionStorage.removeItem('logging_out');
+      return <Navigate to="/" replace />;
+    }
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
