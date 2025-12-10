@@ -56,7 +56,7 @@ type GroupSessionPayment = {
   scheduled_date: string;
 };
 
-const COACH_COMMISSION_RATE = 0.05; // 5% commission plateforme
+const COACH_COMMISSION_RATE = 0.37; // 37% commission plateforme
 
 export default function CoachPayoutsSection({ coachId, coachName }: CoachPayoutsSectionProps) {
   const { toast } = useToast();
