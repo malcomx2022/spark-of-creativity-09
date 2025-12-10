@@ -22,16 +22,34 @@ export function FinanceSection() {
   const limit = 20;
 
   // Fetch finance stats from view
-  const { data: stats } = useQuery({
+  interface FinanceStats {
+    total_revenue: number;
+    pending_payments: number;
+    completed_payments: number;
+    pending_payouts: number;
+    held_amount: number;
+    total_commission: number;
+  }
+  
+  const { data: stats } = useQuery<FinanceStats>({
     queryKey: ['admin-finance-stats'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('admin_finance_stats')
         .select('*')
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
-      return data;
+      // Cast to any because the generated types might not include the new columns
+      const statsData = data as any;
+      return {
+        total_revenue: statsData?.total_revenue || 0,
+        pending_payments: statsData?.pending_payments || 0,
+        completed_payments: statsData?.completed_payments || 0,
+        pending_payouts: statsData?.pending_payouts || 0,
+        held_amount: statsData?.held_amount || 0,
+        total_commission: statsData?.total_commission || 0
+      };
     },
   });
 
@@ -143,7 +161,7 @@ export function FinanceSection() {
   return (
     <div className="space-y-6">
       {/* Statistiques */}
-      <div className="grid md:grid-cols-4 gap-4">
+      <div className="grid md:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -151,13 +169,45 @@ export function FinanceSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(stats?.total_revenue || 0).toLocaleString()} XOF</div>
+            <div className="text-2xl font-bold text-primary">{(stats?.total_revenue || 0).toLocaleString()} XOF</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Paiements en attente
+              Commission plateforme
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{(stats?.total_commission || 0).toLocaleString()} XOF</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Fonds en rétention (48h)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-yellow-600">{(stats?.held_amount || 0).toLocaleString()} XOF</div>
+            <p className="text-xs text-muted-foreground">En attente de libération</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Prêt à reverser
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{(stats?.pending_payouts || 0).toLocaleString()} XOF</div>
+            <p className="text-xs text-muted-foreground">Disponible pour versement</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Paiements en cours
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -167,24 +217,34 @@ export function FinanceSection() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Paiements complétés
+              Paiements réussis
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.completed_payments || 0}</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Reversements à effectuer
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{(stats?.pending_payouts || 0).toLocaleString()} XOF</div>
-          </CardContent>
-        </Card>
       </div>
+      
+      {/* Workflow Info Card */}
+      <Card className="bg-muted/30 border-dashed">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">Workflow de reversement :</span>
+              <Badge variant="outline">1. Patient paie</Badge>
+              <span>→</span>
+              <Badge variant="secondary">2. Fonds retenus 48h</Badge>
+              <span>→</span>
+              <Badge variant="default">3. Release auto</Badge>
+              <span>→</span>
+              <Badge className="bg-green-600">4. Créer lot</Badge>
+              <span>→</span>
+              <Badge className="bg-blue-600">5. Exécuter paiement</Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="realtime">
         <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9">
