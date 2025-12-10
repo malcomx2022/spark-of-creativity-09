@@ -10,7 +10,8 @@ import {
   Users,
   DollarSign,
   ClipboardList,
-  Loader2
+  Loader2,
+  Wallet
 } from "lucide-react";
 import {
   AlertDialog,
@@ -40,6 +41,7 @@ const AvailabilityTab = lazy(() => import("@/components/dashboard/coach/tabs/Ava
 const ProfileTab = lazy(() => import("@/components/dashboard/coach/tabs/ProfileTab"));
 const NotificationsTab = lazy(() => import("@/components/dashboard/coach/tabs/NotificationsTab"));
 const SupportTab = lazy(() => import("@/components/dashboard/coach/tabs/SupportTab"));
+const PayoutsSection = lazy(() => import("@/components/dashboard/practitioner/PayoutsSection"));
 
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
@@ -330,7 +332,7 @@ export default function CoachDashboard() {
           </div>
 
           <Tabs defaultValue="sessions" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="sessions" className="gap-2">
                 <Users className="h-4 w-4" />
                 <span className="sm:hidden">Séan.</span>
@@ -340,6 +342,11 @@ export default function CoachDashboard() {
                 <ClipboardList className="h-4 w-4" />
                 <span className="sm:hidden">RDV</span>
                 <span className="hidden sm:inline">Rendez-vous</span>
+              </TabsTrigger>
+              <TabsTrigger value="revenue" className="gap-2">
+                <Wallet className="h-4 w-4" />
+                <span className="sm:hidden">Rev.</span>
+                <span className="hidden sm:inline">Revenus</span>
               </TabsTrigger>
               <TabsTrigger value="availability" className="gap-2">
                 <Calendar className="h-4 w-4" />
@@ -392,6 +399,16 @@ export default function CoachDashboard() {
                   onAcceptAppointment={handleAcceptAppointment}
                   onRejectAppointment={handleRejectAppointment}
                 />
+              </Suspense>
+            </TabsContent>
+
+            <TabsContent value="revenue">
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              }>
+                <PayoutsSection practitionerId={coach.id} />
               </Suspense>
             </TabsContent>
 
