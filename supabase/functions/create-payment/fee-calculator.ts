@@ -102,7 +102,7 @@ export function parseFeeConfig(systemConfig: {
   };
 }): FeeConfig {
   return {
-    commissionRate: systemConfig.payment_commission_rate?.rate || 0.05,
+    commissionRate: systemConfig.payment_commission_rate?.rate || 0.37, // 37% commission plateforme par défaut
     gatewayFeeFixed: systemConfig.payment_gateway_fees?.fixed || 0,
     gatewayFeePercentage: systemConfig.payment_gateway_fees?.percentage || 0.02,
     gatewayFeePaidBy: systemConfig.payment_gateway_fees?.paid_by || 'platform',
