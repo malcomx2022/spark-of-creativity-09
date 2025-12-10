@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
 import { usePractitioners } from '@/hooks/usePractitioners';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useCreateAppointment } from '@/hooks/useAppointments';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -48,6 +49,11 @@ export default function PractitionerSearch() {
 
   const { data: user } = useSupabaseUser();
   const { logActivity, isAuthenticated } = useSearchActivityLog();
+  
+  // Hook pour créer les rendez-vous (avec notifications automatiques)
+  const patientId = user?.id;
+  const patientName = (user?.user_metadata?.full_name as string) || user?.email || 'Patient';
+  const createAppointment = useCreateAppointment(patientId, patientName);
   
   // Utiliser le hook de géolocalisation amélioré
   const { position, requestPosition, loading: geoLoading, error: geoError, quality, isRefining } = useGeolocation();
@@ -552,39 +558,17 @@ export default function PractitionerSearch() {
           }
           
           try {
-            const { data: session } = await supabase.auth.getSession();
-            if (!session?.session?.user) {
-              throw new Error('Utilisateur non authentifié');
-            }
-
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', session.session.user.id)
-              .single();
-
-            // Utiliser les données du praticien pré-sélectionné
-            const appointmentData = {
-              patient_id: session.session.user.id,
-              patient_name: profile?.full_name || 'Patient',
-              practitioner_id: selectedPractitioner.id,
-              practitioner_name: selectedPractitioner.name,
+            // Utiliser le hook useCreateAppointment qui envoie automatiquement les notifications
+            const appointment = await createAppointment.mutateAsync({
               specialty: data.specialty || selectedPractitioner.specialty,
-              date: new Date(data.date).toISOString().split('T')[0],
+              date: data.date,
               time: data.time,
-              status: 'awaiting_practitioner',
-              address: data.addressOverride || selectedPractitioner.address || 'Adresse à confirmer',
               reason: data.reason,
-              urgency_level: data.urgencyLevel,
-            };
-
-            const { data: appointment, error } = await supabase
-              .from('appointments')
-              .insert([appointmentData])
-              .select()
-              .single();
-
-            if (error) throw error;
+              urgencyLevel: data.urgencyLevel,
+              practitionerId: selectedPractitioner.id,
+              practitionerName: selectedPractitioner.name,
+              addressOverride: data.addressOverride || selectedPractitioner.address || 'Adresse à confirmer',
+            });
 
             // Log l'activité de création de RDV
             logActivity({
