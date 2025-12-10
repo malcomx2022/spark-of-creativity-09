@@ -1,9 +1,4 @@
-import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PaymentDialog } from "@/components/PaymentDialog";
-import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
-import { fr } from "date-fns/locale";
+import { GroupSessionPaymentWidget } from "./GroupSessionPaymentWidget";
 
 interface RegisterSessionDialogProps {
   open: boolean;
@@ -20,119 +15,18 @@ interface RegisterSessionDialogProps {
 }
 
 export function RegisterSessionDialog({ open, onOpenChange, session }: RegisterSessionDialogProps) {
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [showRegistrationDetails, setShowRegistrationDetails] = useState(true);
-
-  const handleProceedToPayment = () => {
-    console.log('✅ handleProceedToPayment appelé pour session:', session.id);
-    setShowRegistrationDetails(false); // Cacher les détails d'inscription
-    setShowPaymentDialog(true); // Ouvrir le dialog de paiement
-  };
-
-  const handlePaymentDialogClose = (isOpen: boolean) => {
-    console.log('📦 handlePaymentDialogClose:', isOpen);
-    setShowPaymentDialog(isOpen);
-    if (!isOpen) {
-      // Réinitialiser et fermer tout
-      setShowRegistrationDetails(true);
-      onOpenChange(false);
-    }
-  };
-
-  const handlePaymentSuccess = () => {
-    console.log('✅ Paiement réussi');
-    setShowPaymentDialog(false);
-    setShowRegistrationDetails(true);
-    onOpenChange(false);
-  };
-
-  const handlePaymentComplete = () => {
-    console.log('✅ Paiement complété');
-    setShowPaymentDialog(false);
-    setShowRegistrationDetails(true);
-    onOpenChange(false);
-  };
-
-  // Réinitialiser l'état quand le dialogue parent se ferme
-  const handleMainDialogChange = (isOpen: boolean) => {
-    if (!isOpen && !showPaymentDialog) {
-      // Seulement fermer si le PaymentDialog n'est pas ouvert
-      setShowRegistrationDetails(true);
-      onOpenChange(false);
-    } else if (!isOpen && showPaymentDialog) {
-      // Ne pas fermer le dialogue parent si le PaymentDialog est ouvert
-      return;
-    } else {
-      onOpenChange(isOpen);
-    }
-  };
-
+  // Utiliser directement le widget de paiement intégré (comme FedaPayWidget pour les rendez-vous)
   return (
-    <>
-      {/* Dialog de détails d'inscription - visible seulement si showRegistrationDetails est true */}
-      <Dialog open={open && showRegistrationDetails && !showPaymentDialog} onOpenChange={handleMainDialogChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Inscription à la séance</DialogTitle>
-            <DialogDescription>
-              {session.session_name} - {session.price_per_person.toLocaleString()} FCFA
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <h4 className="font-semibold">Détails de la séance</h4>
-              <div className="text-sm space-y-1">
-                <p>
-                  <span className="text-muted-foreground">Date:</span>{" "}
-                  {format(new Date(session.scheduled_date), "EEEE d MMMM yyyy", { locale: fr })}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Heure:</span> {session.start_time}
-                </p>
-                {session.current_participants !== undefined && session.max_participants && (
-                  <p>
-                    <span className="text-muted-foreground">Places:</span>{" "}
-                    {session.current_participants} / {session.max_participants} participants
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Prix de la séance</span>
-                <span className="font-semibold">{session.price_per_person.toLocaleString()} FCFA</span>
-              </div>
-              <div className="border-t pt-2 flex justify-between font-bold">
-                <span>Total à payer</span>
-                <span className="text-primary">{session.price_per_person.toLocaleString()} FCFA</span>
-              </div>
-            </div>
-
-            <Button 
-              onClick={handleProceedToPayment}
-              className="w-full"
-            >
-              Procéder au paiement
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* PaymentDialog - rendu indépendamment du dialogue parent */}
-      {open && (
-        <PaymentDialog
-          open={showPaymentDialog}
-          onOpenChange={handlePaymentDialogClose}
-          sessionId={session.id}
-          amount={session.price_per_person}
-          context="group_session"
-          sessionDetails={session}
-          onSuccess={handlePaymentSuccess}
-          onComplete={handlePaymentComplete}
-        />
-      )}
-    </>
+    <GroupSessionPaymentWidget
+      open={open}
+      onOpenChange={onOpenChange}
+      session={session}
+      onSuccess={() => {
+        console.log('✅ Inscription et paiement réussis');
+      }}
+      onComplete={() => {
+        console.log('✅ Processus complété');
+      }}
+    />
   );
 }

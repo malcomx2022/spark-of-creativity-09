@@ -183,6 +183,7 @@ serve(async (req) => {
           success: true,
           participantId,
           paymentId: paymentResult.paymentId,
+          transactionId: paymentResult.transactionId, // ✅ Ajout du transactionId pour FedaPay widget
           paymentUrl: paymentResult.paymentUrl,
           message: 'Inscription créée avec succès. Veuillez procéder au paiement.'
         }),
