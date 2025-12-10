@@ -2,10 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
+import { format } from 'date-fns';
 
 export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Date d'aujourd'hui pour filtrer les séances passées
+  const today = format(new Date(), 'yyyy-MM-dd');
 
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['group-sessions', coachId, page],
@@ -14,11 +18,12 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        // Permettre aux visiteurs de voir les séances publiques
+        // Permettre aux visiteurs de voir les séances publiques (futures uniquement)
         const { data, error, count } = await supabase
           .from('group_sessions')
           .select('*', { count: 'exact' })
           .in('status', ['confirmee', 'planifiee'])
+          .gte('scheduled_date', today) // ✅ Filtrer les séances passées
           .order('scheduled_date', { ascending: true })
           .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -30,6 +35,7 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
         .from('group_sessions')
         .select('*', { count: 'exact' })
         .in('status', ['confirmee', 'planifiee'])
+        .gte('scheduled_date', today) // ✅ Filtrer les séances passées
         .order('scheduled_date', { ascending: true })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
