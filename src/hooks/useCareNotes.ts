@@ -20,24 +20,43 @@ export function useCareNotes(practitionerId?: string) {
     queryFn: async () => {
       if (!practitionerId) return [];
       
-      const { data, error } = await withTimeout(
+      // Fetch care notes first
+      const { data: notes, error: notesError } = await withTimeout(
         supabase
           .from('care_notes')
-          .select(`
-            *,
-            appointments!inner (
-              practitioner_name,
-              patient_name,
-              date,
-              specialty
-            )
-          `)
+          .select('*')
           .eq('practitioner_id', practitionerId)
           .order('created_at', { ascending: false })
       );
 
-      if (error) throw error;
-      return (data || []) as CareNoteWithAppointment[];
+      if (notesError) throw notesError;
+      if (!notes || notes.length === 0) return [];
+
+      // Fetch appointments for these notes
+      const appointmentIds = notes.map(n => n.appointment_id);
+      const { data: appointments, error: apptError } = await withTimeout(
+        supabase
+          .from('appointments')
+          .select('id, practitioner_name, patient_name, date, specialty')
+          .in('id', appointmentIds)
+      );
+
+      if (apptError) {
+        console.warn('Error fetching appointments for care notes:', apptError);
+      }
+
+      // Map appointments to notes
+      const appointmentMap = new Map(appointments?.map(a => [a.id, a]) || []);
+      
+      return notes.map(note => ({
+        ...note,
+        appointments: appointmentMap.get(note.appointment_id) || {
+          practitioner_name: 'Praticien',
+          patient_name: 'Patient',
+          date: note.created_at || new Date().toISOString(),
+          specialty: 'Consultation'
+        }
+      })) as CareNoteWithAppointment[];
     },
     enabled: !!practitionerId,
   });
