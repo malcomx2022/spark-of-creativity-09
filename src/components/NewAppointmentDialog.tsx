@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Plus, Loader2, MapPin } from 'lucide-react';
+import { CalendarIcon, Plus, Loader2, MapPin, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ import { AddressSearchInput } from './AddressSearchInput';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { getCategoryLabel } from '@/lib/practitioner-categories';
+import { usePractitionerAvailability, usePractitionerExceptions } from '@/hooks/useAvailability';
 
 // Système de queue de toasts pour éviter l'affichage simultané
 const toastQueue: Array<{ id: string; toast: any }> = [];
@@ -756,53 +757,138 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const timeSlots = [
+  const allTimeSlots = [
     '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
     '11:00', '11:30', '12:00', '14:00', '14:30', '15:00',
     '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
   ];
 
-  // Filtrer les créneaux horaires si la date sélectionnée est aujourd'hui
-  const getAvailableTimeSlots = () => {
-    const selectedDate = form.watch('date');
-    if (!selectedDate) return timeSlots;
+  // Récupérer les disponibilités du praticien pré-sélectionné
+  const { data: practitionerAvailability = [], isLoading: isLoadingAvailability } = usePractitionerAvailability(
+    preselectedPractitioner?.id
+  );
+  
+  // Récupérer les exceptions du praticien pré-sélectionné
+  const { data: practitionerExceptions = [], isLoading: isLoadingExceptions } = usePractitionerExceptions(
+    preselectedPractitioner?.id
+  );
 
+  // Fonction pour comparer les heures
+  const compareTime = (time1: string, time2: string): number => {
+    const [h1, m1] = time1.split(':').map(Number);
+    const [h2, m2] = time2.split(':').map(Number);
+    if (h1 !== h2) return h1 - h2;
+    return m1 - m2;
+  };
+
+  // Calculer les créneaux disponibles en fonction de la date et des disponibilités du praticien
+  const getAvailableTimeSlots = useMemo(() => {
+    const selectedDate = form.watch('date');
+    
+    // Si pas de date sélectionnée
+    if (!selectedDate) {
+      return { slots: [], message: 'Sélectionnez une date pour voir les créneaux disponibles' };
+    }
+
+    const dayOfWeek = selectedDate.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
+    const dateString = format(selectedDate, 'yyyy-MM-dd');
+
+    // Si praticien pré-sélectionné, vérifier ses disponibilités
+    if (preselectedPractitioner) {
+      // Vérifier les exceptions pour cette date
+      const exception = practitionerExceptions.find(e => e.date === dateString);
+      if (exception && !exception.is_available) {
+        return { 
+          slots: [], 
+          message: `${preselectedPractitioner.name} n'est pas disponible ce jour${exception.reason ? ` (${exception.reason})` : ''}`
+        };
+      }
+
+      // Récupérer les créneaux pour ce jour de la semaine
+      const dayAvailability = practitionerAvailability.filter(
+        a => a.day_of_week === dayOfWeek && a.is_active !== false
+      );
+
+      if (dayAvailability.length === 0) {
+        const dayName = format(selectedDate, 'EEEE', { locale: fr });
+        return { 
+          slots: [], 
+          message: `${preselectedPractitioner.name} n'a pas de créneaux configurés le ${dayName}` 
+        };
+      }
+
+      // Filtrer les créneaux en fonction des disponibilités
+      let availableSlots = allTimeSlots.filter(time => {
+        const normalizedTime = time.substring(0, 5);
+        return dayAvailability.some(slot => {
+          const slotStart = slot.start_time.substring(0, 5);
+          const slotEnd = slot.end_time.substring(0, 5);
+          return compareTime(normalizedTime, slotStart) >= 0 && compareTime(normalizedTime, slotEnd) < 0;
+        });
+      });
+
+      // Si c'est aujourd'hui, filtrer aussi les heures passées
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selected = new Date(selectedDate);
+      selected.setHours(0, 0, 0, 0);
+
+      if (selected.getTime() === today.getTime()) {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinutes = now.getMinutes();
+
+        availableSlots = availableSlots.filter(time => {
+          const [hours, minutes] = time.split(':').map(Number);
+          return hours > currentHour || (hours === currentHour && minutes > currentMinutes);
+        });
+
+        if (availableSlots.length === 0) {
+          return { 
+            slots: [], 
+            message: 'Plus de créneaux disponibles aujourd\'hui. Veuillez sélectionner une autre date.' 
+          };
+        }
+      }
+
+      if (availableSlots.length === 0) {
+        return { 
+          slots: [], 
+          message: `Aucun créneau disponible pour ${preselectedPractitioner.name} ce jour` 
+        };
+      }
+
+      return { slots: availableSlots, message: null };
+    }
+
+    // Si pas de praticien pré-sélectionné, afficher tous les créneaux (filtrage date uniquement)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const selected = new Date(selectedDate);
     selected.setHours(0, 0, 0, 0);
 
-    // Si la date sélectionnée n'est pas aujourd'hui, retourner tous les créneaux
     if (selected.getTime() !== today.getTime()) {
-      return timeSlots;
+      return { slots: allTimeSlots, message: null };
     }
 
-    // Si c'est aujourd'hui, filtrer les heures passées
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
 
-    const availableSlots = timeSlots.filter((time) => {
+    const filteredSlots = allTimeSlots.filter(time => {
       const [hours, minutes] = time.split(':').map(Number);
-      // Garder le créneau si l'heure est future ou si c'est l'heure actuelle mais les minutes sont futures
       return hours > currentHour || (hours === currentHour && minutes > currentMinutes);
     });
 
-    // Si aucun créneau disponible aujourd'hui (après 18h par exemple)
-    if (availableSlots.length === 0) {
-      // Afficher un toast d'information pour guider l'utilisateur
-      setTimeout(() => {
-        showToast({
-          title: '⏰ Plus de créneaux aujourd\'hui',
-          description: `Il est ${currentHour}h${String(currentMinutes).padStart(2, '0')}. Tous les créneaux d'aujourd'hui sont passés. Veuillez sélectionner une date ultérieure (demain ou plus tard).`,
-          variant: 'destructive',
-          duration: 8000,
-        });
-      }, 300); // Léger délai pour éviter les toasts simultanés
+    if (filteredSlots.length === 0) {
+      return { 
+        slots: [], 
+        message: 'Plus de créneaux aujourd\'hui. Veuillez sélectionner une autre date.' 
+      };
     }
 
-    return availableSlots;
-  };
+    return { slots: filteredSlots, message: null };
+  }, [form.watch('date'), preselectedPractitioner, practitionerAvailability, practitionerExceptions]);
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
@@ -1030,12 +1116,19 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <div className="p-3 text-sm text-muted-foreground border-b bg-muted/30">
-                          ℹ️ Les dimanches ne sont pas disponibles pour les consultations
+                          {preselectedPractitioner 
+                            ? `📅 Jours disponibles selon l'agenda de ${preselectedPractitioner.name}`
+                            : 'ℹ️ Les dimanches ne sont pas disponibles pour les consultations'
+                          }
                         </div>
                         <Calendar
                           mode="single"
                           selected={field.value}
-                          onSelect={field.onChange}
+                          onSelect={(date) => {
+                            field.onChange(date);
+                            // Réinitialiser le créneau horaire quand la date change
+                            form.setValue('time', '');
+                          }}
                           disabled={(date) => {
                             // Comparer uniquement les dates (sans l'heure)
                             const today = new Date();
@@ -1043,10 +1136,27 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                             const compareDate = new Date(date);
                             compareDate.setHours(0, 0, 0, 0);
                             
-                            // Désactiver les dates strictement passées (avant aujourd'hui)
+                            // Désactiver les dates passées
                             if (compareDate < today) return true;
-                            // Désactiver les dimanches (jour 0)
+                            // Désactiver les dimanches
                             if (date.getDay() === 0) return true;
+                            
+                            // Si praticien pré-sélectionné, vérifier ses disponibilités
+                            if (preselectedPractitioner && practitionerAvailability.length > 0) {
+                              const dayOfWeek = date.getDay();
+                              const dateString = format(date, 'yyyy-MM-dd');
+                              
+                              // Vérifier les exceptions
+                              const exception = practitionerExceptions.find(e => e.date === dateString);
+                              if (exception && !exception.is_available) return true;
+                              
+                              // Vérifier s'il y a des créneaux pour ce jour
+                              const hasSlots = practitionerAvailability.some(
+                                a => a.day_of_week === dayOfWeek && a.is_active !== false
+                              );
+                              if (!hasSlots) return true;
+                            }
+                            
                             return false;
                           }}
                           initialFocus
@@ -1067,26 +1177,39 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                     <FormLabel className="text-sm font-medium">
                       Heure souhaitée <span className="text-destructive">*</span>
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
-                          <SelectValue placeholder="Sélectionnez un créneau..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {getAvailableTimeSlots().length > 0 ? (
-                          getAvailableTimeSlots().map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <div className="p-2 text-sm text-muted-foreground text-center">
-                            Aucun créneau disponible pour aujourd'hui
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    {(isLoadingAvailability || isLoadingExceptions) && preselectedPractitioner ? (
+                      <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm text-muted-foreground">Chargement des disponibilités...</span>
+                      </div>
+                    ) : (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className={!field.value ? 'border-muted-foreground/30' : ''}>
+                            <SelectValue placeholder="Sélectionnez un créneau..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {getAvailableTimeSlots.slots.length > 0 ? (
+                            getAvailableTimeSlots.slots.map((time) => (
+                              <SelectItem key={time} value={time}>
+                                {time}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="p-3 text-sm text-muted-foreground text-center">
+                              <Clock className="h-4 w-4 mx-auto mb-2 opacity-50" />
+                              {getAvailableTimeSlots.message || 'Aucun créneau disponible'}
+                            </div>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {preselectedPractitioner && getAvailableTimeSlots.slots.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {getAvailableTimeSlots.slots.length} créneau(x) disponible(s) selon les disponibilités de {preselectedPractitioner.name}
+                      </p>
+                    )}
                     <FormMessage className="text-xs font-medium" />
                   </FormItem>
                 )}
