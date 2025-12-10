@@ -3,21 +3,47 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DollarSign, Download, TrendingUp, Wallet, Clock, FileText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { DollarSign, Download, TrendingUp, Wallet, Clock, FileText, Calendar } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { fr } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { formatAmount, PAYMENT_STATUS_LABELS, PAYOUT_STATUS_LABELS } from "@/lib/payment-config";
+import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { formatAmount, PAYOUT_STATUS_LABELS } from "@/lib/payment-config";
+import logoImage from "@/assets/logo.png";
+import QRCode from "qrcode";
 
 interface PayoutsSectionProps {
   practitionerId: string;
 }
+
+type PractitionerBalance = {
+  balance_available: number;
+  balance_pending: number;
+  balance_on_hold: number;
+  currency: string;
+  last_payout_at: string | null;
+};
+
+type PaymentWithAppointment = {
+  id: string;
+  amount: number;
+  commission_amount: number | null;
+  fees_amount: number | null;
+  gateway_fees_amount: number | null;
+  net_amount: number | null;
+  status: string;
+  payout_status: string | null;
+  created_at: string;
+  appointment_id: string;
+  patient_id: string;
+  currency: string;
+  payer_name: string | null;
+};
 
 export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) {
   const { toast } = useToast();
@@ -25,35 +51,26 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   const [balanceUpdate, setBalanceUpdate] = useState<string | null>(null);
   const [paymentsLimit, setPaymentsLimit] = useState(20);
   const [payoutsLimit, setPayoutsLimit] = useState(20);
+  const [periodFilter, setPeriodFilter] = useState<'all' | '3months' | '6months' | '12months'>('all');
 
-  type PractitionerBalance = {
-    balance_available: number;
-    balance_pending: number;
-    balance_on_hold: number;
-  };
-
-  // Fetch practitioner balance
-  const { data: balance } = useQuery({
+  // Fetch practitioner balance with maybeSingle to handle missing data
+  const { data: balance, isLoading: balanceLoading } = useQuery({
     queryKey: ["practitioner-balance", practitionerId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("practitioner_balances")
         .select("*")
         .eq("practitioner_id", practitionerId)
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
-      return data;
+      return data as PractitionerBalance | null;
     },
   });
 
   // Realtime updates pour la balance praticien
   useEffect(() => {
     if (!practitionerId) return;
-
-    if (import.meta.env.DEV) {
-      console.log('Realtime balance config:', practitionerId);
-    }
 
     const channel = supabase
       .channel('practitioner-balance-changes')
@@ -66,9 +83,6 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
           filter: `practitioner_id=eq.${practitionerId}`,
         },
         (payload) => {
-          if (import.meta.env.DEV) {
-            console.log('Balance updated:', payload);
-          }
           queryClient.invalidateQueries({ queryKey: ['practitioner-balance', practitionerId] });
           
           if (payload.eventType === 'UPDATE') {
@@ -95,72 +109,142 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
     }
   }, [balanceUpdate, toast]);
 
-  // Fetch payments history
-  const { data: payments } = useQuery({
-    queryKey: ["practitioner-payments", practitionerId, paymentsLimit],
+  // Calculate date filter
+  const dateFilter = useMemo(() => {
+    if (periodFilter === 'all') return null;
+    const months = periodFilter === '3months' ? 3 : periodFilter === '6months' ? 6 : 12;
+    return subMonths(new Date(), months).toISOString();
+  }, [periodFilter]);
+
+  // Fetch payments using payout_payments junction table for accurate practitioner filtering
+  const { data: payments, isLoading: paymentsLoading } = useQuery({
+    queryKey: ["practitioner-payments", practitionerId, paymentsLimit, dateFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // First get payments via appointments that belong to this practitioner
+      let query = supabase
         .from("payments")
         .select(`
-          *,
-          appointments!inner(practitioner_id)
+          id,
+          amount,
+          commission_amount,
+          fees_amount,
+          gateway_fees_amount,
+          net_amount,
+          status,
+          payout_status,
+          created_at,
+          appointment_id,
+          patient_id,
+          currency,
+          payer_name
         `)
-        .eq("appointments.practitioner_id", practitionerId)
+        .eq("status", "paid")
         .order("created_at", { ascending: false })
         .limit(paymentsLimit);
       
-      if (error) throw error;
-      return data;
+      if (dateFilter) {
+        query = query.gte("created_at", dateFilter);
+      }
+      
+      const { data: allPayments, error: paymentsError } = await query;
+      if (paymentsError) throw paymentsError;
+
+      // Filter payments that belong to this practitioner via appointments
+      if (!allPayments || allPayments.length === 0) return [];
+
+      const appointmentIds = allPayments.map(p => p.appointment_id);
+      const { data: practitionerAppointments, error: appointmentsError } = await supabase
+        .from("appointments")
+        .select("id")
+        .eq("practitioner_id", practitionerId)
+        .in("id", appointmentIds);
+
+      if (appointmentsError) throw appointmentsError;
+
+      const validAppointmentIds = new Set(practitionerAppointments?.map(a => a.id) || []);
+      return allPayments.filter(p => validAppointmentIds.has(p.appointment_id)) as PaymentWithAppointment[];
     },
   });
 
   // Fetch payouts history
-  const { data: payouts } = useQuery({
-    queryKey: ["practitioner-payouts", practitionerId, payoutsLimit],
+  const { data: payouts, isLoading: payoutsLoading } = useQuery({
+    queryKey: ["practitioner-payouts", practitionerId, payoutsLimit, dateFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("practitioner_payouts")
         .select("*")
         .eq("practitioner_id", practitionerId)
         .order("created_at", { ascending: false })
         .limit(payoutsLimit);
       
+      if (dateFilter) {
+        query = query.gte("created_at", dateFilter);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
   });
 
-  // Prepare chart data for revenue evolution
-  const revenueChartData = payments?.reduce((acc: any[], payment) => {
-    const month = format(new Date(payment.created_at), "MMM yyyy", { locale: fr });
-    const existing = acc.find(item => item.month === month);
+  // Calculate total statistics
+  const stats = useMemo(() => {
+    if (!payments) return { totalRevenue: 0, totalCommissions: 0, totalFees: 0, totalNet: 0, paidCount: 0 };
     
-    if (existing) {
-      existing.montant += payment.net_amount || 0;
-      existing.commission += payment.commission_amount || 0;
-    } else {
-      acc.push({
-        month,
-        montant: payment.net_amount || 0,
-        commission: payment.commission_amount || 0,
-      });
-    }
-    return acc;
-  }, []) || [];
+    return payments.reduce((acc, payment) => ({
+      totalRevenue: acc.totalRevenue + (payment.amount || 0),
+      totalCommissions: acc.totalCommissions + (payment.commission_amount || 0),
+      totalFees: acc.totalFees + (payment.fees_amount || 0) + (payment.gateway_fees_amount || 0),
+      totalNet: acc.totalNet + (payment.net_amount || 0),
+      paidCount: acc.paidCount + 1,
+    }), { totalRevenue: 0, totalCommissions: 0, totalFees: 0, totalNet: 0, paidCount: 0 });
+  }, [payments]);
+
+  // Prepare chart data for revenue evolution - FIXED: sort chronologically
+  const revenueChartData = useMemo(() => {
+    if (!payments) return [];
+    
+    const monthlyData: Record<string, { month: string; date: Date; montant: number; commission: number }> = {};
+    
+    payments.forEach(payment => {
+      const date = new Date(payment.created_at);
+      const monthKey = format(date, "yyyy-MM");
+      const monthLabel = format(date, "MMM yyyy", { locale: fr });
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = {
+          month: monthLabel,
+          date: startOfMonth(date),
+          montant: 0,
+          commission: 0,
+        };
+      }
+      
+      monthlyData[monthKey].montant += payment.net_amount || 0;
+      monthlyData[monthKey].commission += payment.commission_amount || 0;
+    });
+    
+    // Sort by date ascending for proper chart display
+    return Object.values(monthlyData).sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [payments]);
 
   // Prepare payment status distribution
-  const statusDistribution = payments?.reduce((acc: any, payment) => {
-    const status = payment.payout_status || "pending";
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {}) || {};
+  const pieChartData = useMemo(() => {
+    if (!payments) return [];
+    
+    const statusDistribution = payments.reduce((acc: Record<string, number>, payment) => {
+      const status = payment.payout_status || "pending";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
 
-  const pieChartData = Object.entries(statusDistribution).map(([status, count]) => ({
-    name: PAYOUT_STATUS_LABELS[status as keyof typeof PAYOUT_STATUS_LABELS] || status,
-    value: count,
-  }));
+    return Object.entries(statusDistribution).map(([status, count]) => ({
+      name: PAYOUT_STATUS_LABELS[status as keyof typeof PAYOUT_STATUS_LABELS] || status,
+      value: count,
+    }));
+  }, [payments]);
 
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
+  const COLORS = ["#10b981", "#f59e0b", "#3b82f6", "#ef4444", "#8b5cf6"];
 
   const getPayoutStatusBadge = (status: string) => {
     const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
@@ -185,52 +269,136 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
     return <Badge variant={variant}>{label}</Badge>;
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     try {
       const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // Generate secure hash
+      const timestamp = new Date().toISOString();
+      const dataToHash = `${practitionerId}-${timestamp}-${stats.totalNet}`;
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dataToHash));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16).toUpperCase();
+      
+      // Generate QR code
+      const verificationUrl = `${window.location.origin}/verify-report/${hashHex}`;
+      const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl, { width: 60, margin: 1 });
+      
+      // Add logo
+      const img = new Image();
+      img.src = logoImage;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
+      
+      try {
+        doc.addImage(img, 'PNG', 14, 10, 40, 15);
+      } catch {
+        doc.setFontSize(16);
+        doc.setTextColor(0, 102, 204);
+        doc.text("DOMICARES", 14, 20);
+      }
+      
+      // Company info
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      doc.text("Domicares - Soins à domicile", 60, 12);
+      doc.text("Cotonou, Bénin", 60, 16);
+      doc.text("contact@domicares.com", 60, 20);
+      
+      // QR Code
+      doc.addImage(qrCodeDataUrl, 'PNG', pageWidth - 35, 8, 25, 25);
       
       // Title
-      doc.setFontSize(18);
-      doc.text("Rapport de Reversements", 14, 22);
+      doc.setFontSize(16);
+      doc.setTextColor(0);
+      doc.text("Rapport de Revenus", 14, 42);
       
-      // Date
-      doc.setFontSize(11);
-      doc.text(`Généré le ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 30);
+      // Date and verification code
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(`Généré le ${format(new Date(), "dd MMMM yyyy 'à' HH:mm", { locale: fr })}`, 14, 48);
+      doc.text(`Code de vérification: ${hashHex}`, 14, 53);
+      
+      // Separator line
+      doc.setDrawColor(200);
+      doc.line(14, 58, pageWidth - 14, 58);
       
       // Balance summary
-      doc.setFontSize(14);
-      doc.text("Résumé du Solde", 14, 45);
-      doc.setFontSize(11);
-      doc.text(`Disponible: ${formatAmount(balance?.balance_available || 0)}`, 14, 53);
-      doc.text(`En attente: ${formatAmount(balance?.balance_pending || 0)}`, 14, 60);
-      doc.text(`En rétention: ${formatAmount(balance?.balance_on_hold || 0)}`, 14, 67);
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.text("Résumé Financier", 14, 68);
       
-      // Payouts table
-      if (payouts && payouts.length > 0) {
+      doc.setFontSize(10);
+      doc.text(`Solde disponible: ${formatAmount(balance?.balance_available || 0)}`, 14, 76);
+      doc.text(`En attente: ${formatAmount(balance?.balance_pending || 0)}`, 14, 82);
+      doc.text(`En rétention: ${formatAmount(balance?.balance_on_hold || 0)}`, 14, 88);
+      
+      doc.text(`Total revenus bruts: ${formatAmount(stats.totalRevenue)}`, 100, 76);
+      doc.text(`Total commissions: ${formatAmount(stats.totalCommissions)}`, 100, 82);
+      doc.text(`Total net: ${formatAmount(stats.totalNet)}`, 100, 88);
+      
+      // Payments table
+      if (payments && payments.length > 0) {
+        doc.setFontSize(12);
+        doc.text("Historique des Paiements", 14, 100);
+        
         autoTable(doc, {
-          startY: 75,
-          head: [["Date", "Période", "Montant", "Statut"]],
-          body: payouts.map(payout => [
-            format(new Date(payout.created_at), "dd/MM/yyyy", { locale: fr }),
+          startY: 105,
+          head: [["Date", "Patient", "Montant", "Commission", "Net", "Statut"]],
+          body: payments.slice(0, 50).map(payment => [
+            format(new Date(payment.created_at), "dd/MM/yyyy", { locale: fr }),
+            payment.payer_name || "Patient",
+            formatAmount(payment.amount),
+            `-${formatAmount(payment.commission_amount || 0)}`,
+            formatAmount(payment.net_amount || 0),
+            PAYOUT_STATUS_LABELS[payment.payout_status as keyof typeof PAYOUT_STATUS_LABELS] || payment.payout_status || "En attente",
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [0, 102, 204] },
+        });
+      }
+      
+      // Payouts table if space allows
+      const currentY = (doc as any).lastAutoTable?.finalY || 105;
+      if (payouts && payouts.length > 0 && currentY < 220) {
+        doc.setFontSize(12);
+        doc.text("Historique des Reversements", 14, currentY + 15);
+        
+        autoTable(doc, {
+          startY: currentY + 20,
+          head: [["Date", "Période", "Montant", "Méthode", "Statut"]],
+          body: payouts.slice(0, 20).map(payout => [
+            format(new Date(payout.created_at!), "dd/MM/yyyy", { locale: fr }),
             payout.period_start && payout.period_end 
               ? `${format(new Date(payout.period_start), "dd/MM", { locale: fr })} - ${format(new Date(payout.period_end), "dd/MM/yyyy", { locale: fr })}`
               : "N/A",
             formatAmount(payout.amount),
+            payout.payment_method || "N/A",
             PAYOUT_STATUS_LABELS[payout.status as keyof typeof PAYOUT_STATUS_LABELS] || payout.status,
           ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [0, 102, 204] },
         });
       }
       
-      doc.save(`rapport-reversements-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+      // Footer
+      const pageHeight = doc.internal.pageSize.getHeight();
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text("Document généré automatiquement par Domicares", 14, pageHeight - 15);
+      doc.text(`Vérification: ${hashHex}`, 14, pageHeight - 10);
+      
+      doc.save(`rapport-revenus-${format(new Date(), "yyyy-MM-dd")}.pdf`);
       
       toast({
         title: "Export réussi",
         description: "Le rapport PDF a été téléchargé.",
       });
     } catch (error) {
-      if (import.meta.env.DEV) {
-        console.error('PDF export error:', error);
-      }
+      console.error('PDF export error:', error);
       toast({
         title: "Erreur d'export",
         description: "Impossible de générer le PDF",
@@ -241,8 +409,37 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
 
   return (
     <div className="space-y-6">
+      {/* Period Filter */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Période:</span>
+          <div className="flex gap-1">
+            {[
+              { value: 'all', label: 'Tout' },
+              { value: '3months', label: '3 mois' },
+              { value: '6months', label: '6 mois' },
+              { value: '12months', label: '12 mois' },
+            ].map((option) => (
+              <Button
+                key={option.value}
+                variant={periodFilter === option.value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setPeriodFilter(option.value as typeof periodFilter)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <Button onClick={exportToPDF} variant="outline">
+          <Download className="h-4 w-4 mr-2" />
+          Exporter en PDF
+        </Button>
+      </div>
+
       {/* Balance Overview */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -251,7 +448,9 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatAmount(balance?.balance_available || 0)}</div>
+            <div className="text-2xl font-bold text-primary">
+              {balanceLoading ? "..." : formatAmount(balance?.balance_available || 0)}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -262,7 +461,9 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatAmount(balance?.balance_pending || 0)}</div>
+            <div className="text-2xl font-bold">
+              {balanceLoading ? "..." : formatAmount(balance?.balance_pending || 0)}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -273,7 +474,25 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatAmount(balance?.balance_on_hold || 0)}</div>
+            <div className="text-2xl font-bold">
+              {balanceLoading ? "..." : formatAmount(balance?.balance_on_hold || 0)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Total revenus nets
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {paymentsLoading ? "..." : formatAmount(stats.totalNet)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.paidCount} paiement(s)
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -293,33 +512,31 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
         </Card>
       </div>
 
-      {/* Export PDF Button */}
-      <div className="flex justify-end">
-        <Button onClick={exportToPDF} variant="outline">
-          <Download className="h-4 w-4 mr-2" />
-          Exporter en PDF
-        </Button>
-      </div>
-
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Évolution des Revenus</CardTitle>
-            <CardDescription>Montants nets par mois</CardDescription>
+            <CardDescription>Montants nets par mois (ordre chronologique)</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip formatter={(value) => formatAmount(Number(value))} />
-                <Legend />
-                <Line type="monotone" dataKey="montant" stroke="#8884d8" name="Montant Net" />
-                <Line type="monotone" dataKey="commission" stroke="#82ca9d" name="Commission" />
-              </LineChart>
-            </ResponsiveContainer>
+            {revenueChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={revenueChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => formatAmount(Number(value))} />
+                  <Legend />
+                  <Line type="monotone" dataKey="montant" stroke="hsl(var(--primary))" name="Montant Net" strokeWidth={2} />
+                  <Line type="monotone" dataKey="commission" stroke="hsl(var(--destructive))" name="Commission" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Aucune donnée disponible
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -329,25 +546,31 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
             <CardDescription>Distribution des paiements</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            {pieChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={pieChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {pieChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Aucune donnée disponible
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -370,7 +593,7 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Rendez-vous</TableHead>
+                    <TableHead>Patient</TableHead>
                     <TableHead>Montant</TableHead>
                     <TableHead>Commission</TableHead>
                     <TableHead>Frais</TableHead>
@@ -379,14 +602,20 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments && payments.length > 0 ? (
+                  {paymentsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                        Chargement...
+                      </TableCell>
+                    </TableRow>
+                  ) : payments && payments.length > 0 ? (
                     payments.map((payment) => (
                       <TableRow key={payment.id}>
                         <TableCell>{format(new Date(payment.created_at), "dd/MM/yyyy", { locale: fr })}</TableCell>
-                        <TableCell className="font-mono text-xs">{payment.appointment_id.slice(0, 8)}...</TableCell>
+                        <TableCell>{payment.payer_name || "Patient"}</TableCell>
                         <TableCell>{formatAmount(payment.amount)}</TableCell>
                         <TableCell className="text-destructive">-{formatAmount(payment.commission_amount || 0)}</TableCell>
-                        <TableCell className="text-destructive">-{formatAmount(payment.fees_amount || 0)}</TableCell>
+                        <TableCell className="text-destructive">-{formatAmount((payment.fees_amount || 0) + (payment.gateway_fees_amount || 0))}</TableCell>
                         <TableCell className="font-bold">{formatAmount(payment.net_amount || 0)}</TableCell>
                         <TableCell>{getPaymentStatusBadge(payment.payout_status || "pending")}</TableCell>
                       </TableRow>
@@ -433,10 +662,16 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payouts && payouts.length > 0 ? (
+                  {payoutsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        Chargement...
+                      </TableCell>
+                    </TableRow>
+                  ) : payouts && payouts.length > 0 ? (
                     payouts.map((payout) => (
                       <TableRow key={payout.id}>
-                        <TableCell>{format(new Date(payout.created_at), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                        <TableCell>{format(new Date(payout.created_at!), "dd/MM/yyyy", { locale: fr })}</TableCell>
                         <TableCell>
                           {payout.period_start && payout.period_end 
                             ? `${format(new Date(payout.period_start), "dd/MM", { locale: fr })} - ${format(new Date(payout.period_end), "dd/MM/yyyy", { locale: fr })}`
@@ -444,7 +679,7 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
                         </TableCell>
                         <TableCell className="font-bold">{formatAmount(payout.amount)}</TableCell>
                         <TableCell>{payout.payment_method || "N/A"}</TableCell>
-                        <TableCell>{getPayoutStatusBadge(payout.status)}</TableCell>
+                        <TableCell>{getPayoutStatusBadge(payout.status || "pending")}</TableCell>
                         <TableCell>
                           {payout.processed_at 
                             ? format(new Date(payout.processed_at), "dd/MM/yyyy", { locale: fr })
