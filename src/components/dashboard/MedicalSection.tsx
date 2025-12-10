@@ -1,14 +1,18 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useMedicalProfile, useUpdateMedicalProfile } from '@/hooks/useProfile';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
-import { Heart, AlertCircle, Pill } from 'lucide-react';
+import { Heart, AlertCircle, Pill, Stethoscope, User, Mail, Phone } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'inconnu';
 
@@ -17,6 +21,25 @@ export function MedicalSection() {
   const { data: medicalProfile } = useMedicalProfile(user?.id);
   const updateMedicalProfile = useUpdateMedicalProfile();
 
+  const [doctorSelectionMode, setDoctorSelectionMode] = useState<'platform' | 'manual' | 'none'>('none');
+
+  // Fetch available practitioners (doctors) on the platform
+  const { data: practitioners = [] } = useQuery({
+    queryKey: ['practitioners-for-doctor-selection'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('practitioners')
+        .select('id, name, specialty, phone')
+        .eq('kyc_status', 'approved')
+        .eq('available', true)
+        .in('practitioner_type', ['medecin', 'infirmier', 'sage_femme', 'autre'])
+        .order('name');
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const [formData, setFormData] = useState({
     blood_type: medicalProfile?.blood_type || 'inconnu',
     allergies: medicalProfile?.allergies || '',
@@ -24,6 +47,10 @@ export function MedicalSection() {
     current_medications: medicalProfile?.current_medications || '',
     additional_notes: medicalProfile?.additional_notes || '',
     share_with_practitioner: medicalProfile?.share_with_practitioner ?? true,
+    primary_doctor_id: medicalProfile?.primary_doctor_id || '',
+    primary_doctor_name: medicalProfile?.primary_doctor_name || '',
+    primary_doctor_email: medicalProfile?.primary_doctor_email || '',
+    primary_doctor_phone: medicalProfile?.primary_doctor_phone || '',
   });
 
   useEffect(() => {
@@ -35,9 +62,58 @@ export function MedicalSection() {
         current_medications: medicalProfile.current_medications || '',
         additional_notes: medicalProfile.additional_notes || '',
         share_with_practitioner: medicalProfile.share_with_practitioner ?? true,
+        primary_doctor_id: medicalProfile.primary_doctor_id || '',
+        primary_doctor_name: medicalProfile.primary_doctor_name || '',
+        primary_doctor_email: medicalProfile.primary_doctor_email || '',
+        primary_doctor_phone: medicalProfile.primary_doctor_phone || '',
       });
+
+      // Determine selection mode
+      if (medicalProfile.primary_doctor_id) {
+        setDoctorSelectionMode('platform');
+      } else if (medicalProfile.primary_doctor_name) {
+        setDoctorSelectionMode('manual');
+      } else {
+        setDoctorSelectionMode('none');
+      }
     }
   }, [medicalProfile]);
+
+  const handlePractitionerSelect = (practitionerId: string) => {
+    const selectedPractitioner = practitioners.find(p => p.id === practitionerId);
+    if (selectedPractitioner) {
+      setFormData({
+        ...formData,
+        primary_doctor_id: practitionerId,
+        primary_doctor_name: selectedPractitioner.name,
+        primary_doctor_phone: selectedPractitioner.phone || '',
+        primary_doctor_email: '', // Practitioners don't have email in public view
+      });
+    }
+  };
+
+  const handleDoctorModeChange = (mode: 'platform' | 'manual' | 'none') => {
+    setDoctorSelectionMode(mode);
+    if (mode === 'none') {
+      setFormData({
+        ...formData,
+        primary_doctor_id: '',
+        primary_doctor_name: '',
+        primary_doctor_email: '',
+        primary_doctor_phone: '',
+      });
+    } else if (mode === 'manual') {
+      setFormData({
+        ...formData,
+        primary_doctor_id: '',
+      });
+    } else if (mode === 'platform') {
+      setFormData({
+        ...formData,
+        primary_doctor_email: '',
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +122,18 @@ export function MedicalSection() {
     try {
       await updateMedicalProfile.mutateAsync({
         userId: user.id,
-        data: formData,
+        data: {
+          blood_type: formData.blood_type as BloodType,
+          allergies: formData.allergies || null,
+          chronic_diseases: formData.chronic_diseases || null,
+          current_medications: formData.current_medications || null,
+          additional_notes: formData.additional_notes || null,
+          share_with_practitioner: formData.share_with_practitioner,
+          primary_doctor_id: formData.primary_doctor_id || null,
+          primary_doctor_name: formData.primary_doctor_name || null,
+          primary_doctor_email: formData.primary_doctor_email || null,
+          primary_doctor_phone: formData.primary_doctor_phone || null,
+        },
       });
       toast({
         title: 'Profil médical mis à jour',
@@ -165,6 +252,127 @@ export function MedicalSection() {
               {updateMedicalProfile.isPending ? 'Enregistrement...' : 'Enregistrer'}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Médecin traitant */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Stethoscope className="h-5 w-5" />
+            Médecin traitant
+          </CardTitle>
+          <CardDescription>
+            Désignez votre médecin traitant pour le partage des rapports de consultation
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <RadioGroup
+            value={doctorSelectionMode}
+            onValueChange={(value) => handleDoctorModeChange(value as 'platform' | 'manual' | 'none')}
+            className="space-y-3"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="none" id="doctor-none" />
+              <Label htmlFor="doctor-none" className="font-normal cursor-pointer">
+                Pas de médecin traitant désigné
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="platform" id="doctor-platform" />
+              <Label htmlFor="doctor-platform" className="font-normal cursor-pointer">
+                Choisir parmi les praticiens de la plateforme
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="manual" id="doctor-manual" />
+              <Label htmlFor="doctor-manual" className="font-normal cursor-pointer">
+                Saisir manuellement les coordonnées
+              </Label>
+            </div>
+          </RadioGroup>
+
+          {doctorSelectionMode === 'platform' && (
+            <div className="space-y-3 pt-4 border-t">
+              <Label>Sélectionner un praticien</Label>
+              <Select
+                value={formData.primary_doctor_id}
+                onValueChange={handlePractitionerSelect}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir un praticien..." />
+                </SelectTrigger>
+                <SelectContent className="bg-background">
+                  {practitioners.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} - {p.specialty}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.primary_doctor_name && (
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="font-medium">{formData.primary_doctor_name}</p>
+                  {formData.primary_doctor_phone && (
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <Phone className="h-3 w-3" /> {formData.primary_doctor_phone}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {doctorSelectionMode === 'manual' && (
+            <div className="space-y-3 pt-4 border-t">
+              <div>
+                <Label htmlFor="doctor_name" className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Nom du médecin
+                </Label>
+                <Input
+                  id="doctor_name"
+                  value={formData.primary_doctor_name}
+                  onChange={(e) => setFormData({ ...formData, primary_doctor_name: e.target.value })}
+                  placeholder="Dr. Jean Dupont"
+                />
+              </div>
+              <div>
+                <Label htmlFor="doctor_email" className="flex items-center gap-2">
+                  <Mail className="h-4 w-4" />
+                  Email du médecin
+                </Label>
+                <Input
+                  id="doctor_email"
+                  type="email"
+                  value={formData.primary_doctor_email}
+                  onChange={(e) => setFormData({ ...formData, primary_doctor_email: e.target.value })}
+                  placeholder="docteur@exemple.com"
+                />
+              </div>
+              <div>
+                <Label htmlFor="doctor_phone" className="flex items-center gap-2">
+                  <Phone className="h-4 w-4" />
+                  Téléphone du médecin
+                </Label>
+                <Input
+                  id="doctor_phone"
+                  type="tel"
+                  value={formData.primary_doctor_phone}
+                  onChange={(e) => setFormData({ ...formData, primary_doctor_phone: e.target.value })}
+                  placeholder="+229 XX XX XX XX"
+                />
+              </div>
+            </div>
+          )}
+
+          <Button 
+            onClick={handleSubmit} 
+            disabled={updateMedicalProfile.isPending}
+            className="mt-4"
+          >
+            {updateMedicalProfile.isPending ? 'Enregistrement...' : 'Enregistrer le médecin traitant'}
+          </Button>
         </CardContent>
       </Card>
     </div>
