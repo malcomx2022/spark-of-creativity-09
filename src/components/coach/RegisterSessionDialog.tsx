@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PaymentDialog } from "@/components/PaymentDialog";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -20,15 +21,56 @@ interface RegisterSessionDialogProps {
 
 export function RegisterSessionDialog({ open, onOpenChange, session }: RegisterSessionDialogProps) {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showRegistrationDetails, setShowRegistrationDetails] = useState(true);
 
   const handleProceedToPayment = () => {
-    onOpenChange(false); // Fermer le dialog d'inscription
+    console.log('✅ handleProceedToPayment appelé pour session:', session.id);
+    setShowRegistrationDetails(false); // Cacher les détails d'inscription
     setShowPaymentDialog(true); // Ouvrir le dialog de paiement
+  };
+
+  const handlePaymentDialogClose = (isOpen: boolean) => {
+    console.log('📦 handlePaymentDialogClose:', isOpen);
+    setShowPaymentDialog(isOpen);
+    if (!isOpen) {
+      // Réinitialiser et fermer tout
+      setShowRegistrationDetails(true);
+      onOpenChange(false);
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    console.log('✅ Paiement réussi');
+    setShowPaymentDialog(false);
+    setShowRegistrationDetails(true);
+    onOpenChange(false);
+  };
+
+  const handlePaymentComplete = () => {
+    console.log('✅ Paiement complété');
+    setShowPaymentDialog(false);
+    setShowRegistrationDetails(true);
+    onOpenChange(false);
+  };
+
+  // Réinitialiser l'état quand le dialogue parent se ferme
+  const handleMainDialogChange = (isOpen: boolean) => {
+    if (!isOpen && !showPaymentDialog) {
+      // Seulement fermer si le PaymentDialog n'est pas ouvert
+      setShowRegistrationDetails(true);
+      onOpenChange(false);
+    } else if (!isOpen && showPaymentDialog) {
+      // Ne pas fermer le dialogue parent si le PaymentDialog est ouvert
+      return;
+    } else {
+      onOpenChange(isOpen);
+    }
   };
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* Dialog de détails d'inscription - visible seulement si showRegistrationDetails est true */}
+      <Dialog open={open && showRegistrationDetails && !showPaymentDialog} onOpenChange={handleMainDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Inscription à la séance</DialogTitle>
@@ -68,32 +110,29 @@ export function RegisterSessionDialog({ open, onOpenChange, session }: RegisterS
               </div>
             </div>
 
-            <button 
+            <Button 
               onClick={handleProceedToPayment}
-              className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              className="w-full"
             >
               Procéder au paiement
-            </button>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <PaymentDialog
-        open={showPaymentDialog}
-        onOpenChange={setShowPaymentDialog}
-        sessionId={session.id}
-        amount={session.price_per_person}
-        context="group_session"
-        sessionDetails={session}
-        onSuccess={() => {
-          setShowPaymentDialog(false);
-          onOpenChange(false);
-        }}
-        onComplete={() => {
-          setShowPaymentDialog(false);
-          onOpenChange(false);
-        }}
-      />
+      {/* PaymentDialog - rendu indépendamment du dialogue parent */}
+      {open && (
+        <PaymentDialog
+          open={showPaymentDialog}
+          onOpenChange={handlePaymentDialogClose}
+          sessionId={session.id}
+          amount={session.price_per_person}
+          context="group_session"
+          sessionDetails={session}
+          onSuccess={handlePaymentSuccess}
+          onComplete={handlePaymentComplete}
+        />
+      )}
     </>
   );
 }
