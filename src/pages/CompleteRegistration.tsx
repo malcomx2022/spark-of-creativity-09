@@ -2,17 +2,21 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, RefreshCw, LogOut } from "lucide-react";
+import { AlertCircle, RefreshCw, LogOut, Loader2 } from "lucide-react";
 import Header from "@/components/Header";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
 
 export default function CompleteRegistration() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [userMetadata, setUserMetadata] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [hasProfile, setHasProfile] = useState(false);
   const [hasPractitioner, setHasPractitioner] = useState(false);
 
@@ -30,6 +34,7 @@ export default function CompleteRegistration() {
       }
 
       setUserMetadata(user.user_metadata);
+      setUserId(user.id);
 
       // Vérifier si le profil existe
       const { data: profile } = await supabase
@@ -43,7 +48,7 @@ export default function CompleteRegistration() {
       // Vérifier si le praticien existe
       const { data: practitioner } = await supabase
         .from('practitioners')
-        .select('id')
+        .select('id, practitioner_type')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -51,7 +56,7 @@ export default function CompleteRegistration() {
 
       // Si tout est OK, rediriger
       if (profile && practitioner) {
-        const practitionerType = user.user_metadata?.practitioner_type;
+        const practitionerType = practitioner.practitioner_type || user.user_metadata?.practitioner_type;
         const dashboardPath = practitionerType === 'coach_sportif' 
           ? '/dashboard/coach' 
           : '/dashboard/practitioner';
@@ -64,6 +69,69 @@ export default function CompleteRegistration() {
     }
   };
 
+  const handleRetryWithSavedData = async () => {
+    if (!userId || !userMetadata?.pending_practitioner_data) {
+      toast({
+        title: "Données non disponibles",
+        description: "Les données d'inscription ne sont pas disponibles. Veuillez créer un nouveau compte.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+
+    try {
+      const pendingData = userMetadata.pending_practitioner_data;
+      
+      // Appeler l'edge function pour créer le profil praticien
+      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
+        'create-practitioner-account',
+        {
+          body: {
+            userId,
+            profileData: pendingData.profileData,
+            practitionerData: pendingData.practitionerData,
+            documents: {}, // Les documents devront être re-téléchargés
+          }
+        }
+      );
+
+      if (createError || !createResult?.success) {
+        throw new Error(createError?.message || createResult?.error || "Échec de la création du compte");
+      }
+
+      // Nettoyer les données pendantes
+      await supabase.auth.updateUser({
+        data: {
+          pending_practitioner_data: null,
+        }
+      });
+
+      toast({
+        title: "Inscription finalisée !",
+        description: "Votre compte praticien a été créé avec succès.",
+      });
+
+      // Rediriger vers le dashboard
+      const practitionerType = pendingData.practitionerData?.practitioner_type;
+      const dashboardPath = practitionerType === 'coach_sportif' 
+        ? '/dashboard/coach' 
+        : '/dashboard/practitioner';
+      navigate(dashboardPath, { replace: true });
+
+    } catch (error: any) {
+      console.error('Erreur lors de la reprise:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de finaliser l'inscription. Veuillez réessayer.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/', { replace: true });
@@ -72,12 +140,12 @@ export default function CompleteRegistration() {
   const handleRetrySignup = () => {
     toast({
       title: "Nouvelle inscription",
-      description: "Vous allez être déconnecté. Veuillez utiliser un autre numéro de téléphone.",
+      description: "Vous allez être déconnecté pour créer un nouveau compte.",
     });
-    setTimeout(() => {
-      supabase.auth.signOut();
-      navigate('/practitioner-signup', { replace: true });
-    }, 2000);
+    setTimeout(async () => {
+      await supabase.auth.signOut();
+      navigate('/signup/practitioner', { replace: true });
+    }, 1500);
   };
 
   if (isLoading) {
@@ -87,6 +155,9 @@ export default function CompleteRegistration() {
       </div>
     );
   }
+
+  const hasPendingData = userMetadata?.pending_practitioner_data;
+  const isPractitionerType = userMetadata?.user_type === 'practitioner';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
@@ -104,7 +175,10 @@ export default function CompleteRegistration() {
               Inscription incomplète
             </CardTitle>
             <CardDescription className="text-base sm:text-lg px-2">
-              Votre compte n'a pas pu être créé complètement
+              {isPractitionerType 
+                ? "Votre compte praticien n'a pas pu être créé complètement"
+                : "Votre compte n'a pas pu être créé complètement"
+              }
             </CardDescription>
           </CardHeader>
 
@@ -120,8 +194,8 @@ export default function CompleteRegistration() {
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm mt-2">
                       <li>Le numéro de téléphone est déjà utilisé par un autre compte</li>
-                      <li>L'email est déjà utilisé</li>
-                      <li>Un problème technique est survenu</li>
+                      <li>Un problème de connexion est survenu lors de l'envoi des documents</li>
+                      <li>Un problème technique temporaire est survenu</li>
                     </ul>
                   </>
                 )}
@@ -129,52 +203,82 @@ export default function CompleteRegistration() {
                   <>
                     <p className="font-semibold mb-2">Votre profil de base existe mais votre profil praticien n'a pas été créé.</p>
                     <p className="text-sm">
-                      Veuillez contacter le support pour finaliser votre inscription.
+                      Cliquez sur "Réessayer" ci-dessous ou contactez le support si le problème persiste.
                     </p>
                   </>
                 )}
               </AlertDescription>
             </Alert>
 
-            <div className="space-y-4 bg-muted/50 rounded-lg p-4">
-              <h4 className="font-semibold">Solutions possibles :</h4>
-              <ol className="space-y-2 ml-4">
-                <li className="text-sm text-muted-foreground">
-                  <span className="font-semibold">1. Réessayer avec d'autres informations :</span> Utilisez un autre numéro de téléphone et/ou email
-                </li>
-                <li className="text-sm text-muted-foreground">
-                  <span className="font-semibold">2. Vérifier vos informations :</span> Assurez-vous de ne pas déjà avoir un compte patient avec ces coordonnées
-                </li>
-                <li className="text-sm text-muted-foreground">
-                  <span className="font-semibold">3. Contacter le support :</span> Notre équipe peut vous aider à résoudre le problème
-                </li>
-              </ol>
-            </div>
-
-            {userMetadata?.pending_practitioner_data && (
-              <Alert>
+            {hasPendingData && (
+              <Alert className="bg-primary/5 border-primary/20">
                 <AlertDescription>
-                  <p className="text-sm">
-                    Vos données d'inscription ont été sauvegardées. Vous pouvez contacter le support qui pourra les récupérer.
+                  <p className="font-semibold text-primary">✓ Vos données d'inscription ont été sauvegardées</p>
+                  <p className="text-sm mt-1">
+                    Cliquez sur "Finaliser mon inscription" pour réessayer avec vos données sauvegardées.
+                    {hasPendingData.needsDocumentUpload && (
+                      <span className="block mt-1 text-muted-foreground">
+                        Note: Vous devrez peut-être soumettre à nouveau vos documents.
+                      </span>
+                    )}
                   </p>
                 </AlertDescription>
               </Alert>
             )}
 
+            <div className="space-y-4 bg-muted/50 rounded-lg p-4">
+              <h4 className="font-semibold">Solutions possibles :</h4>
+              <ol className="space-y-2 ml-4">
+                {hasPendingData && (
+                  <li className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-primary">1. Finaliser avec vos données sauvegardées :</span> Cliquez sur le bouton ci-dessous
+                  </li>
+                )}
+                <li className="text-sm text-muted-foreground">
+                  <span className="font-semibold">{hasPendingData ? '2' : '1'}. Créer un nouveau compte :</span> Utilisez un autre numéro de téléphone et/ou email
+                </li>
+                <li className="text-sm text-muted-foreground">
+                  <span className="font-semibold">{hasPendingData ? '3' : '2'}. Contacter le support :</span> Notre équipe peut vous aider à résoudre le problème
+                </li>
+              </ol>
+            </div>
+
             <div className="pt-4 border-t space-y-3">
+              {hasPendingData && (
+                <Button 
+                  className="w-full min-h-[48px] text-base"
+                  size="lg"
+                  onClick={handleRetryWithSavedData}
+                  disabled={isRetrying}
+                >
+                  {isRetrying ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Finalisation en cours...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Finaliser mon inscription
+                    </>
+                  )}
+                </Button>
+              )}
+              
               <Button 
                 className="w-full min-h-[48px] text-base"
                 size="lg"
+                variant={hasPendingData ? "outline" : "default"}
                 onClick={handleRetrySignup}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Réessayer l'inscription avec de nouvelles informations
+                Créer un nouveau compte praticien
               </Button>
               
               <Button 
                 className="w-full min-h-[48px] text-base"
                 size="lg"
-                variant="outline"
+                variant="ghost"
                 onClick={handleLogout}
               >
                 <LogOut className="mr-2 h-4 w-4" />

@@ -111,6 +111,20 @@ export default function PatientLogin() {
         return;
       }
 
+      // Si l'utilisateur a des métadonnées practitioner mais pas de profil ni praticien créé,
+      // c'est une inscription praticien incomplète
+      const userType = data.user.user_metadata?.user_type;
+      if (userType === 'practitioner' && !practitionerData && !profileData) {
+        toast({
+          title: "Inscription praticien incomplète",
+          description: "Votre inscription praticien n'a pas été finalisée. Vous allez être redirigé.",
+          variant: "destructive"
+        });
+        navigate('/complete-registration', { replace: true });
+        setIsSubmitting(false);
+        return;
+      }
+
       toast(AUTH_MESSAGES.LOGIN_SUCCESS);
       navigateToDashboard(navigate, 'patient');
       setIsSubmitting(false);
