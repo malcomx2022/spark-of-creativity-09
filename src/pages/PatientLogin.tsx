@@ -61,14 +61,28 @@ export default function PatientLogin() {
         return;
       }
 
-      // Vérifier si l'utilisateur est admin
-      const { data: roleData } = await withTimeout(
+      // Exécuter les vérifications en parallèle pour accélérer la connexion
+      const [roleResult, practitionerResult, profileResult] = await Promise.all([
         supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', data.user.id)
+          .maybeSingle(),
+        supabase
+          .from('practitioners')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .maybeSingle(),
+        supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', data.user.id)
           .maybeSingle()
-      );
+      ]);
+
+      const roleData = roleResult.data;
+      const practitionerData = practitionerResult.data;
+      const profileData = profileResult.data;
 
       // Si super_admin, bloquer - les admins ne peuvent pas se connecter comme patients
       if (roleData?.role === 'super_admin') {
@@ -81,23 +95,6 @@ export default function PatientLogin() {
         setIsSubmitting(false);
         return;
       }
-
-      // Vérifier si l'utilisateur est praticien uniquement
-      const { data: practitionerData } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .select('id')
-          .eq('user_id', data.user.id)
-          .maybeSingle()
-      );
-
-      const { data: profileData } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', data.user.id)
-          .maybeSingle()
-      );
 
       // Si l'utilisateur a un profil praticien mais pas de profil patient, le rediriger
       if (practitionerData && !profileData) {

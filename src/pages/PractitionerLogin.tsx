@@ -61,14 +61,22 @@ export default function PractitionerLogin() {
         return;
       }
 
-      // Vérifier si l'utilisateur est admin
-      const { data: roleData } = await withTimeout(
+      // Exécuter les vérifications en parallèle pour accélérer la connexion
+      const [roleResult, practitionerResult] = await Promise.all([
         supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', data.user.id)
+          .maybeSingle(),
+        supabase
+          .from('practitioners')
+          .select('id, practitioner_type')
+          .eq('user_id', data.user.id)
           .maybeSingle()
-      );
+      ]);
+
+      const roleData = roleResult.data;
+      const practitionerData = practitionerResult.data;
 
       // Si admin, autoriser la connexion
       if (roleData?.role === 'super_admin') {
@@ -78,17 +86,7 @@ export default function PractitionerLogin() {
         return;
       }
 
-      // Vérifier que l'utilisateur est bien un praticien
-      const { data: practitionerData, error: practitionerError } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .select('id, practitioner_type')
-          .eq('user_id', data.user.id)
-          .maybeSingle()
-      );
-
-      if (practitionerError || !practitionerData) {
-        // Ce compte n'est pas un praticien valide
+      if (!practitionerData) {
         toast({
           title: "Erreur de connexion",
           description: "Ce compte n'est pas un compte praticien valide. Si vous êtes un praticien, veuillez créer un nouveau compte.",
