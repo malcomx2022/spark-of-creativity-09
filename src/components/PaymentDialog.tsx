@@ -357,13 +357,13 @@ export function PaymentDialog({
                     onOpenChange(false);
                   }, 2000);
                 } else if (payload.reason === DIALOG_DISMISSED) {
-                  setPaymentStatus('error');
+                  // L'utilisateur a fermé le widget - le paiement reste "pending" et peut être repris
+                  setPaymentStatus('pending');
                   setIsProcessing(false);
                   
                   toast({
-                    title: 'Paiement annulé',
-                    description: 'Vous avez annulé le paiement.',
-                    variant: 'destructive',
+                    title: 'Paiement en attente',
+                    description: 'Vous pouvez reprendre le paiement à tout moment depuis votre tableau de bord.',
                   });
                 }
               },
@@ -917,20 +917,18 @@ export function PaymentDialog({
                 onOpenChange(false);
               }, 2000);
             } else if (payload.reason === DIALOG_DISMISSED) {
-              // Utilisateur a fermé le dialog
-              setPaymentStatus('error');
+              // Utilisateur a fermé le widget - le paiement reste "pending" et peut être repris
+              // NE PAS marquer comme échoué car le paiement peut être complété plus tard
+              setPaymentStatus('pending');
               setIsProcessing(false);
-              await recordPaymentAttempt('failed', 'Paiement annulé par l\'utilisateur', 'user_cancelled');
+              // NE PAS enregistrer comme échec - juste informer l'utilisateur
 
               toast({
-                title: 'Paiement annulé',
-                description: 'Vous avez annulé le paiement.',
-                variant: 'destructive',
+                title: 'Paiement en attente',
+                description: 'Le paiement reste disponible. Vous pouvez le reprendre depuis votre tableau de bord.',
               });
 
-              if (onError) {
-                onError(new Error('Paiement annulé par l\'utilisateur'));
-              }
+              // Ne pas appeler onError car ce n'est pas une erreur
             }
           },
         });
