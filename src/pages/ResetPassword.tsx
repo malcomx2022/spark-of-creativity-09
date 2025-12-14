@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Eye, EyeOff } from "lucide-react";
+import { Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { z } from "zod";
@@ -29,24 +29,62 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidSession, setIsValidSession] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
-    // Vérifier si nous avons une session de récupération valide
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setIsValidSession(true);
-      } else {
-        toast({
-          title: "Lien invalide",
-          description: "Ce lien de réinitialisation n'est plus valide",
-          variant: "destructive"
-        });
-        navigate("/forgot-password");
+    // Écouter les changements d'auth pour détecter le token de récupération
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth event:', event);
+        
+        if (event === 'PASSWORD_RECOVERY') {
+          // Token de récupération valide détecté
+          setIsValidSession(true);
+        } else if (event === 'SIGNED_IN' && session) {
+          // Session établie après clic sur le lien
+          setIsValidSession(true);
+        }
       }
-    });
-  }, [navigate, toast]);
+    );
+
+    // Vérifier si on a déjà une session (utilisateur a cliqué sur le lien)
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Vérifier aussi les hash params pour le token de récupération
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const type = hashParams.get('type');
+      
+      if (type === 'recovery' && accessToken) {
+        // Token de récupération dans l'URL
+        setIsValidSession(true);
+        setIsLoading(false);
+      } else if (session) {
+        setIsValidSession(true);
+        setIsLoading(false);
+      } else {
+        // Attendre un peu pour laisser le temps à onAuthStateChange de se déclencher
+        setTimeout(() => {
+          setIsLoading(false);
+          if (!isValidSession) {
+            toast({
+              title: "Lien invalide ou expiré",
+              description: "Ce lien de réinitialisation n'est plus valide. Demandez un nouveau lien.",
+              variant: "destructive"
+            });
+            navigate("/forgot-password");
+          }
+        }, 2000);
+      }
+    };
+    
+    checkSession();
+
+    return () => subscription.unsubscribe();
+  }, [navigate, toast, isValidSession]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,15 +114,29 @@ export default function ResetPassword() {
       });
       setIsSubmitting(false);
     } else {
+      // Déconnecter l'utilisateur pour qu'il se reconnecte avec son nouveau mot de passe
+      await supabase.auth.signOut();
+      
       toast({
         title: "Succès",
-        description: "Votre mot de passe a été réinitialisé avec succès"
+        description: "Votre mot de passe a été réinitialisé. Connectez-vous avec votre nouveau mot de passe."
       });
       
       // Rediriger vers la page de connexion
       navigate("/login-email", { replace: true });
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+          <p className="mt-2 text-muted-foreground">Vérification du lien...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isValidSession) {
     return null;
