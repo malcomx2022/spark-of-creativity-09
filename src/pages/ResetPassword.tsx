@@ -1,21 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Eye, EyeOff, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import { z } from "zod";
 
+// Règles de mot de passe harmonisées avec l'inscription
 const passwordSchema = z.object({
   password: z.string()
     .min(8, "Le mot de passe doit contenir au moins 8 caractères")
-    .regex(/[A-Z]/, "Le mot de passe doit contenir au moins une majuscule")
-    .regex(/[a-z]/, "Le mot de passe doit contenir au moins une minuscule")
-    .regex(/[0-9]/, "Le mot de passe doit contenir au moins un chiffre"),
+    .max(100, "Le mot de passe ne peut pas dépasser 100 caractères"),
   confirmPassword: z.string()
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
@@ -32,59 +31,115 @@ export default function ResetPassword() {
   const [isLoading, setIsLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Ref pour éviter les doubles exécutions
+  const hasCheckedSession = useRef(false);
 
   useEffect(() => {
-    // Écouter les changements d'auth pour détecter le token de récupération
+    // Éviter les doubles exécutions en mode StrictMode
+    if (hasCheckedSession.current) return;
+    hasCheckedSession.current = true;
+
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // Fonction pour extraire les paramètres de l'URL (hash ou query)
+    const extractUrlParams = () => {
+      // Supabase peut utiliser # ou ? selon la configuration
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const queryParams = new URLSearchParams(window.location.search);
+      
+      // Vérifier d'abord le hash, puis les query params
+      const accessToken = hashParams.get('access_token') || queryParams.get('access_token');
+      const type = hashParams.get('type') || queryParams.get('type');
+      const errorCode = hashParams.get('error') || queryParams.get('error');
+      const errorDescription = hashParams.get('error_description') || queryParams.get('error_description');
+      
+      return { accessToken, type, errorCode, errorDescription };
+    };
+
+    const { accessToken, type, errorCode, errorDescription } = extractUrlParams();
+
+    // Gérer les erreurs dans l'URL (token expiré, etc.)
+    if (errorCode) {
+      if (isMounted) {
+        const message = errorDescription 
+          ? decodeURIComponent(errorDescription.replace(/\+/g, ' '))
+          : "Le lien de réinitialisation est invalide ou a expiré.";
+        setError(message);
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Écouter les changements d'auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        if (!isMounted) return;
+        
         console.log('Auth event:', event);
         
         if (event === 'PASSWORD_RECOVERY') {
-          // Token de récupération valide détecté
           setIsValidSession(true);
+          setIsLoading(false);
+          if (timeoutId) clearTimeout(timeoutId);
         } else if (event === 'SIGNED_IN' && session) {
-          // Session établie après clic sur le lien
+          // Vérifier si c'est une session de récupération
           setIsValidSession(true);
+          setIsLoading(false);
+          if (timeoutId) clearTimeout(timeoutId);
         }
       }
     );
 
-    // Vérifier si on a déjà une session (utilisateur a cliqué sur le lien)
+    // Vérifier la session existante
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Vérifier aussi les hash params pour le token de récupération
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const type = hashParams.get('type');
-      
-      if (type === 'recovery' && accessToken) {
-        // Token de récupération dans l'URL
-        setIsValidSession(true);
-        setIsLoading(false);
-      } else if (session) {
-        setIsValidSession(true);
-        setIsLoading(false);
-      } else {
-        // Attendre un peu pour laisser le temps à onAuthStateChange de se déclencher
-        setTimeout(() => {
-          setIsLoading(false);
-          if (!isValidSession) {
-            toast({
-              title: "Lien invalide ou expiré",
-              description: "Ce lien de réinitialisation n'est plus valide. Demandez un nouveau lien.",
-              variant: "destructive"
-            });
-            navigate("/forgot-password");
+      try {
+        // Si on a un token de type recovery dans l'URL
+        if (type === 'recovery' && accessToken) {
+          if (isMounted) {
+            setIsValidSession(true);
+            setIsLoading(false);
           }
-        }, 2000);
+          return;
+        }
+
+        // Vérifier la session actuelle
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session && isMounted) {
+          setIsValidSession(true);
+          setIsLoading(false);
+          return;
+        }
+
+        // Si pas de session et pas de token, attendre l'événement auth
+        // Timeout plus court pour une meilleure UX
+        timeoutId = setTimeout(() => {
+          if (isMounted && !isValidSession) {
+            setError("Le lien de réinitialisation est invalide ou a expiré. Veuillez demander un nouveau lien.");
+            setIsLoading(false);
+          }
+        }, 3000);
+        
+      } catch (err) {
+        console.error('Erreur vérification session:', err);
+        if (isMounted) {
+          setError("Une erreur est survenue. Veuillez réessayer.");
+          setIsLoading(false);
+        }
       }
     };
     
     checkSession();
 
-    return () => subscription.unsubscribe();
-  }, [navigate, toast, isValidSession]);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,28 +157,37 @@ export default function ResetPassword() {
 
     setIsSubmitting(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password: password
-    });
-
-    if (error) {
-      toast({
-        title: "Erreur",
-        description: error.message,
-        variant: "destructive"
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password
       });
-      setIsSubmitting(false);
-    } else {
-      // Déconnecter l'utilisateur pour qu'il se reconnecte avec son nouveau mot de passe
+
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: error.message,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Succès - déconnecter et rediriger
       await supabase.auth.signOut();
       
       toast({
-        title: "Succès",
-        description: "Votre mot de passe a été réinitialisé. Connectez-vous avec votre nouveau mot de passe."
+        title: "Mot de passe réinitialisé",
+        description: "Connectez-vous avec votre nouveau mot de passe."
       });
       
-      // Rediriger vers la page de connexion
       navigate("/login-email", { replace: true });
+    } catch (err: any) {
+      toast({
+        title: "Erreur",
+        description: err.message || "Une erreur est survenue",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
     }
   };
 
@@ -138,8 +202,41 @@ export default function ResetPassword() {
     );
   }
 
-  if (!isValidSession) {
-    return null;
+  // Afficher l'erreur si le lien est invalide
+  if (error || !isValidSession) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary-glow/20 to-secondary/10">
+        <Header />
+        <main className="pt-24 pb-12">
+          <div className="container mx-auto px-4 max-w-md">
+            <Card className="w-full p-6 shadow-medical">
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                  <AlertCircle className="h-8 w-8 text-destructive" />
+                </div>
+                <h1 className="text-2xl font-bold">Lien expiré</h1>
+                <p className="text-muted-foreground text-center mt-2">
+                  {error || "Ce lien de réinitialisation n'est plus valide."}
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <Link to="/forgot-password">
+                  <Button variant="patient" size="xl" className="w-full">
+                    Demander un nouveau lien
+                  </Button>
+                </Link>
+                <Link to="/login-email">
+                  <Button variant="outline" className="w-full">
+                    Retour à la connexion
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -188,7 +285,7 @@ export default function ResetPassword() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre
+                  Doit contenir au moins 8 caractères
                 </p>
               </div>
 
