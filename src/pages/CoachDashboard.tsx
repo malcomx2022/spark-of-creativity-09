@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
@@ -47,6 +47,7 @@ const PaymentInfoSection = lazy(() => import("@/components/dashboard/practitione
 export default function CoachDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -139,7 +140,7 @@ export default function CoachDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
+      const { error, data } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
         body: { appointmentId, action: 'accept' }
       });
 
@@ -154,10 +155,9 @@ export default function CoachDashboard() {
         throw error;
       }
 
-      await mutateAppointment.mutateAsync({
-        id: appointmentId,
-        data: { status: 'confirmed' }
-      });
+      // L'edge function met déjà à jour le statut à 'pending_payment'
+      // Invalider les queries pour rafraîchir les données
+      await queryClient.invalidateQueries({ queryKey: ['appointments', 'practitioner', coach?.id] });
 
       toast({
         title: 'Rendez-vous accepté',
