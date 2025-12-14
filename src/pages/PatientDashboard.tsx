@@ -111,6 +111,12 @@ export default function PatientDashboard() {
   useEffect(() => {
     if (!user) return;
 
+    // Ne pas tenter la synchronisation si déjà complété
+    const metadata = user.user_metadata ?? {};
+    if (metadata.patient_onboarding_completed || !metadata.pending_onboarding) {
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -125,7 +131,8 @@ export default function PatientDashboard() {
         }
       } catch (error) {
         console.error('Erreur lors de la finalisation du profil patient', error);
-        if (!cancelled) {
+        // Ne pas afficher d'erreur si l'onboarding était déjà complété
+        if (!cancelled && metadata.pending_onboarding) {
           toast({
             title: 'Synchronisation du profil impossible',
             description: 'Réessayez après avoir actualisé la page.',
