@@ -4,6 +4,7 @@ import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase
 import type { Appointment, AppointmentStatus, CreateAppointmentData } from '@/types/appointment';
 import { withTimeout } from '@/lib/network-timeout';
 import { formatDateWithDateFns } from '@/lib/date-utils';
+import { useEffect } from 'react';
 
 function toAppointment(row: Tables<'appointments'>): Appointment {
   return {
@@ -79,7 +80,9 @@ async function updateAppointment(id: string, payload: TablesUpdate<'appointments
 }
 
 export function usePatientAppointments(patientId?: string, page = 0, pageSize = 100) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  
+  const query = useQuery({
     queryKey: ['appointments', 'patient', patientId, page],
     queryFn: async () => {
       if (!patientId) return { data: [], count: 0 };
@@ -99,6 +102,34 @@ export function usePatientAppointments(patientId?: string, page = 0, pageSize = 
     },
     enabled: !!patientId,
   });
+
+  // Écouter les mises à jour en temps réel
+  useEffect(() => {
+    if (!patientId) return;
+
+    const channel = supabase
+      .channel('patient-appointments-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'appointments',
+          filter: `patient_id=eq.${patientId}`
+        },
+        (payload) => {
+          console.log('📅 Realtime update for appointments:', payload);
+          queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [patientId, queryClient]);
+
+  return query;
 }
 
 export function usePractitionerAppointments(practitionerId?: string, page = 0, pageSize = 100) {
