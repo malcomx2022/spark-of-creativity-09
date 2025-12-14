@@ -2429,6 +2429,7 @@ export type Database = {
       cleanup_old_otp_rate_limits: { Args: never; Returns: undefined }
       cleanup_old_payment_attempts: { Args: never; Returns: undefined }
       cleanup_old_search_activity_logs: { Args: never; Returns: undefined }
+      cleanup_orphan_accounts: { Args: never; Returns: Json }
       generate_invoice_number: { Args: never; Returns: string }
       get_admin_dashboard_stats: {
         Args: never
@@ -2460,6 +2461,7 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       promote_to_super_admin: { Args: { user_email: string }; Returns: Json }
+      repair_missing_profiles: { Args: never; Returns: Json }
       request_consultation_confirmation: { Args: never; Returns: undefined }
       reserve_group_session_spot: {
         Args: { p_patient_id: string; p_session_id: string }
