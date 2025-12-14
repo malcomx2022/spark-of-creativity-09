@@ -84,6 +84,29 @@ export default function CompleteRegistration() {
     try {
       const pendingData = userMetadata.pending_practitioner_data;
       
+      // Vérifier si les documents sont nécessaires
+      if (pendingData.needsDocumentUpload) {
+        // Les documents n'ont pas été sauvegardés - rediriger vers le formulaire
+        toast({
+          title: "Documents requis",
+          description: "Vous devez soumettre à nouveau vos documents. Redirection vers le formulaire...",
+          variant: "destructive"
+        });
+        
+        // Sauvegarder un flag pour pré-remplir le formulaire
+        await supabase.auth.updateUser({
+          data: {
+            prefill_signup_data: pendingData,
+          }
+        });
+        
+        setTimeout(async () => {
+          await supabase.auth.signOut();
+          navigate('/signup/practitioner?prefill=true', { replace: true });
+        }, 2000);
+        return;
+      }
+      
       // Appeler l'edge function pour créer le profil praticien
       const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
         'create-practitioner-account',
@@ -92,7 +115,7 @@ export default function CompleteRegistration() {
             userId,
             profileData: pendingData.profileData,
             practitionerData: pendingData.practitionerData,
-            documents: {}, // Les documents devront être re-téléchargés
+            documents: pendingData.documents || {},
           }
         }
       );
@@ -122,11 +145,22 @@ export default function CompleteRegistration() {
 
     } catch (error: any) {
       console.error('Erreur lors de la reprise:', error);
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de finaliser l'inscription. Veuillez réessayer.",
-        variant: "destructive"
-      });
+      
+      // Si c'est une erreur de documents manquants, proposer de réinscrire
+      const errorMessage = error.message?.toLowerCase() || '';
+      if (errorMessage.includes('document') || errorMessage.includes('pièce') || errorMessage.includes('diplôme')) {
+        toast({
+          title: "Documents requis",
+          description: "Les documents sont manquants. Veuillez créer un nouveau compte pour soumettre vos documents.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Erreur",
+          description: error.message || "Impossible de finaliser l'inscription. Veuillez réessayer.",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsRetrying(false);
     }
