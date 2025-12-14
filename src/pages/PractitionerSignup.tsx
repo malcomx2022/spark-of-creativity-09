@@ -97,21 +97,7 @@ export default function PractitionerSignup() {
   useEffect(() => {
     const redirectAuthenticatedUser = async () => {
       if (!isLoading && user) {
-        // Vérifier si c'est un compte orphelin (métadonnées practitioner mais pas de profil praticien)
-        if (user.user_metadata?.user_type === 'practitioner') {
-          const { data: practitioner } = await supabase
-            .from('practitioners')
-            .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          
-          // Si pas de praticien trouvé, c'est un compte orphelin
-          if (!practitioner) {
-            navigate('/complete-registration', { replace: true });
-            return;
-          }
-        }
-        
+        // Utilisateur déjà connecté - rediriger vers son dashboard
         const { getDashboardPathForUser } = await import("@/lib/dashboardNavigation");
         const dashboardPath = await getDashboardPathForUser(user.id);
         navigate(dashboardPath, { replace: true });
@@ -963,36 +949,6 @@ export default function PractitionerSignup() {
           ),
           variant: "destructive",
         });
-        
-        // ⚠️ Le compte Supabase existe mais le profil praticien n'a pas pu être créé
-        // Proposer de supprimer le compte ou de réessayer
-        toast({
-          title: "Compte en attente",
-          description: "Votre compte email existe mais l'inscription n'est pas terminée. Connectez-vous pour finaliser.",
-          duration: 10000,
-        });
-
-        // Sauvegarder les données d'inscription dans les user_metadata
-        try {
-          await supabase.auth.updateUser({
-            data: {
-              pending_practitioner_data: {
-                profileData,
-                practitionerData,
-                // Ne pas sauvegarder les documents base64 (trop gros)
-                needsDocumentUpload: true,
-              }
-            }
-          });
-
-          // Déconnecter et rediriger vers login avec message
-          await supabase.auth.signOut();
-          navigate('/login?message=complete-signup&email=' + encodeURIComponent(formData.email));
-        } catch (metadataError) {
-          if (import.meta.env.DEV) {
-            console.error('Erreur sauvegarde metadata:', metadataError);
-          }
-        }
         
         setIsSubmitting(false);
         return;
