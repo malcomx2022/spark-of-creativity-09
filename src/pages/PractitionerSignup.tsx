@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Stethoscope, Shield, Upload, FileText, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { FileUploadInput } from "@/components/FileUploadInput";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -1479,98 +1480,50 @@ export default function PractitionerSignup() {
                     Documents requis
                   </h3>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="profilePhoto" className="text-sm sm:text-base">
-                        Photo de profil
-                      </Label>
-                      <Input
-                        id="profilePhoto"
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleFileChange('profilePhoto', e.target.files?.[0] || null)}
-                        className={`h-11 ${fieldErrors.profilePhoto ? 'border-destructive' : ''}`}
-                      />
-                      {fieldErrors.profilePhoto && (
-                        <p className="text-xs text-destructive mt-1">{fieldErrors.profilePhoto}</p>
-                      )}
-                      {formData.profilePhoto && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          {formData.profilePhoto.name}
-                        </p>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FileUploadInput
+                      id="profilePhoto"
+                      label="Photo de profil"
+                      accept="image/*"
+                      file={formData.profilePhoto}
+                      onChange={(file) => handleFileChange('profilePhoto', file)}
+                      error={fieldErrors.profilePhoto}
+                      helpText="Photo claire de votre visage"
+                    />
 
-                    <div className="space-y-2">
-                      <Label htmlFor="idDocument" className="text-sm sm:text-base">
-                        Pièce d'identité <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="idDocument"
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileChange('idDocument', e.target.files?.[0] || null)}
-                        required
-                        className={`h-11 ${fieldErrors.idDocument ? 'border-destructive' : ''}`}
-                      />
-                      {fieldErrors.idDocument && (
-                        <p className="text-xs text-destructive mt-1">{fieldErrors.idDocument}</p>
-                      )}
-                      {formData.idDocument && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          {formData.idDocument.name}
-                        </p>
-                      )}
-                    </div>
+                    <FileUploadInput
+                      id="idDocument"
+                      label="Pièce d'identité"
+                      accept="image/*,.pdf"
+                      required
+                      file={formData.idDocument}
+                      onChange={(file) => handleFileChange('idDocument', file)}
+                      error={fieldErrors.idDocument}
+                      helpText="CNI, passeport ou permis de conduire"
+                    />
 
-                    <div className="space-y-2">
-                      <Label htmlFor="diploma" className="text-sm sm:text-base">
-                        Diplôme/Certificat {isCoachSportif && <span className="text-destructive">*</span>}
-                      </Label>
-                      <Input
-                        id="diploma"
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => handleFileChange('diploma', e.target.files?.[0] || null)}
-                        required={isCoachSportif}
-                        className={`h-11 ${fieldErrors.diploma ? 'border-destructive' : ''}`}
-                      />
-                      {fieldErrors.diploma && (
-                        <p className="text-xs text-destructive mt-1">{fieldErrors.diploma}</p>
-                      )}
-                      {formData.diploma && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          {formData.diploma.name}
-                        </p>
-                      )}
-                    </div>
+                    <FileUploadInput
+                      id="diploma"
+                      label="Diplôme/Certificat"
+                      accept="image/*,.pdf"
+                      required={isCoachSportif}
+                      file={formData.diploma}
+                      onChange={(file) => handleFileChange('diploma', file)}
+                      error={fieldErrors.diploma}
+                      helpText={isCoachSportif ? "Obligatoire pour les coachs sportifs" : "Diplôme professionnel"}
+                    />
 
                     {!isCoachSportif && (
-                      <div className="space-y-2">
-                        <Label htmlFor="licenseDocument" className="text-sm sm:text-base">
-                          Autorisation d'exercice <span className="text-destructive">*</span>
-                        </Label>
-                        <Input
-                          id="licenseDocument"
-                          type="file"
-                          accept="image/*,.pdf"
-                          onChange={(e) => handleFileChange('licenseDocument', e.target.files?.[0] || null)}
-                          required
-                          className={`h-11 ${fieldErrors.licenseDocument ? 'border-destructive' : ''}`}
-                        />
-                        {fieldErrors.licenseDocument && (
-                          <p className="text-xs text-destructive mt-1">{fieldErrors.licenseDocument}</p>
-                        )}
-                        {formData.licenseDocument && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3 text-green-600" />
-                            {formData.licenseDocument.name}
-                          </p>
-                        )}
-                      </div>
+                      <FileUploadInput
+                        id="licenseDocument"
+                        label="Autorisation d'exercice"
+                        accept="image/*,.pdf"
+                        required
+                        file={formData.licenseDocument}
+                        onChange={(file) => handleFileChange('licenseDocument', file)}
+                        error={fieldErrors.licenseDocument}
+                        helpText="Autorisation officielle d'exercer"
+                      />
                     )}
                   </div>
 
