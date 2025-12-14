@@ -293,25 +293,113 @@ export function PaymentDialog({
           return;
         }
 
-        // Si le paiement a une URL, l'utiliser
-        if (existingPayment.fedapay_payment_url) {
+        // Si le paiement a une URL et un transactionId, utiliser le widget FedaPay
+        if (existingPayment.fedapay_payment_url && existingPayment.fedapay_transaction_id) {
           setPaymentId(existingPayment.id);
           setPaymentUrl(existingPayment.fedapay_payment_url);
-          setTransactionId(existingPayment.fedapay_transaction_id || null);
+          setTransactionId(existingPayment.fedapay_transaction_id);
           setPaymentStatus('pending');
           setPollCount(0);
 
           const remainingMinutes = Math.ceil((tenMinutes - paymentAge) / 60000);
 
-          toast({
-            title: 'Paiement en cours',
-            description: `Un paiement est déjà en cours pour ce rendez-vous (expire dans ${remainingMinutes} min). Complétez-le dans la fenêtre qui vient de s'ouvrir.`,
-          });
+          // ✅ CORRECTION: Utiliser le widget FedaPay au lieu d'ouvrir l'URL directement
+          // Attendre que la configuration FedaPay soit chargée
+          const waitForConfig = async () => {
+            let attempts = 0;
+            while (!fedapayConfig && attempts < 10) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+              attempts++;
+            }
+            return fedapayConfig;
+          };
 
-          window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+          const config = await waitForConfig();
+          
+          if (config && isFedaPayLoaded()) {
+            const txId = parseInt(existingPayment.fedapay_transaction_id);
+            
+            console.log('Opening existing payment with FedaPay widget:', txId);
+            
+            const widget = initFedaPayWidget({
+              public_key: config.publicKey,
+              environment: config.environment as 'sandbox' | 'live',
+              transaction: {
+                id: txId,
+                amount: amount,
+                description: context === 'group_session' 
+                  ? `Paiement séance de groupe`
+                  : `Paiement rendez-vous médical`,
+              },
+              currency: {
+                iso: 'XOF',
+              },
+              locale: 'fr',
+              onComplete: async (payload) => {
+                console.log('Existing payment completed:', payload);
+                
+                if (payload.reason === CHECKOUT_COMPLETED) {
+                  setPaymentStatus('success');
+                  setIsProcessing(false);
+                  
+                  toast({
+                    title: 'Paiement réussi !',
+                    description: 'Votre rendez-vous a été confirmé.',
+                  });
+                  
+                  clearPersistedPaymentState();
+                  
+                  if (onSuccess) onSuccess();
+                  if (onComplete) onComplete();
+                  
+                  setTimeout(() => {
+                    resetPaymentState();
+                    onOpenChange(false);
+                  }, 2000);
+                } else if (payload.reason === DIALOG_DISMISSED) {
+                  setPaymentStatus('error');
+                  setIsProcessing(false);
+                  
+                  toast({
+                    title: 'Paiement annulé',
+                    description: 'Vous avez annulé le paiement.',
+                    variant: 'destructive',
+                  });
+                }
+              },
+            });
+
+            if (widget) {
+              widgetRef.current = widget;
+              widget.open();
+              
+              toast({
+                title: 'Paiement en cours',
+                description: `Un paiement est déjà en cours (expire dans ${remainingMinutes} min). Complétez-le dans la fenêtre de paiement.`,
+              });
+            } else {
+              // Fallback: ouvrir l'URL si le widget échoue
+              console.warn('Widget init failed, falling back to URL');
+              window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+              
+              toast({
+                title: 'Paiement en cours',
+                description: `Complétez le paiement dans la nouvelle fenêtre (expire dans ${remainingMinutes} min).`,
+              });
+            }
+          } else {
+            // Fallback si FedaPay n'est pas chargé
+            console.warn('FedaPay not loaded, falling back to URL');
+            window.open(existingPayment.fedapay_payment_url, '_blank', 'noopener,noreferrer');
+            
+            toast({
+              title: 'Paiement en cours',
+              description: `Complétez le paiement dans la nouvelle fenêtre (expire dans ${remainingMinutes} min).`,
+            });
+          }
         } else {
-          // Paiement sans URL (probablement échoué), l'annuler proprement
-          console.log('⚠️ Paiement sans URL détecté, annulation...');
+          // Paiement sans URL ou transactionId (probablement échoué), l'annuler proprement
+          console.log('⚠️ Paiement incomplet détecté, annulation...');
 
           try {
             const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
