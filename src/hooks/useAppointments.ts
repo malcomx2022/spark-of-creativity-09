@@ -133,7 +133,9 @@ export function usePatientAppointments(patientId?: string, page = 0, pageSize = 
 }
 
 export function usePractitionerAppointments(practitionerId?: string, page = 0, pageSize = 100) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  
+  const query = useQuery({
     queryKey: ['appointments', 'practitioner', practitionerId, page],
     queryFn: async () => {
       if (!practitionerId) return { data: [], count: 0 };
@@ -153,6 +155,34 @@ export function usePractitionerAppointments(practitionerId?: string, page = 0, p
     },
     enabled: !!practitionerId,
   });
+
+  // Écouter les mises à jour en temps réel
+  useEffect(() => {
+    if (!practitionerId) return;
+
+    const channel = supabase
+      .channel(`practitioner-appointments-${practitionerId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'appointments',
+          filter: `practitioner_id=eq.${practitionerId}`
+        },
+        (payload) => {
+          console.log('📅 Realtime update for practitioner appointments:', payload);
+          queryClient.invalidateQueries({ queryKey: ['appointments', 'practitioner', practitionerId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [practitionerId, queryClient]);
+
+  return query;
 }
 
 export function useCreateAppointment(patientId?: string, patientName?: string) {

@@ -23,7 +23,7 @@ export default function AppointmentsTab({
 
   // Memoize categorized appointments
   const categorizedAppointments = useMemo(() => ({
-    pending: appointments?.filter(a => a.status === 'pending') || [],
+    pending: appointments?.filter(a => a.status === 'pending' || a.status === 'awaiting_practitioner') || [],
     confirmed: appointments?.filter(a => a.status === 'confirmed' || a.status === 'in-progress') || [],
     completed: appointments?.filter(a => a.status === 'completed') || [],
   }), [appointments]);

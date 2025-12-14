@@ -95,7 +95,7 @@ export default function CoachDashboard() {
         return (s.status === 'planifiee' || s.status === 'confirmee') && sessionDate >= now;
       }).length || 0,
       upcomingAppointments: appointments?.filter(a => 
-        a.status === 'confirmed' || a.status === 'pending'
+        a.status === 'confirmed' || a.status === 'pending' || a.status === 'awaiting_practitioner'
       ).length || 0,
       totalParticipants: sessions?.reduce((sum, s) => 
         sum + (s.current_participants || 0), 0
