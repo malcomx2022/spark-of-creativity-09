@@ -164,12 +164,13 @@ serve(async (req) => {
       // Utiliser le nom du profile si disponible, sinon celui du rendez-vous
       const patientName = patientProfile.full_name || appointment.patient_name || 'Patient';
 
-      // ✅ Mettre à jour le statut du rendez-vous en 'confirmed' AVANT de créer le paiement
-      console.log('📝 Mise à jour du rendez-vous en statut confirmed');
+      // ✅ Mettre à jour le statut du rendez-vous en 'pending_payment' directement
+      // Le statut passera à 'confirmed' uniquement quand le paiement sera complété (via webhook)
+      console.log('📝 Mise à jour du rendez-vous en statut pending_payment');
       const { error: preUpdateError } = await supabase
         .from('appointments')
         .update({ 
-          status: 'confirmed', 
+          status: 'pending_payment', 
           payment_amount: paymentAmount
         })
         .eq('id', appointmentId)
@@ -223,15 +224,14 @@ serve(async (req) => {
 
       console.log('✅ Paiement créé:', paymentData.paymentId);
 
-      // Mettre à jour le rendez-vous avec le statut pending_payment et la date d'expiration
+      // Mettre à jour seulement la date d'expiration (le statut est déjà pending_payment)
       const { error: updateError } = await supabase
         .from('appointments')
         .update({ 
-          status: 'pending_payment',
           payment_expires_at: paymentData.expiresAt 
         })
         .eq('id', appointmentId)
-        .eq('status', 'confirmed'); // Lock optimiste
+        .eq('status', 'pending_payment'); // Lock optimiste
 
       if (updateError) {
         console.error('❌ Erreur mise à jour post-paiement:', updateError);
