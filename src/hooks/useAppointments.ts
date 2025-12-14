@@ -140,6 +140,8 @@ export function usePractitionerAppointments(practitionerId?: string, page = 0, p
     queryFn: async () => {
       if (!practitionerId) return { data: [], count: 0 };
 
+      console.log('🔍 Fetching appointments for practitioner:', practitionerId);
+
       const { data, error, count } = await withTimeout(
         supabase
           .from('appointments')
@@ -150,15 +152,25 @@ export function usePractitionerAppointments(practitionerId?: string, page = 0, p
           .range(page * pageSize, (page + 1) * pageSize - 1)
       );
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching practitioner appointments:', error);
+        throw error;
+      }
+      
+      console.log('✅ Fetched appointments:', data?.length, 'for practitioner:', practitionerId);
       return { data: (data ?? []).map(toAppointment), count: count || 0 };
     },
     enabled: !!practitionerId,
+    staleTime: 0, // Toujours rafraîchir
+    refetchOnMount: 'always', // Rafraîchir à chaque montage
+    refetchOnWindowFocus: true, // Rafraîchir au focus
   });
 
   // Écouter les mises à jour en temps réel
   useEffect(() => {
     if (!practitionerId) return;
+
+    console.log('📡 Setting up realtime listener for practitioner:', practitionerId);
 
     const channel = supabase
       .channel(`practitioner-appointments-${practitionerId}`)
@@ -175,9 +187,12 @@ export function usePractitionerAppointments(practitionerId?: string, page = 0, p
           queryClient.invalidateQueries({ queryKey: ['appointments', 'practitioner', practitionerId] });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Realtime subscription status:', status);
+      });
 
     return () => {
+      console.log('📡 Removing realtime channel for practitioner:', practitionerId);
       supabase.removeChannel(channel);
     };
   }, [practitionerId, queryClient]);
