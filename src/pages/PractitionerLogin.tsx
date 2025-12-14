@@ -88,6 +88,21 @@ export default function PractitionerLogin() {
       );
 
       if (practitionerError || !practitionerData) {
+        // Vérifier si l'utilisateur a les métadonnées d'un praticien (inscription incomplète)
+        const userType = data.user.user_metadata?.user_type;
+        
+        if (userType === 'practitioner') {
+          // L'inscription praticien n'a pas été finalisée
+          toast({
+            title: "Inscription incomplète",
+            description: "Votre inscription praticien n'a pas été finalisée. Vous allez être redirigé pour compléter votre inscription.",
+            variant: "destructive"
+          });
+          navigate('/complete-registration', { replace: true });
+          setIsSubmitting(false);
+          return;
+        }
+        
         toast({
           title: "Erreur de connexion",
           description: "Ce compte n'est pas un compte praticien. Veuillez utiliser la connexion patient.",
