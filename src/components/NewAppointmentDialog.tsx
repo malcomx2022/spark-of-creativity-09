@@ -25,7 +25,87 @@ import { AddressSearchInput } from './AddressSearchInput';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { getCategoryLabel } from '@/lib/practitioner-categories';
-import { usePractitionerAvailability, usePractitionerExceptions } from '@/hooks/useAvailability';
+import { usePractitionerAvailability, usePractitionerExceptions, PractitionerAvailability, PractitionerException } from '@/hooks/useAvailability';
+
+// Composant DatePopover séparé pour gérer l'état ouvert/fermé
+interface DatePopoverProps {
+  value: Date | undefined;
+  onChange: (date: Date | undefined) => void;
+  preselectedPractitioner?: PreselectedPractitioner;
+  practitionerAvailability: PractitionerAvailability[];
+  practitionerExceptions: PractitionerException[];
+}
+
+function DatePopover({ value, onChange, preselectedPractitioner, practitionerAvailability, practitionerExceptions }: DatePopoverProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            'w-full pl-3 text-left font-normal',
+            !value && 'text-muted-foreground border-muted-foreground/30'
+          )}
+        >
+          {value ? (
+            format(value, 'PPP', { locale: fr })
+          ) : (
+            <span>Sélectionnez une date...</span>
+          )}
+          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="p-3 text-sm text-muted-foreground border-b bg-muted/30">
+          {preselectedPractitioner 
+            ? `📅 Jours disponibles selon l'agenda de ${preselectedPractitioner.name}`
+            : '📅 Sélectionnez une date (les dimanches dépendent des disponibilités des praticiens)'
+          }
+        </div>
+        <Calendar
+          mode="single"
+          selected={value}
+          onSelect={(date) => {
+            onChange(date);
+            setOpen(false); // Fermer le popover après sélection
+          }}
+          disabled={(date) => {
+            // Comparer uniquement les dates (sans l'heure)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const compareDate = new Date(date);
+            compareDate.setHours(0, 0, 0, 0);
+            
+            // Désactiver les dates passées
+            if (compareDate < today) return true;
+            
+            // Si praticien pré-sélectionné, vérifier ses disponibilités
+            if (preselectedPractitioner && practitionerAvailability.length > 0) {
+              const dayOfWeek = date.getDay();
+              const dateString = format(date, 'yyyy-MM-dd');
+              
+              // Vérifier les exceptions
+              const exception = practitionerExceptions.find(e => e.date === dateString);
+              if (exception && !exception.is_available) return true;
+              
+              // Vérifier s'il y a des créneaux pour ce jour
+              const hasSlots = practitionerAvailability.some(
+                a => a.day_of_week === dayOfWeek && a.is_active !== false
+              );
+              if (!hasSlots) return true;
+            }
+            
+            return false;
+          }}
+          initialFocus
+          className="pointer-events-auto"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // Système de queue de toasts pour éviter l'affichage simultané
 const toastQueue: Array<{ id: string; toast: any }> = [];
@@ -1100,75 +1180,16 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                     <FormLabel className="text-sm font-medium">
                       Date souhaitée <span className="text-destructive">*</span>
                     </FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground border-muted-foreground/30'
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, 'PPP', { locale: fr })
-                            ) : (
-                              <span>Sélectionnez une date...</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <div className="p-3 text-sm text-muted-foreground border-b bg-muted/30">
-                          {preselectedPractitioner 
-                            ? `📅 Jours disponibles selon l'agenda de ${preselectedPractitioner.name}`
-                            : 'ℹ️ Les dimanches ne sont pas disponibles pour les consultations'
-                          }
-                        </div>
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={(date) => {
-                            field.onChange(date);
-                            // Réinitialiser le créneau horaire quand la date change
-                            form.setValue('time', '');
-                          }}
-                          disabled={(date) => {
-                            // Comparer uniquement les dates (sans l'heure)
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            const compareDate = new Date(date);
-                            compareDate.setHours(0, 0, 0, 0);
-                            
-                            // Désactiver les dates passées
-                            if (compareDate < today) return true;
-                            // Désactiver les dimanches
-                            if (date.getDay() === 0) return true;
-                            
-                            // Si praticien pré-sélectionné, vérifier ses disponibilités
-                            if (preselectedPractitioner && practitionerAvailability.length > 0) {
-                              const dayOfWeek = date.getDay();
-                              const dateString = format(date, 'yyyy-MM-dd');
-                              
-                              // Vérifier les exceptions
-                              const exception = practitionerExceptions.find(e => e.date === dateString);
-                              if (exception && !exception.is_available) return true;
-                              
-                              // Vérifier s'il y a des créneaux pour ce jour
-                              const hasSlots = practitionerAvailability.some(
-                                a => a.day_of_week === dayOfWeek && a.is_active !== false
-                              );
-                              if (!hasSlots) return true;
-                            }
-                            
-                            return false;
-                          }}
-                          initialFocus
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePopover
+                      value={field.value}
+                      onChange={(date) => {
+                        field.onChange(date);
+                        form.setValue('time', '');
+                      }}
+                      preselectedPractitioner={preselectedPractitioner}
+                      practitionerAvailability={practitionerAvailability}
+                      practitionerExceptions={practitionerExceptions}
+                    />
                     <FormMessage className="text-xs font-medium" />
                   </FormItem>
                 )}
