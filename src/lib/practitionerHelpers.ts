@@ -7,6 +7,19 @@ export const getKYCMessage = (kyc_status: string, kyc_comment?: string | null) =
   return messages[kyc_status] || '';
 };
 
+export const calculateRealDuration = (
+  startedAt: string | null | undefined,
+  endedAt: string | null | undefined,
+  defaultDuration: number
+): number => {
+  if (startedAt && endedAt) {
+    const start = new Date(startedAt);
+    const end = new Date(endedAt);
+    return Math.round((end.getTime() - start.getTime()) / 60000); // Convertir en minutes
+  }
+  return defaultDuration;
+};
+
 export const calculateMonthlyTotalMinutes = (appointments: any[]) => {
   const now = new Date();
   return appointments
@@ -18,5 +31,13 @@ export const calculateMonthlyTotalMinutes = (appointments: any[]) => {
         ['confirmed', 'completed'].includes(apt.status)
       );
     })
-    .reduce((acc, apt) => acc + apt.duration, 0);
+    .reduce((acc, apt) => {
+      // Utiliser la durée réelle si disponible, sinon la durée par défaut
+      const realDuration = calculateRealDuration(
+        apt.consultation_started_at,
+        apt.consultation_ended_at,
+        apt.duration
+      );
+      return acc + realDuration;
+    }, 0);
 };

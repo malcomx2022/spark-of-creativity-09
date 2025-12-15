@@ -90,6 +90,8 @@ export type Database = {
         Row: {
           address: string
           confirmation_requested_at: string | null
+          consultation_ended_at: string | null
+          consultation_started_at: string | null
           created_at: string | null
           date: string
           duration: number
@@ -119,6 +121,8 @@ export type Database = {
         Insert: {
           address: string
           confirmation_requested_at?: string | null
+          consultation_ended_at?: string | null
+          consultation_started_at?: string | null
           created_at?: string | null
           date: string
           duration?: number
@@ -148,6 +152,8 @@ export type Database = {
         Update: {
           address?: string
           confirmation_requested_at?: string | null
+          consultation_ended_at?: string | null
+          consultation_started_at?: string | null
           created_at?: string | null
           date?: string
           duration?: number
@@ -2422,6 +2428,10 @@ export type Database = {
         Returns: Json
       }
       auto_confirm_consultations: { Args: never; Returns: undefined }
+      calculate_real_duration: {
+        Args: { default_duration: number; ended_at: string; started_at: string }
+        Returns: number
+      }
       check_otp_rate_limit: { Args: { phone: string }; Returns: Json }
       cleanup_expired_payment_slots: { Args: never; Returns: undefined }
       cleanup_old_file_access_logs: { Args: never; Returns: undefined }
