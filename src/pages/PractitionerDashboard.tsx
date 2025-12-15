@@ -232,14 +232,21 @@ export default function PractitionerDashboard() {
         }
       }
 
-      // Mettre à jour le statut du rendez-vous
+      // Mettre à jour le statut du rendez-vous avec timestamp de fin si complété
+      const updateData: Record<string, unknown> = {
+        status,
+        practitioner_id: practitionerId,
+        practitioner_name: practitionerName,
+      };
+
+      // Enregistrer le timestamp de fin de consultation
+      if (status === 'completed') {
+        updateData.consultation_ended_at = new Date().toISOString();
+      }
+
       await mutateAppointment.mutateAsync({
         id,
-        data: {
-          status,
-          practitioner_id: practitionerId,
-          practitioner_name: practitionerName,
-        }
+        data: updateData
       });
 
       const messages = {

@@ -116,27 +116,24 @@ export function PractitionerStatusControl({
       }
 
       // Mettre à jour le statut dans la base
+      const updatePayload: Record<string, unknown> = {
+        practitioner_status: newStatus,
+        ...locationUpdate,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Enregistrer le timestamp de début de consultation
+      if (newStatus === 'in_progress') {
+        updatePayload.status = 'in-progress';
+        updatePayload.consultation_started_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from('appointments')
-        .update({
-          practitioner_status: newStatus,
-          ...locationUpdate,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', appointmentId);
 
       if (error) throw error;
-
-      // Mettre à jour le statut de l'appointment si démarrage consultation
-      if (newStatus === 'in_progress') {
-        await supabase
-          .from('appointments')
-          .update({
-            status: 'in-progress',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', appointmentId);
-      }
 
       toast({
         title: '✅ Statut mis à jour',
