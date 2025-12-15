@@ -86,7 +86,7 @@ export function MedicalSection() {
         ...formData,
         primary_doctor_id: practitionerId,
         primary_doctor_name: selectedPractitioner.name,
-        primary_doctor_phone: selectedPractitioner.phone || '',
+        primary_doctor_phone: '', // Téléphone non exposé pour sécurité - utiliser la messagerie
         primary_doctor_email: '', // Practitioners don't have email in public view
       });
     }
