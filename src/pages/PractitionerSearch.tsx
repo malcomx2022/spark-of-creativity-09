@@ -117,7 +117,7 @@ export default function PractitionerSearch() {
     );
   }, [logActivity]);
 
-  // Récupérer le token Mapbox via l'edge function
+  // Récupérer le token Mapbox via l'edge function - priorité haute avec cache long
   const { data: mapboxData, isLoading: isLoadingMapbox } = useQuery({
     queryKey: ['mapbox-token'],
     queryFn: async () => {
@@ -125,6 +125,10 @@ export default function PractitionerSearch() {
       if (error) throw error;
       return data;
     },
+    staleTime: 1000 * 60 * 60 * 24, // Cache 24h car le token ne change pas souvent
+    gcTime: 1000 * 60 * 60 * 24, // Garder en cache 24h
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const mapboxToken = mapboxData?.token || '';

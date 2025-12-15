@@ -79,14 +79,17 @@ export default function PractitionerMap({
         style: 'mapbox://styles/mapbox/streets-v12',
         center: [centerLng, centerLat],
         zoom: 12,
+        fadeDuration: 0, // Désactive les animations de fade pour un chargement plus rapide
+        trackResize: true,
+        renderWorldCopies: false, // Optimisation pour un seul rendu du monde
       });
 
       // Add controls
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
       map.current.addControl(new mapboxgl.FullscreenControl(), 'top-right');
       
-      // Track map load state
-      map.current.on('load', () => {
+      // Track map load state - utiliser 'idle' au lieu de 'load' pour être plus rapide
+      map.current.once('idle', () => {
         setIsMapLoaded(true);
       });
 
