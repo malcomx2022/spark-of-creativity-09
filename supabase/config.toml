@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.notify-appointment-request]
 verify_jwt = true
+
+[functions.retry-group-session-payment]
+verify_jwt = true
