@@ -7,7 +7,8 @@ import { fr } from "date-fns/locale";
 import { usePatientGroupSessions } from "@/hooks/usePatientGroupSessions";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useState, useMemo } from "react";
-import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog";
+// ✅ CORRECTION P1 #6: Utiliser le widget de retry au lieu de RegisterSessionDialog
+import { RetryGroupSessionPaymentWidget } from "@/components/coach/RetryGroupSessionPaymentWidget";
 
 export function PatientGroupSessionsSection() {
   const { data: user } = useSupabaseUser();
@@ -16,12 +17,13 @@ export function PatientGroupSessionsSection() {
   const sessions = sessionsResult?.data || [];
   const totalCount = sessionsResult?.count || 0;
   const totalPages = Math.ceil(totalCount / 20);
-  const [selectedSession, setSelectedSession] = useState<any>(null);
-  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const [selectedParticipation, setSelectedParticipation] = useState<any>(null);
+  const [retryDialogOpen, setRetryDialogOpen] = useState(false);
 
-  const handleRetryPayment = (session: any) => {
-    setSelectedSession(session);
-    setRegisterDialogOpen(true);
+  // ✅ CORRECTION P1 #6: Utiliser le widget de retry pour les paiements en attente
+  const handleRetryPayment = (participation: any) => {
+    setSelectedParticipation(participation);
+    setRetryDialogOpen(true);
   };
 
   const getPaymentStatusBadge = (status: string) => {
@@ -274,17 +276,22 @@ export function PatientGroupSessionsSection() {
         </Card>
       )}
       
-      {/* Dialog de paiement pour retry */}
-      {selectedSession && (
-        <RegisterSessionDialog
-          open={registerDialogOpen}
-          onOpenChange={setRegisterDialogOpen}
+      {/* ✅ CORRECTION P1 #6: Dialog de retry paiement (pas de re-inscription) */}
+      {selectedParticipation && (
+        <RetryGroupSessionPaymentWidget
+          open={retryDialogOpen}
+          onOpenChange={setRetryDialogOpen}
+          participantId={selectedParticipation.id}
           session={{
-            id: selectedSession.session.id,
-            session_name: selectedSession.session.session_name,
-            price_per_person: selectedSession.session.price_per_person,
-            scheduled_date: selectedSession.session.scheduled_date,
-            start_time: selectedSession.session.start_time
+            id: selectedParticipation.session.id,
+            session_name: selectedParticipation.session.session_name,
+            price_per_person: selectedParticipation.session.price_per_person,
+            scheduled_date: selectedParticipation.session.scheduled_date,
+            start_time: selectedParticipation.session.start_time
+          }}
+          onSuccess={() => {
+            setRetryDialogOpen(false);
+            setSelectedParticipation(null);
           }}
         />
       )}

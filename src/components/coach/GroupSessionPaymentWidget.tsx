@@ -51,21 +51,22 @@ export function GroupSessionPaymentWidget({
   const [payerName, setPayerName] = useState('');
   const [payerEmail, setPayerEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error' | 'already_registered'>('idle');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'error' | 'already_registered' | 'session_full' | 'session_past'>('idle');
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const [widgetInitialized, setWidgetInitialized] = useState(false);
   const [existingRegistration, setExistingRegistration] = useState<any>(null);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
+  const [sessionInfo, setSessionInfo] = useState<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const queryClient = useQueryClient();
   const { addPaymentMethod } = useSavedPaymentMethods();
 
-  // ✅ CONTRÔLE ANTI-DOUBLON: Vérifier si l'utilisateur est déjà inscrit à cette séance
+  // ✅ CORRECTION P2 #12 & P0 #1-2: Vérifier disponibilité et validité AVANT affichage formulaire
   useEffect(() => {
-    const checkExistingRegistration = async () => {
+    const checkSessionAndRegistration = async () => {
       if (!open) return;
       
       setIsCheckingRegistration(true);
@@ -73,6 +74,79 @@ export function GroupSessionPaymentWidget({
       try {
         const { data: { session: authSession } } = await supabase.auth.getSession();
         if (!authSession) {
+          setIsCheckingRegistration(false);
+          return;
+        }
+
+        // ✅ CORRECTION P2 #12: Récupérer les infos actuelles de la séance
+        const { data: currentSession, error: sessionError } = await supabase
+          .from('group_sessions')
+          .select(`
+            id,
+            session_name,
+            scheduled_date,
+            start_time,
+            status,
+            max_participants,
+            current_participants,
+            price_per_person,
+            coach:practitioners!inner(
+              id,
+              kyc_status,
+              kyc_validated_at
+            )
+          `)
+          .eq('id', session.id)
+          .single();
+
+        if (sessionError || !currentSession) {
+          console.error('Erreur récupération séance:', sessionError);
+          toast({
+            title: 'Erreur',
+            description: 'Impossible de récupérer les informations de la séance',
+            variant: 'destructive',
+          });
+          setIsCheckingRegistration(false);
+          return;
+        }
+
+        setSessionInfo(currentSession);
+
+        // ✅ CORRECTION P0 #2: Vérifier si la séance n'est pas passée
+        const sessionDateTime = new Date(currentSession.scheduled_date + 'T' + currentSession.start_time);
+        if (sessionDateTime < new Date()) {
+          setPaymentStatus('session_past');
+          setIsCheckingRegistration(false);
+          return;
+        }
+
+        // Vérifier le statut de la séance
+        if (currentSession.status === 'annulee' || currentSession.status === 'terminee') {
+          toast({
+            title: 'Séance non disponible',
+            description: `Cette séance est ${currentSession.status === 'annulee' ? 'annulée' : 'terminée'}.`,
+            variant: 'destructive',
+          });
+          onOpenChange(false);
+          return;
+        }
+
+        // ✅ CORRECTION P0 #1: Vérifier le KYC du coach
+        const coach = Array.isArray(currentSession.coach) ? currentSession.coach[0] : currentSession.coach;
+        if (!coach || coach.kyc_status !== 'approved' || !coach.kyc_validated_at) {
+          toast({
+            title: 'Inscription non disponible',
+            description: 'Le coach n\'est pas encore vérifié. Veuillez réessayer plus tard.',
+            variant: 'destructive',
+          });
+          onOpenChange(false);
+          return;
+        }
+
+        // ✅ CORRECTION P2 #12: Vérifier les places AVANT affichage formulaire
+        const availableSpots = (currentSession.max_participants || 0) - (currentSession.current_participants || 0);
+        if (availableSpots <= 0) {
+          setPaymentStatus('session_full');
           setIsCheckingRegistration(false);
           return;
         }
@@ -101,13 +175,13 @@ export function GroupSessionPaymentWidget({
           }
         }
       } catch (error) {
-        console.error('Erreur vérification inscription:', error);
+        console.error('Erreur vérification:', error);
       } finally {
         setIsCheckingRegistration(false);
       }
     };
 
-    checkExistingRegistration();
+    checkSessionAndRegistration();
   }, [open, session.id]);
 
   // Load FedaPay configuration
@@ -542,6 +616,42 @@ export function GroupSessionPaymentWidget({
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <span className="ml-2">Vérification de votre inscription...</span>
+          </div>
+        )}
+
+        {/* ✅ CORRECTION P2 #12: Séance complète */}
+        {paymentStatus === 'session_full' && (
+          <div className="space-y-4">
+            <Alert className="border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+              <AlertTriangle className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-800 dark:text-orange-200">
+                <p className="font-semibold">Séance complète</p>
+                <p className="text-sm mt-1">
+                  Toutes les places pour cette séance sont déjà réservées.
+                </p>
+              </AlertDescription>
+            </Alert>
+            <Button onClick={handleClose} className="w-full">
+              Fermer
+            </Button>
+          </div>
+        )}
+
+        {/* ✅ CORRECTION P0 #2: Séance passée */}
+        {paymentStatus === 'session_past' && (
+          <div className="space-y-4">
+            <Alert className="border-red-500 bg-red-50 dark:bg-red-950/20">
+              <XCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800 dark:text-red-200">
+                <p className="font-semibold">Séance passée</p>
+                <p className="text-sm mt-1">
+                  Cette séance a déjà eu lieu. Vous ne pouvez plus vous inscrire.
+                </p>
+              </AlertDescription>
+            </Alert>
+            <Button onClick={handleClose} className="w-full">
+              Fermer
+            </Button>
           </div>
         )}
 
