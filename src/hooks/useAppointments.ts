@@ -212,16 +212,17 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       const currentUser = await supabase.auth.getUser();
       if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
 
-      // ✅ VALIDATION ANTI-DOUBLON : Vérifier s'il existe déjà un RDV actif avec ce praticien à cette date
+      // Utiliser le formatage local pour éviter les décalages de fuseau horaire
+      const dateObj = new Date(data.date);
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const appointmentDate = `${year}-${month}-${day}`;
+
+      // ✅ CORRECTION P1 #6: Vérification anti-doublon patient ET praticien
       if (data.practitionerId) {
-        // Utiliser le formatage local pour éviter les décalages de fuseau horaire
-        const dateObj = new Date(data.date);
-        const year = dateObj.getFullYear();
-        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const day = String(dateObj.getDate()).padStart(2, '0');
-        const appointmentDate = `${year}-${month}-${day}`;
-        
-        const { data: existingAppointments, error: checkError } = await withTimeout(
+        // Vérifier les RDV existants du patient avec ce praticien
+        const { data: patientExistingAppts, error: patientCheckError } = await withTimeout(
           supabase
             .from('appointments')
             .select('date, time, practitioner_name')
@@ -231,15 +232,52 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
             .not('status', 'in', '(cancelled,rejected,completed,cancelled_unpaid)')
         );
 
-        if (checkError) throw checkError;
+        if (patientCheckError) throw patientCheckError;
 
-        if (existingAppointments && existingAppointments.length > 0) {
-          const existing = existingAppointments[0];
+        if (patientExistingAppts && patientExistingAppts.length > 0) {
+          const existing = patientExistingAppts[0];
           const formattedDate = formatDateWithDateFns(existing.date);
           throw new Error(
             `Vous avez déjà un rendez-vous prévu avec ${existing.practitioner_name} le ${formattedDate} à ${existing.time}.\n\n` +
             `Veuillez choisir une autre date ou annuler le rendez-vous existant.`
           );
+        }
+
+        // ✅ CORRECTION P1 #6: Vérifier aussi les conflits d'horaires du praticien
+        const { data: practitionerConflicts, error: practitionerCheckError } = await withTimeout(
+          supabase
+            .from('appointments')
+            .select('date, time, patient_name')
+            .eq('practitioner_id', data.practitionerId)
+            .eq('date', appointmentDate)
+            .eq('time', data.time)
+            .not('status', 'in', '(cancelled,rejected,completed,cancelled_unpaid)')
+        );
+
+        if (practitionerCheckError) throw practitionerCheckError;
+
+        if (practitionerConflicts && practitionerConflicts.length > 0) {
+          throw new Error(
+            `Le praticien a déjà un rendez-vous prévu à ${data.time} le ${formatDateWithDateFns(appointmentDate)}.\n\n` +
+            `Veuillez choisir un autre créneau horaire.`
+          );
+        }
+
+        // ✅ CORRECTION P2 #4: Vérifier que le praticien existe toujours
+        const { data: practitionerExists, error: practitionerExistsError } = await withTimeout(
+          supabase
+            .from('practitioners')
+            .select('id, name, can_accept_missions, kyc_status')
+            .eq('id', data.practitionerId)
+            .single()
+        );
+
+        if (practitionerExistsError || !practitionerExists) {
+          throw new Error('Le praticien sélectionné n\'existe plus. Veuillez en choisir un autre.');
+        }
+
+        if (!practitionerExists.can_accept_missions || practitionerExists.kyc_status !== 'approved') {
+          throw new Error(`${practitionerExists.name} n'est pas disponible pour accepter des rendez-vous actuellement.`);
         }
       }
       
@@ -260,12 +298,8 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
           .maybeSingle()
       );
 
-      // Formater la date en utilisant le fuseau horaire local pour éviter les décalages UTC
-      const dateObj = new Date(data.date);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const formattedDate = `${year}-${month}-${day}`;
+      // Utiliser appointmentDate déjà calculé plus haut
+      const formattedDate = appointmentDate;
 
       const appointment = await insertAppointment({
         patient_id: patientId,

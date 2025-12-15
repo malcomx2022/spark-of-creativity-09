@@ -183,6 +183,7 @@ Deno.serve(async (req) => {
 
     // Récupérer tous les praticiens actifs, validés KYC et autorisés à accepter des missions
     // On cherche par practitioner_type (catégorie) au lieu de specialty
+    // ✅ CORRECTION P0 #3 & P1 #5: Vérifier kyc_status ET kyc_validated_at
     const { data: practitioners, error: practitionersError } = await supabase
       .from('practitioners')
       .select('*')
@@ -190,8 +191,9 @@ Deno.serve(async (req) => {
       .eq('available', true)
       .eq('can_accept_missions', true)
       .eq('kyc_status', 'approved')
+      .not('kyc_validated_at', 'is', null) // ✅ CORRECTION P1 #5: Exiger date de validation
       .eq('is_online', true)
-      .not('latitude', 'is', null)
+      .not('latitude', 'is', null) // ✅ CORRECTION P1 #2: Exclure praticiens sans coordonnées GPS
       .not('longitude', 'is', null);
     
     console.log(`📊 ${practitioners?.length || 0} praticien(s) trouvé(s) pour la catégorie "${specialty}"`);
