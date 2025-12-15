@@ -2,7 +2,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
 import { dispatchNotification } from '../_shared/notifications.ts';
 
-const DEFAULT_APPOINTMENT_AMOUNT = 10000;
+// Tarif fixe pour les praticiens non-coach (infirmiers, sages-femmes, etc.)
+const DEFAULT_NON_COACH_AMOUNT = 15000;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -129,24 +130,39 @@ serve(async (req) => {
       // Utiliser le statut actuel comme condition pour éviter race condition
       let paymentAmount = appointment.payment_amount ?? null;
 
+      // Récupérer le type de praticien pour déterminer le tarif
+      const { data: practitionerData } = await supabase
+        .from('practitioners')
+        .select('practitioner_type')
+        .eq('id', appointment.practitioner_id)
+        .single();
+
+      const isCoach = practitionerData?.practitioner_type === 'coach_sportif';
+
       if (paymentAmount === null) {
-        const { data: rate } = await supabase
-          .from('practitioner_rates')
-          .select('base_price')
-          .eq('practitioner_id', appointment.practitioner_id)
-          .eq('service_type', appointment.specialty)
-          .maybeSingle();
-
-        paymentAmount = rate?.base_price ?? null;
-
-        if (paymentAmount === null) {
-          const { data: service } = await supabase
-            .from('services')
+        if (isCoach) {
+          // Pour les coachs, utiliser le tarif personnalisé ou du service
+          const { data: rate } = await supabase
+            .from('practitioner_rates')
             .select('base_price')
-            .eq('name', appointment.specialty)
+            .eq('practitioner_id', appointment.practitioner_id)
+            .eq('service_type', appointment.specialty)
             .maybeSingle();
 
-          paymentAmount = service?.base_price ?? DEFAULT_APPOINTMENT_AMOUNT;
+          paymentAmount = rate?.base_price ?? null;
+
+          if (paymentAmount === null) {
+            const { data: service } = await supabase
+              .from('services')
+              .select('base_price')
+              .eq('name', appointment.specialty)
+              .maybeSingle();
+
+            paymentAmount = service?.base_price ?? 10000; // Tarif par défaut coach
+          }
+        } else {
+          // Pour tous les autres praticiens (infirmiers, sages-femmes, etc.), tarif fixe 15000 XOF
+          paymentAmount = DEFAULT_NON_COACH_AMOUNT;
         }
       }
 
