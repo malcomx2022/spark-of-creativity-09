@@ -1,7 +1,18 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, MapPin } from 'lucide-react';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
+
+// Précharger le CSS Mapbox immédiatement
+if (typeof document !== 'undefined') {
+  const existingLink = document.querySelector('link[href*="mapbox-gl.css"]');
+  if (!existingLink) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css';
+    document.head.appendChild(link);
+  }
+}
 
 const PractitionerMap = lazy(() => import('./PractitionerMap'));
 
@@ -51,26 +62,6 @@ export default function LazyPractitionerMap({
 }: LazyPractitionerMapProps) {
   const [hasError, setHasError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-
-  useEffect(() => {
-    // Précharger Mapbox GL en arrière-plan
-    const preloadMapbox = async () => {
-      try {
-        // Charger le CSS Mapbox
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css';
-        document.head.appendChild(link);
-
-        // Précharger le module
-        await import('mapbox-gl');
-      } catch (error) {
-        console.error('Erreur préchargement Mapbox:', error);
-      }
-    };
-
-    preloadMapbox();
-  }, []);
 
   const handleRetry = () => {
     setHasError(false);
