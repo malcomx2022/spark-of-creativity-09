@@ -81,6 +81,11 @@ export default function LazyPractitionerMap({
     return <MapErrorFallback onRetry={handleRetry} />;
   }
 
+  // Afficher le fallback de chargement si le token n'est pas encore disponible
+  if (!mapboxToken) {
+    return <MapLoadingFallback />;
+  }
+
   return (
     <Suspense fallback={<MapLoadingFallback />}>
       <ErrorBoundary
