@@ -63,17 +63,8 @@ serve(async (req) => {
       );
     }
 
-    // Vérifier que ce n'est pas un dimanche
-    if (appointmentDate.getDay() === 0) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Date invalide',
-          details: ['Les rendez-vous ne sont pas disponibles le dimanche']
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Note: Le dimanche n'est plus bloqué systématiquement
+    // Les praticiens peuvent définir leur disponibilité le dimanche
 
     // Valider le format de l'heure (HH:MM)
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
