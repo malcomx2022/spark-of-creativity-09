@@ -890,14 +890,19 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     return { slots: filteredSlots, message: null };
   }, [form.watch('date'), preselectedPractitioner, practitionerAvailability, practitionerExceptions]);
 
+  // Si open est contrôlé de l'extérieur, ne pas afficher le bouton trigger
+  const isControlled = externalOpen !== undefined;
+
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogTrigger asChild>
-        <Button className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
-          Nouveau rendez-vous
-        </Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" />
+            Nouveau rendez-vous
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
