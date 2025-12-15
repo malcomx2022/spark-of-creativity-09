@@ -431,11 +431,7 @@ export default function PatientDashboard() {
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Mes rendez-vous</h2>
-          {patientId && (
-            <NewAppointmentDialog 
-              onSubmit={handleNewAppointment}
-            />
-          )}
+          {/* Bouton supprimé ici - il est déjà dans AppointmentsTab */}
         </div>
 
         {/* Grille de navigation sur desktop */}

@@ -177,28 +177,10 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground mb-4">Aucun rendez-vous à venir</p>
-                {patientId && (
-                  <NewAppointmentDialog 
-                    onSubmit={async (data) => {
-                      try {
-                        const result = await createAppointment.mutateAsync(data);
-                        toast({
-                          title: 'Rendez-vous créé',
-                          description: 'Votre rendez-vous a été créé.'
-                        });
-                        return result;
-                      } catch (error) {
-                        toast({
-                          title: 'Erreur',
-                          description: 'Impossible de créer le rendez-vous.',
-                          variant: 'destructive'
-                        });
-                        throw error;
-                      }
-                    }}
-                  />
-                )}
+                <p className="text-muted-foreground">Aucun rendez-vous à venir</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Utilisez le bouton "+ Nouveau rendez-vous" ci-dessus pour prendre rendez-vous.
+                </p>
               </CardContent>
             </Card>
           ) : (
