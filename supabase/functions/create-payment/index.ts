@@ -232,6 +232,18 @@ serve(async (req) => {
       amountToCharge = requestedAmount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
     }
 
+    // ✅ CORRECTION P2 #1: Vérifier que le montant n'est pas nul ou invalide
+    if (!amountToCharge || amountToCharge <= 0 || isNaN(amountToCharge)) {
+      console.error('Invalid payment amount:', amountToCharge);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Montant de paiement invalide. Veuillez contacter le support.',
+          details: { amountToCharge }
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('Payment initiated:', { appointmentId, amountToCharge, paymentMethod, phoneNumber, isGroupSession });
 
     // ✅ CORRECTION CRITIQUE #3: Récupérer practitioner_id AVANT de créer la transaction FedaPay

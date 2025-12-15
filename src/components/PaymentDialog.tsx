@@ -264,7 +264,7 @@ export function PaymentDialog({
         if (paymentAge > tenMinutes) {
           console.log('⏰ Paiement expiré, annulation via cancel-pending-payment...');
 
-          // Utiliser la fonction cancel-pending-payment pour annuler proprement
+          // ✅ CORRECTION P1 #4: Nettoyer le paiement ET remettre le RDV en état cohérent
           try {
             const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
               body: { appointmentId }
@@ -272,8 +272,20 @@ export function PaymentDialog({
 
             if (cancelError) {
               console.error('Error canceling expired payment:', cancelError);
-              // Fallback: suppression simple
+              // Fallback: suppression simple + remise à jour du RDV
               await supabase.from('payments').delete().eq('id', existingPayment.id);
+              
+              // ✅ CORRECTION P1 #4: Remettre le RDV en statut cohérent
+              if (context === 'appointment' && appointmentId) {
+                await supabase
+                  .from('appointments')
+                  .update({ 
+                    status: 'awaiting_practitioner',
+                    payment_expires_at: null 
+                  })
+                  .eq('id', appointmentId)
+                  .eq('status', 'pending_payment'); // Seulement si en pending_payment
+              }
             }
 
             toast({

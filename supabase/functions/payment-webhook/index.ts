@@ -90,7 +90,7 @@ async function handleTransactionEvent(
   
   const paymentStatus = statusMap[status] || 'pending';
 
-  // Récupérer la config pour calculer la date de hold
+  // ✅ CORRECTION P2 #3: Récupérer la config avec valeur par défaut sécurisée
   const { data: configData } = await supabase
     .from('system_config')
     .select('key, value')
@@ -101,7 +101,15 @@ async function handleTransactionEvent(
     config[row.key] = row.value;
   });
   
-  const holdPeriodDays = config.payment_hold_period_days?.days || 2;
+  // ✅ CORRECTION P2 #3: Minimum 1 jour de hold period pour éviter libération immédiate
+  const configHoldDays = config.payment_hold_period_days?.days;
+  const MIN_HOLD_PERIOD_DAYS = 1; // Minimum sécuritaire
+  const holdPeriodDays = (typeof configHoldDays === 'number' && configHoldDays >= MIN_HOLD_PERIOD_DAYS) 
+    ? configHoldDays 
+    : 2; // Par défaut 2 jours si non configuré ou invalide
+  
+  console.log('Hold period configuration:', { configHoldDays, holdPeriodDays });
+  
   const holdUntil = new Date();
   holdUntil.setDate(holdUntil.getDate() + holdPeriodDays);
 
@@ -502,23 +510,36 @@ serve(async (req) => {
       mode: fedapayMode
     });
 
-    // ⚠️ En mode sandbox, FedaPay n'envoie pas toujours de signature valide
-    // On va donc être plus permissif en sandbox mais strict en production
-    if (signature && webhookSecret && fedapayMode === 'live') {
-      console.log('Verifying webhook signature (live mode)...');
+    // ✅ CORRECTION P0 #5: Vérifier la signature en sandbox ET en production
+    // La signature est obligatoire sauf si le secret n'est pas configuré
+    if (webhookSecret) {
+      if (!signature) {
+        console.error('❌ Missing webhook signature');
+        return new Response(
+          JSON.stringify({ error: 'Missing signature' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`Verifying webhook signature (${fedapayMode} mode)...`);
       const isValid = await verifyWebhookSignature(rawBody, signature, webhookSecret);
       if (!isValid) {
-        console.error('Invalid webhook signature in live mode');
+        console.error(`❌ Invalid webhook signature in ${fedapayMode} mode`);
         return new Response(
           JSON.stringify({ error: 'Invalid signature' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       console.log('✅ Signature verified');
-    } else if (fedapayMode === 'sandbox') {
-      console.log('⚠️ Sandbox mode: skipping signature verification');
-    } else if (!webhookSecret) {
-      console.warn('⚠️ No webhook secret configured, skipping verification');
+    } else {
+      console.warn('⚠️ No webhook secret configured - SECURITY RISK in production');
+      if (fedapayMode === 'live') {
+        console.error('❌ CRITICAL: Webhook secret required in live mode');
+        return new Response(
+          JSON.stringify({ error: 'Webhook secret not configured' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // ✅ AMÉLIORATION #3: Vérification de l'horodatage avec différenciation sandbox/production
