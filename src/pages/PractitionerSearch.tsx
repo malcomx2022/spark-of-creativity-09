@@ -17,7 +17,7 @@ import { useCreateAppointment } from '@/hooks/useAppointments';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Star, Phone, Navigation } from 'lucide-react';
+import { Star, MessageSquare, Navigation } from 'lucide-react';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
@@ -464,21 +464,21 @@ export default function PractitionerSearch() {
                         )}
                       </div>
                        <div className="flex items-center justify-between flex-wrap gap-2">
-                        {/* Bouton Contacter - masqué pour anonymes */}
+                        {/* Bouton Contacter via messagerie - après avoir pris RDV */}
                         {isAuthenticated ? (
-                          practitioner.phone ? (
-                            <Button asChild onClick={() => handleClickContact(practitioner)}>
-                              <a href={`tel:${practitioner.phone}`}>
-                                <Phone className="h-4 w-4 mr-2" />
-                                Contacter
-                              </a>
-                            </Button>
-                          ) : (
-                            <Button disabled variant="outline">
-                              <Phone className="h-4 w-4 mr-2" />
-                              Non disponible
-                            </Button>
-                          )
+                          <Button 
+                            variant="outline"
+                            onClick={() => {
+                              handleClickContact(practitioner);
+                              toast({
+                                title: 'Messagerie disponible après rendez-vous',
+                                description: 'Prenez d\'abord rendez-vous pour accéder à la messagerie avec ce praticien.',
+                              });
+                            }}
+                          >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Contacter via messagerie
+                          </Button>
                         ) : (
                           <Button 
                             variant="outline" 
@@ -675,12 +675,12 @@ export default function PractitionerSearch() {
                   </div>
                 </div>
 
-                {isAuthenticated && viewedPractitioner.phone && (
+                {isAuthenticated && (
                   <div className="flex items-center gap-2 text-sm">
-                    <Phone className="h-5 w-5 text-muted-foreground" />
+                    <MessageSquare className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="font-medium">Téléphone</p>
-                      <p className="text-muted-foreground">{viewedPractitioner.phone}</p>
+                      <p className="font-medium">Contact</p>
+                      <p className="text-muted-foreground">Messagerie disponible après prise de rendez-vous</p>
                     </div>
                   </div>
                 )}

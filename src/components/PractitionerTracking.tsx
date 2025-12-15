@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Phone, Navigation, Clock, CheckCircle2 } from 'lucide-react';
+import { MapPin, MessageSquare, Navigation, Clock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import mapboxgl from 'mapbox-gl';
@@ -14,11 +14,11 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 interface PractitionerTrackingProps {
   appointmentId: string;
   practitionerName: string;
-  practitionerPhone?: string;
   practitionerImage?: string;
   patientAddress: string;
   patientLat?: number;
   patientLng?: number;
+  onOpenMessaging?: () => void;
 }
 
 type TrackingStatus = 'assigned' | 'preparing' | 'en_route' | 'arrived' | 'in_progress';
@@ -42,11 +42,11 @@ const STATUS_COLORS: Record<TrackingStatus, string> = {
 export function PractitionerTracking({
   appointmentId,
   practitionerName,
-  practitionerPhone,
   practitionerImage,
   patientAddress,
   patientLat,
   patientLng,
+  onOpenMessaging,
 }: PractitionerTrackingProps) {
   const [status, setStatus] = useState<TrackingStatus>('assigned');
   const [practitionerLocation, setPractitionerLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -170,16 +170,14 @@ export function PractitionerTracking({
             </Avatar>
             <div className="flex-1">
               <p className="font-medium">{practitionerName}</p>
-              {practitionerPhone && (
-                <Button
-                  variant="link"
-                  className="h-auto p-0 text-sm"
-                  onClick={() => window.open(`tel:${practitionerPhone}`)}
-                >
-                  <Phone className="mr-1 h-3 w-3" />
-                  {practitionerPhone}
-                </Button>
-              )}
+              <Button
+                variant="link"
+                className="h-auto p-0 text-sm"
+                onClick={onOpenMessaging}
+              >
+                <MessageSquare className="mr-1 h-3 w-3" />
+                Envoyer un message
+              </Button>
             </div>
           </div>
 
