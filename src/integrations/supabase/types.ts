@@ -2472,6 +2472,7 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       promote_to_super_admin: { Args: { user_email: string }; Returns: Json }
       repair_missing_profiles: { Args: never; Returns: Json }
+      repair_practitioner_balances: { Args: never; Returns: Json }
       request_consultation_confirmation: { Args: never; Returns: undefined }
       reserve_group_session_spot: {
         Args: { p_patient_id: string; p_session_id: string }
