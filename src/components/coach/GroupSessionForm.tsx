@@ -3,12 +3,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
-import { MIN_SESSION_PRICE } from "@/lib/session-validation";
+import { MIN_SESSION_PRICE, MAX_SESSION_PRICE, MAX_PARTICIPANTS, MIN_PARTICIPANTS } from "@/lib/session-validation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { cn } from "@/lib/utils";
 
 export interface GroupSessionFormData {
   session_name: string;
@@ -26,9 +27,10 @@ export interface GroupSessionFormData {
 interface GroupSessionFormProps {
   formData: GroupSessionFormData;
   onChange: (data: GroupSessionFormData) => void;
+  fieldErrors?: Record<string, string>;
 }
 
-export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) {
+export function GroupSessionForm({ formData, onChange, fieldErrors = {} }: GroupSessionFormProps) {
   const { data: user } = useSupabaseUser();
   
   // Vérifier que l'utilisateur est bien un coach sportif
@@ -65,9 +67,27 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
     );
   }
 
-  const updateField = (field: keyof GroupSessionFormData, value: any) => {
+  const updateField = (field: keyof GroupSessionFormData, value: unknown) => {
     onChange({ ...formData, [field]: value });
   };
+
+  // Handlers pour les champs numériques avec validation
+  const handleNumberChange = (field: 'max_participants' | 'min_participants' | 'price_per_person', value: string) => {
+    const parsed = parseInt(value, 10);
+    
+    if (field === 'price_per_person') {
+      // Garder la valeur même si invalide pour permettre l'édition, mais borner
+      const safeValue = isNaN(parsed) ? MIN_SESSION_PRICE : Math.max(0, Math.min(MAX_SESSION_PRICE, parsed));
+      updateField(field, safeValue);
+    } else {
+      // Participants
+      const safeValue = isNaN(parsed) ? MIN_PARTICIPANTS : Math.max(MIN_PARTICIPANTS, Math.min(MAX_PARTICIPANTS, parsed));
+      updateField(field, safeValue);
+    }
+  };
+
+  // Calculer la date minimum (aujourd'hui)
+  const today = new Date().toISOString().split('T')[0];
 
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -78,8 +98,13 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           placeholder="Ex: Yoga matinal, Cardio intensif..."
           value={formData.session_name}
           onChange={(e) => updateField('session_name', e.target.value)}
+          maxLength={100}
+          className={cn(fieldErrors.session_name && "border-destructive")}
           required
         />
+        {fieldErrors.session_name && (
+          <p className="text-xs text-destructive">{fieldErrors.session_name}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -88,7 +113,7 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           value={formData.session_type}
           onValueChange={(value) => updateField('session_type', value)}
         >
-          <SelectTrigger>
+          <SelectTrigger className={cn(fieldErrors.session_type && "border-destructive")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -97,6 +122,9 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
             <SelectItem value="groupe">Groupe</SelectItem>
           </SelectContent>
         </Select>
+        {fieldErrors.session_type && (
+          <p className="text-xs text-destructive">{fieldErrors.session_type}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -105,14 +133,19 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           id="price_per_person"
           type="number"
           min={MIN_SESSION_PRICE}
-          step="1000"
+          max={MAX_SESSION_PRICE}
+          step="500"
           value={formData.price_per_person}
-          onChange={(e) => updateField('price_per_person', parseInt(e.target.value))}
+          onChange={(e) => handleNumberChange('price_per_person', e.target.value)}
+          className={cn(fieldErrors.price_per_person && "border-destructive")}
           required
         />
         <p className="text-xs text-muted-foreground">
-          Prix minimum: {MIN_SESSION_PRICE.toLocaleString()} FCFA
+          Min: {MIN_SESSION_PRICE.toLocaleString()} FCFA
         </p>
+        {fieldErrors.price_per_person && (
+          <p className="text-xs text-destructive">{fieldErrors.price_per_person}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -120,12 +153,16 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
         <Input
           id="max_participants"
           type="number"
-          min="1"
-          max="50"
+          min={MIN_PARTICIPANTS}
+          max={MAX_PARTICIPANTS}
           value={formData.max_participants}
-          onChange={(e) => updateField('max_participants', parseInt(e.target.value))}
+          onChange={(e) => handleNumberChange('max_participants', e.target.value)}
+          className={cn(fieldErrors.max_participants && "border-destructive")}
           required
         />
+        {fieldErrors.max_participants && (
+          <p className="text-xs text-destructive">{fieldErrors.max_participants}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -133,11 +170,16 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
         <Input
           id="min_participants"
           type="number"
-          min="1"
+          min={MIN_PARTICIPANTS}
+          max={formData.max_participants}
           value={formData.min_participants}
-          onChange={(e) => updateField('min_participants', parseInt(e.target.value))}
+          onChange={(e) => handleNumberChange('min_participants', e.target.value)}
+          className={cn(fieldErrors.min_participants && "border-destructive")}
           required
         />
+        {fieldErrors.min_participants && (
+          <p className="text-xs text-destructive">{fieldErrors.min_participants}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -145,10 +187,15 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
         <Input
           id="scheduled_date"
           type="date"
+          min={today}
           value={formData.scheduled_date}
           onChange={(e) => updateField('scheduled_date', e.target.value)}
+          className={cn(fieldErrors.scheduled_date && "border-destructive")}
           required
         />
+        {fieldErrors.scheduled_date && (
+          <p className="text-xs text-destructive">{fieldErrors.scheduled_date}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -158,8 +205,12 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           type="time"
           value={formData.start_time}
           onChange={(e) => updateField('start_time', e.target.value)}
+          className={cn(fieldErrors.start_time && "border-destructive")}
           required
         />
+        {fieldErrors.start_time && (
+          <p className="text-xs text-destructive">{fieldErrors.start_time}</p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -169,8 +220,12 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           type="time"
           value={formData.end_time}
           onChange={(e) => updateField('end_time', e.target.value)}
+          className={cn(fieldErrors.end_time && "border-destructive")}
           required
         />
+        {fieldErrors.end_time && (
+          <p className="text-xs text-destructive">{fieldErrors.end_time}</p>
+        )}
       </div>
 
       <div className="col-span-2 space-y-2">
@@ -186,6 +241,9 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           placeholder="Rechercher un lieu (ex: Parc de Hann, Plage de Ngor...)"
           required
         />
+        {fieldErrors.location && (
+          <p className="text-xs text-destructive">{fieldErrors.location}</p>
+        )}
       </div>
 
       <div className="col-span-2 space-y-2">
@@ -195,8 +253,16 @@ export function GroupSessionForm({ formData, onChange }: GroupSessionFormProps) 
           placeholder="Décrivez la séance, les objectifs, le matériel nécessaire..."
           value={formData.description}
           onChange={(e) => updateField('description', e.target.value)}
+          maxLength={2000}
           rows={3}
+          className={cn(fieldErrors.description && "border-destructive")}
         />
+        <p className="text-xs text-muted-foreground">
+          {formData.description.length}/2000 caractères
+        </p>
+        {fieldErrors.description && (
+          <p className="text-xs text-destructive">{fieldErrors.description}</p>
+        )}
       </div>
     </div>
   );
