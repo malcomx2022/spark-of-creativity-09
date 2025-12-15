@@ -6,7 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { GroupSessionForm, GroupSessionFormData } from "./GroupSessionForm";
-import { validateSessionForm, MIN_SESSION_PRICE } from "@/lib/session-validation";
+import { sessionFormSchema, sanitizeSessionFormData, MIN_SESSION_PRICE } from "@/lib/session-validation";
+import { withTimeout } from "@/lib/network-timeout";
 
 interface CreateGroupSessionDialogProps {
   coachId: string;
@@ -25,38 +26,109 @@ const initialFormData: GroupSessionFormData = {
   description: ""
 };
 
+// Helper pour extraire les erreurs Zod (compatible v3 et v4)
+function getZodErrors(error: unknown): Array<{ path: (string | number)[]; message: string }> {
+  if (error && typeof error === 'object') {
+    if ('issues' in error && Array.isArray((error as any).issues)) {
+      return (error as any).issues;
+    }
+    if ('errors' in error && Array.isArray((error as any).errors)) {
+      return (error as any).errors;
+    }
+  }
+  return [];
+}
+
 export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<GroupSessionFormData>(initialFormData);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setFieldErrors({});
 
     try {
-      // Validate form
-      const validationError = validateSessionForm(formData);
-      if (validationError) {
+      // Sanitize and validate form data with Zod
+      const sanitizedData = sanitizeSessionFormData(formData);
+      const validationResult = sessionFormSchema.safeParse(sanitizedData);
+      
+      if (!validationResult.success) {
+        // Collect all field errors
+        const zodErrors = getZodErrors(validationResult.error);
+        const errors: Record<string, string> = {};
+        zodErrors.forEach(err => {
+          const field = String(err.path[0]);
+          if (!errors[field]) {
+            errors[field] = err.message;
+          }
+        });
+        setFieldErrors(errors);
+        
+        const firstError = zodErrors[0];
         toast({
-          title: validationError.title,
-          description: validationError.description,
+          title: "Erreur de validation",
+          description: firstError?.message || "Veuillez vérifier les champs du formulaire",
           variant: "destructive"
         });
         setIsSubmitting(false);
         return;
       }
 
-      const { error } = await supabase
-        .from("group_sessions")
-        .insert({
-          coach_id: coachId,
-          ...formData
-        });
+      // Check for duplicate sessions (same date, time, location)
+      const { data: existingSessions, error: checkError } = await withTimeout(
+        supabase
+          .from("group_sessions")
+          .select("id, session_name")
+          .eq("coach_id", coachId)
+          .eq("scheduled_date", validationResult.data.scheduled_date)
+          .eq("start_time", validationResult.data.start_time)
+          .neq("status", "annulee")
+      );
 
-      if (error) throw error;
+      if (checkError) throw checkError;
+
+      if (existingSessions && existingSessions.length > 0) {
+        toast({
+          title: "Séance en conflit",
+          description: `Vous avez déjà une séance "${existingSessions[0].session_name}" prévue à cette date et heure.`,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Insert the session
+      const { error } = await withTimeout(
+        supabase
+          .from("group_sessions")
+          .insert({
+            coach_id: coachId,
+            session_name: validationResult.data.session_name,
+            session_type: validationResult.data.session_type,
+            max_participants: validationResult.data.max_participants,
+            min_participants: validationResult.data.min_participants,
+            scheduled_date: validationResult.data.scheduled_date,
+            start_time: validationResult.data.start_time,
+            end_time: validationResult.data.end_time,
+            price_per_person: validationResult.data.price_per_person,
+            location: validationResult.data.location,
+            description: validationResult.data.description || null,
+            status: 'planifiee'
+          })
+      );
+
+      if (error) {
+        // Handle specific Supabase errors
+        if (error.message.includes('coach_sportif')) {
+          throw new Error("Seuls les coachs sportifs peuvent créer des séances de groupe");
+        }
+        throw error;
+      }
 
       toast({
         title: "Séance créée !",
@@ -67,10 +139,12 @@ export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogPr
       
       setOpen(false);
       setFormData(initialFormData);
+      setFieldErrors({});
     } catch (error: any) {
+      console.error("Erreur création séance:", error);
       toast({
         title: "Erreur",
-        description: error.message,
+        description: error.message || "Une erreur est survenue lors de la création de la séance",
         variant: "destructive"
       });
     } finally {
@@ -78,8 +152,17 @@ export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogPr
     }
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      // Reset form when closing
+      setFormData(initialFormData);
+      setFieldErrors({});
+    }
+    setOpen(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="practitioner" className="gap-2">
           <Plus className="h-4 w-4" />
@@ -95,10 +178,14 @@ export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogPr
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <GroupSessionForm formData={formData} onChange={setFormData} />
+          <GroupSessionForm 
+            formData={formData} 
+            onChange={setFormData}
+            fieldErrors={fieldErrors}
+          />
 
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Annuler
             </Button>
             <Button type="submit" variant="practitioner" disabled={isSubmitting}>

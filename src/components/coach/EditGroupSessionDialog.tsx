@@ -5,7 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { GroupSessionForm, GroupSessionFormData } from "./GroupSessionForm";
-import { validateSessionForm, MIN_SESSION_PRICE } from "@/lib/session-validation";
+import { sessionFormSchema, sanitizeSessionFormData, MIN_SESSION_PRICE } from "@/lib/session-validation";
+import { withTimeout } from "@/lib/network-timeout";
 
 interface EditGroupSessionDialogProps {
   session: {
@@ -38,11 +39,25 @@ const initialFormData: GroupSessionFormData = {
   description: ""
 };
 
+// Helper pour extraire les erreurs Zod (compatible v3 et v4)
+function getZodErrors(error: unknown): Array<{ path: (string | number)[]; message: string }> {
+  if (error && typeof error === 'object') {
+    if ('issues' in error && Array.isArray((error as any).issues)) {
+      return (error as any).issues;
+    }
+    if ('errors' in error && Array.isArray((error as any).errors)) {
+      return (error as any).errors;
+    }
+  }
+  return [];
+}
+
 export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGroupSessionDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<GroupSessionFormData>(initialFormData);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (session) {
@@ -58,6 +73,7 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
         location: session.location,
         description: session.description || ""
       });
+      setFieldErrors({});
     }
   }, [session]);
 
@@ -66,24 +82,52 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
     if (!session) return;
     
     setIsSubmitting(true);
+    setFieldErrors({});
 
     try {
-      // Validate form
-      const validationError = validateSessionForm(formData);
-      if (validationError) {
+      // Sanitize and validate form data with Zod
+      const sanitizedData = sanitizeSessionFormData(formData);
+      const validationResult = sessionFormSchema.safeParse(sanitizedData);
+      
+      if (!validationResult.success) {
+        // Collect all field errors
+        const zodErrors = getZodErrors(validationResult.error);
+        const errors: Record<string, string> = {};
+        zodErrors.forEach(err => {
+          const field = String(err.path[0]);
+          if (!errors[field]) {
+            errors[field] = err.message;
+          }
+        });
+        setFieldErrors(errors);
+        
+        const firstError = zodErrors[0];
         toast({
-          title: validationError.title,
-          description: validationError.description,
+          title: "Erreur de validation",
+          description: firstError?.message || "Veuillez vérifier les champs du formulaire",
           variant: "destructive"
         });
         setIsSubmitting(false);
         return;
       }
 
-      const { error } = await supabase
-        .from("group_sessions")
-        .update(formData)
-        .eq('id', session.id);
+      const { error } = await withTimeout(
+        supabase
+          .from("group_sessions")
+          .update({
+            session_name: validationResult.data.session_name,
+            session_type: validationResult.data.session_type,
+            max_participants: validationResult.data.max_participants,
+            min_participants: validationResult.data.min_participants,
+            scheduled_date: validationResult.data.scheduled_date,
+            start_time: validationResult.data.start_time,
+            end_time: validationResult.data.end_time,
+            price_per_person: validationResult.data.price_per_person,
+            location: validationResult.data.location,
+            description: validationResult.data.description || null,
+          })
+          .eq('id', session.id)
+      );
 
       if (error) throw error;
 
@@ -95,9 +139,10 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
       onOpenChange(false);
     } catch (error: any) {
+      console.error("Erreur modification séance:", error);
       toast({
         title: "Erreur",
-        description: error.message,
+        description: error.message || "Une erreur est survenue lors de la modification",
         variant: "destructive"
       });
     } finally {
@@ -105,8 +150,15 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
     }
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setFieldErrors({});
+    }
+    onOpenChange(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Modifier la séance de groupe</DialogTitle>
@@ -116,10 +168,14 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <GroupSessionForm formData={formData} onChange={setFormData} />
+          <GroupSessionForm 
+            formData={formData} 
+            onChange={setFormData}
+            fieldErrors={fieldErrors}
+          />
 
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Annuler
             </Button>
             <Button type="submit" variant="practitioner" disabled={isSubmitting}>
