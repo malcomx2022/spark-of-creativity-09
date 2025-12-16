@@ -139,37 +139,77 @@ Deno.serve(async (req) => {
         const releaseAmount = payment.net_amount || payment.amount;
 
         // Récupérer le solde actuel du praticien
-        const { data: balance, error: balanceError } = await supabase
+        let { data: balance, error: balanceError } = await supabase
           .from('practitioner_balances')
           .select('*')
           .eq('practitioner_id', practitionerId)
           .single();
 
         if (balanceError || !balance) {
-          console.error(`Error fetching balance for practitioner ${practitionerId}:`, balanceError);
-          results.failed++;
-          results.errors.push({
-            payment_id: payment.id,
-            error: 'Balance not found',
-            details: balanceError,
-          });
-          continue;
+          console.log(`Balance not found for practitioner ${practitionerId}, initializing...`);
+          // Créer le solde s'il n'existe pas
+          const { data: newBalance, error: createError } = await supabase
+            .from('practitioner_balances')
+            .insert({
+              practitioner_id: practitionerId,
+              balance_available: 0,
+              balance_pending: 0,
+              balance_on_hold: releaseAmount, // Initialiser avec le montant à libérer
+              currency: 'XOF'
+            })
+            .select()
+            .single();
+          
+          if (createError) {
+            console.error(`Error creating balance for practitioner ${practitionerId}:`, createError);
+            results.failed++;
+            results.errors.push({
+              payment_id: payment.id,
+              error: 'Failed to create balance',
+              details: createError,
+            });
+            continue;
+          }
+          balance = newBalance;
         }
 
-        // Vérifier que le montant est cohérent
+        // Vérifier que le montant est cohérent - si pas assez on_hold, réparer d'abord
         if (balance.balance_on_hold < releaseAmount) {
-          console.error(
-            `Inconsistent balance for practitioner ${practitionerId}: ` +
-            `on_hold=${balance.balance_on_hold}, release_amount=${releaseAmount}`
-          );
-          results.failed++;
-          results.errors.push({
-            payment_id: payment.id,
-            error: 'Insufficient on_hold balance',
-            on_hold: balance.balance_on_hold,
-            release_amount: releaseAmount,
-          });
-          continue;
+          console.log(`Inconsistent balance detected, attempting repair for practitioner ${practitionerId}`);
+          
+          // Tenter de réparer via la fonction RPC
+          const { data: repairResult, error: repairError } = await supabase.rpc('repair_practitioner_balances');
+          
+          if (repairError) {
+            console.error(`Repair failed for practitioner ${practitionerId}:`, repairError);
+          } else {
+            console.log(`Repair result:`, repairResult);
+            
+            // Re-vérifier le solde après réparation
+            const { data: repairedBalance } = await supabase
+              .from('practitioner_balances')
+              .select('*')
+              .eq('practitioner_id', practitionerId)
+              .single();
+            
+            if (repairedBalance && repairedBalance.balance_on_hold >= releaseAmount) {
+              balance = repairedBalance;
+              console.log(`Balance repaired successfully for practitioner ${practitionerId}`);
+            } else {
+              console.error(
+                `Balance still inconsistent after repair for practitioner ${practitionerId}: ` +
+                `on_hold=${repairedBalance?.balance_on_hold || 0}, release_amount=${releaseAmount}`
+              );
+              results.failed++;
+              results.errors.push({
+                payment_id: payment.id,
+                error: 'Insufficient on_hold balance after repair',
+                on_hold: repairedBalance?.balance_on_hold || 0,
+                release_amount: releaseAmount,
+              });
+              continue;
+            }
+          }
         }
 
         // ✅ UTILISER la fonction atomique pour garantir la cohérence

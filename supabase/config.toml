@@ -131,3 +131,6 @@ verify_jwt = true
 
 [functions.retry-group-session-payment]
 verify_jwt = true
+
+[functions.repair-balances]
+verify_jwt = true
