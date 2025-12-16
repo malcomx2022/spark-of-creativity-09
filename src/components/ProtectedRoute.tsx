@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 
@@ -6,6 +6,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { type AppRole, resolveUserRole, getDashboardPathForRole } from '@/lib/userRoleResolver';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
+
+// Cache mémoire pour les rôles utilisateur (évite les appels répétés)
+const roleCache = new Map<string, { role: AppRole; timestamp: number }>();
+const ROLE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 function ProtectedRouteSkeleton() {
   return (
@@ -31,6 +35,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [roleStatus, setRoleStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
   const location = useLocation();
+  const hasCheckedSession = useRef(false);
   
   // Initialize idle timeout for auto-logout
   useIdleTimeout();
@@ -39,6 +44,9 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     let isMounted = true;
 
     const syncSession = async () => {
+      // Éviter les appels multiples
+      if (hasCheckedSession.current && session) return;
+      
       const { data, error } = await supabase.auth.getSession();
 
       if (!isMounted) return;
@@ -50,6 +58,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         return;
       }
 
+      hasCheckedSession.current = true;
       setSession(data.session ?? null);
       setStatus(data.session ? 'authenticated' : 'unauthenticated');
     };
@@ -61,6 +70,11 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
 
       setSession(nextSession ?? null);
       setStatus(nextSession ? 'authenticated' : 'unauthenticated');
+      
+      // Invalider le cache de rôle si déconnexion
+      if (!nextSession) {
+        roleCache.clear();
+      }
     });
 
     return () => {
@@ -75,14 +89,29 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     }
 
     let isMounted = true;
+    const userId = session.user.id;
 
     const resolveRole = async () => {
+      // Vérifier le cache d'abord
+      const cached = roleCache.get(userId);
+      const now = Date.now();
+      
+      if (cached && (now - cached.timestamp) < ROLE_CACHE_DURATION) {
+        if (isMounted) {
+          setUserRole(cached.role);
+          setRoleStatus('ready');
+        }
+        return;
+      }
+
       setRoleStatus('loading');
 
       try {
-        const { role } = await resolveUserRole(session.user.id);
+        const { role } = await resolveUserRole(userId);
 
         if (isMounted) {
+          // Mettre en cache le rôle
+          roleCache.set(userId, { role, timestamp: now });
           setUserRole(role);
           setRoleStatus('ready');
         }
