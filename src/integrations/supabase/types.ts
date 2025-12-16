@@ -2470,6 +2470,48 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      mask_appointment_internal_notes: {
+        Args: {
+          appointment_row: Database["public"]["Tables"]["appointments"]["Row"]
+        }
+        Returns: {
+          address: string
+          confirmation_requested_at: string | null
+          consultation_ended_at: string | null
+          consultation_started_at: string | null
+          created_at: string | null
+          date: string
+          duration: number
+          id: string
+          internal_notes: string | null
+          notes: string | null
+          patient_confirmed_at: string | null
+          patient_id: string
+          patient_name: string
+          payment_amount: number | null
+          payment_expires_at: string | null
+          practitioner_id: string
+          practitioner_last_location_update: string | null
+          practitioner_latitude: number | null
+          practitioner_longitude: number | null
+          practitioner_name: string
+          practitioner_status: string | null
+          pre_visit_checklist: Json | null
+          reason: string
+          specialty: string
+          status: string
+          time: string
+          updated_at: string | null
+          urgency_level: string | null
+          visit_status: string | null
+        }
+        SetofOptions: {
+          from: "appointments"
+          to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       promote_to_super_admin: { Args: { user_email: string }; Returns: Json }
       repair_missing_profiles: { Args: never; Returns: Json }
       repair_practitioner_balances: { Args: never; Returns: Json }
