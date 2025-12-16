@@ -46,11 +46,8 @@ async function fetchPractitioners() {
 
     return (data ?? []).map(row => mapPractitioner(row, false));
   } else {
-    // Unauthenticated users use the public view with limited data (no GPS, phone, address)
-    const { data, error } = await supabase
-      .from('practitioners_public_view')
-      .select('*')
-      .order('name', { ascending: true });
+    // Unauthenticated users use the secure function with limited data (no GPS, phone, address)
+    const { data, error } = await supabase.rpc('get_public_practitioners');
 
     if (error) {
       if (import.meta.env.DEV) {

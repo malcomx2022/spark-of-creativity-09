@@ -14,6 +14,7 @@ import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { ROUTES } from "@/lib/routes";
+import { usePublicStats } from "@/hooks/usePublicStats";
 
 const HeroImage = () => {
   const [imageError, setImageError] = useState(false);
@@ -89,26 +90,14 @@ const Index = () => {
     staleTime: 10 * 60 * 1000,
   });
 
-  const { data: realStats } = useQuery({
-    queryKey: ['homepage-stats'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('homepage_stats')
-        .select('*')
-        .single();
+  // Utilisation des statistiques publiques sécurisées
+  const { data: publicStats } = usePublicStats();
 
-      if (error) {
-        console.error('Error fetching homepage stats:', error);
-        return { practitioners: 0, patients: 0 };
-      }
-
-      return {
-        practitioners: data?.practitioners_count || 0,
-        patients: data?.patients_count || 0
-      };
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  const realStats = {
+    practitioners: publicStats?.practitioners_count || 0,
+    patients: publicStats?.patients_count || 0,
+    coaches: publicStats?.coaches_count || 0,
+  };
 
   const handleDashboardClick = async () => {
     setDashboardLoading(true);
