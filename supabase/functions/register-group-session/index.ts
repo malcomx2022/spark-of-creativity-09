@@ -16,7 +16,7 @@ interface RegisterSessionRequest {
 }
 
 // ✅ CORRECTION P0 #4: Timeout pour les appels edge functions
-const PAYMENT_TIMEOUT_MS = 30000; // 30 secondes
+const PAYMENT_TIMEOUT_MS = 60000; // 60 secondes (FedaPay peut être lent)
 
 async function invokeWithTimeout<T>(
   supabase: any,

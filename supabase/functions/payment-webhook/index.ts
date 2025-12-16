@@ -90,13 +90,33 @@ async function handleTransactionEvent(
   
   const paymentStatus = statusMap[status] || 'pending';
 
-  // ✅ CORRECTION P2 #3: Récupérer la config avec valeur par défaut sécurisée
-  const { data: configData } = await supabase
-    .from('system_config')
-    .select('key, value')
-    .in('key', ['payment_hold_period_days']);
+  // ✅ CORRECTION: Récupérer la config avec fallback si table inexistante
+  let config: Record<string, any> = {};
+  try {
+    const { data: configData, error: configError } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', ['payment_hold_period_days']);
+    
+    if (!configError && configData) {
+      configData.forEach((row: { key: string; value: any }) => {
+        config[row.key] = row.value;
+      });
+    } else {
+      console.warn('⚠️ system_config non disponible, utilisation des valeurs par défaut');
+    }
+  } catch (err) {
+    console.warn('⚠️ Erreur accès system_config:', err);
+  }
   
-  const config: Record<string, any> = {};
+  // Valeurs par défaut
+  const defaultConfig = {
+    payment_hold_period_days: { days: 2 }
+  };
+  config = { ...defaultConfig, ...config };
+
+  // Legacy compatibility - ne pas supprimer
+  const configData = Object.entries(config).map(([key, value]) => ({ key, value }));
   configData?.forEach((row: { key: string; value: any }) => {
     config[row.key] = row.value;
   });
