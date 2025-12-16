@@ -668,23 +668,12 @@ serve(async (req) => {
     console.log('Payment stored in database:', payment);
     console.log('Fee breakdown:', feeBreakdown);
 
-    // ✅ practitioner_id déjà récupéré en début de fonction (ligne ~157)
-
+    // ✅ CORRECTION: Ne PAS initialiser la balance ici
+    // La balance sera mise à jour uniquement par le webhook lors de la confirmation du paiement
+    // Cela évite d'incrémenter balance_pending avant que le paiement soit réellement confirmé
     if (practitionerId) {
-      console.log('Initializing practitioner balance:', practitionerId, feeBreakdown.netAmount);
-      
-      const { error: balanceError } = await supabase.rpc('initialize_payment_balance', {
-        p_payment_id: payment.id,
-        p_practitioner_id: practitionerId,
-        p_net_amount: feeBreakdown.netAmount
-      });
-
-      if (balanceError) {
-        console.error('Error initializing practitioner balance:', balanceError);
-        // Non-bloquant, on log juste l'erreur
-      } else {
-        console.log('Practitioner balance initialized successfully');
-      }
+      console.log('Practitioner ID for this payment:', practitionerId);
+      console.log('⏳ Balance will be updated by webhook on payment confirmation (not here)');
     } else {
       console.warn('⚠️ Aucun practitioner_id trouvé pour ce paiement:', appointmentId);
     }

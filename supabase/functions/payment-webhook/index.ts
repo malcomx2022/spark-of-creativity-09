@@ -321,13 +321,17 @@ async function handleTransactionEvent(
         const parts = payment.appointment_id.split('_');
         const participantId = parts[parts.length - 1];
         
-        // Supprimer la participation si le paiement échoue
-        await supabase
+        // ✅ CORRECTION: Ne PAS supprimer le participant, marquer comme failed pour permettre retry
+        const { error: updatePartError } = await supabase
           .from('group_session_participants')
-          .delete()
+          .update({ payment_status: 'failed' })
           .eq('id', participantId);
           
-        console.log(`Group session participant ${participantId} deleted due to payment failure`);
+        if (updatePartError) {
+          console.error(`Failed to update participant ${participantId}:`, updatePartError);
+        } else {
+          console.log(`Group session participant ${participantId} marked as failed (can retry)`);
+        }
       } else {
         await supabase
           .from('appointments')
@@ -552,8 +556,11 @@ serve(async (req) => {
       }
       console.log('✅ Signature verified');
     } else {
-      console.warn('⚠️ No webhook secret configured - SECURITY RISK in production');
-      if (fedapayMode === 'live') {
+      // ✅ CORRECTION: En sandbox sans secret, logger un avertissement clair mais continuer
+      if (fedapayMode === 'sandbox') {
+        console.warn('⚠️ SANDBOX MODE: Webhook secret not configured - signature verification skipped');
+        console.warn('⚠️ This is acceptable for development but MUST be configured for production');
+      } else {
         console.error('❌ CRITICAL: Webhook secret required in live mode');
         return new Response(
           JSON.stringify({ error: 'Webhook secret not configured' }),
