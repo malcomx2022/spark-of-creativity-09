@@ -591,26 +591,45 @@ serve(async (req) => {
     // ÉTAPE 3: Le paiement est prêt, le patient recevra le lien par notification
     console.log('✅ Étape 3 : Transaction et token créés, paiement prêt pour le patient');
 
-    // Récupérer la configuration des frais
-    const { data: configData } = await supabase
-      .from('system_config')
-      .select('key, value')
-      .in('key', [
-        'payment_commission_rate',
-        'payment_gateway_fees',
-        'payment_rounding_mode',
-        'payment_hold_period_days'
-      ]);
+    // Récupérer la configuration des frais avec fallback si table inexistante
+    let systemConfig: Record<string, any> = {};
+    try {
+      const { data: configData, error: configError } = await supabase
+        .from('system_config')
+        .select('key, value')
+        .in('key', [
+          'payment_commission_rate',
+          'payment_gateway_fees',
+          'payment_rounding_mode',
+          'payment_hold_period_days'
+        ]);
+      
+      if (!configError && configData) {
+        configData.forEach(row => {
+          systemConfig[row.key] = row.value;
+        });
+      } else {
+        console.warn('⚠️ system_config non disponible, utilisation des valeurs par défaut:', configError?.message);
+      }
+    } catch (configErr) {
+      console.warn('⚠️ Erreur accès system_config, utilisation des valeurs par défaut:', configErr);
+    }
     
-    const systemConfig: Record<string, any> = {};
-    configData?.forEach(row => {
-      systemConfig[row.key] = row.value;
-    });
+    // Valeurs par défaut sécurisées si config non disponible
+    const defaultConfig = {
+      payment_commission_rate: { rate: 0.05 }, // 5%
+      payment_gateway_fees: { percentage: 0.015, fixed: 100, paid_by: 'platform' as const }, // 1.5% + 100 XOF
+      payment_rounding_mode: { decimals: 2 },
+      payment_hold_period_days: { days: 2 }
+    };
+    
+    // Fusionner avec les valeurs par défaut
+    const mergedConfig = { ...defaultConfig, ...systemConfig };
     
     // Calculer les frais
-    const feeConfig = parseFeeConfig(systemConfig);
+    const feeConfig = parseFeeConfig(mergedConfig);
     const feeBreakdown = calculateFees(amountToCharge, 'XOF', feeConfig);
-    const holdPeriodDays = systemConfig.payment_hold_period_days?.days || 2;
+    const holdPeriodDays = mergedConfig.payment_hold_period_days?.days || 2;
     const holdUntil = calculateHoldUntil(holdPeriodDays);
 
     console.log('Fee breakdown:', feeBreakdown);
