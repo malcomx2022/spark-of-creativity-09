@@ -246,6 +246,44 @@ export type Database = {
           },
         ]
       }
+      care_notes_sharing_log: {
+        Row: {
+          care_note_id: string
+          changed_at: string | null
+          changed_by: string | null
+          id: string
+          new_shared_value: boolean | null
+          old_shared_value: boolean | null
+          practitioner_id: string
+        }
+        Insert: {
+          care_note_id: string
+          changed_at?: string | null
+          changed_by?: string | null
+          id?: string
+          new_shared_value?: boolean | null
+          old_shared_value?: boolean | null
+          practitioner_id: string
+        }
+        Update: {
+          care_note_id?: string
+          changed_at?: string | null
+          changed_by?: string | null
+          id?: string
+          new_shared_value?: boolean | null
+          old_shared_value?: boolean | null
+          practitioner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_notes_sharing_log_care_note_id_fkey"
+            columns: ["care_note_id"]
+            isOneToOne: false
+            referencedRelation: "care_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consent_versions: {
         Row: {
           consent_type: Database["public"]["Enums"]["consent_type"]
@@ -362,6 +400,38 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      consultation_reports_access_log: {
+        Row: {
+          access_type: string
+          accessed_at: string | null
+          accessed_by: string
+          id: string
+          report_id: string
+        }
+        Insert: {
+          access_type: string
+          accessed_at?: string | null
+          accessed_by: string
+          id?: string
+          report_id: string
+        }
+        Update: {
+          access_type?: string
+          accessed_at?: string | null
+          accessed_by?: string
+          id?: string
+          report_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_reports_access_log_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "consultation_reports"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dispute_messages: {
         Row: {
@@ -2361,6 +2431,38 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_events_sanitized: {
+        Row: {
+          created_at: string | null
+          event_data_safe: Json | null
+          event_type: string | null
+          id: string | null
+          payment_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_data_safe?: never
+          event_type?: string | null
+          id?: string | null
+          payment_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_data_safe?: never
+          event_type?: string | null
+          id?: string | null
+          payment_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practitioners_public_view: {
         Row: {
           available: boolean | null
@@ -2433,6 +2535,7 @@ export type Database = {
         Returns: number
       }
       check_otp_rate_limit: { Args: { phone: string }; Returns: Json }
+      check_overdue_disputes: { Args: never; Returns: undefined }
       cleanup_expired_payment_slots: { Args: never; Returns: undefined }
       cleanup_old_file_access_logs: { Args: never; Returns: undefined }
       cleanup_old_otp_attempts: { Args: never; Returns: undefined }
@@ -2518,6 +2621,10 @@ export type Database = {
       request_consultation_confirmation: { Args: never; Returns: undefined }
       reserve_group_session_spot: {
         Args: { p_patient_id: string; p_session_id: string }
+        Returns: Json
+      }
+      round_coordinates: {
+        Args: { lat: number; lng: number; precision_level?: string }
         Returns: Json
       }
       sync_all_practitioner_balances: { Args: never; Returns: Json }
