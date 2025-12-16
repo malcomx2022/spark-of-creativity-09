@@ -2557,6 +2557,27 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: string
       }
+      get_public_practitioners: {
+        Args: never
+        Returns: {
+          available: boolean
+          bio: string
+          certifications: string[]
+          communes_served: string[]
+          id: string
+          image: string
+          intervention_radius: number
+          intervention_zone: string
+          languages: string[]
+          name: string
+          practitioner_type: Database["public"]["Enums"]["practitioner_type"]
+          rating: number
+          session_types: string[]
+          specialty: string
+          years_experience: number
+        }[]
+      }
+      get_public_stats: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
