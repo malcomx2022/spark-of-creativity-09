@@ -145,9 +145,10 @@ export function PaymentDialog({
         if (error) throw error;
         setFedapayConfig(data);
         
-        // En mode sandbox, pré-remplir avec un numéro de test MTN
-        if (data?.environment === 'sandbox' && !phoneNumber) {
-          setPhoneNumber('+22966000001'); // Numéro de test MTN Benin
+        // ✅ CORRECTION: Ne plus pré-remplir de numéro de test en sandbox
+        // L'utilisateur doit entrer son propre numéro de téléphone
+        if (data?.environment === 'sandbox') {
+          console.log('🔧 Mode sandbox FedaPay activé');
         }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
