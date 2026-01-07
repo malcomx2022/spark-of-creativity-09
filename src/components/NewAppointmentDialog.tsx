@@ -283,6 +283,25 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           console.log('📌 Praticien pré-sélectionné:', preselectedPractitioner);
         }
 
+        // ✅ CORRECTION #3: Vérifier que le praticien est disponible et validé KYC
+        const { data: practitionerCheck, error: checkError } = await supabase
+          .from('practitioners')
+          .select('id, available, kyc_status')
+          .eq('id', preselectedPractitioner.id)
+          .single();
+
+        if (checkError || !practitionerCheck) {
+          throw new Error('Praticien introuvable');
+        }
+
+        if (practitionerCheck.kyc_status !== 'approved') {
+          throw new Error('Ce praticien n\'est pas encore validé pour exercer');
+        }
+
+        if (!practitionerCheck.available) {
+          throw new Error('Ce praticien n\'est pas disponible actuellement');
+        }
+
         const appointmentPayload = {
           specialty: preselectedPractitioner.specialty,
           date: data.date.toISOString(),

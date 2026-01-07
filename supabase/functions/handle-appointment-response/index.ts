@@ -158,13 +158,8 @@ serve(async (req) => {
       // Utiliser le statut actuel comme condition pour éviter race condition
       let paymentAmount = appointment.payment_amount ?? null;
 
-      // Récupérer le type de praticien pour déterminer le tarif
-      const { data: practitionerData } = await supabase
-        .from('practitioners')
-        .select('practitioner_type')
-        .eq('id', appointment.practitioner_id)
-        .single();
-
+      // ✅ CORRECTION #4: Réutiliser les données practitioner déjà récupérées plus haut
+      // La variable 'practitioner' existe déjà (ligne ~90) avec practitioner_type
       const isCoach = practitionerData?.practitioner_type === 'coach_sportif';
 
       if (paymentAmount === null) {
