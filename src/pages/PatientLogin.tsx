@@ -96,11 +96,12 @@ export default function PatientLogin() {
         return;
       }
 
-      // Si l'utilisateur a un profil praticien mais pas de profil patient, le rediriger
-      if (practitionerData && !profileData) {
+      // P3 FIX: Si l'utilisateur a un profil praticien, bloquer même s'il a aussi un profil patient
+      // Les praticiens doivent utiliser leur propre interface de connexion
+      if (practitionerData) {
         toast({
-          title: "Erreur de connexion",
-          description: "Ce compte est un compte praticien. Veuillez utiliser la connexion praticien.",
+          title: "Compte praticien détecté",
+          description: "Ce compte est enregistré comme praticien. Veuillez utiliser la connexion praticien pour accéder à votre tableau de bord complet.",
           variant: "destructive"
         });
         await supabase.auth.signOut();

@@ -8,8 +8,9 @@ import { type AppRole, resolveUserRole, getDashboardPathForRole } from '@/lib/us
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 
 // Cache mémoire pour les rôles utilisateur (évite les appels répétés)
+// P4 FIX: Réduit à 1 minute pour limiter le risque d'accès après révocation de rôle
 const roleCache = new Map<string, { role: AppRole; timestamp: number }>();
-const ROLE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const ROLE_CACHE_DURATION = 1 * 60 * 1000; // 1 minute (réduit depuis 5 min pour sécurité)
 
 function ProtectedRouteSkeleton() {
   return (
