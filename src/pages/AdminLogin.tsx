@@ -33,7 +33,29 @@ export default function AdminLogin() {
         description: error.message,
         variant: "destructive"
       });
-    } else if (data.user) {
+      setIsSubmitting(false);
+      return;
+    }
+    
+    if (data.user) {
+      // Vérifier le rôle admin avant redirection
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+
+      if (!roleData?.role) {
+        toast({
+          title: "Accès refusé",
+          description: "Ce compte n'a pas les privilèges administrateur.",
+          variant: "destructive"
+        });
+        await supabase.auth.signOut();
+        setIsSubmitting(false);
+        return;
+      }
+
       toast({
         title: "Connexion réussie !",
         description: "Bienvenue sur le tableau de bord administrateur.",
