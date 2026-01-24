@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,13 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    if (!RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured');
+    }
+
+    const resend = new Resend(RESEND_API_KEY);
 
     const { practitionerId, status, comment }: NotificationRequest = await req.json();
 
@@ -51,11 +59,11 @@ serve(async (req: Request) => {
     const phone = practitioner.phone;
     
     // Déterminer le dashboard approprié selon le type de praticien
-    const baseUrl = supabaseUrl.split('/functions')[0];
+    const siteUrl = Deno.env.get('SITE_URL') || 'https://domicares.life';
     const dashboardPath = practitioner.practitioner_type === 'coach_sportif' 
       ? '/dashboard/coach' 
       : '/dashboard/practitioner';
-    const dashboardUrl = `${baseUrl}${dashboardPath}`;
+    const dashboardUrl = `${siteUrl}${dashboardPath}`;
 
     // Préparer le contenu selon le statut
     let emailSubject = '';
@@ -115,7 +123,7 @@ serve(async (req: Request) => {
               <h3 style="color: #d97706; margin-top: 0;">📞 Que faire maintenant ?</h3>
               <p style="color: #92400e; margin: 0;">
                 Contactez notre équipe support pour plus d'informations :<br>
-                📧 Email : support@domicares.com<br>
+                📧 Email : support@domicares.life<br>
                 📱 Téléphone : +229 XX XX XX XX
               </p>
             </div>
@@ -174,54 +182,37 @@ serve(async (req: Request) => {
         throw new Error('Statut invalide');
     }
 
-    // Envoyer l'email via SendGrid
-    const sendGridApiKey = Deno.env.get('SENDGRID_API_KEY');
     let emailSent = false;
+    let smsSent = false;
 
-    if (sendGridApiKey) {
-      try {
-        const sgResponse = await fetch('https://api.sendgrid.com/v3/mail/send', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${sendGridApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            personalizations: [{
-              to: [{ email }],
-              subject: emailSubject,
-            }],
-            from: {
-              email: 'noreply@domicares.com',
-              name: 'DomiCares',
-            },
-            content: [{
-              type: 'text/html',
-              value: emailContent,
-            }],
-          }),
-        });
+    // Envoyer l'email via Resend
+    try {
+      const { data, error } = await resend.emails.send({
+        from: 'DomiCares <noreply@domicares.life>',
+        to: [email],
+        subject: emailSubject,
+        html: emailContent,
+      });
 
-        if (sgResponse.ok) {
-          emailSent = true;
-          console.log('[send-kyc-status-notification] Email sent successfully');
-        } else {
-          const errorText = await sgResponse.text();
-          console.error('[send-kyc-status-notification] SendGrid error:', errorText);
-        }
-      } catch (error) {
-        console.error('[send-kyc-status-notification] Email error:', error);
+      if (error) {
+        console.error('[send-kyc-status-notification] Resend error:', error);
+      } else {
+        emailSent = true;
+        console.log('[send-kyc-status-notification] Email sent successfully via Resend:', data);
       }
+    } catch (error) {
+      console.error('[send-kyc-status-notification] Email error:', error);
     }
 
     // Envoyer le SMS via Twilio (si configuré et si téléphone disponible)
     const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
     const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
     const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
-    let smsSent = false;
 
     if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber && phone) {
       try {
+        const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+        
         const twilioResponse = await fetch(
           `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
           {
@@ -231,7 +222,7 @@ serve(async (req: Request) => {
               'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: new URLSearchParams({
-              To: phone,
+              To: formattedPhone,
               From: twilioPhoneNumber,
               Body: smsContent,
             }),
