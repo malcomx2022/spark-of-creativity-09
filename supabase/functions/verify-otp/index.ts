@@ -271,8 +271,85 @@ serve(async (req) => {
       session = signInData.session;
 
     } else {
-      console.log('New user, creating account...');
+      console.log('New user, checking if phone exists in practitioners...');
       isNewUser = true;
+
+      // P2 FIX: Vérifier si le numéro existe déjà dans practitioners
+      // Si oui, c'est un praticien existant sans profil - ne pas créer un compte patient
+      const { data: existingPractitioner } = await supabase
+        .from('practitioners')
+        .select('id, user_id, name')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+
+      let userType = 'patient';
+      
+      if (existingPractitioner) {
+        console.log('Phone belongs to practitioner:', existingPractitioner.id);
+        
+        // Si le praticien a déjà un user_id, on ne peut pas créer un nouveau compte
+        if (existingPractitioner.user_id) {
+          // Récupérer l'utilisateur existant et créer une session
+          const { data: authUser, error: getUserError } = await supabase.auth.admin.getUserById(
+            existingPractitioner.user_id
+          );
+
+          if (!getUserError && authUser.user) {
+            // Générer un mot de passe temporaire et créer une session
+            const tempPassword = crypto.randomUUID();
+            await supabase.auth.admin.updateUserById(existingPractitioner.user_id, { password: tempPassword });
+            
+            const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+            const clientSupabase = createClient(supabaseUrl, anonKey);
+            
+            const { data: signInData, error: signInError } = await clientSupabase.auth.signInWithPassword({
+              email: authUser.user.email!,
+              password: tempPassword,
+            });
+
+            if (signInError) {
+              console.error('Error signing in practitioner:', signInError);
+              throw signInError;
+            }
+
+            // Log successful verification
+            await supabase.from('admin_audit_logs').insert({
+              admin_id: existingPractitioner.user_id,
+              action: 'otp_login_success_practitioner',
+              entity_type: 'auth',
+              entity_id: existingPractitioner.user_id,
+              details: {
+                phone: normalizedPhone,
+                is_new_user: false,
+                practitioner_id: existingPractitioner.id,
+              },
+            });
+
+            return new Response(
+              JSON.stringify({
+                success: true,
+                verified: true,
+                is_new_user: false,
+                session: {
+                  access_token: signInData.session?.access_token,
+                  refresh_token: signInData.session?.refresh_token,
+                  expires_at: signInData.session?.expires_at,
+                  expires_in: signInData.session?.expires_in,
+                },
+                user: {
+                  id: existingPractitioner.user_id,
+                  phone: normalizedPhone,
+                  email: authUser.user.email,
+                },
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+        
+        // Praticien sans user_id - marquer comme praticien pour la création
+        userType = 'practitioner';
+      }
 
       // Generate a temporary password for the new user
       const tempPassword = crypto.randomUUID();
@@ -287,7 +364,7 @@ serve(async (req) => {
         user_metadata: {
           phone: normalizedPhone,
           phone_verified: true,
-          user_type: 'patient', // Par défaut, les utilisateurs OTP sont des patients
+          user_type: userType, // Déterminé dynamiquement selon l'existence dans practitioners
         },
       });
 
