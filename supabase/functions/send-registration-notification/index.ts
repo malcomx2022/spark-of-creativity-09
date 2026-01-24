@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,18 +24,16 @@ serve(async (req: Request) => {
 
     console.log('Sending registration notification:', { email, phone, fullName, userType });
 
-    const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
     const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
     const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
 
-    if (!SENDGRID_API_KEY) {
-      throw new Error('SENDGRID_API_KEY is not configured');
+    if (!RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured');
     }
 
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-      console.warn('Twilio credentials not fully configured, skipping SMS');
-    }
+    const resend = new Resend(RESEND_API_KEY);
 
     // Prepare messages based on user type
     let emailSubject: string;
@@ -109,40 +108,20 @@ serve(async (req: Request) => {
       sms: false,
     };
 
-    // Send email via SendGrid
+    // Send email via Resend
     try {
-      const emailResponse = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [
-            {
-              to: [{ email }],
-              subject: emailSubject,
-            }
-          ],
-          from: {
-            email: 'noreply@domicares.life',
-            name: 'DomiCares'
-          },
-          content: [
-            {
-              type: 'text/html',
-              value: emailContent
-            }
-          ]
-        })
+      const { data, error } = await resend.emails.send({
+        from: 'DomiCares <noreply@domicares.life>',
+        to: [email],
+        subject: emailSubject,
+        html: emailContent,
       });
 
-      if (emailResponse.ok) {
-        console.log('Email sent successfully via SendGrid');
-        notifications.email = true;
+      if (error) {
+        console.error('Resend error:', error);
       } else {
-        const errorText = await emailResponse.text();
-        console.error('SendGrid error:', emailResponse.status, errorText);
+        console.log('Email sent successfully via Resend:', data);
+        notifications.email = true;
       }
     } catch (emailError) {
       console.error('Error sending email:', emailError);
