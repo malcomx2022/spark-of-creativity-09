@@ -621,7 +621,7 @@ serve(async (req) => {
     
     // Valeurs par défaut sécurisées si config non disponible
     const defaultConfig = {
-      payment_commission_rate: { rate: 0.05 }, // 5%
+      payment_commission_rate: { rate: 0.37 }, // 37% - Taux officiel Domicares
       payment_gateway_fees: { percentage: 0.015, fixed: 100, paid_by: 'platform' as const }, // 1.5% + 100 XOF
       payment_rounding_mode: { decimals: 2 },
       payment_hold_period_days: { days: 2 }

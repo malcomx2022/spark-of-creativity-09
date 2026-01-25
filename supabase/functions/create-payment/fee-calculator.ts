@@ -9,7 +9,7 @@
  */
 
 export interface FeeConfig {
-  commissionRate: number;        // Ex: 0.05 pour 5%
+  commissionRate: number;        // Ex: 0.37 pour 37% (taux Domicares)
   gatewayFeeFixed: number;        // Ex: 0 XOF
   gatewayFeePercentage: number;   // Ex: 0.02 pour 2%
   gatewayFeePaidBy: 'patient' | 'platform';
@@ -101,13 +101,13 @@ export function parseFeeConfig(systemConfig: {
     decimals: number;
   };
 }): FeeConfig {
-  // ✅ CORRECTION P1 #4: Commission par défaut à 5% (pas 37%)
-  // 37% était une erreur - la norme du marché est 5-15%
+  // Commission plateforme Domicares: 37%
+  // Ce taux couvre les frais de fonctionnement, support, et développement de la plateforme
   const commissionRate = systemConfig.payment_commission_rate?.rate;
-  const validCommissionRate = typeof commissionRate === 'number' && commissionRate >= 0 && commissionRate <= 0.30
-    ? commissionRate 
-    : 0.05; // 5% par défaut, max 30%
-  
+  const validCommissionRate = typeof commissionRate === 'number' && commissionRate >= 0 && commissionRate <= 0.50
+    ? commissionRate
+    : 0.37; // 37% par défaut (taux officiel Domicares), max 50%
+
   return {
     commissionRate: validCommissionRate,
     gatewayFeeFixed: systemConfig.payment_gateway_fees?.fixed || 0,
