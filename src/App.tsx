@@ -15,6 +15,7 @@ import NotFound from "./pages/NotFound";
 
 // Lazy loading pour les pages secondaires
 const PatientSignup = lazy(() => import("./pages/PatientSignup"));
+const PublicRoute = lazy(() => import("./components/PublicRoute"));
 const PractitionerSignup = lazy(() => import("./pages/PractitionerSignup"));
 const CoachDashboard = lazy(() => import("./pages/CoachDashboard"));
 const Triage = lazy(() => import("./pages/Triage"));
@@ -112,8 +113,16 @@ const App = () => (
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/confirm-email" element={<ConfirmEmail />} />
                 <Route path="/admin/login" element={<AdminLogin />} />
-                <Route path="/signup/patient" element={<PatientSignup />} />
-                <Route path="/signup/practitioner" element={<PractitionerSignup />} />
+                <Route path="/signup/patient" element={
+                  <PublicRoute>
+                    <PatientSignup />
+                  </PublicRoute>
+                } />
+                <Route path="/signup/practitioner" element={
+                  <PublicRoute>
+                    <PractitionerSignup />
+                  </PublicRoute>
+                } />
                 <Route path="/registration-success" element={<RegistrationSuccess />} />
                 <Route path="/complete-registration" element={<Navigate to="/signup/practitioner" replace />} />
                 <Route path="/triage" element={<Triage />} />
