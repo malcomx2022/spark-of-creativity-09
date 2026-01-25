@@ -129,8 +129,9 @@ export default function PractitionerDashboard() {
       }
 
       // ✅ CORRECTION P1-7: Vérifier le succès de l'edge function avant mise à jour locale
-      if (!data?.success) {
-        throw new Error(data?.error || 'La requête a échoué côté serveur');
+      const response = data as { success?: boolean; error?: string } | null;
+      if (!response?.success) {
+        throw new Error(response?.error || 'La requête a échoué côté serveur');
       }
 
       // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
@@ -194,8 +195,9 @@ export default function PractitionerDashboard() {
       }
 
       // ✅ CORRECTION P1-7: Vérifier le succès de l'edge function avant mise à jour locale
-      if (!data?.success) {
-        throw new Error(data?.error || 'La requête a échoué côté serveur');
+      const response = data as { success?: boolean; error?: string; practitioner?: { name: string } } | null;
+      if (!response?.success) {
+        throw new Error(response?.error || 'La requête a échoué côté serveur');
       }
 
       // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
@@ -207,8 +209,8 @@ export default function PractitionerDashboard() {
 
       toast({
         title: 'Rendez-vous refusé',
-        description: data?.practitioner
-          ? `Le rendez-vous a été réassigné à ${data.practitioner.name}.`
+        description: response?.practitioner
+          ? `Le rendez-vous a été réassigné à ${response.practitioner.name}.`
           : 'Le système recherche un praticien alternatif pour le patient.'
       });
     } catch (error: any) {
