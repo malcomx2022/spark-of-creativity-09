@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const COACH_REVENUE_RATE = 0.95; // 95% pour le coach, 5% commission plateforme
+export const COACH_REVENUE_RATE = 0.63; // 63% pour le coach, 37% commission plateforme (taux officiel Domicares)
 export const MIN_SESSION_PRICE = 5000; // Prix minimum en FCFA
 export const MAX_SESSION_PRICE = 500000; // Prix maximum en FCFA
 export const MAX_PARTICIPANTS = 100;
