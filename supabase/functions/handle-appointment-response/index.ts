@@ -537,11 +537,15 @@ serve(async (req) => {
 
           console.log(`✅ Rendez-vous réassigné à ${prac.name}`);
 
+          // ✅ CORRECTION P2-10: Ne retourner que les infos nécessaires (pas de données sensibles)
           return new Response(
-            JSON.stringify({ 
-              success: true, 
+            JSON.stringify({
+              success: true,
               message: 'Rendez-vous réassigné à un nouveau praticien',
-              practitioner: prac 
+              practitioner: {
+                id: prac.id,
+                name: prac.name
+              }
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );

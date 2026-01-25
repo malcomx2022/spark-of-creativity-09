@@ -85,6 +85,8 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
 
     const events: string[] = [];
     let uidCounter = 0;
+    // ✅ CORRECTION P2-3: Compteur pour créneaux ignorés
+    let skippedSlots = 0;
 
     for (let i = 0; i < daysToGenerate; i += 1) {
       const currentDate = new Date(now);
@@ -101,6 +103,7 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
         // ✅ CORRECTION P1-10: Validation des heures avant split
         if (!availability.start_time || !availability.end_time) {
           console.warn('Créneau avec heures invalides ignoré:', availability);
+          skippedSlots++;
           continue;
         }
 
@@ -109,6 +112,7 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
 
         if (startParts.length < 2 || endParts.length < 2) {
           console.warn('Format d\'heure invalide:', availability.start_time, availability.end_time);
+          skippedSlots++;
           continue;
         }
 
@@ -118,6 +122,7 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
         // Vérifier que les valeurs sont des nombres valides
         if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
           console.warn('Valeurs d\'heure non numériques:', availability);
+          skippedSlots++;
           continue;
         }
 
@@ -192,10 +197,19 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
     link.remove();
     URL.revokeObjectURL(url);
 
-    toast({
-      title: "Export réussi",
-      description: "Votre planning vient d'être téléchargé.",
-    });
+    // ✅ CORRECTION P2-3: Message approprié selon le résultat
+    if (skippedSlots > 0) {
+      toast({
+        title: "Export réussi avec avertissement",
+        description: `Votre planning a été téléchargé. ${skippedSlots} créneau(x) avec des données invalides ont été ignorés.`,
+        variant: "default",
+      });
+    } else {
+      toast({
+        title: "Export réussi",
+        description: "Votre planning vient d'être téléchargé.",
+      });
+    }
   };
 
   return (

@@ -11,7 +11,8 @@ function toAppointment(row: Tables<'appointments'>): Appointment {
     id: row.id,
     patientName: row.patient_name ?? 'Patient',
     patientId: row.patient_id,
-    practitionerId: row.practitioner_id ?? 'pending',
+    // ✅ CORRECTION P2-9: Utiliser chaîne vide au lieu de 'pending' (invalide comme UUID)
+    practitionerId: row.practitioner_id ?? '',
     practitionerName: row.practitioner_name ?? "En attente d'attribution",
     specialty: row.specialty ?? 'Non spécifié',
     date: row.date ?? '',

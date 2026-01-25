@@ -210,10 +210,20 @@ serve(async (req) => {
       // Filtrer les paiements de séances de groupe appartenant au praticien (coach)
       let groupPaymentsTotal = 0;
       if (groupSessionPayments && groupSessionPayments.length > 0) {
-        // Extraire les session IDs uniques depuis appointment_id (format: group_session_{sessionId}_{participantId})
+        // ✅ CORRECTION P2-5: Validation robuste du parsing appointment_id
+        // Format attendu: group_session_{sessionId}_{participantId}
         const sessionIds = [...new Set(
           groupSessionPayments
-            .map(p => p.appointment_id?.split('_')[2])
+            .map(p => {
+              if (!p.appointment_id) return null;
+              const parts = p.appointment_id.split('_');
+              // Vérifier le format: doit avoir au moins 3 parties et commencer par 'group_session'
+              if (parts.length < 3 || parts[0] !== 'group' || parts[1] !== 'session') {
+                console.warn('Format appointment_id invalide:', p.appointment_id);
+                return null;
+              }
+              return parts[2]; // sessionId
+            })
             .filter(Boolean)
         )];
 

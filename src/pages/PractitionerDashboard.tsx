@@ -47,9 +47,10 @@ export default function PractitionerDashboard() {
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
-  const [awaitingLimit, setAwaitingLimit] = useState(10);
-  const [confirmedLimit, setConfirmedLimit] = useState(10);
-  const [completedLimit, setCompletedLimit] = useState(10);
+  // ✅ CORRECTION P2-6: Augmenter la pagination par défaut pour les praticiens actifs
+  const [awaitingLimit, setAwaitingLimit] = useState(20);
+  const [confirmedLimit, setConfirmedLimit] = useState(20);
+  const [completedLimit, setCompletedLimit] = useState(15);
   const practitionerUserId = user?.id;
   
   // 🔔 Activer les notifications en temps réel
@@ -338,7 +339,8 @@ export default function PractitionerDashboard() {
       <main className="container mx-auto px-4 py-8 mt-20">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Tableau de bord Praticien</h1>
-          <p className="text-muted-foreground">Bienvenue, {practitioner.name}</p>
+          {/* ✅ CORRECTION P2-1: Fallback pour practitioner.name */}
+          <p className="text-muted-foreground">Bienvenue, {practitioner?.name || practitionerName || 'Praticien'}</p>
         </div>
 
         {/* Alerte pour les comptes non opérationnels */}

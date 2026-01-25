@@ -55,6 +55,7 @@ serve(async (req) => {
       .order('created_at', { ascending: false })
       .limit(1);
 
+    // ✅ CORRECTION P2-7: Vérifier fetchError ET pendingPayments ensemble
     if (fetchError) {
       console.error('Error fetching payment:', fetchError);
       return new Response(
