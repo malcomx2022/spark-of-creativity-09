@@ -130,11 +130,17 @@ serve(async (req) => {
       throw new Error('Vous n\'êtes pas enregistré comme praticien');
     }
 
+    // ✅ CORRECTION P1-5: Vérifier explicitement que le RDV a un praticien assigné
+    if (!appointment.practitioner_id) {
+      console.error('❌ Rendez-vous sans praticien assigné:', { appointmentId });
+      throw new Error('Ce rendez-vous n\'a pas encore été assigné à un praticien');
+    }
+
     if (practitionerData.id !== appointment.practitioner_id) {
-      console.error('❌ Tentative non autorisée:', { 
-        userId: user.id, 
-        practitionerId: practitionerData.id, 
-        appointmentPractitionerId: appointment.practitioner_id 
+      console.error('❌ Tentative non autorisée:', {
+        userId: user.id,
+        practitionerId: practitionerData.id,
+        appointmentPractitionerId: appointment.practitioner_id
       });
       throw new Error('Vous n\'êtes pas autorisé à traiter ce rendez-vous');
     }
@@ -157,6 +163,12 @@ serve(async (req) => {
       // Le praticien accepte → passer en statut "confirmed" (en attente de paiement)
       // Utiliser le statut actuel comme condition pour éviter race condition
       let paymentAmount = appointment.payment_amount ?? null;
+
+      // ✅ CORRECTION P1-10: Valider que payment_amount est un nombre positif si défini
+      if (paymentAmount !== null && (typeof paymentAmount !== 'number' || paymentAmount <= 0 || !Number.isFinite(paymentAmount))) {
+        console.warn('⚠️ Montant invalide détecté, recalcul nécessaire:', paymentAmount);
+        paymentAmount = null; // Forcer le recalcul
+      }
 
       // ✅ CORRECTION #4: Réutiliser les données practitioner déjà récupérées plus haut
       // La variable 'practitioner' existe déjà (ligne ~90) avec practitioner_type

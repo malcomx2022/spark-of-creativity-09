@@ -221,9 +221,17 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
   // ✅ CORRECTION P1-3: Protection contre le race condition au chargement
   // Ne réinitialiser le formulaire que quand les données sont vraiment chargées
+  // ET que l'utilisateur n'a pas de modifications en cours
   useEffect(() => {
     // Attendre que le chargement soit terminé et que les données soient disponibles
     if (isLoading || !paymentInfos) return;
+
+    // ✅ AMÉLIORATION P1-3: Ne pas écraser les modifications en cours de l'utilisateur
+    // Seulement réinitialiser si pas de changements non sauvegardés
+    if (formContext.hasChanges) {
+      console.log('Form has unsaved changes, skipping reset');
+      return;
+    }
 
     const info = paymentInfos.find((item) => item.payment_method === selectedMethod);
 
@@ -237,7 +245,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
       },
       isVerified: !!info?.is_verified,
     });
-  }, [paymentInfos, selectedMethod, practitionerName, isLoading]);
+  }, [paymentInfos, selectedMethod, practitionerName, isLoading, formContext.hasChanges]);
 
   const mutation = useMutation({
     mutationFn: async (payload: { verify: boolean }) => {

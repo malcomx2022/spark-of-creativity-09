@@ -420,33 +420,50 @@ serve(async (req) => {
 
     // If transfer was successful, update practitioner balance
     if (transferStatus === 'processing' && transferId) {
-      // Deduct from available balance
+      // ✅ CORRECTION P1-7: Calculer le nouveau solde au lieu de mettre 0
+      // Soustraire le montant du payout du solde disponible actuel
+      const currentBalance = practitioner.balance_available || 0;
+      const newBalance = Math.max(0, currentBalance - payoutAmount);
+
       await supabase
         .from('practitioner_balances')
         .update({
-          balance_available: 0, // Will be recalculated properly
+          balance_available: newBalance,
+          last_payout_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('practitioner_id', practitionerId);
-      
-      // Mark related payments as paid out
-      const { error: markError } = await supabase
-        .from('payments')
-        .update({ 
-          payout_status: 'paid_out',
-          updated_at: new Date().toISOString()
-        })
-        .eq('status', 'paid')
-        .eq('payout_status', 'ready')
-        .in('appointment_id', (
-          await supabase
-            .from('appointments')
-            .select('id')
-            .eq('practitioner_id', practitionerId)
-        ).data?.map(a => a.id) || []);
-      
-      if (markError) {
-        console.warn('Warning: Could not mark payments as paid_out:', markError);
+
+      console.log('Balance updated:', { currentBalance, payoutAmount, newBalance });
+
+      // ✅ CORRECTION P1-8: Récupérer d'abord les IDs des appointments du praticien
+      // puis mettre à jour les paiements avec une condition explicite
+      const { data: practitionerAppointments, error: apptError } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('practitioner_id', practitionerId);
+
+      if (apptError) {
+        console.warn('Warning: Could not fetch practitioner appointments:', apptError);
+      } else if (practitionerAppointments && practitionerAppointments.length > 0) {
+        const appointmentIds = practitionerAppointments.map(a => a.id);
+
+        // Mark related payments as paid out with explicit practitioner verification
+        const { error: markError } = await supabase
+          .from('payments')
+          .update({
+            payout_status: 'paid_out',
+            updated_at: new Date().toISOString()
+          })
+          .eq('status', 'paid')
+          .eq('payout_status', 'ready')
+          .in('appointment_id', appointmentIds);
+
+        if (markError) {
+          console.warn('Warning: Could not mark payments as paid_out:', markError);
+        } else {
+          console.log('Payments marked as paid_out for appointments:', appointmentIds.length);
+        }
       }
     }
 

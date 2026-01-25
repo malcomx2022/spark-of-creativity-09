@@ -149,11 +149,12 @@ serve(async (req) => {
       }
     }
 
-    // Remettre l'appointment en "confirmed" pour permettre un nouveau paiement
+    // ✅ CORRECTION P1-4: Remettre l'appointment en "pending_payment" (status avant paiement initié)
+    // Cela permet au patient de relancer le paiement sans avoir à recréer un RDV
     await supabase
       .from('appointments')
-      .update({ 
-        status: 'confirmed',
+      .update({
+        status: 'pending_payment',
         updated_at: new Date().toISOString()
       })
       .eq('id', appointmentId);

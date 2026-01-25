@@ -225,10 +225,11 @@ export default function PractitionerDashboard() {
   };
 
   const handleStatusUpdate = async (id: string, status: 'completed' | 'cancelled') => {
-    if (!practitionerId) {
+    // ✅ CORRECTION P1-1: Vérifier practitioner ET practitionerId ensemble
+    if (!practitioner || !practitionerId) {
       toast({
         title: 'Action impossible',
-        description: 'Vous devez être connecté pour modifier un rendez-vous.',
+        description: 'Données du praticien non disponibles. Veuillez rafraîchir la page.',
         variant: 'destructive',
       });
       return;

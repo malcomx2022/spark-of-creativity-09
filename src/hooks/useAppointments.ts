@@ -219,6 +219,16 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       const day = String(dateObj.getDate()).padStart(2, '0');
       const appointmentDate = `${year}-${month}-${day}`;
 
+      // ✅ CORRECTION P1-6: Vérifier que la date est dans le futur ou aujourd'hui
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const appointmentDateObj = new Date(appointmentDate);
+      appointmentDateObj.setHours(0, 0, 0, 0);
+
+      if (appointmentDateObj < today) {
+        throw new Error('Impossible de créer un rendez-vous pour une date passée. Veuillez sélectionner une date future.');
+      }
+
       // ✅ CORRECTION P1 #6: Vérification anti-doublon patient ET praticien
       if (data.practitionerId) {
         // Vérifier les RDV existants du patient avec ce praticien
