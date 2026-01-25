@@ -416,6 +416,9 @@ serve(async (req) => {
 
     const isProduction = Deno.env.get('FEDAPAY_MODE') === 'live';
 
+    // URL de base de l'application (pour le callback après paiement)
+    const appBaseUrl = Deno.env.get('APP_BASE_URL') || 'https://domicares.life';
+
     // Préparer les informations du client pour FedaPay
     const nameParts = payerName.trim().split(/\s+/);
     const firstname = nameParts[0] || 'Patient';
@@ -467,7 +470,7 @@ serve(async (req) => {
           // notify_url: webhook serveur pour suivi des statuts (appelé par FedaPay)
           notify_url: `${supabaseUrl}/functions/v1/payment-webhook`,
           // callback_url: redirection client après paiement (FedaPay ajoutera transaction_id automatiquement)
-          callback_url: `https://a6f5c529-824c-4e8e-a92c-c4acad4413c7.lovableproject.com/payment/callback?appointment_id=${appointmentId}`,
+          callback_url: `${appBaseUrl}/payment/callback?appointment_id=${appointmentId}`,
           customer: {
             firstname,
             lastname,
