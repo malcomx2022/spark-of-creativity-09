@@ -565,8 +565,9 @@ export function KYCQueue() {
                                     <div className="mt-2">
                                       <p className="text-sm font-medium mb-1">Diplômes déclarés :</p>
                                       <div className="flex gap-2 flex-wrap">
-                                        {practitioner.diplomas.map((diploma: string, index: number) => (
-                                          <Badge key={index} variant="secondary">{diploma}</Badge>
+                                        {/* P3: Use diploma value as key */}
+                                        {practitioner.diplomas.map((diploma: string) => (
+                                          <Badge key={diploma} variant="secondary">{diploma}</Badge>
                                         ))}
                                       </div>
                                     </div>
@@ -637,8 +638,9 @@ export function KYCQueue() {
                                     <div>
                                       <p className="text-sm font-medium mb-2">Certifications (optionnel) :</p>
                                       <div className="flex gap-2 flex-wrap">
-                                        {practitioner.certifications.map((cert: string, index: number) => (
-                                          <Badge key={index} variant="outline">
+                                        {/* P3: Use cert value as key */}
+                                        {practitioner.certifications.map((cert: string) => (
+                                          <Badge key={cert} variant="outline">
                                             {cert}
                                           </Badge>
                                         ))}

@@ -58,7 +58,10 @@ export function SandboxPaymentTester() {
       refetch();
       setPaymentId('');
     } catch (error: any) {
-      console.error('Error simulating webhook:', error);
+      // P3: Wrap console.error with DEV check
+      if (import.meta.env.DEV) {
+        console.error('Error simulating webhook:', error);
+      }
       toast({
         title: 'Erreur',
         description: error.message || 'Impossible de simuler le webhook',

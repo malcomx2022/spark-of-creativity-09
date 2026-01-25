@@ -56,7 +56,10 @@ export function FundsReleaseSection() {
       refetch();
     },
     onError: (error: any) => {
-      console.error('Error releasing funds:', error);
+      // P3: Wrap console.error with DEV check
+      if (import.meta.env.DEV) {
+        console.error('Error releasing funds:', error);
+      }
       toast.error('Erreur lors du release des fonds');
     },
   });
@@ -257,8 +260,9 @@ export function FundsReleaseSection() {
             <div className="mt-4 p-4 bg-destructive/10 rounded-lg">
               <h4 className="font-semibold text-destructive mb-2">Erreurs du dernier release:</h4>
               <div className="space-y-2">
+                {/* P3: Use payment_id as key */}
                 {lastRunResult.results.errors.map((error: any, index: number) => (
-                  <div key={index} className="text-sm">
+                  <div key={error.payment_id || `error-${index}`} className="text-sm">
                     <span className="font-mono">{error.payment_id?.slice(0, 8)}...</span>:{' '}
                     <span className="text-destructive">{error.error}</span>
                   </div>

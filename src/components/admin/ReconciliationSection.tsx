@@ -362,8 +362,9 @@ export default function ReconciliationSection() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
+                    {/* P3: Use recommendation text as key (or fallback to index) */}
                     {selectedReport.recommendations?.map((rec, index) => (
-                      <div key={index} className="p-3 bg-muted rounded-lg">
+                      <div key={`rec-${index}-${rec.slice(0, 20)}`} className="p-3 bg-muted rounded-lg">
                         <p className="text-sm">{rec}</p>
                       </div>
                     ))}
@@ -389,8 +390,9 @@ export default function ReconciliationSection() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
+                      {/* P3: Use combination of IDs as key */}
                       {selectedReport.anomalies?.map((anomaly, index) => (
-                        <TableRow key={index}>
+                        <TableRow key={anomaly.fedapay_id || anomaly.db_id || `anomaly-${index}`}>
                           <TableCell>
                             <Badge variant="outline">
                               {getAnomalyTypeLabel(anomaly.type)}

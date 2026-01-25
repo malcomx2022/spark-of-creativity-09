@@ -80,9 +80,15 @@ export function RecentPaymentsTable() {
                 {age} min
               </TableCell>
               <TableCell>
+                {/* P3: Add noreferrer and aria-label for accessibility */}
                 {payment.fedapay_payment_url && (
-                  <Button size="sm" variant="ghost" asChild>
-                    <a href={payment.fedapay_payment_url} target="_blank" rel="noopener">
+                  <Button size="sm" variant="ghost" asChild title="Voir sur FedaPay">
+                    <a
+                      href={payment.fedapay_payment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Ouvrir le paiement sur FedaPay"
+                    >
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   </Button>

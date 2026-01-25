@@ -233,8 +233,9 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
                   <div className="col-span-2">
                     <span className="text-muted-foreground">Communes desservies:</span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {practitioner.communes_served.map((commune, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
+                      {/* P3: Use value as key */}
+                      {practitioner.communes_served.map((commune) => (
+                        <Badge key={commune} variant="outline" className="text-xs">
                           {commune}
                         </Badge>
                       ))}
@@ -267,8 +268,9 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
                       <Languages className="h-3 w-3" /> Langues:
                     </span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {practitioner.languages.map((lang, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
+                      {/* P3: Use value as key */}
+                      {practitioner.languages.map((lang) => (
+                        <Badge key={lang} variant="outline" className="text-xs">
                           {lang}
                         </Badge>
                       ))}
@@ -279,8 +281,9 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
                   <div className="col-span-2">
                     <span className="text-muted-foreground">Diplômes:</span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {practitioner.diplomas.map((diploma, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
+                      {/* P3: Use value as key */}
+                      {practitioner.diplomas.map((diploma) => (
+                        <Badge key={diploma} variant="secondary" className="text-xs">
                           {diploma}
                         </Badge>
                       ))}
@@ -291,8 +294,9 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
                   <div className="col-span-2">
                     <span className="text-muted-foreground">Certifications:</span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {practitioner.certifications.map((cert, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
+                      {/* P3: Use value as key */}
+                      {practitioner.certifications.map((cert) => (
+                        <Badge key={cert} variant="secondary" className="text-xs">
                           {cert}
                         </Badge>
                       ))}

@@ -91,8 +91,9 @@ export function PaymentMetrics() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {metricCards.map((metric, index) => (
-        <Card key={index} className={metric.alert ? 'border-red-500 border-2' : ''}>
+      {/* P3: Use stable key instead of index */}
+      {metricCards.map((metric) => (
+        <Card key={metric.title} className={metric.alert ? 'border-red-500 border-2' : ''}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
               {metric.title}

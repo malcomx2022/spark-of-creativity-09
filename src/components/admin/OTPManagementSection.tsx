@@ -219,12 +219,15 @@ export function OTPManagementSection() {
                             )}
                           </TableCell>
                           <TableCell>
+                            {/* P3: Add tooltip and aria-label for accessibility */}
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   disabled={deleteAttempt.isPending}
+                                  title="Supprimer cette tentative"
+                                  aria-label="Supprimer cette tentative OTP"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>

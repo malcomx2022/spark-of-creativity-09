@@ -121,11 +121,14 @@ export function FinanceSection() {
       
       toast({ title: "Export réussi", description: `${payments.length} paiements exportés` });
     } catch (error) {
-      console.error('Export error:', error);
-      toast({ 
-        title: "Erreur d'export", 
+      // P3: Wrap console.error with DEV check
+      if (import.meta.env.DEV) {
+        console.error('Export error:', error);
+      }
+      toast({
+        title: "Erreur d'export",
         description: "Impossible d'exporter les données",
-        variant: "destructive" 
+        variant: "destructive"
       });
     }
   };
@@ -151,11 +154,14 @@ export function FinanceSection() {
       
       toast({ title: "Export réussi", description: `${payouts.length} reversements exportés` });
     } catch (error) {
-      console.error('Export error:', error);
-      toast({ 
-        title: "Erreur d'export", 
+      // P3: Wrap console.error with DEV check
+      if (import.meta.env.DEV) {
+        console.error('Export error:', error);
+      }
+      toast({
+        title: "Erreur d'export",
         description: "Impossible d'exporter les données",
-        variant: "destructive" 
+        variant: "destructive"
       });
     }
   };

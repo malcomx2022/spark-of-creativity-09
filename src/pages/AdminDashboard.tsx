@@ -86,12 +86,15 @@ export default function AdminDashboard() {
     window.location.href = "/";
   };
 
+  // P3: Use consistent loading indicator with spinner
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-destructive/10 to-destructive/5">
         <Header />
         <main className="container mx-auto p-4 mt-20">
-          <div className="text-center py-8">Chargement...</div>
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
         </main>
       </div>
     );
