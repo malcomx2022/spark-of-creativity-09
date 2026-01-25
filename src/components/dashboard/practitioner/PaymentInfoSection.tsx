@@ -219,8 +219,11 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     }
   }, [paymentInfos, selectedMethod]);
 
+  // ✅ CORRECTION P1-3: Protection contre le race condition au chargement
+  // Ne réinitialiser le formulaire que quand les données sont vraiment chargées
   useEffect(() => {
-    if (!paymentInfos) return;
+    // Attendre que le chargement soit terminé et que les données soient disponibles
+    if (isLoading || !paymentInfos) return;
 
     const info = paymentInfos.find((item) => item.payment_method === selectedMethod);
 
@@ -234,7 +237,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
       },
       isVerified: !!info?.is_verified,
     });
-  }, [paymentInfos, selectedMethod, practitionerName]);
+  }, [paymentInfos, selectedMethod, practitionerName, isLoading]);
 
   const mutation = useMutation({
     mutationFn: async (payload: { verify: boolean }) => {

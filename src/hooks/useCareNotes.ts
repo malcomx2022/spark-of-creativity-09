@@ -41,22 +41,31 @@ export function useCareNotes(practitionerId?: string) {
           .in('id', appointmentIds)
       );
 
+      // ✅ CORRECTION P1-11: Logger erreur critique et continuer avec indicateur
       if (apptError) {
-        console.warn('Error fetching appointments for care notes:', apptError);
+        console.error('Erreur critique lors du chargement des rendez-vous pour les notes:', apptError);
+        // Ne pas throw pour ne pas bloquer l'affichage des notes, mais marquer les données comme incomplètes
       }
 
       // Map appointments to notes
       const appointmentMap = new Map(appointments?.map(a => [a.id, a]) || []);
-      
-      return notes.map(note => ({
-        ...note,
-        appointments: appointmentMap.get(note.appointment_id) || {
-          practitioner_name: 'Praticien',
-          patient_name: 'Patient',
-          date: note.created_at || new Date().toISOString(),
-          specialty: 'Consultation'
-        }
-      })) as CareNoteWithAppointment[];
+
+      return notes.map(note => {
+        const appointment = appointmentMap.get(note.appointment_id);
+        const hasMissingData = !appointment;
+
+        return {
+          ...note,
+          // ✅ CORRECTION P1-11: Ajouter un indicateur pour les données manquantes
+          _hasMissingAppointmentData: hasMissingData,
+          appointments: appointment || {
+            practitioner_name: 'Praticien',
+            patient_name: hasMissingData ? 'Patient (données indisponibles)' : 'Patient',
+            date: note.created_at || new Date().toISOString(),
+            specialty: 'Consultation'
+          }
+        };
+      }) as CareNoteWithAppointment[];
     },
     enabled: !!practitionerId,
   });

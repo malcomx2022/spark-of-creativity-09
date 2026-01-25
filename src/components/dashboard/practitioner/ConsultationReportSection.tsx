@@ -144,15 +144,26 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
             {reports.map((report) => {
               const appointment = appointments.find(apt => apt.id === report.appointment_id);
               const patientName = appointment?.patientName || 'Patient inconnu';
+              // ✅ CORRECTION P1-8: Détecter les rapports avec données manquantes
+              const hasMissingData = !appointment;
               return (
-                <div 
-                  key={report.id} 
-                  className="border rounded-lg p-4 space-y-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                <div
+                  key={report.id}
+                  className={`border rounded-lg p-4 space-y-2 cursor-pointer hover:bg-muted/50 transition-colors ${hasMissingData ? 'border-orange-300 bg-orange-50/50 dark:bg-orange-950/10' : ''}`}
                   onClick={() => handleViewReport(report, patientName)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <p className="font-medium">{patientName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{patientName}</p>
+                        {/* ✅ CORRECTION P1-8: Badge visuel pour données manquantes */}
+                        {hasMissingData && (
+                          <Badge variant="outline" className="text-orange-600 border-orange-400 text-xs">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Données partielles
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {format(new Date(report.consultation_date), 'dd MMMM yyyy', { locale: fr })}
                       </p>

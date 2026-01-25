@@ -112,36 +112,43 @@ export default function PractitionerDashboard() {
 
       if (error) {
         const errorMessage = error.message || '';
-        
+
         // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
         if (errorMessage.includes('déjà été traité')) {
           toast({
             title: 'Rendez-vous déjà traité',
             description: 'Ce rendez-vous a déjà été accepté ou refusé.',
           });
+          // ✅ CORRECTION P1-7: Invalider quand même pour rafraîchir l'état
+          mutateAppointment.mutate({ id: appointmentId, data: {} });
           return;
         }
-        
+
         throw error;
+      }
+
+      // ✅ CORRECTION P1-7: Vérifier le succès de l'edge function avant mise à jour locale
+      if (!data?.success) {
+        throw new Error(data?.error || 'La requête a échoué côté serveur');
       }
 
       // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
       await mutateAppointment.mutateAsync({
         id: appointmentId,
-        data: { status: 'confirmed' }
+        data: { status: 'pending_payment' } // Le vrai statut après acceptation est pending_payment
       });
 
       toast({
         title: 'Rendez-vous accepté',
         description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
       });
-    } catch (error) {
+    } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error('Appointment accept error:', error);
       }
       toast({
         title: 'Erreur',
-        description: 'Impossible d\'accepter le rendez-vous.',
+        description: error?.message || 'Impossible d\'accepter le rendez-vous.',
         variant: 'destructive'
       });
     } finally {
@@ -170,36 +177,46 @@ export default function PractitionerDashboard() {
 
       if (error) {
         const errorMessage = error.message || '';
-        
+
         // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
         if (errorMessage.includes('déjà été traité')) {
           toast({
             title: 'Rendez-vous déjà traité',
             description: 'Ce rendez-vous a déjà été accepté ou refusé.',
           });
+          // ✅ CORRECTION P1-7: Invalider quand même pour rafraîchir l'état
+          mutateAppointment.mutate({ id: appointmentId, data: {} });
           return;
         }
-        
+
         throw error;
       }
 
+      // ✅ CORRECTION P1-7: Vérifier le succès de l'edge function avant mise à jour locale
+      if (!data?.success) {
+        throw new Error(data?.error || 'La requête a échoué côté serveur');
+      }
+
       // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
+      // Le statut peut être 'rejected' ou 'awaiting_practitioner' si réassigné
       await mutateAppointment.mutateAsync({
         id: appointmentId,
-        data: { status: 'rejected' }
+        data: {} // Laisser le serveur définir le statut final
       });
 
       toast({
         title: 'Rendez-vous refusé',
-        description: 'Le système recherche un praticien alternatif pour le patient.'
+        description: data?.practitioner
+          ? `Le rendez-vous a été réassigné à ${data.practitioner.name}.`
+          : 'Le système recherche un praticien alternatif pour le patient.'
       });
-    } catch (error) {
+    } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error('Appointment reject error:', error);
       }
       toast({
         title: 'Erreur',
-        description: 'Impossible de refuser le rendez-vous.',
+        description: error?.message || 'Impossible de refuser le rendez-vous.',
         variant: 'destructive'
       });
     } finally {

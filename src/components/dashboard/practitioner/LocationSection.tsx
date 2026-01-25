@@ -49,12 +49,15 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        
+
         setFormData(prev => ({
           ...prev,
           latitude,
           longitude,
         }));
+
+        // ✅ CORRECTION P1-6: Gérer correctement le résultat du geocoding
+        let addressFound = false;
 
         // Essayer de récupérer l'adresse via geocoding inversé (Mapbox ou autre API)
         try {
@@ -63,14 +66,20 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
             const response = await fetch(
               `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_TOKEN}`
             );
+
+            if (!response.ok) {
+              throw new Error(`HTTP error: ${response.status}`);
+            }
+
             const data = await response.json();
-            
+
             if (data.features && data.features.length > 0) {
               const address = data.features[0].place_name;
               setFormData(prev => ({
                 ...prev,
                 address,
               }));
+              addressFound = true;
             }
           }
         } catch (error) {
@@ -79,10 +88,19 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
 
         setGettingLocation(false);
 
-        toast({
-          title: 'Position obtenue',
-          description: 'Votre position actuelle a été récupérée avec succès.',
-        });
+        // ✅ CORRECTION P1-6: Message différent selon le résultat du geocoding
+        if (addressFound) {
+          toast({
+            title: 'Position obtenue',
+            description: 'Votre position et adresse ont été récupérées avec succès.',
+          });
+        } else {
+          toast({
+            title: 'Position GPS obtenue',
+            description: 'Coordonnées enregistrées. Veuillez saisir votre adresse manuellement.',
+            variant: 'default',
+          });
+        }
       },
       (error) => {
         console.error('Erreur de géolocalisation:', error);

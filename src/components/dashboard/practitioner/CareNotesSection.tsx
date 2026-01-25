@@ -163,47 +163,79 @@ export default function CareNotesSection() {
     setShowConfirmDialog(false);
 
     try {
-      const note = await persistNote(true);
-      setShareWithPatient(true);
-      queryClient.invalidateQueries({ queryKey: ['care-note', 'appointment', selectedAppointmentId] });
-
+      // ✅ CORRECTION P1-2: Vérifier que le RDV appartient bien au praticien connecté
       const appointment = completedAppointments.find((apt) => apt.id === selectedAppointmentId);
 
+      if (!appointment) {
+        toast({
+          title: 'Erreur',
+          description: 'Rendez-vous introuvable.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Vérification d'autorisation : le praticien doit être celui du RDV
+      if (appointment.practitionerId && appointment.practitionerId !== practitioner.id) {
+        toast({
+          title: 'Non autorisé',
+          description: 'Vous ne pouvez partager que les notes de vos propres consultations.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // ✅ CORRECTION P1-1: Persister la note AVANT de mettre à jour l'état local
+      const note = await persistNote(true);
+
+      // Notifications non-bloquantes (on continue même si elles échouent)
+      let notificationSuccess = true;
       if (appointment?.patientId) {
-        const { error: notificationError } = await supabase.from('notifications').insert({
-          user_id: appointment.patientId,
-          title: 'Nouvelle note de soin',
-          message: `Votre praticien ${practitioner?.name ?? ''} a partagé une note de soin pour votre rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')}.`,
-          link: `/patient/appointments/${appointment.id}`,
-          type: 'care_note',
-        });
+        try {
+          const { error: notificationError } = await supabase.from('notifications').insert({
+            user_id: appointment.patientId,
+            title: 'Nouvelle note de soin',
+            message: `Votre praticien ${practitioner?.name ?? ''} a partagé une note de soin pour votre rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')}.`,
+            link: `/patient/appointments/${appointment.id}`,
+            type: 'care_note',
+          });
 
-        if (notificationError) {
-          throw notificationError;
-        }
+          if (notificationError) {
+            console.warn('Erreur notification (non bloquant):', notificationError);
+            notificationSuccess = false;
+          }
 
-        const { error: messageError } = await supabase.from('messages').insert({
-          appointment_id: appointment.id,
-          sender_id: user.id,
-          content: 'Une nouvelle note de soin est disponible dans votre dossier patient.',
-        });
+          const { error: messageError } = await supabase.from('messages').insert({
+            appointment_id: appointment.id,
+            sender_id: user.id,
+            content: 'Une nouvelle note de soin est disponible dans votre dossier patient.',
+          });
 
-        if (messageError) {
-          throw messageError;
+          if (messageError) {
+            console.warn('Erreur message (non bloquant):', messageError);
+            notificationSuccess = false;
+          }
+        } catch (notifError) {
+          console.warn('Erreur lors des notifications (non bloquant):', notifError);
+          notificationSuccess = false;
         }
       }
 
+      // ✅ CORRECTION P1-1: Mettre à jour l'état APRÈS succès de persistNote
+      setShareWithPatient(true);
+      queryClient.invalidateQueries({ queryKey: ['care-note', 'appointment', selectedAppointmentId] });
+
       toast({
         title: 'Note partagée',
-        description: note?.shared_with_patient
+        description: notificationSuccess
           ? 'Le patient a été notifié de la note de soin.'
-          : 'Le partage a été enregistré.',
+          : 'La note a été partagée, mais la notification n\'a pas pu être envoyée.',
       });
     } catch (error) {
       console.error(error);
       toast({
         title: 'Erreur lors du partage',
-        description: 'Impossible de notifier le patient pour le moment.',
+        description: 'Impossible de partager la note pour le moment.',
         variant: 'destructive',
       });
     }

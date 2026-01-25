@@ -98,8 +98,28 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
 
       const dayAvailabilities = availabilities.filter((a) => a.day_of_week === currentDate.getDay());
       for (const availability of dayAvailabilities) {
-        const [startHour, startMinute] = availability.start_time.split(":").map(Number);
-        const [endHour, endMinute] = availability.end_time.split(":").map(Number);
+        // ✅ CORRECTION P1-10: Validation des heures avant split
+        if (!availability.start_time || !availability.end_time) {
+          console.warn('Créneau avec heures invalides ignoré:', availability);
+          continue;
+        }
+
+        const startParts = availability.start_time.split(":");
+        const endParts = availability.end_time.split(":");
+
+        if (startParts.length < 2 || endParts.length < 2) {
+          console.warn('Format d\'heure invalide:', availability.start_time, availability.end_time);
+          continue;
+        }
+
+        const [startHour, startMinute] = startParts.map(Number);
+        const [endHour, endMinute] = endParts.map(Number);
+
+        // Vérifier que les valeurs sont des nombres valides
+        if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
+          console.warn('Valeurs d\'heure non numériques:', availability);
+          continue;
+        }
 
         const start = new Date(currentDate);
         start.setHours(startHour, startMinute, 0, 0);
