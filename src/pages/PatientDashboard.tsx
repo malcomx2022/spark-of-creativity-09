@@ -181,6 +181,31 @@ export default function PatientDashboard() {
         throw new Error('Rendez-vous introuvable');
       }
 
+      // ✅ CORRECTION P1-3: Vérifier que le rendez-vous est dans un état valide pour le paiement
+      const validStatusesForPayment = ['pending_payment', 'confirmed', 'awaiting_practitioner'];
+      if (!validStatusesForPayment.includes(appointment.status)) {
+        if (appointment.status === 'cancelled') {
+          throw new Error('Ce rendez-vous a été annulé et ne peut plus être payé');
+        }
+        if (appointment.status === 'completed') {
+          throw new Error('Ce rendez-vous est déjà terminé');
+        }
+        if (appointment.status === 'rejected') {
+          throw new Error('Ce rendez-vous a été refusé par le praticien');
+        }
+        throw new Error(`Ce rendez-vous n'est pas éligible au paiement (statut: ${appointment.status})`);
+      }
+
+      // Vérifier si un paiement réussi existe déjà
+      const existingSuccessfulPayment = payments?.find(p =>
+        p.appointment_id === appointmentId &&
+        (p.status === 'paid' || p.payout_status === 'paid' || p.payout_status === 'ready')
+      );
+
+      if (existingSuccessfulPayment) {
+        throw new Error('Ce rendez-vous a déjà été payé');
+      }
+
       let amount = appointment.paymentAmount ?? null;
 
       if (amount === null) {
@@ -308,11 +333,16 @@ export default function PatientDashboard() {
 
         if (!shouldKeep) {
           clearPersistedPaymentState();
+          // ✅ CORRECTION P1-2: Nettoyer l'état local seulement si l'utilisateur choisit de ne pas garder
+          setAppointmentIdForPayment(null);
+          setPaymentAmount(null);
         }
+        // Si shouldKeep=true, on garde l'état local pour permettre la reprise
+      } else {
+        // Pas de paiement en cours, nettoyer normalement
+        setAppointmentIdForPayment(null);
+        setPaymentAmount(null);
       }
-
-      setAppointmentIdForPayment(null);
-      setPaymentAmount(null);
     }
     setPaymentDialogOpen(open);
   }, []);
@@ -328,15 +358,71 @@ export default function PatientDashboard() {
 
   const handleCancel = async (id: string) => {
     try {
+      // ✅ CORRECTION P1-1: Vérifier que le rendez-vous appartient au patient actuel
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) {
+        toast({
+          title: 'Session expirée',
+          description: 'Veuillez vous reconnecter pour continuer.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Vérifier l'ownership du rendez-vous
+      const { data: appointment, error: appointmentError } = await supabase
+        .from('appointments')
+        .select('id, patient_id, status')
+        .eq('id', id)
+        .single();
+
+      if (appointmentError || !appointment) {
+        toast({
+          title: 'Erreur',
+          description: 'Rendez-vous introuvable.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      if (appointment.patient_id !== currentUser.id) {
+        console.error('❌ Tentative non autorisée d\'annulation - patient_id mismatch');
+        toast({
+          title: 'Non autorisé',
+          description: 'Vous n\'êtes pas autorisé à annuler ce rendez-vous.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Vérifier que le rendez-vous peut être annulé (pas déjà annulé ou complété)
+      if (appointment.status === 'cancelled') {
+        toast({
+          title: 'Déjà annulé',
+          description: 'Ce rendez-vous a déjà été annulé.',
+          variant: 'default'
+        });
+        return;
+      }
+
+      if (appointment.status === 'completed') {
+        toast({
+          title: 'Impossible d\'annuler',
+          description: 'Vous ne pouvez pas annuler un rendez-vous terminé.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       // 1. Vérifier et annuler le paiement en attente s'il existe
-      const pendingPayment = payments?.find(p => 
-        p.appointment_id === id && 
+      const pendingPayment = payments?.find(p =>
+        p.appointment_id === id &&
         (p.status === 'initiated' || p.status === 'pending')
       );
 
       if (pendingPayment) {
         console.log('Annulation du paiement en attente:', pendingPayment.id);
-        
+
         // Annuler le paiement via l'edge function
         const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
           body: { appointmentId: id }

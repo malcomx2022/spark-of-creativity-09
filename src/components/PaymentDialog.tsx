@@ -94,22 +94,27 @@ interface PaymentDialogProps {
   onError?: (error: Error) => void;
 }
 
-export function PaymentDialog({ 
-  open, 
-  onOpenChange, 
-  appointmentId, 
+export function PaymentDialog({
+  open,
+  onOpenChange,
+  appointmentId,
   sessionId,
-  amount, 
+  amount,
   context = 'appointment',
   sessionDetails,
-  onSuccess, 
-  onComplete, 
-  onError 
+  onSuccess,
+  onComplete,
+  onError
 }: PaymentDialogProps) {
   const contextId = context === 'appointment' ? appointmentId : sessionId;
-  
+
   if (!contextId) {
     throw new Error(`${context === 'appointment' ? 'appointmentId' : 'sessionId'} is required`);
+  }
+
+  // ✅ CORRECTION P1-5: Validation des sessionDetails pour le contexte group_session
+  if (context === 'group_session' && !sessionDetails) {
+    console.warn('⚠️ PaymentDialog: sessionDetails manquant pour context=group_session');
   }
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -656,6 +661,17 @@ export function PaymentDialog({
       }
     }
 
+    // ✅ CORRECTION P1-4: Validation robuste du numéro de téléphone avant normalisation
+    if (!resolvedPhoneNumber || resolvedPhoneNumber.trim() === '') {
+      setIsCreatingPayment(false);
+      toast({
+        title: 'Erreur',
+        description: 'Veuillez saisir un numéro de téléphone',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const sanitizedPhoneNumber = normalizePhoneNumber(resolvedPhoneNumber);
 
     // Helper: Format phone number for FedaPay (remove +229 prefix for Benin)
@@ -665,11 +681,23 @@ export function PaymentDialog({
       return phone.replace(/^\+229/, '');
     };
 
-    if (!sanitizedPhoneNumber) {
+    if (!sanitizedPhoneNumber || sanitizedPhoneNumber.trim() === '') {
       setIsCreatingPayment(false);
       toast({
         title: 'Erreur',
         description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Vérifier que le numéro a une longueur minimale valide après normalisation
+    const phoneDigits = sanitizedPhoneNumber.replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      setIsCreatingPayment(false);
+      toast({
+        title: 'Erreur',
+        description: 'Le numéro de téléphone semble incomplet. Vérifiez qu\'il contient au moins 8 chiffres.',
         variant: 'destructive',
       });
       return;
@@ -1093,8 +1121,9 @@ export function PaymentDialog({
     onOpenChange(false);
   }, [onOpenChange, resetPaymentState]);
 
-  // ✅ CORRECTION BUG #4: Poll payment status avec cleanup et timeout appropriés
+  // ✅ CORRECTION P1-6: Poll payment status avec cleanup robuste et timeout appropriés
   useEffect(() => {
+    // Cleanup immédiat si pas de paiement en cours
     if (!paymentId || paymentStatus !== 'pending') {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -1105,9 +1134,12 @@ export function PaymentDialog({
 
     pollStartTimeRef.current = Date.now();
     let isMounted = true;
+    let isPolling = false; // ✅ CORRECTION P1-6: Empêcher les polls concurrents
 
     const checkPaymentStatus = async () => {
-      if (!isMounted) return;
+      // ✅ CORRECTION P1-6: Éviter les polls concurrents si le précédent n'est pas terminé
+      if (!isMounted || isPolling) return;
+      isPolling = true;
 
       try {
         // ✅ Vérifier le timeout
@@ -1117,12 +1149,12 @@ export function PaymentDialog({
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
           }
-          
+
           if (isMounted) {
             setPaymentStatus('error');
             setIsProcessing(false);
             await recordPaymentAttempt('timeout', 'Délai de paiement dépassé');
-            
+
             toast({
               variant: "destructive",
               title: "Délai dépassé",
@@ -1153,26 +1185,26 @@ export function PaymentDialog({
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
           }
-          
+
           setPaymentStatus('success');
           setIsProcessing(false);
           await recordPaymentAttempt('success');
-          
+
           toast({
             title: "Paiement réussi !",
             description: "Votre rendez-vous a été confirmé.",
           });
-          
+
           clearPersistedPaymentState();
-          
+
           if (onSuccess) {
             onSuccess();
           }
-          
+
           if (onComplete) {
             onComplete();
           }
-          
+
           setTimeout(() => {
             if (isMounted) {
               closeDialog();
@@ -1183,13 +1215,13 @@ export function PaymentDialog({
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
           }
-          
+
           setPaymentStatus('error');
           setIsProcessing(false);
           await recordPaymentAttempt('failed', `Paiement ${payment.status}`, 'payment_status_error', {
             status: payment.status,
           });
-          
+
           toast({
             variant: "destructive",
             title: "Paiement échoué",
@@ -1198,19 +1230,25 @@ export function PaymentDialog({
         }
       } catch (error) {
         console.error('Error in payment polling:', error);
+      } finally {
+        isPolling = false; // ✅ CORRECTION P1-6: Libérer le verrou
       }
     };
+
+    // ✅ CORRECTION P1-6: Vérification initiale immédiate
+    checkPaymentStatus();
 
     pollIntervalRef.current = setInterval(checkPaymentStatus, POLL_INTERVAL);
 
     return () => {
       isMounted = false;
+      isPolling = false;
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
     };
-  }, [paymentId, paymentStatus, onSuccess, closeDialog]);
+  }, [paymentId, paymentStatus, onSuccess, onComplete, closeDialog]);
 
   const handleDialogOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {
