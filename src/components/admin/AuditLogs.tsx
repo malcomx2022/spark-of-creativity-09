@@ -44,8 +44,11 @@ export function AuditLogs() {
         query = query.eq('entity_type', filterEntity);
       }
 
-      if (searchTerm) {
-        query = query.or(`action.ilike.%${searchTerm}%,entity_id.ilike.%${searchTerm}%`);
+      // P1 #8: Require minimum search term length to prevent enumeration attacks
+      if (searchTerm && searchTerm.length >= 3) {
+        // Escape special characters to prevent pattern injection
+        const escapedSearch = searchTerm.replace(/[%_\\]/g, '\\$&');
+        query = query.or(`action.ilike.%${escapedSearch}%,entity_id.ilike.%${escapedSearch}%`);
       }
 
       const { data: logsData, error: logsError, count } = await query
@@ -94,11 +97,17 @@ export function AuditLogs() {
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Rechercher une action..."
+              placeholder="Rechercher une action (min. 3 caractères)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="pl-9"
+              minLength={3}
             />
+            {searchInput.length > 0 && searchInput.length < 3 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Entrez au moins 3 caractères pour rechercher
+              </p>
+            )}
           </div>
           <Select value={filterEntity} onValueChange={setFilterEntity}>
             <SelectTrigger className="w-[200px]">

@@ -107,9 +107,9 @@ serve(async (req) => {
       throw payoutsError;
     }
 
-    // ✅ CORRECTION ERREUR #8: Déduire les soldes disponibles immédiatement
+    // P1 #6: Deduct available balances - BLOCKING operation
     const practitionerIdsArray = balances.map(b => b.practitioner_id);
-    
+
     console.log('Deducting available balances for batch:', batch.id);
     const { error: balanceError } = await supabase
       .from('practitioner_balances')
@@ -120,8 +120,11 @@ serve(async (req) => {
       .in('practitioner_id', practitionerIdsArray);
 
     if (balanceError) {
-      console.error('Warning: Failed to deduct balances:', balanceError);
-      // Non-bloquant mais on log
+      console.error('CRITICAL: Failed to deduct balances:', balanceError);
+      // Rollback: delete the batch and payouts since balance deduction failed
+      await supabase.from('practitioner_payouts').delete().eq('batch_id', batch.id);
+      await supabase.from('payout_batches').delete().eq('id', batch.id);
+      throw new Error('Failed to deduct practitioner balances. Batch creation cancelled.');
     }
 
     // Log audit

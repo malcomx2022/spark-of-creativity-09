@@ -173,43 +173,110 @@ Deno.serve(async (req) => {
           balance = newBalance;
         }
 
-        // Vérifier que le montant est cohérent - si pas assez on_hold, réparer d'abord
+        // P1 #12: Verify balance consistency and handle repair with proper audit logging
         if (balance.balance_on_hold < releaseAmount) {
-          console.log(`Inconsistent balance detected, attempting repair for practitioner ${practitionerId}`);
-          
-          // Tenter de réparer via la fonction RPC
-          const { data: repairResult, error: repairError } = await supabase.rpc('repair_practitioner_balances');
-          
-          if (repairError) {
-            console.error(`Repair failed for practitioner ${practitionerId}:`, repairError);
-          } else {
-            console.log(`Repair result:`, repairResult);
-            
-            // Re-vérifier le solde après réparation
-            const { data: repairedBalance } = await supabase
-              .from('practitioner_balances')
-              .select('*')
-              .eq('practitioner_id', practitionerId)
-              .single();
-            
-            if (repairedBalance && repairedBalance.balance_on_hold >= releaseAmount) {
-              balance = repairedBalance;
-              console.log(`Balance repaired successfully for practitioner ${practitionerId}`);
-            } else {
-              console.error(
-                `Balance still inconsistent after repair for practitioner ${practitionerId}: ` +
-                `on_hold=${repairedBalance?.balance_on_hold || 0}, release_amount=${releaseAmount}`
-              );
-              results.failed++;
-              results.errors.push({
-                payment_id: payment.id,
-                error: 'Insufficient on_hold balance after repair',
-                on_hold: repairedBalance?.balance_on_hold || 0,
-                release_amount: releaseAmount,
-              });
-              continue;
+          console.log(`ALERT: Inconsistent balance detected for practitioner ${practitionerId}`);
+          console.log(`  Expected on_hold >= ${releaseAmount}, actual on_hold = ${balance.balance_on_hold}`);
+
+          // Log the repair attempt for audit trail
+          await supabase.from('admin_audit_logs').insert({
+            admin_id: null, // System action
+            action: 'balance_repair_attempt',
+            entity_type: 'practitioner_balance',
+            entity_id: practitionerId,
+            details: {
+              payment_id: payment.id,
+              expected_on_hold: releaseAmount,
+              actual_on_hold: balance.balance_on_hold,
+              balance_available: balance.balance_available,
+              balance_pending: balance.balance_pending,
+              triggered_by: 'release-held-funds'
             }
+          });
+
+          // Attempt repair via RPC function
+          const { data: repairResult, error: repairError } = await supabase.rpc('repair_practitioner_balances');
+
+          if (repairError) {
+            console.error(`CRITICAL: Repair failed for practitioner ${practitionerId}:`, repairError);
+
+            // Log repair failure
+            await supabase.from('admin_audit_logs').insert({
+              admin_id: null,
+              action: 'balance_repair_failed',
+              entity_type: 'practitioner_balance',
+              entity_id: practitionerId,
+              details: {
+                payment_id: payment.id,
+                error: repairError.message,
+                requires_manual_review: true
+              }
+            });
+
+            results.failed++;
+            results.errors.push({
+              payment_id: payment.id,
+              error: 'Balance repair failed - requires manual review',
+              practitioner_id: practitionerId,
+              details: repairError,
+            });
+            continue;
           }
+
+          console.log(`Repair result:`, repairResult);
+
+          // Re-verify balance after repair
+          const { data: repairedBalance, error: repairedBalanceError } = await supabase
+            .from('practitioner_balances')
+            .select('*')
+            .eq('practitioner_id', practitionerId)
+            .single();
+
+          if (repairedBalanceError || !repairedBalance || repairedBalance.balance_on_hold < releaseAmount) {
+            console.error(
+              `CRITICAL: Balance still inconsistent after repair for practitioner ${practitionerId}: ` +
+              `on_hold=${repairedBalance?.balance_on_hold || 0}, release_amount=${releaseAmount}`
+            );
+
+            // Log persistent inconsistency
+            await supabase.from('admin_audit_logs').insert({
+              admin_id: null,
+              action: 'balance_repair_insufficient',
+              entity_type: 'practitioner_balance',
+              entity_id: practitionerId,
+              details: {
+                payment_id: payment.id,
+                on_hold_after_repair: repairedBalance?.balance_on_hold || 0,
+                required_amount: releaseAmount,
+                requires_manual_review: true
+              }
+            });
+
+            results.failed++;
+            results.errors.push({
+              payment_id: payment.id,
+              error: 'Insufficient on_hold balance after repair - requires manual review',
+              on_hold: repairedBalance?.balance_on_hold || 0,
+              release_amount: releaseAmount,
+            });
+            continue;
+          }
+
+          // Log successful repair
+          await supabase.from('admin_audit_logs').insert({
+            admin_id: null,
+            action: 'balance_repair_success',
+            entity_type: 'practitioner_balance',
+            entity_id: practitionerId,
+            details: {
+              payment_id: payment.id,
+              old_on_hold: balance.balance_on_hold,
+              new_on_hold: repairedBalance.balance_on_hold
+            }
+          });
+
+          balance = repairedBalance;
+          console.log(`Balance repaired successfully for practitioner ${practitionerId}`);
         }
 
         // ✅ UTILISER la fonction atomique pour garantir la cohérence

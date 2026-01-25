@@ -53,11 +53,23 @@ export function RefundsSection() {
   const refundMutation = useMutation({
     mutationFn: async () => {
       if (!selectedPayment) throw new Error('No payment selected');
-      
+
+      // P1 #1: Frontend validation of refund amount
+      const parsedAmount = refundAmount ? parseInt(refundAmount, 10) : null;
+
+      if (parsedAmount !== null) {
+        if (isNaN(parsedAmount) || parsedAmount <= 0) {
+          throw new Error('Le montant du remboursement doit être un nombre positif');
+        }
+        if (parsedAmount > selectedPayment.amount) {
+          throw new Error(`Le montant ne peut pas dépasser ${selectedPayment.amount.toLocaleString()} XOF`);
+        }
+      }
+
       const { data, error } = await invokeEdgeFunctionWithRetry('process-refund', {
         body: {
           paymentId: selectedPayment.id,
-          refundAmount: refundAmount ? parseInt(refundAmount) : null,
+          refundAmount: parsedAmount,
           reason: refundReason
         }
       });

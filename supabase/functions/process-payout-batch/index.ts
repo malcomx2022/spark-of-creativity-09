@@ -18,6 +18,7 @@ interface PayoutItem {
     name: string;
     user_id: string;
     phone: string;
+    kyc_status: string | null;
   };
 }
 
@@ -94,23 +95,48 @@ serve(async (req) => {
       );
     }
 
-    if (batch.status === 'sent') {
+    // P1 #7: Check for invalid states to prevent double processing
+    if (batch.status === 'sent' || batch.status === 'partially_sent') {
       return new Response(
         JSON.stringify({ error: 'Batch already processed' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Update batch to processing
-    await supabase
+    if (batch.status === 'processing') {
+      return new Response(
+        JSON.stringify({ error: 'Batch is currently being processed. Please wait.' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (batch.status !== 'queued') {
+      return new Response(
+        JSON.stringify({ error: `Invalid batch status for processing: ${batch.status}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // P1 #7: Atomic status update with optimistic locking - only update if still 'queued'
+    const { data: updatedBatch, error: updateError } = await supabase
       .from('payout_batches')
       .update({ status: 'processing', updated_at: new Date().toISOString() })
-      .eq('id', batchId);
+      .eq('id', batchId)
+      .eq('status', 'queued') // Optimistic locking: only update if still queued
+      .select()
+      .single();
 
-    // Get all payouts in batch
+    if (updateError || !updatedBatch) {
+      return new Response(
+        JSON.stringify({ error: 'Batch status changed. Please refresh and try again.' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // P1 #10: Get all payouts with practitioner validation (including KYC status)
     const { data: payouts, error: payoutsError } = await supabase
       .from('practitioner_payouts')
-      .select('*, practitioners!inner(id, name, user_id, phone)')
+      .select('*, practitioners!inner(id, name, user_id, phone, kyc_status)')
       .eq('batch_id', batchId);
 
     if (payoutsError || !payouts || payouts.length === 0) {
@@ -130,6 +156,16 @@ serve(async (req) => {
     for (const payout of payouts as PayoutItem[]) {
       try {
         console.log(`Processing payout for ${payout.practitioners.name}: ${payout.amount} XOF`);
+
+        // P1 #10: Verify practitioner KYC status before processing payout
+        if (payout.practitioners.kyc_status !== 'approved') {
+          results.skipped.push({
+            practitionerId: payout.practitioner_id,
+            name: payout.practitioners.name,
+            reason: `Statut KYC non approuvé (${payout.practitioners.kyc_status || 'pending'})`
+          });
+          continue;
+        }
 
         // Get payment info
         const { data: paymentInfo } = await supabase

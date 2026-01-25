@@ -49,6 +49,17 @@ serve(async (req) => {
 
     console.log('Processing refund for payment:', paymentId, 'amount:', refundAmount);
 
+    // P1 #11: Validate refund amount is positive when provided
+    if (refundAmount !== null && refundAmount !== undefined) {
+      const parsedAmount = Number(refundAmount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        return new Response(
+          JSON.stringify({ error: 'Refund amount must be a positive number' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Get payment details
     const { data: payment, error: paymentError } = await supabase
       .from('payments')
@@ -60,14 +71,42 @@ serve(async (req) => {
       throw new Error('Payment not found');
     }
 
-    if (payment.status !== 'paid') {
-      throw new Error('Can only refund paid payments');
+    if (payment.status !== 'paid' && payment.status !== 'partially_refunded') {
+      throw new Error('Can only refund paid or partially refunded payments');
     }
 
-    const actualRefundAmount = refundAmount || payment.amount;
+    // P1 #5: Idempotency check - verify no existing completed refund for this payment
+    const { data: existingRefunds, error: existingRefundsError } = await supabase
+      .from('payment_refunds')
+      .select('id, refund_amount, status')
+      .eq('payment_id', paymentId)
+      .eq('status', 'completed');
 
-    if (actualRefundAmount > payment.amount) {
-      throw new Error('Refund amount cannot exceed payment amount');
+    if (existingRefundsError) {
+      console.error('Error checking existing refunds:', existingRefundsError);
+      throw new Error('Failed to verify refund status');
+    }
+
+    // Calculate total already refunded
+    const totalRefunded = existingRefunds?.reduce((sum, r) => sum + (r.refund_amount || 0), 0) || 0;
+    const remainingRefundable = payment.amount - totalRefunded;
+
+    if (remainingRefundable <= 0) {
+      return new Response(
+        JSON.stringify({ error: 'This payment has already been fully refunded' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const actualRefundAmount = refundAmount ? Math.min(refundAmount, remainingRefundable) : remainingRefundable;
+
+    if (actualRefundAmount > remainingRefundable) {
+      return new Response(
+        JSON.stringify({
+          error: `Refund amount exceeds remaining refundable amount (${remainingRefundable} XOF)`
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // ✅ CORRECTION P0 #1: URL dynamique basée sur FEDAPAY_MODE
@@ -121,11 +160,12 @@ serve(async (req) => {
       throw refundError;
     }
 
-    // Update payment status
+    // Update payment status based on total refunded amount
+    const newTotalRefunded = totalRefunded + actualRefundAmount;
     await supabase
       .from('payments')
-      .update({ 
-        status: actualRefundAmount === payment.amount ? 'refunded' : 'partially_refunded'
+      .update({
+        status: newTotalRefunded >= payment.amount ? 'refunded' : 'partially_refunded'
       })
       .eq('id', paymentId);
 
