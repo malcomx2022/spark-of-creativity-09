@@ -40,6 +40,9 @@ export default function PatientDashboard() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  // ✅ CORRECTION P2-3 & P2-4: États de chargement pour les actions
+  const [isCancelling, setIsCancelling] = useState<string | null>(null);
+  const [isPreparingPayment, setIsPreparingPayment] = useState(false);
   const queryClient = useQueryClient();
   const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
   const patientId = user?.id;
@@ -70,9 +73,9 @@ export default function PatientDashboard() {
     setPaymentAmount(persisted.amount);
     setPaymentDialogOpen(true);
 
-    // Informer l'utilisateur avec un toast
+    // ✅ CORRECTION P2-2: Toast sans emoji pour cohérence
     toast({
-      title: '💳 Paiement en attente',
+      title: 'Paiement en attente',
       description: 'Vous avez un paiement en cours. Veuillez le compléter pour confirmer votre rendez-vous.',
       duration: 8000,
     });
@@ -173,8 +176,11 @@ export default function PatientDashboard() {
   };
 
   const handlePaymentRequired = async (appointmentId: string) => {
+    // ✅ CORRECTION P2-4: Activer l'état de chargement
+    setIsPreparingPayment(true);
+
     try {
-      console.log('💳 Ouverture du dialogue de paiement pour:', appointmentId);
+      console.log('Ouverture du dialogue de paiement pour:', appointmentId);
       const appointment = appointments.find((apt) => apt.id === appointmentId);
 
       if (!appointment) {
@@ -267,11 +273,15 @@ export default function PatientDashboard() {
       setPaymentDialogOpen(true);
     } catch (error) {
       console.error('Erreur lors de la préparation du paiement', error);
+      // ✅ CORRECTION P2-2: Messages toast cohérents
       toast({
-        title: 'Montant indisponible',
+        title: 'Préparation du paiement impossible',
         description: error instanceof Error ? error.message : 'Veuillez réessayer ultérieurement.',
         variant: 'destructive',
       });
+    } finally {
+      // ✅ CORRECTION P2-4: Désactiver l'état de chargement
+      setIsPreparingPayment(false);
     }
   };
 
@@ -357,6 +367,17 @@ export default function PatientDashboard() {
   }, []);
 
   const handleCancel = async (id: string) => {
+    // ✅ CORRECTION P2-5: Demander confirmation avant annulation
+    const confirmCancel = window.confirm(
+      'Êtes-vous sûr de vouloir annuler ce rendez-vous ?\n\nCette action est irréversible.'
+    );
+    if (!confirmCancel) {
+      return;
+    }
+
+    // ✅ CORRECTION P2-3: Activer l'état de chargement
+    setIsCancelling(id);
+
     try {
       // ✅ CORRECTION P1-1: Vérifier que le rendez-vous appartient au patient actuel
       const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -449,16 +470,17 @@ export default function PatientDashboard() {
         setAppointmentIdForPayment(null);
       }
 
+      // ✅ CORRECTION P2-2: Messages toast cohérents (sans emojis)
       toast({
-        title: '✅ Rendez-vous annulé',
-        description: pendingPayment 
+        title: 'Rendez-vous annulé',
+        description: pendingPayment
           ? 'Le rendez-vous et le paiement en attente ont été annulés.'
           : 'Le rendez-vous a été annulé avec succès.'
       });
 
       // Rafraîchir les données
       queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
-      
+
     } catch (error) {
       console.error('Erreur lors de l\'annulation du rendez-vous', error);
       toast({
@@ -466,6 +488,9 @@ export default function PatientDashboard() {
         description: 'Impossible d\'annuler le rendez-vous.',
         variant: 'destructive'
       });
+    } finally {
+      // ✅ CORRECTION P2-3: Désactiver l'état de chargement
+      setIsCancelling(null);
     }
   };
 
@@ -506,10 +531,24 @@ export default function PatientDashboard() {
           </div>
         )}
 
+        {/* ✅ CORRECTION P2-1: Bouton retry en cas d'erreur de chargement */}
         {!isLoading && isError && (
           <Card className="mb-6">
-            <CardContent className="flex items-center gap-2 text-destructive">
-              Une erreur est survenue lors du chargement de vos rendez-vous.
+            <CardContent className="flex flex-col sm:flex-row items-center gap-4 py-4">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                <span>Une erreur est survenue lors du chargement de vos rendez-vous.</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
+                  queryClient.invalidateQueries({ queryKey: ['payments', patientId] });
+                }}
+              >
+                Réessayer
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -561,54 +600,70 @@ export default function PatientDashboard() {
           {/* Bouton supprimé ici - il est déjà dans AppointmentsTab */}
         </div>
 
-        {/* Grille de navigation sur desktop */}
-        <div className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+        {/* ✅ CORRECTION P2-8: Grille de navigation sur desktop avec aria-labels */}
+        <nav className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8" aria-label="Navigation principale">
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux rendez-vous"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("appointments")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("appointments")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Rendez-vous</CardTitle>
-              <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
+              <Calendar className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Gérez vos consultations</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux séances de groupe"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("group-sessions")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("group-sessions")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Séances de groupe</CardTitle>
-              <Users className="h-5 w-5 text-primary flex-shrink-0" />
+              <Users className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Sessions collectives</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder à l'évaluation santé"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("triage")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("triage")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Évaluation santé</CardTitle>
-              <Shield className="h-5 w-5 text-primary flex-shrink-0" />
+              <Shield className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Triage médical</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux rapports de consultation"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("reports")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("reports")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Rapports</CardTitle>
-              <ClipboardCheck className="h-5 w-5 text-primary flex-shrink-0" />
+              <ClipboardCheck className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Consultations détaillées</p>
@@ -616,97 +671,125 @@ export default function PatientDashboard() {
           </Card>
 
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux messages"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("messages")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("messages")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Messages</CardTitle>
-              <MessageSquare className="h-5 w-5 text-primary flex-shrink-0" />
+              <MessageSquare className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Conversations</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder au profil"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("profile")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("profile")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Mon profil</CardTitle>
-              <User className="h-5 w-5 text-primary flex-shrink-0" />
+              <User className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Informations personnelles</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder au dossier médical"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("medical")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("medical")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Dossier médical</CardTitle>
-              <Heart className="h-5 w-5 text-primary flex-shrink-0" />
+              <Heart className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Historique de santé</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux paiements"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("payments")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("payments")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Paiements</CardTitle>
-              <CreditCard className="h-5 w-5 text-primary flex-shrink-0" />
+              <CreditCard className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Transactions</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux notifications"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("notifications")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("notifications")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Notifications</CardTitle>
-              <Bell className="h-5 w-5 text-primary flex-shrink-0" />
+              <Bell className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Alertes et rappels</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder aux avis"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("reviews")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("reviews")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Avis</CardTitle>
-              <Star className="h-5 w-5 text-primary flex-shrink-0" />
+              <Star className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Évaluations</p>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary"
+          <Card
+            role="button"
+            tabIndex={0}
+            aria-label="Accéder au support"
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => setActiveTab("support")}
+            onKeyDown={(e) => e.key === 'Enter' && setActiveTab("support")}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">Support</CardTitle>
-              <HelpCircle className="h-5 w-5 text-primary flex-shrink-0" />
+              <HelpCircle className="h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Aide et contact</p>
             </CardContent>
           </Card>
-        </div>
+        </nav>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="border-b lg:hidden">

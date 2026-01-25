@@ -135,6 +135,8 @@ export function PaymentDialog({
   const [existingPaymentChecked, setExistingPaymentChecked] = useState(false);
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
+  // ✅ CORRECTION P2-7: État de chargement pour vérification paiement existant
+  const [isCheckingExistingPayment, setIsCheckingExistingPayment] = useState(false);
   const hasRehydratedRef = useRef(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollStartTimeRef = useRef<number>(0);
@@ -224,7 +226,9 @@ export function PaymentDialog({
     if (!open || existingPaymentChecked) return;
 
     const checkExistingPayment = async () => {
-      console.log(`🔍 Vérification d'un paiement existant pour ${context}:`, contextId);
+      // ✅ CORRECTION P2-7: Activer l'indicateur de chargement
+      setIsCheckingExistingPayment(true);
+      console.log(`Vérification d'un paiement existant pour ${context}:`, contextId);
 
       // ✅ CORRECTION P0-4: Récupérer l'utilisateur courant pour vérification d'autorisation
       const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -502,10 +506,12 @@ export function PaymentDialog({
           }
         }
       } else {
-        console.log('ℹ️ Aucun paiement en cours trouvé, création possible');
+        console.log('Aucun paiement en cours trouvé, création possible');
       }
 
       setExistingPaymentChecked(true);
+      // ✅ CORRECTION P2-7: Désactiver l'indicateur de chargement
+      setIsCheckingExistingPayment(false);
     };
 
     checkExistingPayment();
@@ -1380,6 +1386,11 @@ export function PaymentDialog({
 
   const selectedProvider = MOBILE_MONEY_PROVIDERS[paymentMethod];
 
+  // ✅ CORRECTION P2-6: Calculer si le formulaire est complet pour désactiver le bouton
+  const isFormComplete = useSavedMethod
+    ? !!selectedSavedMethod
+    : !!(payerName.trim() && phoneNumber.trim());
+
   const renderPaymentStatus = () => {
     switch (paymentStatus) {
       case 'pending':
@@ -1685,21 +1696,31 @@ export function PaymentDialog({
           </div>
         )}
 
-        {paymentStatus === 'idle' && (
+        {/* ✅ CORRECTION P2-7: Indicateur de chargement pendant vérification */}
+        {isCheckingExistingPayment && (
+          <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-sm">Vérification en cours...</span>
+          </div>
+        )}
+
+        {paymentStatus === 'idle' && !isCheckingExistingPayment && (
           <div className="flex gap-2">
             <Button variant="outline" onClick={closeDialog} className="flex-1">
               Annuler
             </Button>
-            <Button 
+            {/* ✅ CORRECTION P2-6: Bouton désactivé si formulaire incomplet */}
+            <Button
               onClick={() => {
                 if (paymentUrl) {
                   window.open(paymentUrl, '_blank', 'noopener,noreferrer');
                 } else {
                   handlePayment();
                 }
-              }} 
-              disabled={isProcessing} 
+              }}
+              disabled={isProcessing || (!paymentUrl && !isFormComplete)}
               className="flex-1"
+              title={!isFormComplete && !paymentUrl ? 'Veuillez remplir tous les champs requis' : undefined}
             >
               {isProcessing ? (
                 <>
