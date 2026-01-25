@@ -392,7 +392,7 @@ export default function ReconciliationSection() {
                     <TableBody>
                       {/* P3: Use combination of IDs as key */}
                       {selectedReport.anomalies?.map((anomaly, index) => (
-                        <TableRow key={anomaly.fedapay_id || anomaly.db_id || `anomaly-${index}`}>
+                        <TableRow key={anomaly.fedapay_transaction_id || anomaly.db_payment_id || `anomaly-${index}`}>
                           <TableCell>
                             <Badge variant="outline">
                               {getAnomalyTypeLabel(anomaly.type)}

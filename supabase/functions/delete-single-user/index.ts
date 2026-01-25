@@ -75,10 +75,10 @@ serve(async (req) => {
     console.log(`Suppression de l'utilisateur ${userId} (type: ${userType}) par ${caller.email}`);
 
     // Vérifier que ce n'est pas un compte test
-    const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
+    const { data: authUser, error: getUserError } = await supabase.auth.admin.getUserById(userId);
     
-    if (authError) {
-      console.error("Erreur récupération utilisateur:", authError);
+    if (getUserError) {
+      console.error("Erreur récupération utilisateur:", getUserError);
       return new Response(
         JSON.stringify({ error: "Utilisateur non trouvé" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
