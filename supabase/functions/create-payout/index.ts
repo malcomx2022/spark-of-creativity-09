@@ -188,9 +188,21 @@ serve(async (req) => {
     // Create FedaPay transfer
     console.log('Creating FedaPay transfer for amount:', payoutAmount);
 
-    // Note: Pour l'instant, on enregistre le payout sans créer réellement le transfert FedaPay
-    // car cela nécessite les informations bancaires complètes du praticien
-    // TODO: Intégrer l'API FedaPay Transfers quand les infos bancaires seront disponibles
+    // ⚠️ IMPORTANT - FONCTIONNALITÉ NON IMPLÉMENTÉE
+    // ----------------------------------------------------------------
+    // Les transferts FedaPay (reversements aux praticiens) ne sont PAS encore implémentés.
+    // Actuellement, le payout est enregistré en base mais le transfert réel vers le compte
+    // du praticien n'est PAS effectué automatiquement.
+    // 
+    // PRÉREQUIS pour implémenter:
+    // 1. Les praticiens doivent configurer leur compte bancaire/MoMo dans practitioner_payment_info
+    // 2. Utiliser l'API FedaPay Transfers: POST /v1/payouts avec les coordonnées bancaires
+    // 3. Gérer le webhook de confirmation du transfert
+    // 
+    // En attendant, les reversements doivent être effectués MANUELLEMENT par l'administrateur.
+    // ----------------------------------------------------------------
+    console.warn('⚠️ PAYOUT NON AUTOMATISÉ: Le transfert FedaPay doit être effectué manuellement');
+    console.warn('⚠️ Montant à reverser:', payoutAmount, 'XOF au praticien:', practitioner.name);
 
     // Create payout record
     const { data: payout, error: payoutError } = await supabase

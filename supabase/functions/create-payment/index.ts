@@ -316,8 +316,9 @@ serve(async (req) => {
       );
     }
 
-    // Créer l'idempotency key
-    const idempotencyKey = `${appointmentId}-${Date.now()}`;
+    // ✅ CORRECTION P0 #3: Idempotency key avec crypto.randomUUID() au lieu de Date.now()
+    // Date.now() peut créer des collisions en cas de requêtes simultanées
+    const idempotencyKey = `${appointmentId}-${crypto.randomUUID()}`;
 
     // Vérifier si un paiement pending existe déjà pour ce rendez-vous
     const { data: existingPayments } = await supabase

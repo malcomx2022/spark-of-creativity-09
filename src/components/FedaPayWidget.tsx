@@ -53,9 +53,14 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         if (error) throw error;
         setFedapayConfig(data);
         
-        // En mode sandbox, pré-remplir avec un numéro de test MTN
-        if (data?.environment === 'sandbox' && !phoneNumber) {
-          setPhoneNumber('+22966000001'); // Numéro de test MTN Benin
+        // ✅ CORRECTION P2 #7: NE PAS pré-remplir le numéro de test
+        // Les utilisateurs doivent explicitement entrer un numéro
+        // Les numéros de test sont documentés dans les logs serveur
+        if (data?.environment === 'sandbox') {
+          console.log('🧪 MODE SANDBOX - Numéros de test disponibles:');
+          console.log('   ✅ MTN succès: +229 66 00 00 01');
+          console.log('   ✅ MOOV succès: +229 64 00 00 01');
+          console.log('   ❌ Échec simulé: +229 66 00 00 00 ou +229 64 00 00 00');
         }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);

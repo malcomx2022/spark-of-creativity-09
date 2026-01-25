@@ -70,11 +70,17 @@ serve(async (req) => {
       throw new Error('Refund amount cannot exceed payment amount');
     }
 
+    // ✅ CORRECTION P0 #1: URL dynamique basée sur FEDAPAY_MODE
+    const fedapayMode = Deno.env.get('FEDAPAY_MODE') || 'sandbox';
+    const fedapayBaseUrl = fedapayMode === 'live' 
+      ? 'https://api.fedapay.com' 
+      : 'https://sandbox-api.fedapay.com';
+    
     // Call FedaPay refund API
     let fedapayRefund;
     try {
       const fedapayResponse = await fetch(
-        `https://api.fedapay.com/v1/transactions/${payment.fedapay_transaction_id}/refund`,
+        `${fedapayBaseUrl}/v1/transactions/${payment.fedapay_transaction_id}/refund`,
         {
           method: 'POST',
           headers: {
