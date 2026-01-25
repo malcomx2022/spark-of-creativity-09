@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import Header from '@/components/Header';
-import { AppointmentCard } from '@/components/AppointmentCard';
-import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
-import GPSTracking from '@/components/GPSTracking';
+// ✅ CORRECTION P3-4: Suppression des imports inutilisés (AppointmentCard, NewAppointmentDialog, GPSTracking)
 
 // Lazy loaded tabs
 const AppointmentsTab = lazy(() => import('@/components/dashboard/tabs/AppointmentsTab'));
@@ -62,12 +60,13 @@ export default function PatientDashboard() {
     const elapsed = Date.now() - persisted.lastUpdated;
     const MAX_AGE = 5 * 60 * 1000; // 5 minutes
 
+    // ✅ CORRECTION P3-1: Logs sans emojis pour cohérence
     if (elapsed > MAX_AGE) {
-      console.log('⚠️ Paiement en attente expiré, abandon de la réhydratation');
+      console.log('[Payment] Paiement en attente expiré, abandon de la réhydratation');
       return;
     }
 
-    console.log('🔄 Réhydratation d\'un paiement en cours:', persisted.appointmentId);
+    console.log('[Payment] Réhydratation d\'un paiement en cours:', persisted.appointmentId);
     
     setAppointmentIdForPayment(persisted.appointmentId);
     setPaymentAmount(persisted.amount);
@@ -150,22 +149,23 @@ export default function PatientDashboard() {
     };
   }, [user, queryClient]);
 
+  // ✅ CORRECTION P3-1: Logs structurés sans emojis
   const handleNewAppointment = async (data: CreateAppointmentData) => {
-    console.log('🟢 handleNewAppointment appelé avec:', data);
-    console.log('🟢 Patient ID:', patientId);
-    console.log('🟢 Patient Name:', patientName);
-    
+    console.log('[Appointment] handleNewAppointment appelé avec:', data);
+    console.log('[Appointment] Patient ID:', patientId);
+    console.log('[Appointment] Patient Name:', patientName);
+
     try {
-      console.log('🟢 Appel de createAppointment.mutateAsync...');
+      console.log('[Appointment] Appel de createAppointment.mutateAsync...');
       const result = await createAppointment.mutateAsync(data);
-      console.log('✅ Rendez-vous créé:', result);
+      console.log('[Appointment] Rendez-vous créé:', result);
       toast({
         title: 'Rendez-vous créé',
         description: 'Votre rendez-vous a été créé. Veuillez procéder au paiement pour le confirmer.'
       });
       return result; // Retourner le rendez-vous créé avec son ID
     } catch (error) {
-      console.error('❌ Erreur lors de la création du rendez-vous:', error);
+      console.error('[Appointment] Erreur lors de la création du rendez-vous:', error);
       toast({
         title: 'Erreur',
         description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous pour le moment.',
@@ -286,7 +286,7 @@ export default function PatientDashboard() {
   };
 
   const handlePaymentSuccess = useCallback(async () => {
-    console.log('✅ Paiement réussi - vérification de la persistance');
+    console.log('[Payment] Paiement réussi - vérification de la persistance');
 
     // ✅ CORRECTION P0-1: Vérifier que le paiement est bien persisté en DB avant de fermer
     if (appointmentIdForPayment) {
@@ -305,11 +305,11 @@ export default function PatientDashboard() {
           .maybeSingle();
 
         if (error) {
-          console.error('Erreur vérification paiement:', error);
+          console.error('[Payment] Erreur vérification paiement:', error);
         } else if (!payment) {
-          console.warn('⚠️ Paiement non trouvé en DB, état potentiellement incohérent');
+          console.warn('[Payment] Paiement non trouvé en DB, état potentiellement incohérent');
         } else {
-          console.log('✅ Paiement vérifié en DB:', payment.id, 'Status:', payment.status);
+          console.log('[Payment] Paiement vérifié en DB:', payment.id, 'Status:', payment.status);
         }
       } catch (verifyError) {
         console.error('Erreur lors de la vérification du paiement:', verifyError);
@@ -358,7 +358,7 @@ export default function PatientDashboard() {
   }, []);
 
   const handlePaymentError = useCallback((error: Error) => {
-    console.error('❌ Erreur de paiement:', error);
+    console.error('[Payment] Erreur de paiement:', error);
     toast({
       title: 'Erreur de paiement',
       description: error.message,
@@ -407,7 +407,7 @@ export default function PatientDashboard() {
       }
 
       if (appointment.patient_id !== currentUser.id) {
-        console.error('❌ Tentative non autorisée d\'annulation - patient_id mismatch');
+        console.error('[Security] Tentative non autorisée d\'annulation - patient_id mismatch');
         toast({
           title: 'Non autorisé',
           description: 'Vous n\'êtes pas autorisé à annuler ce rendez-vous.',
@@ -558,6 +558,7 @@ export default function PatientDashboard() {
           <p className="text-muted-foreground">Gérez vos rendez-vous et consultations</p>
         </div>
 
+        {/* ✅ CORRECTION P3-2: Stats cards avec messages plus informatifs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -566,6 +567,13 @@ export default function PatientDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{upcomingAppointments.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {upcomingAppointments.length === 0
+                  ? 'Aucun rendez-vous planifié'
+                  : upcomingAppointments.length === 1
+                  ? 'Prochain rendez-vous planifié'
+                  : 'Rendez-vous planifiés'}
+              </p>
             </CardContent>
           </Card>
 
@@ -575,9 +583,21 @@ export default function PatientDashboard() {
               <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length}
-              </div>
+              {(() => {
+                const pendingCount = appointments.filter(apt => apt.status === 'awaiting_practitioner' || apt.status === 'confirmed').length;
+                return (
+                  <>
+                    <div className="text-2xl font-bold">{pendingCount}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {pendingCount === 0
+                        ? 'Aucune confirmation en attente'
+                        : pendingCount === 1
+                        ? 'En attente de confirmation'
+                        : 'En attente de confirmation'}
+                    </p>
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
 
@@ -587,9 +607,21 @@ export default function PatientDashboard() {
               <Activity className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {appointments.filter(apt => apt.status === 'completed').length}
-              </div>
+              {(() => {
+                const completedCount = appointments.filter(apt => apt.status === 'completed').length;
+                return (
+                  <>
+                    <div className="text-2xl font-bold">{completedCount}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {completedCount === 0
+                        ? 'Aucune consultation effectuée'
+                        : completedCount === 1
+                        ? 'Consultation terminée'
+                        : 'Consultations terminées'}
+                    </p>
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
@@ -881,10 +913,12 @@ export default function PatientDashboard() {
           </div>
 
 
+          {/* ✅ CORRECTION P3-5: Fallbacks Suspense plus informatifs */}
           <TabsContent value="appointments" className="space-y-6">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des rendez-vous...</span>
               </div>
             }>
               <AppointmentsTab onPaymentRequired={handlePaymentRequired} />
@@ -893,8 +927,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="group-sessions">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des séances de groupe...</span>
               </div>
             }>
               <PatientGroupSessionsSection />
@@ -903,8 +938,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="triage">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement du formulaire de triage...</span>
               </div>
             }>
               <TriageForm />
@@ -913,8 +949,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="reports">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des rapports...</span>
               </div>
             }>
               <PatientConsultationReportsSection />
@@ -924,8 +961,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="profile">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement du profil...</span>
               </div>
             }>
               <ProfileSection />
@@ -934,8 +972,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="medical">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement du dossier médical...</span>
               </div>
             }>
               <MedicalSection />
@@ -944,8 +983,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="payments">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des paiements...</span>
               </div>
             }>
               <PaymentsSection />
@@ -954,8 +994,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="notifications">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des notifications...</span>
               </div>
             }>
               <NotificationsSection />
@@ -964,8 +1005,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="messages">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des messages...</span>
               </div>
             }>
               <MessagesSection />
@@ -974,8 +1016,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="reviews">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement des avis...</span>
               </div>
             }>
               <ReviewsSection />
@@ -984,8 +1027,9 @@ export default function PatientDashboard() {
 
           <TabsContent value="support">
             <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Chargement du support...</span>
               </div>
             }>
               <SupportSection />

@@ -113,8 +113,9 @@ export function PaymentDialog({
   }
 
   // ✅ CORRECTION P1-5: Validation des sessionDetails pour le contexte group_session
+  // ✅ CORRECTION P3-1: Logs structurés sans emojis
   if (context === 'group_session' && !sessionDetails) {
-    console.warn('⚠️ PaymentDialog: sessionDetails manquant pour context=group_session');
+    console.warn('[PaymentDialog] sessionDetails manquant pour context=group_session');
   }
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -157,8 +158,9 @@ export function PaymentDialog({
         
         // ✅ CORRECTION: Ne plus pré-remplir de numéro de test en sandbox
         // L'utilisateur doit entrer son propre numéro de téléphone
+        // ✅ CORRECTION P3-1: Logs structurés sans emojis
         if (data?.environment === 'sandbox') {
-          console.log('🔧 Mode sandbox FedaPay activé');
+          console.log('[FedaPay] Mode sandbox activé');
         }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
@@ -622,16 +624,17 @@ export function PaymentDialog({
 
   const handlePayment = async () => {
     // ✅ CORRECTION P0-2: Protection double-clic robuste avec ref timestamp
+    // ✅ CORRECTION P3-1: Logs structurés sans emojis
     const now = Date.now();
     if (now - lastPaymentClickRef.current < DOUBLE_CLICK_THRESHOLD) {
-      console.log('⚠️ Double-clic détecté, ignorer (délai:', now - lastPaymentClickRef.current, 'ms)');
+      console.log('[Payment] Double-clic détecté, ignorer (délai:', now - lastPaymentClickRef.current, 'ms)');
       return;
     }
     lastPaymentClickRef.current = now;
 
     // Protection supplémentaire avec state
     if (isCreatingPayment) {
-      console.log('⚠️ Création de paiement déjà en cours, ignorer');
+      console.log('[Payment] Création de paiement déjà en cours, ignorer');
       return;
     }
 
