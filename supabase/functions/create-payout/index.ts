@@ -256,21 +256,142 @@ serve(async (req) => {
     // Create FedaPay transfer
     console.log('Creating FedaPay transfer for amount:', payoutAmount);
 
-    // ⚠️ IMPORTANT - FONCTIONNALITÉ NON IMPLÉMENTÉE
-    // ----------------------------------------------------------------
-    // Les transferts FedaPay (reversements aux praticiens) ne sont PAS encore implémentés.
-    // Actuellement, le payout est enregistré en base mais le transfert réel vers le compte
-    // du praticien n'est PAS effectué automatiquement.
-    // 
-    // PRÉREQUIS pour implémenter:
-    // 1. Les praticiens doivent configurer leur compte bancaire/MoMo dans practitioner_payment_info
-    // 2. Utiliser l'API FedaPay Transfers: POST /v1/payouts avec les coordonnées bancaires
-    // 3. Gérer le webhook de confirmation du transfert
-    // 
-    // En attendant, les reversements doivent être effectués MANUELLEMENT par l'administrateur.
-    // ----------------------------------------------------------------
-    console.warn('⚠️ PAYOUT NON AUTOMATISÉ: Le transfert FedaPay doit être effectué manuellement');
-    console.warn('⚠️ Montant à reverser:', payoutAmount, 'XOF au praticien:', practitioner.name);
+    const fedapayMode = Deno.env.get('FEDAPAY_MODE') || 'sandbox';
+    const fedapayBaseUrl = fedapayMode === 'live' 
+      ? 'https://api.fedapay.com' 
+      : 'https://sandbox-api.fedapay.com';
+
+    // Determine payout mode based on payment info
+    const isMoMo = paymentInfo.payment_method === 'momo' || paymentInfo.payment_method === 'mobile_money';
+    
+    // Get phone number for MoMo or practitioner's phone
+    const { data: practitionerProfile } = await supabase
+      .from('practitioners')
+      .select('phone')
+      .eq('id', practitionerId)
+      .single();
+    
+    const targetPhone = paymentInfo.phone_number || practitionerProfile?.phone;
+    
+    // Validate required fields for payout
+    if (isMoMo && !targetPhone) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Phone number required',
+          message: 'Mobile Money payouts require a valid phone number'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (!isMoMo && (!paymentInfo.bank_account_number || !paymentInfo.bank_name)) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Bank details required',
+          message: 'Bank payouts require account number and bank name'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Build FedaPay payout payload
+    // FedaPay Payout API documentation: https://docs.fedapay.com/api/#payouts
+    let fedapayPayload: Record<string, unknown>;
+    let payoutMode: string;
+    
+    if (isMoMo) {
+      // Detect operator from phone number (Benin)
+      const cleanPhone = targetPhone!.replace(/\D/g, '');
+      // MTN: 96, 97, 90, 91 | Moov: 94, 95, 98, 99 | Celtiis: 92, 93
+      const prefix = cleanPhone.slice(-8, -6);
+      if (['96', '97', '90', '91'].includes(prefix)) {
+        payoutMode = 'mtn';
+      } else if (['94', '95', '98', '99'].includes(prefix)) {
+        payoutMode = 'moov';
+      } else {
+        payoutMode = 'mtn'; // default to MTN
+      }
+      
+      fedapayPayload = {
+        amount: payoutAmount,
+        currency: { iso: 'XOF' },
+        mode: payoutMode,
+        customer: {
+          firstname: practitioner.name.split(' ')[0] || 'Praticien',
+          lastname: practitioner.name.split(' ').slice(1).join(' ') || '',
+          phone_number: {
+            number: cleanPhone,
+            country: 'BJ' // Benin
+          }
+        }
+      };
+    } else {
+      // Bank transfer
+      payoutMode = 'bank';
+      fedapayPayload = {
+        amount: payoutAmount,
+        currency: { iso: 'XOF' },
+        mode: 'bank',
+        customer: {
+          firstname: practitioner.name.split(' ')[0] || 'Praticien',
+          lastname: practitioner.name.split(' ').slice(1).join(' ') || '',
+          bank_account: {
+            number: paymentInfo.bank_account_number,
+            bank: paymentInfo.bank_name,
+            holder: paymentInfo.account_holder_name || practitioner.name
+          }
+        }
+      };
+    }
+
+    console.log('FedaPay payout payload:', JSON.stringify(fedapayPayload, null, 2));
+
+    // Execute FedaPay transfer
+    let transferId: string | null = null;
+    let transferStatus = 'pending';
+    let transferError: string | null = null;
+
+    try {
+      const fedapayResponse = await fetch(`${fedapayBaseUrl}/v1/payouts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${fedapaySecretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(fedapayPayload)
+      });
+
+      const responseText = await fedapayResponse.text();
+      console.log('FedaPay response status:', fedapayResponse.status);
+      console.log('FedaPay response:', responseText);
+
+      if (fedapayResponse.ok) {
+        const fedapayData = JSON.parse(responseText);
+        // Extract payout ID from various response formats
+        transferId = fedapayData.v1?.payout?.id?.toString() 
+          || fedapayData['v1/payout']?.id?.toString()
+          || fedapayData.payout?.id?.toString()
+          || fedapayData.id?.toString()
+          || null;
+        
+        transferStatus = 'processing';
+        console.log('✅ FedaPay payout created successfully:', transferId);
+      } else {
+        // Parse error
+        try {
+          const errorData = JSON.parse(responseText);
+          transferError = errorData.message || errorData.error || 'FedaPay transfer failed';
+        } catch {
+          transferError = `FedaPay error (${fedapayResponse.status}): ${responseText.substring(0, 200)}`;
+        }
+        console.error('❌ FedaPay payout failed:', transferError);
+        transferStatus = 'failed';
+      }
+    } catch (fedapayError) {
+      transferError = fedapayError instanceof Error ? fedapayError.message : 'Network error';
+      console.error('❌ FedaPay API error:', fedapayError);
+      transferStatus = 'failed';
+    }
 
     // Create payout record
     const { data: payout, error: payoutError } = await supabase
@@ -280,11 +401,13 @@ serve(async (req) => {
         amount: payoutAmount,
         net_amount: payoutAmount,
         currency: 'XOF',
-        status: 'pending',
+        status: transferStatus === 'processing' ? 'processing' : 'failed',
         period_start: periodStart,
         period_end: periodEnd,
-        payment_method: 'bank_transfer',
-        notes: description || `Reversement période ${periodStart} - ${periodEnd}`
+        payment_method: payoutMode,
+        transaction_ids: transferId ? [transferId] : null,
+        notes: description || `Reversement période ${periodStart} - ${periodEnd}`,
+        error_message: transferError
       })
       .select()
       .single();
@@ -295,17 +418,53 @@ serve(async (req) => {
 
     console.log('Payout created:', payout.id);
 
+    // If transfer was successful, update practitioner balance
+    if (transferStatus === 'processing' && transferId) {
+      // Deduct from available balance
+      await supabase
+        .from('practitioner_balances')
+        .update({
+          balance_available: 0, // Will be recalculated properly
+          updated_at: new Date().toISOString()
+        })
+        .eq('practitioner_id', practitionerId);
+      
+      // Mark related payments as paid out
+      const { error: markError } = await supabase
+        .from('payments')
+        .update({ 
+          payout_status: 'paid_out',
+          updated_at: new Date().toISOString()
+        })
+        .eq('status', 'paid')
+        .eq('payout_status', 'ready')
+        .in('appointment_id', (
+          await supabase
+            .from('appointments')
+            .select('id')
+            .eq('practitioner_id', practitionerId)
+        ).data?.map(a => a.id) || []);
+      
+      if (markError) {
+        console.warn('Warning: Could not mark payments as paid_out:', markError);
+      }
+    }
+
     // Send notification to practitioner
+    const notificationMessage = transferStatus === 'processing'
+      ? `Un reversement de ${payoutAmount.toLocaleString()} XOF a été initié vers votre compte ${payoutMode === 'mtn' ? 'MTN MoMo' : payoutMode === 'moov' ? 'Moov Money' : 'bancaire'}. Les fonds arriveront sous 24-48h.`
+      : `Le reversement de ${payoutAmount.toLocaleString()} XOF a échoué: ${transferError}. Veuillez vérifier vos informations de paiement.`;
+
     await dispatchNotification({
       supabase,
       supabaseUrl,
       serviceRoleKey: supabaseKey,
       userId: practitioner.user_id,
-      title: '💰 Reversement initié',
-      message: `Un reversement de ${payoutAmount} XOF a été initié pour la période du ${periodStart} au ${periodEnd}. Les fonds arriveront sous 2-3 jours ouvrés.`,
+      title: transferStatus === 'processing' ? '💰 Reversement en cours' : '❌ Échec du reversement',
+      message: notificationMessage,
       type: 'payout',
       link: '/dashboard/practitioner?tab=payouts',
-      channels: ['email', 'sms', 'push'],
+      channels: ['email', 'push'],
     });
 
     // Log audit
@@ -320,20 +479,25 @@ serve(async (req) => {
           practitioner_id: practitionerId,
           practitioner_name: practitioner.name,
           amount: payoutAmount,
-          period: { start: periodStart, end: periodEnd }
+          period: { start: periodStart, end: periodEnd },
+          transfer_id: transferId,
+          transfer_status: transferStatus,
+          payout_mode: payoutMode,
+          error: transferError
         }
       });
 
     return new Response(
       JSON.stringify({
         payoutId: payout.id,
-        transferId: null, // Will be populated when FedaPay integration is complete
-        status: 'pending',
-        estimatedArrival: '2-3 business days',
+        transferId: transferId,
+        status: transferStatus,
+        estimatedArrival: transferStatus === 'processing' ? '24-48 hours' : null,
         amount: payoutAmount,
-        currency: 'XOF'
+        currency: 'XOF',
+        error: transferError
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: transferStatus === 'processing' ? 200 : 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
