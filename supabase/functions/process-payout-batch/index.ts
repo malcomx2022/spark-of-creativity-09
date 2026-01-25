@@ -169,9 +169,19 @@ serve(async (req) => {
           continue;
         }
 
+        if (!isMoMo && (!paymentInfo.bank_account_number || !paymentInfo.bank_name)) {
+          results.skipped.push({
+            practitionerId: payout.practitioner_id,
+            name: payout.practitioners.name,
+            reason: 'Informations bancaires manquantes'
+          });
+          continue;
+        }
+
         // Execute transfer via FedaPay if configured
         let transferId: string | null = null;
         let transferStatus = 'pending';
+        let transferError: string | null = null;
 
         if (fedapaySecretKey) {
           try {
@@ -179,22 +189,56 @@ serve(async (req) => {
               ? 'https://api.fedapay.com' 
               : 'https://sandbox-api.fedapay.com';
 
-            // Create FedaPay transfer/payout
-            const transferPayload = {
-              amount: payout.amount,
-              currency: { iso: 'XOF' },
-              mode: isMoMo ? 'mtn' : 'bank', // ou 'moov' selon l'opérateur
-              customer: {
-                firstname: payout.practitioners.name.split(' ')[0] || 'Praticien',
-                lastname: payout.practitioners.name.split(' ').slice(1).join(' ') || '',
-                phone_number: {
-                  number: targetPhone?.replace(/\D/g, '') || '',
-                  country: 'BJ'
-                }
-              }
-            };
+            // Determine payout mode
+            let payoutMode: string;
+            let fedapayPayload: Record<string, unknown>;
 
-            console.log('Creating FedaPay payout:', JSON.stringify(transferPayload));
+            if (isMoMo) {
+              // Detect operator from phone number (Benin)
+              const cleanPhone = targetPhone!.replace(/\D/g, '');
+              const prefix = cleanPhone.slice(-8, -6);
+              // MTN: 96, 97, 90, 91 | Moov: 94, 95, 98, 99
+              if (['96', '97', '90', '91'].includes(prefix)) {
+                payoutMode = 'mtn';
+              } else if (['94', '95', '98', '99'].includes(prefix)) {
+                payoutMode = 'moov';
+              } else {
+                payoutMode = 'mtn'; // default
+              }
+
+              fedapayPayload = {
+                amount: payout.amount,
+                currency: { iso: 'XOF' },
+                mode: payoutMode,
+                customer: {
+                  firstname: payout.practitioners.name.split(' ')[0] || 'Praticien',
+                  lastname: payout.practitioners.name.split(' ').slice(1).join(' ') || '',
+                  phone_number: {
+                    number: cleanPhone,
+                    country: 'BJ'
+                  }
+                }
+              };
+            } else {
+              // Bank transfer
+              payoutMode = 'bank';
+              fedapayPayload = {
+                amount: payout.amount,
+                currency: { iso: 'XOF' },
+                mode: 'bank',
+                customer: {
+                  firstname: payout.practitioners.name.split(' ')[0] || 'Praticien',
+                  lastname: payout.practitioners.name.split(' ').slice(1).join(' ') || '',
+                  bank_account: {
+                    number: paymentInfo.bank_account_number,
+                    bank: paymentInfo.bank_name,
+                    holder: paymentInfo.account_holder_name || payout.practitioners.name
+                  }
+                }
+              };
+            }
+
+            console.log('Creating FedaPay payout:', JSON.stringify(fedapayPayload));
 
             const fedapayResponse = await fetch(`${fedapayBaseUrl}/v1/payouts`, {
               method: 'POST',
@@ -202,22 +246,33 @@ serve(async (req) => {
                 'Authorization': `Bearer ${fedapaySecretKey}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify(transferPayload)
+              body: JSON.stringify(fedapayPayload)
             });
 
+            const responseText = await fedapayResponse.text();
+            console.log('FedaPay response:', fedapayResponse.status, responseText);
+
             if (fedapayResponse.ok) {
-              const fedapayData = await fedapayResponse.json();
-              transferId = fedapayData.v1?.payout?.id?.toString() || fedapayData.id?.toString();
+              const fedapayData = JSON.parse(responseText);
+              transferId = fedapayData.v1?.payout?.id?.toString() 
+                || fedapayData['v1/payout']?.id?.toString()
+                || fedapayData.payout?.id?.toString()
+                || fedapayData.id?.toString();
               transferStatus = 'sent';
-              console.log('FedaPay payout created:', transferId);
+              console.log('✅ FedaPay payout created:', transferId);
             } else {
-              const errorData = await fedapayResponse.text();
-              console.error('FedaPay payout error:', errorData);
-              // Continue without FedaPay - manual processing
+              try {
+                const errorData = JSON.parse(responseText);
+                transferError = errorData.message || errorData.error || 'FedaPay transfer failed';
+              } catch {
+                transferError = `FedaPay error (${fedapayResponse.status})`;
+              }
+              console.error('❌ FedaPay payout error:', transferError);
               transferStatus = 'pending_manual';
             }
           } catch (fedapayError) {
             console.error('FedaPay API error:', fedapayError);
+            transferError = fedapayError instanceof Error ? fedapayError.message : 'Network error';
             transferStatus = 'pending_manual';
           }
         } else {
