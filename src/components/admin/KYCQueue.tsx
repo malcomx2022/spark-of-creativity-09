@@ -182,14 +182,35 @@ export function KYCQueue() {
   }, [queryClient]);
 
   const updateKYCMutation = useMutation({
-    mutationFn: async ({ id, status, comment }: { id: string; status: string; comment?: string }) => {
+    mutationFn: async ({ id, status, comment, expectedCurrentStatus }: { id: string; status: string; comment?: string; expectedCurrentStatus?: string }) => {
       if (import.meta.env.DEV) {
-        console.log('[KYC Update] Starting mutation:', { id, status, comment });
+        console.log('[KYC Update] Starting mutation:', { id, status, comment, expectedCurrentStatus });
       }
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
         throw new Error('Utilisateur non authentifié');
+      }
+
+      // Protection contre les race conditions: vérifier l'état actuel avant mise à jour
+      if (expectedCurrentStatus) {
+        const { data: currentPractitioner, error: fetchError } = await withTimeout(
+          supabase
+            .from('practitioners')
+            .select('kyc_status, kyc_reviewed_at')
+            .eq('id', id)
+            .single()
+        );
+
+        if (fetchError) {
+          throw new Error('Impossible de vérifier l\'état actuel du dossier');
+        }
+
+        if (currentPractitioner.kyc_status !== expectedCurrentStatus) {
+          throw new Error(
+            `Le statut KYC a été modifié par un autre administrateur (statut actuel: ${currentPractitioner.kyc_status}). Veuillez rafraîchir la page.`
+          );
+        }
       }
 
       if (import.meta.env.DEV) {
@@ -738,6 +759,7 @@ export function KYCQueue() {
                                       id: selectedPractitioner.id,
                                       status: 'approved',
                                       comment,
+                                      expectedCurrentStatus: selectedPractitioner.kyc_status,
                                     });
                                   }
                                 }}
@@ -796,6 +818,7 @@ export function KYCQueue() {
                                       id: selectedPractitioner.id,
                                       status: 'incomplete',
                                       comment,
+                                      expectedCurrentStatus: selectedPractitioner.kyc_status,
                                     });
                                   }
                                 }}
@@ -855,6 +878,7 @@ export function KYCQueue() {
                                       id: selectedPractitioner.id,
                                       status: 'rejected',
                                       comment,
+                                      expectedCurrentStatus: selectedPractitioner.kyc_status,
                                     });
                                   }
                                 }}

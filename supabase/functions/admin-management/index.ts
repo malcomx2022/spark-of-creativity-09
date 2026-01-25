@@ -236,6 +236,14 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Seul super_admin peut réinitialiser les mots de passe
+        if (userRole.role !== 'super_admin') {
+          return new Response(
+            JSON.stringify({ error: 'Seuls les super admins peuvent réinitialiser les mots de passe' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Générer un nouveau mot de passe
         const newPassword = crypto.randomUUID();
 
@@ -278,6 +286,14 @@ Deno.serve(async (req) => {
           return new Response(
             JSON.stringify({ error: 'ID utilisateur requis' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Seul super_admin peut désactiver des admins
+        if (userRole.role !== 'super_admin') {
+          return new Response(
+            JSON.stringify({ error: 'Seuls les super admins peuvent désactiver des administrateurs' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 

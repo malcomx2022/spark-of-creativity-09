@@ -14,10 +14,54 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
+
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
+
+    // Vérifier que l'appelant est authentifié et est un admin autorisé
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Non autorisé" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !caller) {
+      return new Response(
+        JSON.stringify({ error: "Non autorisé" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Vérifier que l'appelant a un rôle admin autorisé (super_admin ou ops)
+    const { data: callerRole, error: roleError } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", caller.id)
+      .maybeSingle();
+
+    if (roleError || !callerRole) {
+      console.error("Tentative de suppression non autorisée par:", caller.email);
+      return new Response(
+        JSON.stringify({ error: "Non autorisé - Rôle admin requis" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Seuls super_admin et ops peuvent supprimer des utilisateurs
+    const authorizedRoles = ["super_admin", "ops"];
+    if (!authorizedRoles.includes(callerRole.role)) {
+      console.error("Rôle insuffisant pour suppression:", callerRole.role);
+      return new Response(
+        JSON.stringify({ error: "Rôle insuffisant pour cette opération" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { userId, userType } = await req.json();
 
@@ -28,7 +72,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Suppression de l'utilisateur ${userId} (type: ${userType})`);
+    console.log(`Suppression de l'utilisateur ${userId} (type: ${userType}) par ${caller.email}`);
 
     // Vérifier que ce n'est pas un compte test
     const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
@@ -121,7 +165,16 @@ serve(async (req) => {
     // Supprimer le profil
     await supabase.from('profiles').delete().eq('id', userId);
     console.log(`Profil ${userId} supprimé`);
-    
+
+    // Logger l'audit AVANT suppression de l'utilisateur auth
+    await supabase.from('admin_audit_logs').insert({
+      admin_id: caller.id,
+      action: `delete_${userType || 'user'}`,
+      entity_type: userType || 'user',
+      entity_id: userId,
+      details: { deleted_by: caller.email },
+    });
+
     // Supprimer l'utilisateur auth
     const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
     
