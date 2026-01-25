@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
@@ -34,9 +35,12 @@ export default function AdminDashboard() {
   const { data: stats } = useAdminStats();
   const { data: user } = useSupabaseUser();
   const userId = user?.id;
-  // Limiter les notifications à 100 pour éviter surcharge
+  // P2 #20: Récupérer uniquement les notifications non lues pour éviter surcharge
   const { data: allNotifications = [] } = useNotifications(isAdmin ? userId : undefined);
-  const notifications = allNotifications.slice(0, 100);
+  // Filtrer les notifications KYC non lues en priorité
+  const notifications = allNotifications
+    .filter(n => n.type === 'kyc_pending' || !n.is_read)
+    .slice(0, 100);
   const markNotificationAsRead = useMarkNotificationAsRead();
   const [activeTab, setActiveTab] = useState("dashboard");
   const processedKycNotifications = useRef(new Set<string>());
@@ -212,80 +216,105 @@ export default function AdminDashboard() {
             </TabsList>
           </div>
 
+          {/* P2 #19: Wrapping lazy-loaded components with ErrorBoundary */}
           <TabsContent value="dashboard" className="space-y-4">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <UsersManagementSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <UsersManagementSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           {canManageAdmins && (
             <TabsContent value="admins">
-              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-                <AdminManagement />
-              </Suspense>
+              <ErrorBoundary>
+                <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                  <AdminManagement />
+                </Suspense>
+              </ErrorBoundary>
             </TabsContent>
           )}
 
           <TabsContent value="kyc">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <KYCQueue />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <KYCQueue />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="operations">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <OperationsSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <OperationsSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="finance">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <FinanceSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <FinanceSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="support">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <SupportSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <SupportSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="otp">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <OTPManagementSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <OTPManagementSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="api">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <ApiManagementSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <ApiManagementSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="compliance">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <ComplianceSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <ComplianceSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="audit">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <AuditLogs />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <AuditLogs />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="webhooks" className="space-y-4">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <WebhookConfig />
-              <SandboxPaymentTester />
-              <WebhooksSection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <WebhookConfig />
+                <SandboxPaymentTester />
+                <WebhooksSection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
 
           <TabsContent value="search-activity">
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
-              <SearchActivitySection />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <SearchActivitySection />
+              </Suspense>
+            </ErrorBoundary>
           </TabsContent>
         </Tabs>
       </main>

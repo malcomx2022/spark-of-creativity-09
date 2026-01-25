@@ -160,7 +160,7 @@ export function UsersManagementSection() {
                   cleanupMutation.mutate();
                   setConfirmText('');
                 }}
-                disabled={confirmText !== 'SUPPRIMER'}
+                disabled={confirmText.toUpperCase() !== 'SUPPRIMER'}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
               >
                 Supprimer
@@ -232,13 +232,14 @@ export function UsersManagementSection() {
                       ))}
                     </TableBody>
                   </Table>
+                  {/* P2 #2: Désactivation des boutons pendant le chargement */}
                   <div className="flex justify-between items-center mt-4">
                     <Button
                       variant="outline"
                       onClick={() => setProfilesPage(p => Math.max(0, p - 1))}
-                      disabled={profilesPage === 0}
+                      disabled={profilesPage === 0 || profilesLoading}
                     >
-                      Précédent
+                      {profilesLoading ? "..." : "Précédent"}
                     </Button>
                     <span className="text-sm text-muted-foreground">
                       Affichage de {profilesPage * pageSize + 1} à {Math.min((profilesPage + 1) * pageSize, profilesTotal)} sur {profilesTotal}
@@ -246,9 +247,9 @@ export function UsersManagementSection() {
                     <Button
                       variant="outline"
                       onClick={() => setProfilesPage(p => p + 1)}
-                      disabled={!profilesHasMore}
+                      disabled={!profilesHasMore || profilesLoading}
                     >
-                      Suivant
+                      {profilesLoading ? "..." : "Suivant"}
                     </Button>
                   </div>
                 </>
@@ -330,13 +331,14 @@ export function UsersManagementSection() {
                       ))}
                     </TableBody>
                   </Table>
+                  {/* P2 #2: Désactivation des boutons pendant le chargement */}
                   <div className="flex justify-between items-center mt-4">
                     <Button
                       variant="outline"
                       onClick={() => setPractitionersPage(p => Math.max(0, p - 1))}
-                      disabled={practitionersPage === 0}
+                      disabled={practitionersPage === 0 || practitionersLoading}
                     >
-                      Précédent
+                      {practitionersLoading ? "..." : "Précédent"}
                     </Button>
                     <span className="text-sm text-muted-foreground">
                       Affichage de {practitionersPage * pageSize + 1} à {Math.min((practitionersPage + 1) * pageSize, practitionersTotal)} sur {practitionersTotal}
@@ -344,9 +346,9 @@ export function UsersManagementSection() {
                     <Button
                       variant="outline"
                       onClick={() => setPractitionersPage(p => p + 1)}
-                      disabled={!practitionersHasMore}
+                      disabled={!practitionersHasMore || practitionersLoading}
                     >
-                      Suivant
+                      {practitionersLoading ? "..." : "Suivant"}
                     </Button>
                   </div>
                 </>

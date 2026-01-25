@@ -166,8 +166,11 @@ export function AuditLogs() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
+                      {/* P2 #13: Obfuscation partielle des adresses IP pour GDPR */}
                       <TableCell className="text-xs text-muted-foreground">
-                        {log.ip_address || 'N/A'}
+                        {log.ip_address
+                          ? log.ip_address.replace(/\.\d+\.\d+$/, '.***.***)
+                          : 'N/A'}
                       </TableCell>
                     </TableRow>
                   ))}

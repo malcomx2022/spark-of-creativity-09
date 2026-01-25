@@ -40,15 +40,15 @@ export function FinanceSection() {
         .maybeSingle();
       
       if (error) throw error;
-      // Cast to any because the generated types might not include the new columns
-      const statsData = data as any;
+      // P2 #18: Type-safe handling with explicit null checks
+      const statsData = data as FinanceStats | null;
       return {
-        total_revenue: statsData?.total_revenue || 0,
-        pending_payments: statsData?.pending_payments || 0,
-        completed_payments: statsData?.completed_payments || 0,
-        pending_payouts: statsData?.pending_payouts || 0,
-        held_amount: statsData?.held_amount || 0,
-        total_commission: statsData?.total_commission || 0
+        total_revenue: statsData?.total_revenue ?? 0,
+        pending_payments: statsData?.pending_payments ?? 0,
+        completed_payments: statsData?.completed_payments ?? 0,
+        pending_payouts: statsData?.pending_payouts ?? 0,
+        held_amount: statsData?.held_amount ?? 0,
+        total_commission: statsData?.total_commission ?? 0
       };
     },
   });
@@ -102,8 +102,9 @@ export function FinanceSection() {
 
   const handleExportPayments = async () => {
     try {
+      // P2 #17: Null safety dans les exports CSV
       const csv = payments.map(p =>
-        `${new Date(p.created_at).toLocaleDateString('fr-FR')},${p.patient_id},${p.amount},${p.payment_method},${p.status}`
+        `${new Date(p.created_at).toLocaleDateString('fr-FR')},${p.patient_id ?? 'N/A'},${p.amount ?? 0},${p.payment_method ?? 'N/A'},${p.status ?? 'N/A'}`
       ).join('\n');
 
       const header = 'Date,Patient,Montant,Méthode,Statut\n';
@@ -131,8 +132,9 @@ export function FinanceSection() {
 
   const handleExportPayouts = async () => {
     try {
+      // P2 #17: Null safety dans les exports CSV
       const csv = payouts.map(p =>
-        `${new Date(p.period_start).toLocaleDateString('fr-FR')} - ${new Date(p.period_end).toLocaleDateString('fr-FR')},${p.practitioner_id},${p.amount},${p.payment_method},${p.status}`
+        `${p.period_start ? new Date(p.period_start).toLocaleDateString('fr-FR') : 'N/A'} - ${p.period_end ? new Date(p.period_end).toLocaleDateString('fr-FR') : 'N/A'},${p.practitioner_id ?? 'N/A'},${p.amount ?? 0},${p.payment_method ?? 'N/A'},${p.status ?? 'N/A'}`
       ).join('\n');
 
       const header = 'Période,Praticien,Montant,Méthode,Statut\n';
@@ -302,7 +304,7 @@ export function FinanceSection() {
                         <TableCell className="whitespace-nowrap">
                           {new Date(payment.created_at).toLocaleDateString('fr-FR')}
                         </TableCell>
-                        <TableCell>{payment.patient_id.slice(0, 8)}...</TableCell>
+                        <TableCell>{payment.patient_id?.slice(0, 8) ?? 'N/A'}...</TableCell>
                         <TableCell className="font-medium">
                           {payment.amount.toLocaleString()} {payment.currency}
                         </TableCell>
@@ -315,7 +317,7 @@ export function FinanceSection() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {payment.appointment_id.slice(0, 8)}...
+                          {payment.appointment_id?.slice(0, 8) ?? 'N/A'}...
                         </TableCell>
                       </TableRow>
                     ))}

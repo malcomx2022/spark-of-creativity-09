@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { UserPlus, Shield, KeyRound, UserX, Copy, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import type { AdminRole } from "@/hooks/useAdminRole";
@@ -33,6 +35,9 @@ export function AdminManagement() {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
+  // P2 #11: État pour le dialogue de confirmation de désactivation
+  const [adminToDisable, setAdminToDisable] = useState<{ id: string; name: string } | null>(null);
+  const [disableReason, setDisableReason] = useState("");
 
   const { data: admins, isLoading } = useQuery({
     queryKey: ['admins'],
@@ -83,10 +88,11 @@ export function AdminManagement() {
       toast({ title: "Admin créé avec succès" });
     },
     onError: (error: Error) => {
-      toast({ 
-        title: "Erreur", 
-        description: error.message,
-        variant: "destructive" 
+      // P2 #3: Message d'erreur avec contexte
+      toast({
+        title: "Erreur lors de la création",
+        description: `Impossible de créer l'administrateur: ${error.message}`,
+        variant: "destructive"
       });
     },
   });
@@ -102,13 +108,16 @@ export function AdminManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
+      setAdminToDisable(null);
+      setDisableReason("");
       toast({ title: "Admin désactivé avec succès" });
     },
     onError: (error: Error) => {
-      toast({ 
-        title: "Erreur", 
-        description: error.message,
-        variant: "destructive" 
+      // P2 #3: Message d'erreur avec contexte
+      toast({
+        title: "Erreur lors de la désactivation",
+        description: `Impossible de désactiver l'administrateur: ${error.message}`,
+        variant: "destructive"
       });
     },
   });
@@ -129,10 +138,11 @@ export function AdminManagement() {
       toast({ title: "Mot de passe réinitialisé" });
     },
     onError: (error: Error) => {
-      toast({ 
-        title: "Erreur", 
-        description: error.message,
-        variant: "destructive" 
+      // P2 #3: Message d'erreur avec contexte
+      toast({
+        title: "Erreur lors de la réinitialisation",
+        description: `Impossible de réinitialiser le mot de passe: ${error.message}`,
+        variant: "destructive"
       });
     },
   });
@@ -169,14 +179,16 @@ export function AdminManagement() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="p-4 bg-muted rounded-lg font-mono text-sm flex items-center justify-between">
-              <span>{tempPassword}</span>
+            {/* P2 #6: Amélioration accessibilité et contraste */}
+            <div className="p-4 bg-muted rounded-lg font-mono text-sm flex items-center justify-between border">
+              <span className="text-foreground font-medium select-all">{tempPassword}</span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={copyToClipboard}
+                aria-label={copiedPassword ? "Mot de passe copié" : "Copier le mot de passe dans le presse-papier"}
               >
-                {copiedPassword ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copiedPassword ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -302,10 +314,14 @@ export function AdminManagement() {
                           <KeyRound className="h-4 w-4 mr-1" />
                           Reset MDP
                         </Button>
+                        {/* P2 #11: Ouvrir dialogue de confirmation au lieu de désactiver directement */}
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => deleteAdminMutation.mutate(admin.user_id)}
+                          onClick={() => setAdminToDisable({
+                            id: admin.user_id,
+                            name: admin.profile?.full_name || 'Administrateur'
+                          })}
                           disabled={deleteAdminMutation.isPending}
                         >
                           <UserX className="h-4 w-4 mr-1" />
@@ -324,6 +340,48 @@ export function AdminManagement() {
           )}
         </CardContent>
       </Card>
+
+      {/* P2 #11: Dialogue de confirmation pour désactivation admin */}
+      <AlertDialog open={!!adminToDisable} onOpenChange={(open) => !open && setAdminToDisable(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la désactivation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vous êtes sur le point de désactiver le compte de <strong>{adminToDisable?.name}</strong>.
+              Cette action supprimera définitivement l'accès administrateur de cet utilisateur.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4 space-y-2">
+            <Label htmlFor="disable-reason">Raison de la désactivation</Label>
+            <Textarea
+              id="disable-reason"
+              placeholder="Indiquez la raison de cette désactivation..."
+              value={disableReason}
+              onChange={(e) => setDisableReason(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setAdminToDisable(null);
+              setDisableReason("");
+            }}>
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (adminToDisable) {
+                  deleteAdminMutation.mutate(adminToDisable.id);
+                }
+              }}
+              disabled={!disableReason.trim() || deleteAdminMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteAdminMutation.isPending ? "Désactivation..." : "Confirmer la désactivation"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
