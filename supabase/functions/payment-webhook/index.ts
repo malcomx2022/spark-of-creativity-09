@@ -121,10 +121,11 @@ async function handleTransactionEvent(
     config[row.key] = row.value;
   });
   
-  // ✅ CORRECTION P2 #3: Minimum 1 jour de hold period pour éviter libération immédiate
+  // ✅ CORRECTION P2 #9: Validation min ET max du hold period
   const configHoldDays = config.payment_hold_period_days?.days;
   const MIN_HOLD_PERIOD_DAYS = 1; // Minimum sécuritaire
-  const holdPeriodDays = (typeof configHoldDays === 'number' && configHoldDays >= MIN_HOLD_PERIOD_DAYS) 
+  const MAX_HOLD_PERIOD_DAYS = 7; // Maximum 7 jours pour éviter blocage abusif des fonds
+  const holdPeriodDays = (typeof configHoldDays === 'number' && configHoldDays >= MIN_HOLD_PERIOD_DAYS && configHoldDays <= MAX_HOLD_PERIOD_DAYS) 
     ? configHoldDays 
     : 2; // Par défaut 2 jours si non configuré ou invalide
   
@@ -401,20 +402,48 @@ async function handleTransactionEvent(
         }
       });
 
-    // ✅ CORRECTION: Appeler apply-ledger-entries APRÈS toutes les mises à jour
+    // ✅ CORRECTION P1 #5 & #6: Appeler apply-ledger-entries APRÈS toutes les mises à jour
+    // avec gestion d'erreur et tentative de rollback
     if (paymentStatus === 'paid') {
       console.log('Applying ledger entries for payment:', payment.id);
       
-      const { error: ledgerError } = await supabase.functions.invoke('apply-ledger-entries', {
-        body: {
-          paymentId: payment.id,
-          status: 'paid'
-        }
-      });
+      try {
+        const { error: ledgerError } = await supabase.functions.invoke('apply-ledger-entries', {
+          body: {
+            paymentId: payment.id,
+            status: 'paid'
+          }
+        });
 
-      if (ledgerError) {
-        console.error('Warning: Failed to apply ledger entries:', ledgerError);
-        // Non-bloquant, on continue
+        if (ledgerError) {
+          console.error('❌ CRITICAL: Failed to apply ledger entries:', ledgerError);
+          
+          // Logger l'erreur pour audit et réconciliation manuelle
+          await supabase
+            .from('admin_audit_logs')
+            .insert({
+              admin_id: payment.patient_id,
+              action: 'ledger_entry_failed',
+              entity_type: 'payment',
+              entity_id: payment.id,
+              details: {
+                error: ledgerError.message || 'Unknown ledger error',
+                transaction_id: transactionId,
+                net_amount: netAmount,
+                requires_manual_reconciliation: true
+              }
+            });
+          
+          // Note: On ne fait PAS de rollback de la balance car update_payment_with_balance
+          // a déjà été exécuté de manière atomique. Le ledger est secondaire et peut
+          // être réconcilié manuellement via la table admin_audit_logs.
+          console.warn('⚠️ Payment balance is correct but ledger entries need manual reconciliation');
+        } else {
+          console.log('✅ Ledger entries applied successfully');
+        }
+      } catch (ledgerCriticalError) {
+        console.error('❌ CRITICAL ledger exception:', ledgerCriticalError);
+        // Continuer malgré l'erreur - le paiement est valide, seul le ledger est affecté
       }
     }
   }

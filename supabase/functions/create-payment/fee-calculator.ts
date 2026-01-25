@@ -101,8 +101,15 @@ export function parseFeeConfig(systemConfig: {
     decimals: number;
   };
 }): FeeConfig {
+  // ✅ CORRECTION P1 #4: Commission par défaut à 5% (pas 37%)
+  // 37% était une erreur - la norme du marché est 5-15%
+  const commissionRate = systemConfig.payment_commission_rate?.rate;
+  const validCommissionRate = typeof commissionRate === 'number' && commissionRate >= 0 && commissionRate <= 0.30
+    ? commissionRate 
+    : 0.05; // 5% par défaut, max 30%
+  
   return {
-    commissionRate: systemConfig.payment_commission_rate?.rate || 0.37, // 37% commission plateforme par défaut
+    commissionRate: validCommissionRate,
     gatewayFeeFixed: systemConfig.payment_gateway_fees?.fixed || 0,
     gatewayFeePercentage: systemConfig.payment_gateway_fees?.percentage || 0.02,
     gatewayFeePaidBy: systemConfig.payment_gateway_fees?.paid_by || 'platform',

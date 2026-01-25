@@ -83,8 +83,9 @@ serve(async (req) => {
     const fedapayData = await fedapayResponse.json();
     console.log('FedaPay response:', JSON.stringify(fedapayData));
     
-    // FedaPay retourne la transaction sous "v1/transaction" et non "v1"
-    const transactionData = fedapayData['v1/transaction'] || fedapayData.v1?.transaction || fedapayData;
+    // ✅ CORRECTION P2 #8: Harmoniser l'extraction avec create-payment
+    // FedaPay peut utiliser v1_transaction, v1/transaction, ou transaction
+    const transactionData = fedapayData.v1_transaction || fedapayData['v1/transaction'] || fedapayData.v1?.transaction || fedapayData.transaction || fedapayData;
     const fedapayStatus = transactionData?.status;
     
     if (!fedapayStatus) {
