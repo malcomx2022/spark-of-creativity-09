@@ -67,9 +67,16 @@ serve(async (req) => {
       throw new Error('Données manquantes: sessionId, patientId, amount et phoneNumber requis');
     }
 
-    // ✅ CORRECTION P1 #9: Validation du montant minimum
-    if (typeof body.amount !== 'number' || body.amount < 100) {
-      throw new Error('Le montant doit être supérieur ou égal à 100 FCFA');
+    // ✅ CORRECTION P1 #9: Validation du montant (aligné avec frontend session-validation.ts)
+    const MIN_SESSION_PRICE = 5000;  // Prix minimum en FCFA
+    const MAX_SESSION_PRICE = 500000; // Prix maximum en FCFA
+
+    if (typeof body.amount !== 'number' || body.amount < MIN_SESSION_PRICE) {
+      throw new Error(`Le montant doit être supérieur ou égal à ${MIN_SESSION_PRICE.toLocaleString()} FCFA`);
+    }
+
+    if (body.amount > MAX_SESSION_PRICE) {
+      throw new Error(`Le montant ne peut pas dépasser ${MAX_SESSION_PRICE.toLocaleString()} FCFA`);
     }
 
     // Récupérer les informations du patient pour le paiement
