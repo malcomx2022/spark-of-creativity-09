@@ -430,9 +430,14 @@ serve(async (req) => {
 
     // If transfer was successful, update practitioner balance
     if (transferStatus === 'processing' && transferId) {
-      // ✅ CORRECTION P1-7: Calculer le nouveau solde au lieu de mettre 0
-      // Soustraire le montant du payout du solde disponible actuel
-      const currentBalance = practitioner.balance_available || 0;
+      // ✅ CORRECTION P1-7: Récupérer le solde actuel depuis practitioner_balances
+      const { data: balanceData } = await supabase
+        .from('practitioner_balances')
+        .select('balance_available')
+        .eq('practitioner_id', practitionerId)
+        .maybeSingle();
+      
+      const currentBalance = balanceData?.balance_available || 0;
       const newBalance = Math.max(0, currentBalance - payoutAmount);
 
       await supabase
