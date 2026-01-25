@@ -159,30 +159,98 @@ serve(async (req) => {
     // Calculate amount from paid appointments if amount not specified
     let payoutAmount = amount;
     if (!amount) {
-      const { data: payments, error: paymentsError } = await supabase
+      // ✅ CORRECTION: Récupérer les paiements via les rendez-vous du praticien
+      // 1. Paiements des rendez-vous classiques (appointments)
+      const { data: appointmentPayments, error: appointmentPaymentsError } = await supabase
         .from('payments')
-        .select('net_amount')
-        .eq('appointment_id', practitionerId)
+        .select('net_amount, appointment_id')
         .eq('status', 'paid')
         .eq('payout_status', 'ready')
         .gte('created_at', periodStart)
-        .lte('created_at', periodEnd);
+        .lte('created_at', periodEnd)
+        .not('appointment_id', 'like', 'group_session_%');
 
-      if (paymentsError) {
-        throw paymentsError;
+      if (appointmentPaymentsError) {
+        throw appointmentPaymentsError;
       }
 
-      payoutAmount = payments?.reduce((sum, p) => sum + (p.net_amount || 0), 0) || 0;
+      // Filtrer les paiements qui appartiennent aux rendez-vous du praticien
+      let classicPaymentsTotal = 0;
+      if (appointmentPayments && appointmentPayments.length > 0) {
+        const appointmentIds = appointmentPayments.map(p => p.appointment_id).filter(Boolean);
+
+        if (appointmentIds.length > 0) {
+          const { data: practitionerAppointments } = await supabase
+            .from('appointments')
+            .select('id')
+            .eq('practitioner_id', practitionerId)
+            .in('id', appointmentIds);
+
+          const validAppointmentIds = new Set(practitionerAppointments?.map(a => a.id) || []);
+          classicPaymentsTotal = appointmentPayments
+            .filter(p => validAppointmentIds.has(p.appointment_id))
+            .reduce((sum, p) => sum + (p.net_amount || 0), 0);
+        }
+      }
+
+      // 2. Paiements des séances de groupe (group_sessions)
+      const { data: groupSessionPayments, error: groupPaymentsError } = await supabase
+        .from('payments')
+        .select('net_amount, appointment_id')
+        .eq('status', 'paid')
+        .eq('payout_status', 'ready')
+        .gte('created_at', periodStart)
+        .lte('created_at', periodEnd)
+        .like('appointment_id', 'group_session_%');
+
+      if (groupPaymentsError) {
+        throw groupPaymentsError;
+      }
+
+      // Filtrer les paiements de séances de groupe appartenant au praticien (coach)
+      let groupPaymentsTotal = 0;
+      if (groupSessionPayments && groupSessionPayments.length > 0) {
+        // Extraire les session IDs uniques depuis appointment_id (format: group_session_{sessionId}_{participantId})
+        const sessionIds = [...new Set(
+          groupSessionPayments
+            .map(p => p.appointment_id?.split('_')[2])
+            .filter(Boolean)
+        )];
+
+        if (sessionIds.length > 0) {
+          const { data: coachSessions } = await supabase
+            .from('group_sessions')
+            .select('id')
+            .eq('coach_id', practitionerId)
+            .in('id', sessionIds);
+
+          const validSessionIds = new Set(coachSessions?.map(s => s.id) || []);
+          groupPaymentsTotal = groupSessionPayments
+            .filter(p => {
+              const sessionId = p.appointment_id?.split('_')[2];
+              return sessionId && validSessionIds.has(sessionId);
+            })
+            .reduce((sum, p) => sum + (p.net_amount || 0), 0);
+        }
+      }
+
+      payoutAmount = classicPaymentsTotal + groupPaymentsTotal;
 
       if (payoutAmount === 0) {
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             error: 'No funds available',
             message: 'No payments ready for payout in this period'
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      console.log('Calculated payout amount:', {
+        classicPayments: classicPaymentsTotal,
+        groupPayments: groupPaymentsTotal,
+        total: payoutAmount
+      });
     }
 
     // Create FedaPay transfer
