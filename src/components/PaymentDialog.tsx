@@ -134,6 +134,9 @@ export function PaymentDialog({
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollStartTimeRef = useRef<number>(0);
   const widgetRef = useRef<any>(null);
+  // ✅ CORRECTION P0-2: Ref pour protection double-clic robuste (timestamp-based)
+  const lastPaymentClickRef = useRef<number>(0);
+  const DOUBLE_CLICK_THRESHOLD = 2000; // 2 secondes entre clics
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
 
@@ -217,23 +220,78 @@ export function PaymentDialog({
 
     const checkExistingPayment = async () => {
       console.log(`🔍 Vérification d'un paiement existant pour ${context}:`, contextId);
-      
+
+      // ✅ CORRECTION P0-4: Récupérer l'utilisateur courant pour vérification d'autorisation
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) {
+        console.error('❌ Utilisateur non authentifié');
+        toast({
+          title: 'Session expirée',
+          description: 'Veuillez vous reconnecter pour continuer.',
+          variant: 'destructive',
+        });
+        onOpenChange?.(false);
+        return;
+      }
+
       // Pour les rendez-vous, on vérifie via appointment_id
       // Pour les séances de groupe, on vérifie via group_session_participants
       let existingPayment = null;
-      
+
       if (context === 'appointment') {
+        // ✅ CORRECTION P0-4: Vérifier que le rendez-vous appartient au patient actuel
+        const { data: appointment, error: apptError } = await withTimeout(
+          supabase
+            .from('appointments')
+            .select('id, patient_id')
+            .eq('id', contextId)
+            .single()
+        );
+
+        if (apptError || !appointment) {
+          console.error('❌ Rendez-vous non trouvé:', apptError);
+          toast({
+            title: 'Rendez-vous introuvable',
+            description: 'Ce rendez-vous n\'existe pas ou a été supprimé.',
+            variant: 'destructive',
+          });
+          onOpenChange?.(false);
+          return;
+        }
+
+        // ✅ CORRECTION P0-4: Vérification d'autorisation - le patient doit être le propriétaire
+        if (appointment.patient_id !== currentUser.id) {
+          console.error('❌ Tentative non autorisée - patient_id mismatch:', {
+            appointmentPatientId: appointment.patient_id,
+            currentUserId: currentUser.id
+          });
+          toast({
+            title: 'Non autorisé',
+            description: 'Vous n\'êtes pas autorisé à effectuer ce paiement.',
+            variant: 'destructive',
+          });
+          onOpenChange?.(false);
+          return;
+        }
+
         const { data } = await withTimeout(
           supabase
             .from('payments')
-            .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at')
+            .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at, patient_id')
             .eq('appointment_id', contextId)
             .in('status', ['initiated', 'pending'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
         );
-        existingPayment = data;
+
+        // ✅ CORRECTION P0-4: Vérifier aussi que le paiement appartient au bon patient
+        if (data && data.patient_id && data.patient_id !== currentUser.id) {
+          console.error('❌ Paiement appartient à un autre patient');
+          existingPayment = null; // Ignorer ce paiement
+        } else {
+          existingPayment = data;
+        }
       } else {
         // Pour les séances de groupe, vérifier via participants
         const { data: participant } = await withTimeout(
@@ -552,12 +610,20 @@ export function PaymentDialog({
   }, [useSavedMethod]);
 
   const handlePayment = async () => {
-    // ✅ CORRECTION BUG #1: Éviter les double-clics avec un flag
+    // ✅ CORRECTION P0-2: Protection double-clic robuste avec ref timestamp
+    const now = Date.now();
+    if (now - lastPaymentClickRef.current < DOUBLE_CLICK_THRESHOLD) {
+      console.log('⚠️ Double-clic détecté, ignorer (délai:', now - lastPaymentClickRef.current, 'ms)');
+      return;
+    }
+    lastPaymentClickRef.current = now;
+
+    // Protection supplémentaire avec state
     if (isCreatingPayment) {
       console.log('⚠️ Création de paiement déjà en cours, ignorer');
       return;
     }
-    
+
     setIsCreatingPayment(true);
     
     // Si une méthode sauvegardée est sélectionnée, l'utiliser

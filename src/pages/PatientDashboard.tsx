@@ -220,8 +220,21 @@ export default function PatientDashboard() {
         }
       }
 
+      // ✅ CORRECTION P0-3: Validation robuste du montant
       if (amount === null) {
         throw new Error('Impossible de déterminer le montant à payer pour ce rendez-vous');
+      }
+
+      // Vérifier que le montant est un nombre positif et dans les limites acceptables
+      if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Le montant du paiement est invalide');
+      }
+
+      // Vérifier les limites de montant (entre 1000 et 1000000 XOF)
+      const MIN_AMOUNT = 1000;
+      const MAX_AMOUNT = 1000000;
+      if (amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
+        throw new Error(`Le montant doit être compris entre ${MIN_AMOUNT.toLocaleString()} et ${MAX_AMOUNT.toLocaleString()} XOF`);
       }
 
       setPaymentAmount(amount);
@@ -237,12 +250,40 @@ export default function PatientDashboard() {
     }
   };
 
-  const handlePaymentSuccess = useCallback(() => {
-    console.log('✅ Paiement réussi');
-    
-    // ✅ Nettoyer l'état de paiement persisté
+  const handlePaymentSuccess = useCallback(async () => {
+    console.log('✅ Paiement réussi - vérification de la persistance');
+
+    // ✅ CORRECTION P0-1: Vérifier que le paiement est bien persisté en DB avant de fermer
+    if (appointmentIdForPayment) {
+      try {
+        // Attendre un court instant pour laisser le webhook traiter le paiement
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Vérifier que le paiement existe avec un status valide
+        const { data: payment, error } = await supabase
+          .from('payments')
+          .select('id, status')
+          .eq('appointment_id', appointmentIdForPayment)
+          .in('status', ['paid', 'pending', 'initiated'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Erreur vérification paiement:', error);
+        } else if (!payment) {
+          console.warn('⚠️ Paiement non trouvé en DB, état potentiellement incohérent');
+        } else {
+          console.log('✅ Paiement vérifié en DB:', payment.id, 'Status:', payment.status);
+        }
+      } catch (verifyError) {
+        console.error('Erreur lors de la vérification du paiement:', verifyError);
+      }
+    }
+
+    // Nettoyer l'état de paiement persisté
     clearPersistedPaymentState();
-    
+
     setPaymentDialogOpen(false);
     setAppointmentIdForPayment(null);
     setPaymentAmount(null);
@@ -252,7 +293,7 @@ export default function PatientDashboard() {
     queryClient.invalidateQueries({ queryKey: ['payments'] });
     queryClient.refetchQueries({ queryKey: ['appointments', 'patient', patientId] });
     queryClient.refetchQueries({ queryKey: ['payments', patientId] });
-  }, [patientId, queryClient]);
+  }, [patientId, queryClient, appointmentIdForPayment]);
 
   const handlePaymentDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
