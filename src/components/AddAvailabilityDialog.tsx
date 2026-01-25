@@ -28,6 +28,16 @@ export function AddAvailabilityDialog({ practitionerId, trigger }: AddAvailabili
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validation: l'heure de fin doit être après l'heure de début
+    if (formData.start_time >= formData.end_time) {
+      toast({
+        title: 'Horaires invalides',
+        description: 'L\'heure de fin doit être après l\'heure de début.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       await createAvailability.mutateAsync({
         practitioner_id: practitionerId,
@@ -41,12 +51,30 @@ export function AddAvailabilityDialog({ practitionerId, trigger }: AddAvailabili
 
       setFormData({ day_of_week: 1, start_time: '09:00', end_time: '17:00' });
       setOpen(false);
-    } catch (error) {
-      toast({
-        title: 'Erreur',
-        description: 'Impossible d\'ajouter le créneau.',
-        variant: 'destructive',
-      });
+    } catch (error: any) {
+      // Détecter l'erreur de contrainte UNIQUE (code PostgreSQL 23505)
+      const errorMessage = error?.message || error?.toString() || '';
+      const isUniqueViolation =
+        errorMessage.includes('23505') ||
+        errorMessage.includes('unique') ||
+        errorMessage.includes('duplicate') ||
+        errorMessage.includes('already exists') ||
+        error?.code === '23505';
+
+      if (isUniqueViolation) {
+        toast({
+          title: 'Créneau déjà existant',
+          description: `Ce créneau existe déjà pour le ${DAYS_FR[formData.day_of_week]}. Veuillez choisir un autre horaire.`,
+          variant: 'destructive',
+        });
+      } else {
+        console.error('[Availability] Erreur lors de l\'ajout du créneau:', error);
+        toast({
+          title: 'Erreur',
+          description: 'Impossible d\'ajouter le créneau. Veuillez réessayer.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 

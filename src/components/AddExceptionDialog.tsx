@@ -27,6 +27,20 @@ export function AddExceptionDialog({ practitionerId, trigger }: AddExceptionDial
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validation: la date ne doit pas être dans le passé
+    const selectedDate = new Date(formData.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (selectedDate < today) {
+      toast({
+        title: 'Date invalide',
+        description: 'Vous ne pouvez pas ajouter une exception pour une date passée.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       await createException.mutateAsync({
         practitioner_id: practitionerId,
@@ -40,12 +54,36 @@ export function AddExceptionDialog({ practitionerId, trigger }: AddExceptionDial
 
       setFormData({ date: '', is_available: false, reason: '' });
       setOpen(false);
-    } catch (error) {
-      toast({
-        title: 'Erreur',
-        description: 'Impossible d\'ajouter l\'exception.',
-        variant: 'destructive',
-      });
+    } catch (error: any) {
+      // Détecter l'erreur de contrainte UNIQUE (code PostgreSQL 23505)
+      const errorMessage = error?.message || error?.toString() || '';
+      const isUniqueViolation =
+        errorMessage.includes('23505') ||
+        errorMessage.includes('unique') ||
+        errorMessage.includes('duplicate') ||
+        errorMessage.includes('already exists') ||
+        error?.code === '23505';
+
+      if (isUniqueViolation) {
+        const formattedDate = new Date(formData.date).toLocaleDateString('fr-FR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
+        toast({
+          title: 'Exception déjà existante',
+          description: `Une exception existe déjà pour le ${formattedDate}. Supprimez-la d'abord ou modifiez-la.`,
+          variant: 'destructive',
+        });
+      } else {
+        console.error('[Exception] Erreur lors de l\'ajout de l\'exception:', error);
+        toast({
+          title: 'Erreur',
+          description: 'Impossible d\'ajouter l\'exception. Veuillez réessayer.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
