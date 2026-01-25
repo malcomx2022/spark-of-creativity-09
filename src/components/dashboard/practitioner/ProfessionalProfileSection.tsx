@@ -175,21 +175,20 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
     }
   };
 
+  // ✅ CORRECTION P0-3: Seul "approved" est un statut KYC valide en base de données
   const isKYCValidated = () => {
     const status = practitionerData?.kyc_status || "pending";
-    return status === "approved" || status === "validated";
+    return status === "approved";
   };
 
   const getKYCStatusBadge = () => {
     const status = practitionerData?.kyc_status || "pending";
+    // Statuts KYC selon la base de données: pending, incomplete, rejected, approved
     const config = {
       pending: { icon: Clock, variant: "secondary" as const, label: "En attente" },
       approved: { icon: CheckCircle, variant: "default" as const, label: "Validé" },
-      validated: { icon: CheckCircle, variant: "default" as const, label: "Validé" },
       rejected: { icon: XCircle, variant: "destructive" as const, label: "Refusé" },
-      refused: { icon: XCircle, variant: "destructive" as const, label: "Refusé" },
       incomplete: { icon: AlertCircle, variant: "outline" as const, label: "Incomplet" },
-      to_renew: { icon: AlertCircle, variant: "outline" as const, label: "À renouveler" },
     };
     const { icon: Icon, variant, label } = config[status as keyof typeof config] || config.pending;
     

@@ -30,10 +30,14 @@ async function fetchPractitioners() {
   
   if (session) {
     // Authenticated users can access full practitioner data
+    // ✅ CORRECTION P0-5 & P1-12: Utiliser AND au lieu de OR et vérifier is_online
+    // Un praticien doit être: disponible ET peut accepter des missions ET en ligne ET KYC approuvé
     const { data, error } = await supabase
       .from('practitioners')
       .select('*')
-      .or('available.eq.true,can_accept_missions.eq.true')
+      .eq('available', true)
+      .eq('can_accept_missions', true)
+      .eq('is_online', true)
       .eq('kyc_status', 'approved')
       .order('name', { ascending: true });
 

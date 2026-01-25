@@ -203,21 +203,38 @@ serve(async (req) => {
       // Utiliser le nom du profile si disponible, sinon celui du rendez-vous
       const patientName = patientProfile.full_name || appointment.patient_name || 'Patient';
 
-      // ✅ Mettre à jour le statut du rendez-vous en 'pending_payment' directement
+      // ✅ CORRECTION P0-2: Mise à jour atomique avec vérification du nombre de lignes affectées
       // Le statut passera à 'confirmed' uniquement quand le paiement sera complété (via webhook)
       console.log('📝 Mise à jour du rendez-vous en statut pending_payment');
-      const { error: preUpdateError } = await supabase
+      const { data: updatedAppointment, error: preUpdateError } = await supabase
         .from('appointments')
-        .update({ 
-          status: 'pending_payment', 
+        .update({
+          status: 'pending_payment',
           payment_amount: paymentAmount
         })
         .eq('id', appointmentId)
-        .eq('status', 'awaiting_practitioner'); // Lock optimiste
+        .eq('status', 'awaiting_practitioner') // Lock optimiste - condition WHERE
+        .select('id')
+        .maybeSingle();
 
       if (preUpdateError) {
         console.error('❌ Erreur mise à jour pré-paiement:', preUpdateError);
         throw new Error('Impossible de mettre à jour le rendez-vous');
+      }
+
+      // ✅ Vérifier qu'une ligne a bien été mise à jour (protection race condition)
+      if (!updatedAppointment) {
+        console.error('❌ Race condition détectée: le rendez-vous a déjà été traité');
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Ce rendez-vous a déjà été traité par un autre praticien ou a changé de statut',
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 409, // Conflict
+          }
+        );
       }
 
       // ✅ Créer le paiement FedaPay avec service role

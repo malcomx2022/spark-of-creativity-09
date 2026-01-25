@@ -88,14 +88,17 @@ export default function PractitionerDashboard() {
 
   const mutateAppointment = useMutateAppointment();
 
+  // ✅ CORRECTION P0-1: Vérifier les deux conditions KYC pour cohérence avec useAppointments
+  const canProcessAppointments = practitioner?.can_accept_missions && practitioner?.kyc_status === 'approved';
+
   const handleAccept = async (appointmentId: string) => {
     if (processingAppointment === appointmentId) return;
-    
-    // Bloquer si le compte n'est pas validé
-    if (!practitioner?.can_accept_missions) {
+
+    // Bloquer si le compte n'est pas validé (vérifier les deux conditions)
+    if (!canProcessAppointments) {
       toast({
         title: 'Compte non activé',
-        description: 'Votre compte doit être validé avant d\'accepter des consultations.',
+        description: 'Votre compte doit être validé (KYC approuvé) avant d\'accepter des consultations.',
         variant: 'destructive'
       });
       return;
@@ -148,12 +151,12 @@ export default function PractitionerDashboard() {
 
   const handleReject = async (appointmentId: string) => {
     if (processingAppointment === appointmentId) return;
-    
-    // Bloquer si le compte n'est pas validé
-    if (!practitioner?.can_accept_missions) {
+
+    // Bloquer si le compte n'est pas validé (vérifier les deux conditions)
+    if (!canProcessAppointments) {
       toast({
         title: 'Compte non activé',
-        description: 'Votre compte doit être validé avant de refuser des consultations.',
+        description: 'Votre compte doit être validé (KYC approuvé) avant de refuser des consultations.',
         variant: 'destructive'
       });
       return;
@@ -321,7 +324,8 @@ export default function PractitionerDashboard() {
         </div>
 
         {/* Alerte pour les comptes non opérationnels */}
-        {!practitioner.can_accept_missions && (
+        {/* ✅ CORRECTION P0-1: Utiliser canProcessAppointments pour cohérence */}
+        {!canProcessAppointments && (
           <Card className="mb-8 border-orange-500 bg-orange-50 dark:bg-orange-950/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
@@ -509,7 +513,7 @@ export default function PractitionerDashboard() {
                           userRole="practitioner"
                           onConfirm={() => handleAccept(appointment.id)}
                           onReject={() => handleReject(appointment.id)}
-                          disabled={!practitioner.can_accept_missions}
+                          disabled={!canProcessAppointments}
                         />
                       </div>
                     ))}
