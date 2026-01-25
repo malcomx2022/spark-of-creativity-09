@@ -140,6 +140,10 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
     count: sessions?.count || 0,
     isLoading,
     cancelSession: cancelSession.mutate,
+    cancelSessionAsync: cancelSession.mutateAsync,
+    isCancelling: cancelSession.isPending,
     confirmSession: confirmSession.mutate,
+    confirmSessionAsync: confirmSession.mutateAsync,
+    isConfirming: confirmSession.isPending,
   };
 }

@@ -72,7 +72,15 @@ export default function CoachDashboard() {
     enabled: !!user?.id,
   });
 
-  const { sessions, count: sessionsCount, isLoading: isLoadingSessions, cancelSession, confirmSession } = useGroupSessions(coach?.id, 0, 100);
+  const {
+    sessions,
+    count: sessionsCount,
+    isLoading: isLoadingSessions,
+    cancelSessionAsync,
+    isCancelling,
+    confirmSessionAsync,
+    isConfirming
+  } = useGroupSessions(coach?.id, 0, 100);
 
   // Fetch individual appointments for coach
   const {
@@ -114,12 +122,18 @@ export default function CoachDashboard() {
     setCancelDialogOpen(true);
   };
 
-  const handleConfirmCancelSession = () => {
-    if (selectedSessionId) {
-      cancelSession(selectedSessionId);
+  const handleConfirmCancelSession = async () => {
+    if (!selectedSessionId) return;
+
+    try {
+      await cancelSessionAsync(selectedSessionId);
+      setCancelDialogOpen(false);
+      setSelectedSessionId(null);
+    } catch (error) {
+      // L'erreur est déjà gérée par le hook (toast affiché)
+      // On garde le dialog ouvert pour permettre de réessayer
+      console.error('Erreur annulation séance:', error);
     }
-    setCancelDialogOpen(false);
-    setSelectedSessionId(null);
   };
 
   const handleConfirmSession = (sessionId: string) => {
@@ -127,12 +141,18 @@ export default function CoachDashboard() {
     setConfirmDialogOpen(true);
   };
 
-  const handleConfirmConfirmSession = () => {
-    if (selectedSessionId) {
-      confirmSession(selectedSessionId);
+  const handleConfirmConfirmSession = async () => {
+    if (!selectedSessionId) return;
+
+    try {
+      await confirmSessionAsync(selectedSessionId);
+      setConfirmDialogOpen(false);
+      setSelectedSessionId(null);
+    } catch (error) {
+      // L'erreur est déjà gérée par le hook (toast affiché)
+      // On garde le dialog ouvert pour permettre de réessayer
+      console.error('Erreur confirmation séance:', error);
     }
-    setConfirmDialogOpen(false);
-    setSelectedSessionId(null);
   };
 
   const handleAcceptAppointment = async (appointmentId: string) => {
@@ -460,7 +480,7 @@ export default function CoachDashboard() {
       </main>
 
       {/* Cancel Session Dialog */}
-      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <AlertDialog open={cancelDialogOpen} onOpenChange={(open) => !isCancelling && setCancelDialogOpen(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Annuler la séance ?</AlertDialogTitle>
@@ -469,16 +489,20 @@ export default function CoachDashboard() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Non</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmCancelSession}>
-              Oui, annuler
+            <AlertDialogCancel disabled={isCancelling}>Non</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCancelSession} disabled={isCancelling}>
+              {isCancelling ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Annulation...</>
+              ) : (
+                "Oui, annuler"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Confirm Session Dialog */}
-      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+      <AlertDialog open={confirmDialogOpen} onOpenChange={(open) => !isConfirming && setConfirmDialogOpen(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la séance ?</AlertDialogTitle>
@@ -487,9 +511,13 @@ export default function CoachDashboard() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Non</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmConfirmSession}>
-              Oui, confirmer
+            <AlertDialogCancel disabled={isConfirming}>Non</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmConfirmSession} disabled={isConfirming}>
+              {isConfirming ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirmation...</>
+              ) : (
+                "Oui, confirmer"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
