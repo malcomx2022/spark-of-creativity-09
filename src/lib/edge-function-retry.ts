@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1000;
-const GLOBAL_TIMEOUT_MS = 30000; // 30 secondes max pour toutes les tentatives
+const GLOBAL_TIMEOUT_MS = 90000; // 90 secondes max pour les uploads de documents volumineux
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   "failed to fetch",

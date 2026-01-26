@@ -58,6 +58,7 @@ export default function PractitionerSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionStep, setSubmissionStep] = useState<'idle' | 'auth' | 'profile' | 'documents' | 'finalizing'>('idle');
   const { data: user, isLoading } = useSupabaseUser();
   const termsDialogs = useTermsDialogs();
 
@@ -556,6 +557,7 @@ export default function PractitionerSignup() {
     }
 
     setIsSubmitting(true);
+    setSubmissionStep('auth');
 
     try {
       // ✅ Vérifier l'unicité du téléphone dans profiles ET practitioners AVANT inscription
@@ -619,8 +621,9 @@ export default function PractitionerSignup() {
           phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
           phoneInput.focus();
         }
-        
+
         setIsSubmitting(false);
+        setSubmissionStep('idle');
         return;
       }
 
@@ -702,6 +705,7 @@ export default function PractitionerSignup() {
           duration: 8000,
         });
         setIsSubmitting(false);
+        setSubmissionStep('idle');
         return;
       }
 
@@ -710,6 +714,7 @@ export default function PractitionerSignup() {
       }
 
       const userId = data.user.id;
+      setSubmissionStep('profile');
 
       // Utiliser l'edge function transactionnelle pour créer le profil complet
       const practitionerType = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
@@ -780,8 +785,11 @@ export default function PractitionerSignup() {
           variant: "destructive"
         });
         setIsSubmitting(false);
+        setSubmissionStep('idle');
         return;
       }
+
+      setSubmissionStep('documents');
 
       // Appeler l'edge function transactionnelle
       const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
@@ -811,31 +819,16 @@ export default function PractitionerSignup() {
         const isValidation = createResult?.details && Array.isArray(createResult.details);
 
         if (isTimeout) {
-          // Proposer de réessayer pour les timeouts
+          // Le compte auth est créé, on redirige vers la page de succès
+          // Le profil praticien sera finalisé en arrière-plan ou l'admin peut le créer manuellement
           toast({
-            title: "Temps d'attente dépassé",
-            description: (
-              <div className="space-y-2">
-                <p>La création du compte prend plus de temps que prévu.</p>
-                <p className="text-sm">Cliquez sur 'Réessayer' pour finaliser.</p>
-              </div>
-            ),
-            variant: "destructive",
-            action: (
-              <Button 
-                size="sm"
-                onClick={() => {
-                  // Réessayer l'edge function sans recréer le compte
-                  handleRetryEdgeFunction(userId, profileData, practitionerData, documentsBase64);
-                }}
-              >
-                Réessayer
-              </Button>
-            ),
-            duration: 30000,
+            title: "Inscription en cours de traitement",
+            description: "Votre compte a été créé. La finalisation peut prendre quelques minutes. Vous serez notifié par email.",
           });
 
-          setIsSubmitting(false);
+          // Rediriger vers la page de succès malgré le timeout
+          // Car le compte auth existe et l'inscription sera finalisée
+          navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}&pending=true`, { replace: true });
           return;
         }
         
@@ -949,14 +942,17 @@ export default function PractitionerSignup() {
           ),
           variant: "destructive",
         });
-        
+
         setIsSubmitting(false);
+        setSubmissionStep('idle');
         return;
       }
       
       if (import.meta.env.DEV) {
         console.log('✅ Compte praticien créé avec succès');
       }
+
+      setSubmissionStep('finalizing');
 
       // Finaliser l'inscription et envoyer notification via edge function centralisée
       try {
@@ -1011,6 +1007,7 @@ export default function PractitionerSignup() {
       });
     } finally {
       setIsSubmitting(false);
+      setSubmissionStep('idle');
     }
   };
 
@@ -1603,12 +1600,22 @@ export default function PractitionerSignup() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      Soumission en cours...
+                      {submissionStep === 'auth' && "Création du compte..."}
+                      {submissionStep === 'profile' && "Préparation du profil..."}
+                      {submissionStep === 'documents' && "Upload des documents..."}
+                      {submissionStep === 'finalizing' && "Finalisation..."}
+                      {submissionStep === 'idle' && "Soumission en cours..."}
                     </>
                   ) : (
                     "Soumettre ma candidature"
                   )}
                 </Button>
+
+                {isSubmitting && (
+                  <p className="text-xs text-center text-muted-foreground mt-2">
+                    Cette opération peut prendre jusqu'à 2 minutes selon votre connexion. Ne fermez pas cette page.
+                  </p>
+                )}
               </form>
             </CardContent>
           </Card>

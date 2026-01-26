@@ -12,7 +12,8 @@ export default function RegistrationSuccess() {
   const [searchParams] = useSearchParams();
   const userType = searchParams.get("type") as "patient" | "practitioner" | null;
   const practitionerType = searchParams.get("practitionerType");
-  const [countdown, setCountdown] = useState(10);
+  const isPendingFinalization = searchParams.get("pending") === "true";
+  const [countdown, setCountdown] = useState(isPendingFinalization ? 15 : 10);
   const [dashboardPath, setDashboardPath] = useState<string>("/dashboard/patient");
 
   useEffect(() => {
@@ -93,13 +94,27 @@ export default function RegistrationSuccess() {
           <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
             {isPractitioner ? (
               <>
+                {isPendingFinalization && (
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-3 mb-4">
+                    <div className="flex items-start gap-3">
+                      <Clock className="w-5 h-5 text-blue-500 mt-0.5 shrink-0 animate-pulse" />
+                      <div className="space-y-2">
+                        <h3 className="font-semibold text-blue-600">Finalisation en cours</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Votre inscription est en cours de finalisation. Cela peut prendre quelques minutes. Vous recevrez un email de confirmation une fois terminé.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 space-y-3">
                   <div className="flex items-start gap-3">
                     <Clock className="w-5 h-5 text-warning mt-0.5 shrink-0" />
                     <div className="space-y-2">
-                      <h3 className="font-semibold text-warning">Compte en attente de validation</h3>
+                      <h3 className="font-semibold text-warning">Compte en attente de validation KYC</h3>
                       <p className="text-sm text-muted-foreground">
-                        Notre équipe examine actuellement votre dossier. Ce processus prend généralement entre 24 et 48 heures.
+                        <strong>Votre compte sera activé après vérification de votre dossier (24 à 48 heures).</strong> Notre équipe examine vos documents professionnels et votre identité.
                       </p>
                     </div>
                   </div>

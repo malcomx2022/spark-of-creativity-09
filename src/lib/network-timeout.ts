@@ -1,10 +1,11 @@
 /**
  * Wrapper pour ajouter un timeout aux requêtes réseau
  */
-export const NETWORK_TIMEOUT = 30000; // 30 secondes
+export const NETWORK_TIMEOUT = 30000; // 30 secondes pour les requêtes standard
+export const UPLOAD_TIMEOUT = 90000; // 90 secondes pour les uploads de fichiers
 
 export class NetworkTimeoutError extends Error {
-  constructor(message = "Délai de connexion dépassé (>30 secondes). Vérifiez votre connexion internet et réessayez.") {
+  constructor(message = "Délai de connexion dépassé. Vérifiez votre connexion internet et réessayez.") {
     super(message);
     this.name = "NetworkTimeoutError";
   }
