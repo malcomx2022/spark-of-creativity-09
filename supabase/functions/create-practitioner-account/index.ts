@@ -531,11 +531,70 @@ serve(async (req) => {
     let uploadedDocuments: Array<{ key: string; path: string }> = [];
 
     try {
-      // 1. Créer le profil
-      console.log('📝 Création profil...');
+      // 1. Vérifier si le profil existe déjà pour ce userId
+      console.log('📝 Vérification profil existant...');
+      const { data: existingProfile, error: profileCheckError } = await supabase
+        .from('profiles')
+        .select('id, phone')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (profileCheckError) {
+        console.error('❌ Erreur vérification profil:', profileCheckError);
+      }
+
+      // Si le profil existe déjà et que le téléphone est différent, vérifier que le nouveau téléphone est disponible
+      if (existingProfile && existingProfile.phone !== profileData.phone) {
+        const { data: phoneConflict } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('phone', profileData.phone)
+          .neq('id', userId)
+          .maybeSingle();
+        
+        if (phoneConflict) {
+          console.error('❌ Téléphone déjà utilisé par un autre profil');
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'Ce numéro de téléphone est déjà associé à un autre compte. Utilisez un autre numéro ou connectez-vous avec le compte existant.',
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 409,
+            }
+          );
+        }
+      }
+
+      // Vérifier aussi si le téléphone existe pour un autre utilisateur (nouveau profil)
+      if (!existingProfile) {
+        const { data: phoneConflict } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('phone', profileData.phone)
+          .maybeSingle();
+        
+        if (phoneConflict) {
+          console.error('❌ Téléphone déjà utilisé par un autre profil:', phoneConflict.id);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'Ce numéro de téléphone est déjà associé à un autre compte. Si vous avez déjà un compte patient, connectez-vous avec celui-ci puis contactez le support pour migrer vers un compte praticien.',
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 409,
+            }
+          );
+        }
+      }
+
+      // Créer ou mettre à jour le profil
+      console.log('📝 Création/mise à jour profil...');
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert([profileData]);
+        .upsert([profileData], { onConflict: 'id' });
 
       if (profileError) {
         console.error('❌ Erreur profil:', profileError);
@@ -543,16 +602,15 @@ serve(async (req) => {
         // Détecter les erreurs spécifiques pour des messages clairs
         let errorMessage = profileError.message;
         if (profileError.message.includes('Phone number') && profileError.message.includes('already exists')) {
-          errorMessage = 'Ce numéro de téléphone est déjà utilisé par un autre utilisateur';
+          errorMessage = 'Ce numéro de téléphone est déjà utilisé par un autre utilisateur. Utilisez un autre numéro.';
         } else if (profileError.code === 'P0001') {
-          // Code erreur pour les exceptions RAISE dans les triggers
           errorMessage = profileError.message;
         }
         
         throw new Error(`Échec création profil: ${errorMessage}`);
       }
       profileCreated = true;
-      console.log('✅ Profil créé');
+      console.log('✅ Profil créé/mis à jour');
 
       console.log('📤 Upload documents...');
       const uploadedDocs: Record<string, any> = {};
