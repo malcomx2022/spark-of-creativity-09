@@ -176,7 +176,6 @@ function validateDocument(base64Data: string, documentType: string): { valid: bo
 }
 
 async function uploadDocument(
-  supabase: any,
   base64Data: string,
   fileName: string,
   userId: string
@@ -191,25 +190,40 @@ async function uploadDocument(
   const base64Content = matches[2];
 
   console.log(`Upload document ${fileName}...`);
-  
-  // Appel de l'edge function upload-to-wasabi avec userId pour service role
-  const { data, error } = await supabase.functions.invoke("upload-to-wasabi", {
-    body: {
-      fileName,
-      fileContent: base64Content, // Envoyer le contenu base64 sans le préfixe data:
-      contentType,
-      folder: "practitioner-documents",
-      userId: userId // Nécessaire pour les appels service role
-    }
-  });
 
-  if (error) {
-    console.error('Erreur upload Wasabi:', error);
-    throw error;
+  // ✅ FIX: Appel direct via fetch avec le service role key pour éviter les problèmes d'auth
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase configuration');
   }
 
+  const uploadResponse = await fetch(`${supabaseUrl}/functions/v1/upload-to-wasabi`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fileName,
+      fileContent: base64Content,
+      contentType,
+      folder: "practitioner-documents",
+      userId: userId
+    })
+  });
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    console.error('Erreur upload Wasabi:', uploadResponse.status, errorText);
+    throw new Error(`Échec upload: ${uploadResponse.status} - ${errorText}`);
+  }
+
+  const data = await uploadResponse.json();
+
   if (!data || !data.success) {
-    throw new Error('Échec upload Wasabi');
+    throw new Error(data?.error || 'Échec upload Wasabi');
   }
 
   return {
@@ -282,6 +296,58 @@ serve(async (req) => {
     const { userId, profileData, practitionerData, documents } = body;
 
     console.log('🚀 Création compte praticien atomique:', userId);
+
+    // ✅ SÉCURITÉ: Vérifier que le userId correspond à un utilisateur existant dans auth.users
+    if (!userId || typeof userId !== 'string' || userId.length < 20) {
+      console.error('❌ userId invalide:', userId);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Identifiant utilisateur invalide',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
+    }
+
+    // Vérifier que l'utilisateur existe dans auth.users
+    const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
+    if (authError || !authUser?.user) {
+      console.error('❌ Utilisateur non trouvé dans auth.users:', authError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Utilisateur non trouvé. Veuillez vous réinscrire.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 404,
+        }
+      );
+    }
+
+    // Vérifier que l'utilisateur a été créé récemment (moins de 10 minutes)
+    const createdAt = new Date(authUser.user.created_at);
+    const now = new Date();
+    const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+
+    if (minutesSinceCreation > 10) {
+      console.error('❌ Compte créé il y a plus de 10 minutes, possible tentative de fraude');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Session expirée. Veuillez vous réinscrire.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403,
+        }
+      );
+    }
+
+    console.log('✅ Utilisateur validé:', authUser.user.email);
 
     // ✅ CONTRÔLE D'UNICITÉ: Vérifier si un praticien existe déjà avec ce téléphone
     const { data: existingPractitioner, error: checkError } = await supabase
@@ -476,7 +542,7 @@ serve(async (req) => {
             }
             
             const fileName = `${key}_${Date.now()}.${ext}`;
-            const result = await uploadDocument(supabase, base64Data, fileName, userId);
+            const result = await uploadDocument(base64Data, fileName, userId);
             uploadedDocs[key] = result;
             uploadedDocuments.push({ key, path: result.path });
             console.log(`✅ ${key} uploadé: ${result.path}`);

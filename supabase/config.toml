@@ -73,7 +73,8 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.create-practitioner-account]
-verify_jwt = true
+# JWT désactivé car appelé juste après signUp() avant confirmation email
+verify_jwt = false
 
 [functions.register-group-session]
 verify_jwt = true
