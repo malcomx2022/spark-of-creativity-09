@@ -81,6 +81,7 @@ export type EdgeFunctionInvokeResult<T> = {
   error: Error | null;
   status?: number;
   statusText?: string;
+  details?: string[];
 };
 
 export async function invokeEdgeFunctionWithRetry<T>(
@@ -116,11 +117,27 @@ export async function invokeEdgeFunctionWithRetry<T>(
         };
       }
 
+      // Extract detailed error from response data if available
+      // When edge function returns 4xx/5xx with JSON body, data still contains the response
+      let detailedError = toError(result.error);
+      let errorDetails: string[] | undefined;
+
+      if (result.data && typeof result.data === 'object') {
+        const responseData = result.data as Record<string, unknown>;
+        if (responseData.error && typeof responseData.error === 'string') {
+          detailedError = new Error(responseData.error);
+        }
+        if (Array.isArray(responseData.details)) {
+          errorDetails = responseData.details as string[];
+        }
+      }
+
       if (!isTransientNetworkError(result.error) || attempt === attempts) {
-        console.error(`[Retry] Échec définitif à la tentative ${attempt}:`, result.error);
+        console.error(`[Retry] Échec définitif à la tentative ${attempt}:`, detailedError.message, errorDetails);
         return {
           data: result.data as T | null,
-          error: toError(result.error),
+          error: detailedError,
+          details: errorDetails,
         };
       }
 

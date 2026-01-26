@@ -296,6 +296,14 @@ serve(async (req) => {
     const { userId, profileData, practitionerData, documents } = body;
 
     console.log('🚀 Création compte praticien atomique:', userId);
+    console.log('📋 Données reçues:', {
+      userId,
+      profileDataKeys: profileData ? Object.keys(profileData) : [],
+      practitionerDataKeys: practitionerData ? Object.keys(practitionerData) : [],
+      documentsKeys: documents ? Object.keys(documents) : [],
+      practitionerType: practitionerData?.practitioner_type,
+      phone: practitionerData?.phone ? '***' + practitionerData.phone.slice(-4) : 'N/A'
+    });
 
     // ✅ SÉCURITÉ: Vérifier que le userId correspond à un utilisateur existant dans auth.users
     if (!userId || typeof userId !== 'string' || userId.length < 20) {
@@ -328,18 +336,19 @@ serve(async (req) => {
       );
     }
 
-    // Vérifier que l'utilisateur a été créé récemment (moins de 30 minutes)
-    // Note: 30 minutes permet les connexions lentes et les gros uploads de documents
+    // Vérifier que l'utilisateur a été créé récemment (moins de 60 minutes)
+    // Note: 60 minutes permet les connexions lentes, les gros uploads de documents et les retries
     const createdAt = new Date(authUser.user.created_at);
     const now = new Date();
     const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60);
 
-    if (minutesSinceCreation > 30) {
-      console.error('❌ Compte créé il y a plus de 30 minutes, possible tentative de fraude');
+    if (minutesSinceCreation > 60) {
+      console.error('❌ Compte créé il y a plus de 60 minutes, possible tentative de fraude');
       return new Response(
         JSON.stringify({
           success: false,
           error: 'Session expirée. Veuillez vous réinscrire.',
+          details: [`Le compte a été créé il y a ${Math.floor(minutesSinceCreation)} minutes. Maximum autorisé: 60 minutes.`]
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

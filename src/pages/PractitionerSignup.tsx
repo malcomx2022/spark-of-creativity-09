@@ -508,15 +508,22 @@ export default function PractitionerSignup() {
     setIsSubmitting(true);
 
     try {
-      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
+      const retryResult = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
         'create-practitioner-account',
         { body: { userId, profileData, practitionerData, documents } }
       );
 
+      const { data: createResult, error: createError, details: resultDetails } = retryResult;
+
       if (createError || !createResult?.success) {
+        const errorMessage = createError?.message || createResult?.error || "Échec du retry";
+        const errorDetails = resultDetails || createResult?.details;
+
         toast({
           title: "Échec du retry",
-          description: "Veuillez contacter le support avec votre email d'inscription",
+          description: errorDetails?.length
+            ? errorDetails.join(', ')
+            : errorMessage,
           variant: "destructive"
         });
         setIsSubmitting(false);
@@ -792,7 +799,7 @@ export default function PractitionerSignup() {
       setSubmissionStep('documents');
 
       // Appeler l'edge function transactionnelle
-      const { data: createResult, error: createError } = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
+      const edgeFunctionResult = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
         'create-practitioner-account',
         {
           body: {
@@ -804,19 +811,30 @@ export default function PractitionerSignup() {
         }
       );
 
-      if (createError || !createResult?.success) {
+      const { data: createResult, error: createError, details: resultDetails } = edgeFunctionResult;
+
+      // Note: When edge function returns 4xx, error is set but data may still contain the response body
+      // The edge-function-retry now extracts the detailed error from data.error
+      const hasError = createError || (createResult && !createResult.success);
+
+      if (hasError) {
+        // Get error message from: 1) createError.message (extracted from data.error), 2) createResult.error, 3) fallback
         const errorMessage = createError?.message || createResult?.error || "Échec de création du compte";
+        // Get error details from: 1) result.details (extracted by retry function), 2) createResult.details (direct from response)
+        const serverDetails = resultDetails || createResult?.details;
+
         if (import.meta.env.DEV) {
-          console.error('❌ Erreur création compte praticien:', { 
-            createError, 
+          console.error('❌ Erreur création compte praticien:', {
+            createError,
             createResult,
-            details: createResult?.details
+            errorMessage,
+            details: serverDetails
           });
         }
         
         // Déterminer si c'est un timeout ou une erreur de validation
         const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('timed out') || errorMessage.includes('TimeoutError');
-        const isValidation = createResult?.details && Array.isArray(createResult.details);
+        const isValidation = serverDetails && Array.isArray(serverDetails) && serverDetails.length > 0;
 
         if (isTimeout) {
           // Le compte auth est créé, on redirige vers la page de succès
@@ -838,7 +856,7 @@ export default function PractitionerSignup() {
         
         // Gestion des erreurs de validation détaillées
         if (isValidation) {
-          errorDetails = createResult.details;
+          errorDetails = serverDetails;
           userMessage = "Erreurs de validation détectées :";
         } else if (errorMessage.includes('existe déjà') || errorMessage.includes('already')) {
           // Déterminer quel champ existe déjà
