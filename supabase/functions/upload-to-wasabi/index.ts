@@ -50,6 +50,33 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Validation des types MIME autorisés
+    const ALLOWED_MIME_TYPES = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+
+    if (contentType && !ALLOWED_MIME_TYPES.includes(contentType)) {
+      return new Response(
+        JSON.stringify({ error: `Type de fichier non autorisé: ${contentType}. Types acceptés: PDF, JPEG, PNG, GIF, WebP` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validation taille fichier (max 10MB)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const fileSizeBytes = (fileContent.length * 3) / 4; // Approximation taille base64
+    if (fileSizeBytes > MAX_FILE_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Fichier trop volumineux. Taille max: 10MB` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     // Check if it's a service role key call (from another edge function)
     const isServiceRoleCall = token === supabaseKey;

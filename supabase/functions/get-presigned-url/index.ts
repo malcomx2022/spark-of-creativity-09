@@ -58,11 +58,13 @@ serve(async (req) => {
       );
     }
 
-    // Check if user is admin
+    // Check if user is admin (only specific admin roles)
+    const ADMIN_ROLES = ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst'];
     const { data: roleData, error: roleError } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .in('role', ADMIN_ROLES);
 
     const isAdmin = !roleError && roleData && roleData.length > 0;
     

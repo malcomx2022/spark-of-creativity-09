@@ -58,7 +58,13 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
         }
 
         if (practitionerData.image) {
-          urls.image = practitionerData.image;
+          // Si c'est un chemin Wasabi (pas une URL complète), obtenir l'URL signée
+          if (practitionerData.image.startsWith('http')) {
+            urls.image = practitionerData.image;
+          } else {
+            const signedUrl = await getSignedFileUrl(practitionerData.image);
+            urls.image = signedUrl;
+          }
         }
 
         setDocumentUrls(urls);
