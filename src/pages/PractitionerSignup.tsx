@@ -540,7 +540,7 @@ export default function PractitionerSignup() {
       const practitionerType = practitionerData.practitioner_type || 'autre';
       
       // Rediriger vers la page de succès avec le message de validation
-      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
+      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}&email=${encodeURIComponent(formData.email)}`, { replace: true });
     } catch (error) {
       toast({
         title: "Erreur",
@@ -846,7 +846,7 @@ export default function PractitionerSignup() {
 
           // Rediriger vers la page de succès malgré le timeout
           // Car le compte auth existe et l'inscription sera finalisée
-          navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}&pending=true`, { replace: true });
+          navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}&pending=true&email=${encodeURIComponent(formData.email)}`, { replace: true });
           return;
         }
         
@@ -1014,7 +1014,7 @@ export default function PractitionerSignup() {
       }
       
       // Rediriger vers la page de succès qui affichera le message de validation en attente
-      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}`, { replace: true });
+      navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}&email=${encodeURIComponent(formData.email)}`, { replace: true });
     } catch (err) {
       const isTimeoutError = err instanceof NetworkTimeoutError;
       const message = err instanceof Error ? err.message : "Une erreur inattendue est survenue";
