@@ -57,4 +57,5 @@ export interface CreatePractitionerResponse {
   error?: string;
   details?: string[];
   practitionerId?: string;
+  message?: string;
 }

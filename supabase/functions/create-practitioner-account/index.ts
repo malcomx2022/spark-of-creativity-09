@@ -328,13 +328,14 @@ serve(async (req) => {
       );
     }
 
-    // Vérifier que l'utilisateur a été créé récemment (moins de 10 minutes)
+    // Vérifier que l'utilisateur a été créé récemment (moins de 30 minutes)
+    // Note: 30 minutes permet les connexions lentes et les gros uploads de documents
     const createdAt = new Date(authUser.user.created_at);
     const now = new Date();
     const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60);
 
-    if (minutesSinceCreation > 10) {
-      console.error('❌ Compte créé il y a plus de 10 minutes, possible tentative de fraude');
+    if (minutesSinceCreation > 30) {
+      console.error('❌ Compte créé il y a plus de 30 minutes, possible tentative de fraude');
       return new Response(
         JSON.stringify({
           success: false,
@@ -343,6 +344,28 @@ serve(async (req) => {
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 403,
+        }
+      );
+    }
+    
+    // ✅ Vérifier si un praticien existe déjà pour cet utilisateur
+    const { data: existingPractitionerForUser, error: existingCheckError } = await supabase
+      .from('practitioners')
+      .select('id, kyc_status')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (existingPractitionerForUser) {
+      console.log('ℹ️ Praticien déjà existant pour cet utilisateur:', existingPractitionerForUser.id);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          practitionerId: existingPractitionerForUser.id,
+          message: 'Compte praticien déjà existant'
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
         }
       );
     }
@@ -580,10 +603,24 @@ serve(async (req) => {
 
       if (practitionerError) {
         console.error('❌ Erreur praticien:', practitionerError);
-        throw new Error(`Échec création praticien: ${practitionerError.message}`);
+        console.error('❌ Détails payload:', JSON.stringify(practitionerPayload, null, 2));
+        
+        // Messages d'erreur plus explicites
+        let errorMessage = practitionerError.message;
+        if (practitionerError.code === '23505') {
+          errorMessage = 'Un praticien existe déjà avec ces informations (téléphone ou email)';
+        } else if (practitionerError.code === '23502') {
+          errorMessage = `Champ obligatoire manquant: ${practitionerError.message}`;
+        } else if (practitionerError.code === '42501') {
+          errorMessage = 'Erreur de permissions. Contactez le support.';
+        }
+        
+        throw new Error(`Échec création praticien: ${errorMessage}`);
       }
 
       practitionerCreated = true;
+      const practitionerId = practitionerResult?.id;
+      console.log('✅ Praticien créé avec ID:', practitionerId);
       
       // Envoyer les notifications KYC aux admins
       console.log('🔔 Envoi notifications KYC aux admins...');
@@ -598,7 +635,10 @@ serve(async (req) => {
       console.log('✅ Compte praticien créé avec succès');
 
       return new Response(
-        JSON.stringify({ success: true }),
+        JSON.stringify({ 
+          success: true,
+          practitionerId: practitionerId 
+        }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
