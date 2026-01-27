@@ -843,15 +843,28 @@ export default function PractitionerSignup() {
         const isValidation = serverDetails && Array.isArray(serverDetails) && serverDetails.length > 0;
 
         if (isTimeout) {
+          // ⚠️ IMPORTANT: Sauvegarder les données pour récupération en cas de timeout
+          // Le compte auth existe mais on ne sait pas si le profil a été créé
+          savePendingRegistration({
+            userId,
+            email: formData.email,
+            userType: 'practitioner',
+            practitionerType,
+            profileData,
+            practitionerData,
+            documents: documentsBase64
+          });
+
+          console.log('⏱️ Timeout - Inscription sauvegardée pour récupération, userId:', userId);
+
           // Le compte auth est créé, on redirige vers la page de succès
-          // Le profil praticien sera finalisé en arrière-plan ou l'admin peut le créer manuellement
+          // L'utilisateur pourra finaliser via /complete-registration si nécessaire
           toast({
             title: "Inscription en cours de traitement",
-            description: "Votre compte a été créé. La finalisation peut prendre quelques minutes. Vous serez notifié par email.",
+            description: "Votre compte a été créé. La finalisation peut prendre quelques minutes. Si votre profil n'apparaît pas, vous pourrez le finaliser.",
           });
 
           // Rediriger vers la page de succès malgré le timeout
-          // Car le compte auth existe et l'inscription sera finalisée
           navigate(`/registration-success?type=practitioner&practitionerType=${practitionerType}&pending=true&email=${encodeURIComponent(formData.email)}`, { replace: true });
           return;
         }
