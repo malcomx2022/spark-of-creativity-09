@@ -5,7 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download } from 'lucide-react';
+import { Download, Filter, RefreshCw } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { PayoutsManagementSection } from './PayoutsManagementSection';
 import { RefundsSection } from './RefundsSection';
@@ -16,9 +17,34 @@ import ReconciliationSection from './ReconciliationSection';
 import { PaymentFlowsDashboard } from './PaymentFlowsDashboard';
 import { useState } from 'react';
 
+// Status labels in French
+const paymentStatusLabels: Record<string, string> = {
+  pending: 'En attente',
+  initiated: 'Initiée',
+  processing: 'Traitement',
+  paid: 'Payée',
+  completed: 'Confirmée',
+  failed: 'Échouée',
+  canceled: 'Annulée',
+  cancelled: 'Annulée',
+  refunded: 'Remboursée',
+};
+
+const payoutStatusLabels: Record<string, string> = {
+  planned: 'Planifié',
+  queued: "File d'attente",
+  processing: 'En traitement',
+  sent: 'Envoyé',
+  completed: 'Terminé',
+  failed: 'Échec',
+  pending: 'En attente',
+  pending_manual: 'Manuel',
+};
+
 export function FinanceSection() {
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [payoutsPage, setPayoutsPage] = useState(1);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
   const limit = 20;
 
   // Fetch finance stats from view
@@ -53,26 +79,39 @@ export function FinanceSection() {
     },
   });
 
-  const { data: paymentsData, isLoading: paymentsLoading } = useQuery({
-    queryKey: ['admin-payments', paymentsPage],
+  const { data: paymentsData, isLoading: paymentsLoading, refetch: refetchPayments } = useQuery({
+    queryKey: ['admin-payments', paymentsPage, paymentStatusFilter],
     queryFn: async () => {
-      const { data, error, count } = await supabase
+      let query = supabase
         .from('payments')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range((paymentsPage - 1) * limit, paymentsPage * limit - 1);
+        .select(`
+          *,
+          patient:profiles!payments_patient_id_fkey(id, full_name, phone),
+          appointment:appointments!payments_appointment_id_fkey(id, practitioner_name, specialty, date)
+        `, { count: 'exact' })
+        .order('created_at', { ascending: false });
+
+      // Apply status filter
+      if (paymentStatusFilter !== 'all') {
+        query = query.eq('status', paymentStatusFilter);
+      }
+
+      const { data, error, count } = await query.range((paymentsPage - 1) * limit, paymentsPage * limit - 1);
 
       if (error) throw error;
       return { payments: data || [], total: count || 0 };
     },
   });
 
-  const { data: payoutsData, isLoading: payoutsLoading } = useQuery({
+  const { data: payoutsData, isLoading: payoutsLoading, refetch: refetchPayouts } = useQuery({
     queryKey: ['admin-payouts', payoutsPage],
     queryFn: async () => {
       const { data, error, count } = await supabase
         .from('practitioner_payouts')
-        .select('*', { count: 'exact' })
+        .select(`
+          *,
+          practitioner:practitioners!practitioner_payouts_practitioner_id_fkey(id, name, phone)
+        `, { count: 'exact' })
         .order('created_at', { ascending: false })
         .range((payoutsPage - 1) * limit, payoutsPage * limit - 1);
 
@@ -279,10 +318,32 @@ export function FinanceSection() {
                   <CardTitle>Transactions patients</CardTitle>
                   <CardDescription>Historique des paiements reçus</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleExportPayments}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Exporter
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Select value={paymentStatusFilter} onValueChange={(value) => {
+                    setPaymentStatusFilter(value);
+                    setPaymentsPage(1);
+                  }}>
+                    <SelectTrigger className="w-[150px]">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Filtrer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous</SelectItem>
+                      <SelectItem value="pending">En attente</SelectItem>
+                      <SelectItem value="paid">Payés</SelectItem>
+                      <SelectItem value="failed">Échoués</SelectItem>
+                      <SelectItem value="cancelled">Annulés</SelectItem>
+                      <SelectItem value="refunded">Remboursés</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="icon" onClick={() => refetchPayments()}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleExportPayments}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Exporter
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -298,32 +359,44 @@ export function FinanceSection() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Patient</TableHead>
+                      <TableHead>Praticien</TableHead>
                       <TableHead>Montant</TableHead>
                       <TableHead>Méthode</TableHead>
                       <TableHead>Statut</TableHead>
-                      <TableHead>RDV</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments.map((payment) => (
+                    {payments.map((payment: any) => (
                       <TableRow key={payment.id}>
                         <TableCell className="whitespace-nowrap">
                           {new Date(payment.created_at).toLocaleDateString('fr-FR')}
                         </TableCell>
-                        <TableCell>{payment.patient_id?.slice(0, 8) ?? 'N/A'}...</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{payment.patient?.full_name || 'Patient inconnu'}</p>
+                            {payment.patient?.phone && (
+                              <p className="text-xs text-muted-foreground">{payment.patient.phone}</p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p>{payment.appointment?.practitioner_name || 'N/A'}</p>
+                            {payment.appointment?.specialty && (
+                              <p className="text-xs text-muted-foreground">{payment.appointment.specialty}</p>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="font-medium">
                           {payment.amount.toLocaleString()} {payment.currency}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{payment.payment_method.toUpperCase()}</Badge>
+                          <Badge variant="outline">{payment.payment_method?.toUpperCase() || 'N/A'}</Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant={getStatusBadge(payment.status)}>
-                            {payment.status}
+                            {paymentStatusLabels[payment.status] || payment.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {payment.appointment_id?.slice(0, 8) ?? 'N/A'}...
                         </TableCell>
                       </TableRow>
                     ))}
@@ -395,22 +468,31 @@ export function FinanceSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payouts.map((payout) => (
+                    {payouts.map((payout: any) => (
                       <TableRow key={payout.id}>
                         <TableCell className="whitespace-nowrap">
                           {new Date(payout.period_start).toLocaleDateString('fr-FR')} - {' '}
                           {new Date(payout.period_end).toLocaleDateString('fr-FR')}
                         </TableCell>
-                        <TableCell>{payout.practitioner_id.slice(0, 8)}...</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{payout.practitioner?.name || 'Praticien inconnu'}</p>
+                            {payout.practitioner?.phone && (
+                              <p className="text-xs text-muted-foreground">{payout.practitioner.phone}</p>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="font-medium">
                           {payout.amount.toLocaleString()} {payout.currency}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{payout.payment_method}</Badge>
+                          <Badge variant="outline">
+                            {payout.payment_method === 'momo' ? 'Mobile Money' : payout.payment_method === 'bank' ? 'Virement' : payout.payment_method}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant={getStatusBadge(payout.status)}>
-                            {payout.status}
+                            {payoutStatusLabels[payout.status] || payout.status}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm">

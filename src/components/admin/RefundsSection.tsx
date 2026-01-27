@@ -24,11 +24,15 @@ export function RefundsSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('payments')
-        .select('*')
+        .select(`
+          *,
+          patient:profiles!payments_patient_id_fkey(id, full_name, phone),
+          appointment:appointments!payments_appointment_id_fkey(id, practitioner_name, specialty, date)
+        `)
         .in('status', ['paid', 'partially_refunded'])
         .order('created_at', { ascending: false })
         .limit(50);
-      
+
       if (error) throw error;
       return data;
     }
@@ -40,10 +44,16 @@ export function RefundsSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('payment_refunds')
-        .select('*')
+        .select(`
+          *,
+          payment:payments!payment_refunds_payment_id_fkey(
+            id, amount, patient_id,
+            patient:profiles!payments_patient_id_fkey(full_name)
+          )
+        `)
         .order('created_at', { ascending: false })
         .limit(20);
-      
+
       if (error) throw error;
       return data;
     }
@@ -75,6 +85,23 @@ export function RefundsSection() {
       });
 
       if (error) throw error;
+
+      // Add audit log
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('admin_audit_logs').insert({
+          admin_id: user.id,
+          action: 'Refund processed',
+          entity_type: 'payment',
+          entity_id: selectedPayment.id,
+          details: {
+            amount: parsedAmount || selectedPayment.amount,
+            reason: refundReason,
+            patient_id: selectedPayment.patient_id,
+          },
+        });
+      }
+
       return data;
     },
     onSuccess: () => {
@@ -109,9 +136,9 @@ export function RefundsSection() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Montant</TableHead>
                 <TableHead>Patient</TableHead>
-                <TableHead>RDV</TableHead>
+                <TableHead>Praticien</TableHead>
+                <TableHead>Montant</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
@@ -122,19 +149,33 @@ export function RefundsSection() {
                   <TableCell colSpan={6} className="text-center">Chargement...</TableCell>
                 </TableRow>
               ) : payments && payments.length > 0 ? (
-                payments.map((payment) => (
+                payments.map((payment: any) => (
                   <TableRow key={payment.id}>
                     <TableCell>
                       {new Date(payment.created_at).toLocaleDateString('fr-FR')}
                     </TableCell>
-                    <TableCell className="text-right font-semibold">
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{payment.patient?.full_name || 'Patient inconnu'}</p>
+                        {payment.patient?.phone && (
+                          <p className="text-xs text-muted-foreground">{payment.patient.phone}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p>{payment.appointment?.practitioner_name || 'N/A'}</p>
+                        {payment.appointment?.specialty && (
+                          <p className="text-xs text-muted-foreground">{payment.appointment.specialty}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-semibold">
                       {payment.amount.toLocaleString()} XOF
                     </TableCell>
-                    <TableCell>Patient ID: {payment.patient_id.substring(0, 8)}</TableCell>
-                    <TableCell>RDV: {payment.appointment_id.substring(0, 8)}</TableCell>
                     <TableCell>
                       <Badge variant={payment.status === 'paid' ? 'outline' : 'secondary'}>
-                        {payment.status}
+                        {payment.status === 'paid' ? 'Payé' : payment.status === 'partially_refunded' ? 'Remb. partiel' : payment.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -221,19 +262,21 @@ export function RefundsSection() {
             </TableHeader>
             <TableBody>
               {refunds && refunds.length > 0 ? (
-                refunds.map((refund) => (
+                refunds.map((refund: any) => (
                   <TableRow key={refund.id}>
                     <TableCell>
                       {new Date(refund.created_at).toLocaleDateString('fr-FR')}
                     </TableCell>
-                    <TableCell>Patient #{refund.payment_id.substring(0, 8)}</TableCell>
-                    <TableCell className="text-right font-semibold">
+                    <TableCell>
+                      {refund.payment?.patient?.full_name || `Patient #${refund.payment_id.substring(0, 8)}`}
+                    </TableCell>
+                    <TableCell className="font-semibold">
                       {refund.refund_amount.toLocaleString()} XOF
                     </TableCell>
                     <TableCell className="max-w-xs truncate">{refund.refund_reason || '-'}</TableCell>
                     <TableCell>{getStatusBadge(refund.status)}</TableCell>
                     <TableCell>
-                      {refund.processed_at 
+                      {refund.processed_at
                         ? new Date(refund.processed_at).toLocaleDateString('fr-FR')
                         : '-'}
                     </TableCell>
