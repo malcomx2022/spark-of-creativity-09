@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -33,6 +35,12 @@ import {
   ShieldCheck,
   Smartphone,
   Wallet,
+  RefreshCw,
+  Copy,
+  Check,
+  CreditCard,
+  HelpCircle,
+  TrendingUp,
 } from "lucide-react";
 
 interface PaymentInfoSectionProps {
@@ -175,7 +183,9 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mtn");
-  
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
   const [formContext, dispatch] = useReducer(formReducer, {
     data: {
       accountHolderName: practitionerName || "",
@@ -189,7 +199,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     pendingAction: null,
   });
 
-  const { data: paymentInfos, isLoading } = useQuery({
+  const { data: paymentInfos, isLoading, refetch } = useQuery({
     queryKey: ["practitioner-payment-info", practitionerId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -206,6 +216,68 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
     },
     enabled: !!practitionerId,
   });
+
+  // Statistiques
+  const stats = useMemo(() => {
+    if (!paymentInfos) return { total: 0, verified: 0, lastUpdate: null };
+
+    const total = paymentInfos.length;
+    const verified = paymentInfos.filter(p => p.is_verified).length;
+    const lastUpdate = paymentInfos.reduce((latest, p) => {
+      const date = new Date(p.updated_at);
+      return !latest || date > latest ? date : latest;
+    }, null as Date | null);
+
+    return { total, verified, lastUpdate };
+  }, [paymentInfos]);
+
+  // Fonction de rafraîchissement
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+      toast({
+        title: "Actualisé",
+        description: "Les informations ont été rafraîchies.",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de rafraîchir les données.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Fonction de copie
+  const handleCopy = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+      toast({
+        title: "Copié",
+        description: "Le contenu a été copié dans le presse-papiers.",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de copier le contenu.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Format date relative
+  const formatUpdateDate = (dateString: string) => {
+    return formatDistanceToNow(new Date(dateString), { addSuffix: true, locale: fr });
+  };
+
+  const formatFullDate = (dateString: string) => {
+    return format(new Date(dateString), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr });
+  };
 
   useEffect(() => {
     if (!paymentInfos || paymentInfos.length === 0) return;
@@ -404,76 +476,238 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuration des reversements</CardTitle>
-          <CardDescription>Chargement des informations de paiement...</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Chargement...</span>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {/* Skeleton en-tête */}
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-56 mb-2" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-28" />
+        </div>
+
+        {/* Skeleton stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <Skeleton className="h-4 w-24 mb-2" />
+                <Skeleton className="h-8 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Skeleton formulaire */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+            <Skeleton className="h-20 w-full" />
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="space-y-1">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <CardTitle>Configuration des reversements</CardTitle>
-            <CardDescription>
-              Configurez la méthode de paiement utilisée pour recevoir vos reversements.
-            </CardDescription>
-          </div>
-          <Badge
-            variant={formContext.isVerified ? "default" : "secondary"}
-            className={formContext.isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}
-          >
-            {formContext.isVerified ? (
-              <span className="flex items-center gap-1">
-                <ShieldCheck className="h-3.5 w-3.5" /> Vérifié
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <AlertTriangle className="h-3.5 w-3.5" /> Non vérifié
-              </span>
+    <div className="space-y-6">
+      {/* En-tête global */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <CreditCard className="h-6 w-6" />
+            Coordonnées bancaires
+            {stats.total > 0 && (
+              <Badge variant="secondary">{stats.total} méthode{stats.total > 1 ? 's' : ''}</Badge>
             )}
-          </Badge>
+          </h2>
+          <p className="text-muted-foreground">
+            Configurez vos méthodes de reversement
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {existingMethods.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {existingMethods.map(({ method, metadata, info }) => {
-              const Icon = metadata.icon;
-              return (
-                <div key={method} className="rounded-lg border bg-background p-3 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 font-medium">
-                      <Icon className="h-4 w-4" />
-                      {metadata.label}
-                    </span>
-                    <Badge variant={info.is_verified ? "default" : "secondary"}>
-                      {info.is_verified ? "Vérifié" : "Non vérifié"}
-                    </Badge>
-                  </div>
-                  <div className="mt-2 space-y-1 text-muted-foreground">
-                    {info.phone_number && <p>Téléphone : {info.phone_number}</p>}
-                    {info.bank_name && <p>Banque : {info.bank_name}</p>}
-                    {info.bank_account_number && <p>Compte : {info.bank_account_number}</p>}
-                  </div>
-                </div>
-              );
-            })}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Actualiser
+        </Button>
+      </div>
+
+      {/* Statistiques */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <Wallet className="h-4 w-4" />
+              Méthodes configurées
+            </div>
+            <p className="text-2xl font-bold">{stats.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <ShieldCheck className="h-4 w-4" />
+              Vérifiées
+            </div>
+            <p className="text-2xl font-bold text-green-600">{stats.verified}/{stats.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <Clock className="h-4 w-4" />
+              Dernière mise à jour
+            </div>
+            {stats.lastUpdate ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className="text-lg font-medium cursor-help">
+                      {formatUpdateDate(stats.lastUpdate.toISOString())}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{formatFullDate(stats.lastUpdate.toISOString())}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <p className="text-lg font-medium text-muted-foreground">-</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="space-y-1">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Configuration des reversements</CardTitle>
+              <CardDescription>
+                Configurez la méthode de paiement utilisée pour recevoir vos reversements.
+              </CardDescription>
+            </div>
+            <Badge
+              variant={formContext.isVerified ? "default" : "secondary"}
+              className={formContext.isVerified ? "bg-emerald-500 hover:bg-emerald-500" : undefined}
+            >
+              {formContext.isVerified ? (
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Vérifié
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Non vérifié
+                </span>
+              )}
+            </Badge>
           </div>
-        ) : (
-          <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            <Wallet className="h-5 w-5" />
-            <span>Aucune coordonnée de reversement enregistrée pour le moment.</span>
-          </div>
-        )}
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {existingMethods.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {existingMethods.map(({ method, metadata, info }) => {
+                const Icon = metadata.icon;
+                return (
+                  <div
+                    key={method}
+                    className={`rounded-lg border bg-background p-3 text-sm transition-colors hover:bg-muted/30 cursor-pointer ${
+                      selectedMethod === method ? 'ring-2 ring-primary' : ''
+                    }`}
+                    onClick={() => setSelectedMethod(method)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2 font-medium">
+                        <Icon className="h-4 w-4" />
+                        {metadata.label}
+                      </span>
+                      <Badge variant={info.is_verified ? "default" : "secondary"}>
+                        {info.is_verified ? "Vérifié" : "Non vérifié"}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 space-y-1 text-muted-foreground">
+                      {info.phone_number && (
+                        <div className="flex items-center justify-between">
+                          <span>Téléphone : {info.phone_number}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopy(info.phone_number!, `phone-${method}`);
+                            }}
+                          >
+                            {copiedField === `phone-${method}` ? (
+                              <Check className="h-3 w-3 text-green-500" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                      {info.bank_name && <p>Banque : {info.bank_name}</p>}
+                      {info.bank_account_number && (
+                        <div className="flex items-center justify-between">
+                          <span>Compte : {info.bank_account_number}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopy(info.bank_account_number!, `account-${method}`);
+                            }}
+                          >
+                            {copiedField === `account-${method}` ? (
+                              <Check className="h-3 w-3 text-green-500" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="text-xs text-muted-foreground mt-2 cursor-help">
+                            Mis à jour {formatUpdateDate(info.updated_at)}
+                          </p>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{formatFullDate(info.updated_at)}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Wallet className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground">Aucune coordonnée de reversement enregistrée</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Configurez votre première méthode de paiement ci-dessous
+              </p>
+            </div>
+          )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -518,7 +752,19 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="accountHolder">Nom du titulaire</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="accountHolder">Nom du titulaire</Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Doit correspondre exactement au nom enregistré</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <Input
               id="accountHolder"
               value={formContext.data.accountHolderName}
@@ -532,7 +778,19 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
           {selectedMethod === "bank" ? (
             <div className="space-y-2">
-              <Label htmlFor="bankName">Banque</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="bankName">Banque</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Nom officiel de votre établissement bancaire</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Input
                 id="bankName"
                 value={formContext.data.bankName}
@@ -543,7 +801,19 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
             </div>
           ) : (
             <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Numéro Mobile Money</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="phoneNumber">Numéro Mobile Money</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Format international requis (ex: +229...)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <PhoneInput
                 id="phoneNumber"
                 value={formContext.data.phoneNumber}
@@ -636,6 +906,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }
 
