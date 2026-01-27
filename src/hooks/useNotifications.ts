@@ -142,6 +142,76 @@ export function useMarkNotificationAsRead() {
   });
 }
 
+export function useMarkAllNotificationsAsRead() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('user_id', userId)
+          .eq('is_read', false)
+      );
+
+      if (error) throw error;
+    },
+    onSuccess: (_data, userId) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications', userId] });
+      toast({
+        title: 'Notifications marquées comme lues',
+        description: 'Toutes vos notifications ont été marquées comme lues.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de marquer les notifications comme lues.',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+export function useDeleteNotification() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      notificationId,
+      userId,
+    }: {
+      notificationId: string;
+      userId: string;
+    }) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notificationId)
+      );
+
+      if (error) throw error;
+      return userId;
+    },
+    onSuccess: (userId) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications', userId] });
+      toast({
+        title: 'Notification supprimée',
+        description: 'La notification a été supprimée.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de supprimer la notification.',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
 export function useNotificationPreferences(userId?: string) {
   return useQuery<NotificationPreferences | null>({
     queryKey: ['notification-preferences', userId],
