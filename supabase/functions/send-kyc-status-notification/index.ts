@@ -123,8 +123,7 @@ serve(async (req: Request) => {
               <h3 style="color: #d97706; margin-top: 0;">📞 Que faire maintenant ?</h3>
               <p style="color: #92400e; margin: 0;">
                 Contactez notre équipe support pour plus d'informations :<br>
-                📧 Email : support@domicares.life<br>
-                📱 Téléphone : +229 XX XX XX XX
+                📧 Email : support@domicares.life
               </p>
             </div>
 

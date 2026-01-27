@@ -1,11 +1,16 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle } from "lucide-react";
-import { useState, useEffect } from "react";
-import { getSignedFileUrl } from "@/lib/file-upload";
+import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { getSignedFileUrl, uploadUserDocument } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface DocumentsSectionProps {
   practitionerData: any;
@@ -19,6 +24,7 @@ interface DocumentUrls {
 }
 
 export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
+  const queryClient = useQueryClient();
   const [documentUrls, setDocumentUrls] = useState<DocumentUrls>({
     id_document_url: null,
     license_document_url: null,
@@ -27,6 +33,11 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
   });
   const [loadingUrls, setLoadingUrls] = useState(true);
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedDocumentType, setSelectedDocumentType] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDocumentUrls = async () => {
@@ -77,6 +88,158 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
 
     loadDocumentUrls();
   }, [practitionerData]);
+
+  // Handler for document upload
+  const handleDocumentUpload = async (file: File, documentType: string) => {
+    if (!practitionerData?.user_id) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de téléverser le document. Données utilisateur manquantes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Type de fichier non supporté",
+        description: "Veuillez téléverser un fichier PDF, JPG ou PNG.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: "La taille maximale autorisée est de 5 Mo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadingDocument(documentType);
+
+    try {
+      const result = await uploadUserDocument({
+        file,
+        folder: "practitioner-documents",
+        userId: practitionerData.user_id,
+      });
+
+      // Map document type to database column
+      const columnMap: Record<string, string> = {
+        'id_document_url': 'id_document_url',
+        'license_document_url': 'license_document_url',
+        'insurance_document_url': 'insurance_document_url',
+        'image': 'image',
+      };
+
+      const column = columnMap[documentType];
+      if (!column) {
+        throw new Error("Type de document invalide");
+      }
+
+      // Update practitioner record
+      const { error: updateError } = await supabase
+        .from('practitioners')
+        .update({ [column]: result.path })
+        .eq('id', practitionerData.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Update local state with new signed URL
+      const signedUrl = await getSignedFileUrl(result.path);
+      setDocumentUrls(prev => ({
+        ...prev,
+        [documentType]: signedUrl,
+      }));
+
+      // Invalidate practitioner query to refresh data
+      queryClient.invalidateQueries({ queryKey: ['practitioner'] });
+
+      toast({
+        title: "Document téléversé",
+        description: "Le document a été mis à jour avec succès.",
+      });
+    } catch (error: any) {
+      console.error('Error uploading document:', error);
+      toast({
+        title: "Erreur de téléversement",
+        description: error.message || "Impossible de téléverser le document.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingDocument(null);
+      setUploadDialogOpen(false);
+      setSelectedDocumentType(null);
+    }
+  };
+
+  // Handler to resubmit KYC for review
+  const handleResubmitKYC = async () => {
+    if (!practitionerData?.id) return;
+
+    setIsSubmitting(true);
+
+    try {
+      // Update KYC status back to pending
+      const { error } = await supabase
+        .from('practitioners')
+        .update({
+          kyc_status: 'pending',
+          kyc_comment: null, // Clear previous comment
+        })
+        .eq('id', practitionerData.id);
+
+      if (error) throw error;
+
+      // Notify admins about resubmission
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Get admin users
+        const { data: adminUsers } = await supabase
+          .from('user_roles')
+          .select('user_id')
+          .in('role', ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst']);
+
+        if (adminUsers && adminUsers.length > 0) {
+          const uniqueAdminIds = Array.from(new Set(adminUsers.map(a => a.user_id)));
+          await supabase.from('notifications').insert(
+            uniqueAdminIds.map(adminId => ({
+              user_id: adminId,
+              title: 'Dossier KYC re-soumis',
+              message: `Le praticien ${practitionerData.name} a complété son dossier et l'a re-soumis pour validation.`,
+              type: 'kyc_pending',
+              link: '/admin?tab=kyc',
+            }))
+          );
+        }
+      }
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['practitioner'] });
+
+      toast({
+        title: "Dossier soumis",
+        description: "Votre dossier a été re-soumis pour validation. Vous serez notifié par email et SMS.",
+      });
+    } catch (error: any) {
+      console.error('Error resubmitting KYC:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de soumettre le dossier.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const documents = [
     {
@@ -147,26 +310,36 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
             </div>
           )}
 
-          {practitionerData?.kyc_status === 'rejected' && practitionerData?.kyc_comment && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <p className="text-sm font-semibold text-red-800 dark:text-red-200 mb-2">
+          {practitionerData?.kyc_status === 'incomplete' && (
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-semibold text-orange-800 dark:text-orange-200">
                 <AlertCircle className="h-4 w-4 inline mr-2" />
-                Dossier refusé
+                Documents incomplets
               </p>
-              <p className="text-sm text-red-700 dark:text-red-300">
-                {practitionerData.kyc_comment}
+              {practitionerData?.kyc_comment && (
+                <p className="text-sm text-orange-700 dark:text-orange-300">
+                  {practitionerData.kyc_comment}
+                </p>
+              )}
+              <p className="text-sm text-orange-600 dark:text-orange-400">
+                Mettez à jour vos documents ci-dessous puis cliquez sur "Soumettre pour validation".
               </p>
             </div>
           )}
 
-          {practitionerData?.kyc_status === 'incomplete' && practitionerData?.kyc_comment && (
-            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
-              <p className="text-sm font-semibold text-orange-800 dark:text-orange-200 mb-2">
+          {practitionerData?.kyc_status === 'rejected' && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-semibold text-red-800 dark:text-red-200">
                 <AlertCircle className="h-4 w-4 inline mr-2" />
-                Documents incomplets
+                Dossier refusé
               </p>
-              <p className="text-sm text-orange-700 dark:text-orange-300">
-                {practitionerData.kyc_comment}
+              {practitionerData?.kyc_comment && (
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  {practitionerData.kyc_comment}
+                </p>
+              )}
+              <p className="text-sm text-red-600 dark:text-red-400">
+                Contactez le support pour plus d'informations : support@domicares.life
               </p>
             </div>
           )}
@@ -218,13 +391,74 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
                     >
                       <Download className="h-3 w-3" />
                     </Button>
+                    {/* Show update button only if KYC is incomplete or rejected */}
+                    {(practitionerData?.kyc_status === 'incomplete' || practitionerData?.kyc_status === 'rejected') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setSelectedDocumentType(doc.key);
+                          setUploadDialogOpen(true);
+                        }}
+                        disabled={uploadingDocument === doc.key}
+                      >
+                        {uploadingDocument === doc.key ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3" />
+                        )}
+                      </Button>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Non fourni</p>
+                  <div className="flex gap-2">
+                    <p className="text-xs text-muted-foreground flex-1">Non fourni</p>
+                    {/* Show upload button if KYC is incomplete or rejected */}
+                    {(practitionerData?.kyc_status === 'incomplete' || practitionerData?.kyc_status === 'rejected') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setSelectedDocumentType(doc.key);
+                          setUploadDialogOpen(true);
+                        }}
+                        disabled={uploadingDocument === doc.key}
+                      >
+                        {uploadingDocument === doc.key ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Upload className="h-3 w-3" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
           </div>
+
+          {/* Bouton de re-soumission pour les dossiers incomplets */}
+          {practitionerData?.kyc_status === 'incomplete' && (
+            <div className="border-t pt-4">
+              <Button
+                onClick={handleResubmitKYC}
+                disabled={isSubmitting}
+                className="w-full"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Soumission en cours...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Soumettre pour validation
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Informations coach sportif */}
           {practitionerData?.practitioner_type === 'coach_sportif' && (
@@ -262,8 +496,8 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Certifications :</p>
                   <div className="flex gap-2 flex-wrap">
-                    {practitionerData.certifications.map((cert: string, index: number) => (
-                      <Badge key={index} variant="outline">
+                    {practitionerData.certifications.map((cert: string) => (
+                      <Badge key={cert} variant="outline">
                         {cert}
                       </Badge>
                     ))}
@@ -321,6 +555,59 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog d'upload de document */}
+      <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setUploadDialogOpen(false);
+          setSelectedDocumentType(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Téléverser un document</DialogTitle>
+            <DialogDescription>
+              {selectedDocumentType && documents.find(d => d.key === selectedDocumentType)?.label}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="document-upload">Fichier (PDF, JPG, PNG - max 5 Mo)</Label>
+              <Input
+                id="document-upload"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                ref={fileInputRef}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && selectedDocumentType) {
+                    handleDocumentUpload(file, selectedDocumentType);
+                  }
+                }}
+                disabled={!!uploadingDocument}
+                className="mt-2"
+              />
+            </div>
+            {uploadingDocument && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Téléversement en cours...
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => {
+                setUploadDialogOpen(false);
+                setSelectedDocumentType(null);
+              }}
+              className="w-full"
+              disabled={!!uploadingDocument}
+            >
+              Annuler
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

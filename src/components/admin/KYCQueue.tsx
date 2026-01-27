@@ -504,9 +504,26 @@ export function KYCQueue() {
                       <div>
                         <div className="font-medium">{practitioner.name}</div>
                         <div className="text-sm text-muted-foreground">{practitioner.phone}</div>
+                        {practitioner.practitioner_type === 'coach_sportif' && (
+                          <Badge variant="outline" className="mt-1 text-xs border-blue-500 text-blue-600">
+                            Coach Sportif
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
-                    <TableCell>{practitioner.specialty}</TableCell>
+                    <TableCell>
+                      <div>
+                        <span>{practitioner.specialty}</span>
+                        {/* Show previous KYC comment if incomplete */}
+                        {practitioner.kyc_status === 'incomplete' && practitioner.kyc_comment && (
+                          <p className="text-xs text-orange-600 mt-1 italic">
+                            Dernier commentaire: {practitioner.kyc_comment.length > 50
+                              ? practitioner.kyc_comment.substring(0, 50) + '...'
+                              : practitioner.kyc_comment}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={practitioner.kyc_status === 'pending' ? 'outline' : 'secondary'}>
                         {practitioner.kyc_status === 'pending' ? 'En attente' : 'Incomplet'}
@@ -744,6 +761,33 @@ export function KYCQueue() {
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
+                              {/* Warning for expired documents */}
+                              {selectedPractitioner && (() => {
+                                const hasExpiredId = selectedPractitioner.id_document_expiry && new Date(selectedPractitioner.id_document_expiry) < new Date();
+                                const hasExpiredLicense = selectedPractitioner.license_expiry && new Date(selectedPractitioner.license_expiry) < new Date();
+                                const hasExpiredInsurance = selectedPractitioner.insurance_expiry && new Date(selectedPractitioner.insurance_expiry) < new Date();
+                                const hasExpired = hasExpiredId || hasExpiredLicense || hasExpiredInsurance;
+
+                                if (hasExpired) {
+                                  return (
+                                    <div className="bg-destructive/10 border border-destructive/50 rounded-lg p-3">
+                                      <p className="text-sm font-semibold text-destructive flex items-center gap-2">
+                                        <AlertCircle className="h-4 w-4" />
+                                        Documents expirés détectés
+                                      </p>
+                                      <ul className="text-sm text-destructive/80 mt-2 list-disc list-inside">
+                                        {hasExpiredId && <li>Pièce d'identité expirée</li>}
+                                        {hasExpiredLicense && <li>Autorisation d'exercice expirée</li>}
+                                        {hasExpiredInsurance && <li>Assurance expirée</li>}
+                                      </ul>
+                                      <p className="text-xs text-destructive/70 mt-2">
+                                        Êtes-vous sûr de vouloir approuver ce dossier ?
+                                      </p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                               <div>
                                 <Label htmlFor="approve-comment">Commentaire (optionnel)</Label>
                                 <Textarea
