@@ -331,7 +331,7 @@ serve(async (req) => {
           lastname: practitioner.name.split(' ').slice(1).join(' ') || '',
           phone_number: {
             number: cleanPhone,
-            country: 'BJ' // Benin
+            country: 'bj' // ✅ Bug #2 FIX: Minuscules requis par FedaPay API
           }
         }
       };

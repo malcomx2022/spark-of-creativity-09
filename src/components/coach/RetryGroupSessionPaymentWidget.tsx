@@ -61,9 +61,14 @@ export function RetryGroupSessionPaymentWidget({
         const { data, error } = await supabase.functions.invoke('get-fedapay-config');
         if (error) throw error;
         setFedapayConfig(data);
-        
-        if (data?.environment === 'sandbox' && !phoneNumber) {
-          setPhoneNumber('+22966000001');
+
+        // ✅ Bug #1 FIX: NE PAS pré-remplir le numéro de test - même en sandbox
+        // Les numéros de test sont documentés dans les logs console seulement
+        if (data?.environment === 'sandbox') {
+          console.log('🧪 MODE SANDBOX - Numéros de test disponibles:');
+          console.log('   ✅ MTN succès: +229 66 00 00 01');
+          console.log('   ✅ MOOV succès: +229 64 00 00 01');
+          console.log('   ❌ Échec simulé: +229 66 00 00 00 ou +229 64 00 00 00');
         }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);

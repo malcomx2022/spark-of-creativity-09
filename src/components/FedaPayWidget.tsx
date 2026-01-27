@@ -181,7 +181,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     // Helper: Format phone number for FedaPay (remove +229 prefix for Benin)
     const formatPhoneForFedaPay = (phone: string | null): string => {
       if (!phone) return '';
-      // Pour le Bénin, retirer le préfixe +229 pour sandbox FedaPay
+      // Format FedaPay API: numéro sans préfixe pays (fonctionne sandbox ET live)
       return phone.replace(/^\+229/, '');
     };
 

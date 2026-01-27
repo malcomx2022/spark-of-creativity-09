@@ -477,7 +477,7 @@ serve(async (req) => {
             lastname,
             email: customerEmail,
             phone_number: {
-              number: phoneNumber.replace(/^\+229/, ''), // Retirer +229 pour sandbox
+              number: phoneNumber.replace(/^\+229/, ''), // Format FedaPay: numéro sans préfixe pays
               country: 'bj' // ✅ CORRECTION: Minuscules requis par FedaPay
             }
           },
