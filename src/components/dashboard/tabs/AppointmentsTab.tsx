@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +10,12 @@ import { usePatientAppointments, useMutateAppointment, useCreateAppointment } fr
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, AlertCircle, Calendar, Clock, CreditCard, FileText, RefreshCw, XCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Calendar, Clock, CreditCard, FileText, RefreshCw, XCircle, ChevronLeft, ChevronRight, Filter, ArrowUpDown, CheckCircle2, TimerIcon, Ban } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAmount } from '@/lib/payment-config';
 import { getPersistedPaymentState, clearPersistedPaymentState, PersistedPaymentState } from '@/lib/payment-storage';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface AppointmentsTabProps {
   onPaymentRequired: (appointmentId: string) => void;
@@ -28,7 +30,15 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
   const [orphanedPayment, setOrphanedPayment] = useState<PersistedPaymentState | null>(null);
   const [isRecoveringPayment, setIsRecoveringPayment] = useState(false);
 
-  const { data: appointmentsResult, isLoading } = usePatientAppointments(patientId, 0, 100);
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 10;
+
+  // Filtres
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const { data: appointmentsResult, isLoading, refetch, isFetching } = usePatientAppointments(patientId, currentPage, pageSize);
   const appointments = appointmentsResult?.data || [];
   const mutateAppointment = useMutateAppointment();
   const createAppointment = useCreateAppointment(patientId, patientName);
@@ -217,8 +227,8 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
   const confirmedAwaitingPayment = appointments?.filter(apt => {
     if (apt.status === 'pending_payment') return true;
     if (apt.status === 'confirmed') {
-      const hasSuccessfulPayment = payments?.some(p => 
-        p.appointment_id === apt.id && 
+      const hasSuccessfulPayment = payments?.some(p =>
+        p.appointment_id === apt.id &&
         (p.status === 'paid' || p.status === 'authorized' || p.payout_status === 'paid' || p.payout_status === 'ready')
       );
       return !hasSuccessfulPayment;
@@ -226,12 +236,52 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
     return false;
   }) || [];
 
-  const upcomingAppointments = appointments.filter(
+  // Statistiques des rendez-vous
+  const stats = useMemo(() => {
+    const allAppointments = appointments || [];
+    return {
+      total: allAppointments.length,
+      confirmed: allAppointments.filter(a => a.status === 'confirmed').length,
+      awaiting: allAppointments.filter(a => a.status === 'awaiting_practitioner' || a.status === 'pending_payment').length,
+      completed: allAppointments.filter(a => a.status === 'completed').length,
+      cancelled: allAppointments.filter(a => a.status === 'cancelled' || a.status === 'rejected').length,
+    };
+  }, [appointments]);
+
+  // Filtrage et tri des rendez-vous
+  const filteredAndSortedAppointments = useMemo(() => {
+    let filtered = [...appointments];
+
+    // Appliquer le filtre par statut
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(apt => {
+        if (statusFilter === 'confirmed') return apt.status === 'confirmed';
+        if (statusFilter === 'awaiting') return apt.status === 'awaiting_practitioner' || apt.status === 'pending_payment';
+        if (statusFilter === 'completed') return apt.status === 'completed';
+        if (statusFilter === 'cancelled') return apt.status === 'cancelled' || apt.status === 'rejected';
+        return true;
+      });
+    }
+
+    // Appliquer le tri
+    filtered.sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.time}`);
+      const dateB = new Date(`${b.date}T${b.time}`);
+      return sortOrder === 'asc' ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
+    });
+
+    return filtered;
+  }, [appointments, statusFilter, sortOrder]);
+
+  const upcomingAppointments = filteredAndSortedAppointments.filter(
     apt => apt.status !== 'completed' && apt.status !== 'cancelled' && apt.status !== 'rejected'
   );
-  const pastAppointments = appointments.filter(
+  const pastAppointments = filteredAndSortedAppointments.filter(
     apt => apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'rejected'
   );
+
+  // Pagination
+  const totalPages = Math.ceil((appointmentsResult?.count || 0) / pageSize);
 
   if (isLoading) {
     return (
@@ -243,6 +293,55 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
 
   return (
     <div className="space-y-6">
+      {/* Statistiques */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-lg font-bold">{stats.total}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Confirmés</p>
+              <p className="text-lg font-bold text-green-600">{stats.confirmed}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <TimerIcon className="h-4 w-4 text-orange-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">En attente</p>
+              <p className="text-lg font-bold text-orange-600">{stats.awaiting}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-gray-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Terminés</p>
+              <p className="text-lg font-bold text-gray-600">{stats.completed}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <Ban className="h-4 w-4 text-red-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Annulés</p>
+              <p className="text-lg font-bold text-red-600">{stats.cancelled}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* Alerte paiement orphelin */}
       {orphanedPayment && (
         <Card className="border-orange-500 bg-orange-500/5">
@@ -257,7 +356,7 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 space-y-1">
+              <div className="flex-1 space-y-2">
                 <p className="text-sm">
                   <span className="text-muted-foreground">Montant:</span>{' '}
                   <span className="font-semibold">{formatAmount(orphanedPayment.amount)}</span>
@@ -265,6 +364,26 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
                 <p className="text-sm">
                   <span className="text-muted-foreground">Opérateur:</span>{' '}
                   <span className="font-semibold uppercase">{orphanedPayment.paymentMethod}</span>
+                </p>
+                {orphanedPayment.appointmentId && (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">RDV ID:</span>{' '}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-mono text-xs bg-muted px-1 rounded cursor-help">
+                            {orphanedPayment.appointmentId.substring(0, 8)}...
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="font-mono text-xs">{orphanedPayment.appointmentId}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Initié le {new Date(orphanedPayment.lastUpdated).toLocaleString('fr-FR')}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -350,29 +469,69 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
         </Card>
       )}
 
-      <div className="flex justify-between items-center">
-        <h3 className="text-xl font-semibold">Mes rendez-vous</h3>
-        {patientId && (
-          <NewAppointmentDialog 
-            onSubmit={async (data) => {
-              try {
-                const result = await createAppointment.mutateAsync(data);
-                toast({
-                  title: 'Rendez-vous créé',
-                  description: 'Votre rendez-vous a été créé. Veuillez procéder au paiement pour le confirmer.'
-                });
-                return result;
-              } catch (error) {
-                toast({
-                  title: 'Erreur',
-                  description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous.',
-                  variant: 'destructive'
-                });
-                throw error;
-              }
-            }}
-          />
-        )}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xl font-semibold">Mes rendez-vous</h3>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            title="Rafraîchir"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Filtre par statut */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px] h-9">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filtrer" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les statuts</SelectItem>
+              <SelectItem value="confirmed">Confirmés</SelectItem>
+              <SelectItem value="awaiting">En attente</SelectItem>
+              <SelectItem value="completed">Terminés</SelectItem>
+              <SelectItem value="cancelled">Annulés</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Tri */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+            className="h-9"
+          >
+            <ArrowUpDown className="h-4 w-4 mr-2" />
+            {sortOrder === 'desc' ? 'Plus récent' : 'Plus ancien'}
+          </Button>
+
+          {patientId && (
+            <NewAppointmentDialog
+              onSubmit={async (data) => {
+                try {
+                  const result = await createAppointment.mutateAsync(data);
+                  toast({
+                    title: 'Rendez-vous créé',
+                    description: 'Votre rendez-vous a été créé. Veuillez procéder au paiement pour le confirmer.'
+                  });
+                  return result;
+                } catch (error) {
+                  toast({
+                    title: 'Erreur',
+                    description: error instanceof Error ? error.message : 'Impossible de créer le rendez-vous.',
+                    variant: 'destructive'
+                  });
+                  throw error;
+                }
+              }}
+            />
+          )}
+        </div>
       </div>
       
       <Tabs defaultValue="upcoming" className="space-y-4">
@@ -417,6 +576,9 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <FileText className="h-12 w-12 text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">Aucun rendez-vous passé</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Les rendez-vous terminés ou annulés apparaîtront ici.
+                </p>
               </CardContent>
             </Card>
           ) : (
@@ -430,6 +592,35 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t pt-4">
+          <p className="text-sm text-muted-foreground">
+            Page {currentPage + 1} sur {totalPages} ({appointmentsResult?.count || 0} rendez-vous)
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0 || isFetching}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Précédent
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1 || isFetching}
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

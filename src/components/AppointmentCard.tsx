@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, MapPin, User, FileText, Phone, Info } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, FileText, Phone, Info, Copy, Check } from 'lucide-react';
 import type { Appointment } from '@/types/appointment';
 import { ContactDialog } from '@/components/ContactDialog';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDateFull } from '@/lib/date-utils';
+import { formatAmount } from '@/lib/payment-config';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from '@/hooks/use-toast';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +21,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+// Formater la durée en format lisible (1h30 au lieu de 90 min)
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h${mins.toString().padStart(2, '0')}`;
+}
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -35,6 +47,25 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [confirmAcceptOpen, setConfirmAcceptOpen] = useState(false);
   const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
+
+  const handleCopyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(appointment.address);
+      setAddressCopied(true);
+      toast({
+        title: 'Adresse copiée',
+        description: 'L\'adresse a été copiée dans le presse-papiers.',
+      });
+      setTimeout(() => setAddressCopied(false), 2000);
+    } catch {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de copier l\'adresse.',
+        variant: 'destructive',
+      });
+    }
+  };
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -104,15 +135,46 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Clock className="h-4 w-4 text-muted-foreground" />
-            <span>{appointment.time} ({appointment.duration} min)</span>
+            <span>{appointment.time} ({formatDuration(appointment.duration)})</span>
           </div>
           <div className="flex items-center gap-2 text-sm col-span-2">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            <span>{appointment.address}</span>
+            <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="truncate max-w-[300px] cursor-help">{appointment.address}</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-sm">
+                  <p>{appointment.address}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 flex-shrink-0"
+              onClick={handleCopyAddress}
+              title="Copier l'adresse"
+            >
+              {addressCopied ? (
+                <Check className="h-3 w-3 text-green-500" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </Button>
           </div>
           <div className="flex items-center gap-2 text-sm col-span-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span>{appointment.reason}</span>
+            <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="truncate max-w-[350px] cursor-help">{appointment.reason}</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-md">
+                  <p>{appointment.reason}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
@@ -207,7 +269,7 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
               Voulez-vous accepter ce rendez-vous avec <strong>{appointment.patientName}</strong> le{' '}
               <strong>{formatDateFull(appointment.date)}</strong> à <strong>{appointment.time}</strong> ?
               <br /><br />
-              Le patient recevra une demande de paiement de <strong>15 000 XOF</strong> pour confirmer définitivement.
+              Le patient recevra une demande de paiement de <strong>{formatAmount(appointment.paymentAmount || 15000)}</strong> pour confirmer définitivement.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
