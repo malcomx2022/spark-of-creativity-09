@@ -2,27 +2,29 @@ import { supabase } from "@/integrations/supabase/client";
 
 /**
  * IMPORTANT : Distinction entre rôles applicatifs et rôles de base de données
- * 
- * AppRole : Rôles utilisés dans l'application (patient, practitioner, coach, admin)
+ *
+ * AppRole : Rôles utilisés dans l'application (patient, practitioner, coach, admin, incomplete_practitioner)
  * Ces rôles sont déterminés dynamiquement et ne sont PAS tous stockés en base.
- * 
+ *
  * Table user_roles (DB) : Contient UNIQUEMENT les rôles administrateurs
  * (super_admin, ops, finance, compliance, support, analyst)
- * 
+ *
  * Résolution des rôles applicatifs :
  * - admin : Vérifié via table user_roles (n'importe quel rôle admin)
  * - practitioner/coach : Déterminé via table practitioners (colonne practitioner_type)
+ * - incomplete_practitioner : user_metadata indique practitioner mais pas d'enregistrement practitioners
  * - patient : Rôle par défaut si l'utilisateur n'est ni admin ni practitioner
- * 
+ *
  * Les valeurs 'patient', 'practitioner', 'coach' de l'enum app_role en base
  * ne sont JAMAIS insérées dans user_roles - elles existent uniquement pour
  * permettre l'utilisation de l'enum dans d'autres contextes si nécessaire.
  */
-export type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin';
+export type AppRole = 'patient' | 'practitioner' | 'coach' | 'admin' | 'incomplete_practitioner';
 
 export interface UserRoleResult {
   role: AppRole;
   source: string;
+  practitionerType?: string; // Type de praticien si applicable (pour incomplete_practitioner)
 }
 
 /**
@@ -71,23 +73,33 @@ export async function resolveUserRole(userId: string): Promise<UserRoleResult> {
       };
     }
 
-    // PRIORITÉ 3: Vérifier les métadonnées utilisateur (fallback pour compatibilité)
+    // PRIORITÉ 3: Vérifier les métadonnées utilisateur
+    // Si user_metadata indique practitioner mais pas d'enregistrement practitioners,
+    // c'est une inscription incomplète
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
+
     if (!userError && user?.id === userId && user.user_metadata?.user_type) {
       const metadataType = user.user_metadata.user_type;
-      
-      if (metadataType === 'coach_sportif') {
+      const practitionerType = user.user_metadata.practitioner_type;
+
+      // L'utilisateur s'est inscrit comme praticien mais l'enregistrement n'a pas été créé
+      // C'est une inscription incomplète qui nécessite une récupération
+      if (metadataType === 'practitioner') {
+        console.warn(`[UserRoleResolver] Inscription praticien incomplète détectée pour ${userId}`);
         return {
-          role: 'coach',
-          source: 'user_metadata'
+          role: 'incomplete_practitioner',
+          source: 'user_metadata_incomplete',
+          practitionerType: practitionerType || 'unknown'
         };
       }
-      
-      if (metadataType === 'practitioner') {
+
+      // Pour coach_sportif spécifiquement dans les métadonnées
+      if (metadataType === 'coach_sportif' || practitionerType === 'coach_sportif') {
+        console.warn(`[UserRoleResolver] Inscription coach incomplète détectée pour ${userId}`);
         return {
-          role: 'practitioner',
-          source: 'user_metadata'
+          role: 'incomplete_practitioner',
+          source: 'user_metadata_incomplete',
+          practitionerType: 'coach_sportif'
         };
       }
     }
@@ -139,17 +151,23 @@ export async function resolveUserRoleFromAuth(): Promise<UserRoleResult> {
 /**
  * Obtient le chemin du dashboard approprié pour un rôle donné
  * @param role - Le rôle de l'utilisateur
+ * @param practitionerType - Type de praticien pour incomplete_practitioner
  * @returns Le chemin du dashboard correspondant au rôle
  */
-export function getDashboardPathForRole(role: AppRole): string {
-  const dashboardPaths: Record<AppRole, string> = {
+export function getDashboardPathForRole(role: AppRole, practitionerType?: string): string {
+  // Cas spécial: inscription incomplète → page de récupération
+  if (role === 'incomplete_practitioner') {
+    return '/complete-registration';
+  }
+
+  const dashboardPaths: Record<Exclude<AppRole, 'incomplete_practitioner'>, string> = {
     admin: '/admin',
     practitioner: '/dashboard/practitioner',
     coach: '/dashboard/coach',
     patient: '/dashboard/patient'
   };
 
-  return dashboardPaths[role];
+  return dashboardPaths[role as Exclude<AppRole, 'incomplete_practitioner'>];
 }
 
 /**
@@ -158,8 +176,8 @@ export function getDashboardPathForRole(role: AppRole): string {
  * @returns Le chemin du dashboard approprié
  */
 export async function getDashboardPathForUser(userId: string): Promise<string> {
-  const { role } = await resolveUserRole(userId);
-  return getDashboardPathForRole(role);
+  const { role, practitionerType } = await resolveUserRole(userId);
+  return getDashboardPathForRole(role, practitionerType);
 }
 
 /**
@@ -167,6 +185,15 @@ export async function getDashboardPathForUser(userId: string): Promise<string> {
  * @returns Le chemin du dashboard approprié pour l'utilisateur authentifié
  */
 export async function getDashboardPathFromAuth(): Promise<string> {
-  const { role } = await resolveUserRoleFromAuth();
-  return getDashboardPathForRole(role);
+  const { role, practitionerType } = await resolveUserRoleFromAuth();
+  return getDashboardPathForRole(role, practitionerType);
+}
+
+/**
+ * Vérifie si un rôle indique une inscription incomplète
+ * @param role - Le rôle à vérifier
+ * @returns true si l'inscription est incomplète
+ */
+export function isIncompleteRegistration(role: AppRole): boolean {
+  return role === 'incomplete_practitioner';
 }
