@@ -5,11 +5,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { 
-  Send, 
-  Calendar, 
-  User, 
+import {
+  Send,
+  Calendar,
   MessageSquare,
   CheckCheck,
   Check,
@@ -18,13 +18,21 @@ import {
   FileText,
   Download
 } from 'lucide-react';
-import { 
-  useConversationMessages, 
-  useSendMessage, 
+import {
+  useConversationMessages,
+  useSendMessage,
   useMarkMessagesAsRead,
   useTypingIndicator,
-  type Conversation 
+  type Conversation
 } from '@/hooks/useConversations';
+
+// Traductions des statuts
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'En attente',
+  confirmed: 'Confirmé',
+  completed: 'Terminé',
+  cancelled: 'Annulé',
+};
 
 interface ChatInterfaceProps {
   conversation: Conversation;
@@ -38,7 +46,7 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
-  const { data: messages = [] } = useConversationMessages(conversation.appointment_id, currentUserId);
+  const { data: messages = [], isLoading: isLoadingMessages } = useConversationMessages(conversation.appointment_id, currentUserId);
   const sendMessage = useSendMessage();
   const markAsRead = useMarkMessagesAsRead();
   const { isOtherUserTyping, setTyping } = useTypingIndicator(conversation.appointment_id, currentUserId);
@@ -203,11 +211,11 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                 <Calendar className="h-3.5 w-3.5" />
                 <span>{new Date(conversation.appointment_date).toLocaleDateString('fr-FR')}</span>
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className={getStatusColor(conversation.appointment_status)}
                 >
-                  {conversation.appointment_status}
+                  {STATUS_LABELS[conversation.appointment_status] || conversation.appointment_status}
                 </Badge>
               </div>
             </div>
@@ -218,7 +226,18 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
       <CardContent className="flex-1 flex flex-col p-0">
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
-            {messages.length === 0 ? (
+            {isLoadingMessages ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className={`flex items-end gap-2 ${i % 2 === 0 ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {i % 2 !== 0 && <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />}
+                    <div className={`max-w-[70%] ${i % 2 === 0 ? 'ml-auto' : ''}`}>
+                      <Skeleton className={`h-16 w-48 rounded-2xl ${i % 2 === 0 ? 'rounded-br-sm' : 'rounded-bl-sm'}`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
               <div className="text-center py-12">
                 <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">

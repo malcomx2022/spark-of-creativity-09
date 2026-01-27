@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { MessageSquare, Calendar, Loader2 } from 'lucide-react';
 import { type Conversation } from '@/hooks/useConversations';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,16 @@ interface ConversationsListProps {
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   fetchNextPage?: () => void;
+  searchQuery?: string;
 }
+
+// Traductions des statuts
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'En attente',
+  confirmed: 'Confirmé',
+  completed: 'Terminé',
+  cancelled: 'Annulé',
+};
 
 export function ConversationsList({
   conversations,
@@ -25,6 +35,7 @@ export function ConversationsList({
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
+  searchQuery,
 }: ConversationsListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -82,7 +93,7 @@ export function ConversationsList({
 
   if (conversations.length === 0) {
     return (
-      <Card className="h-[calc(100vh-12rem)]">
+      <Card className="h-[calc(100vh-20rem)]">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
@@ -92,12 +103,25 @@ export function ConversationsList({
         <CardContent>
           <div className="text-center py-12">
             <MessageSquare className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              Aucune conversation pour le moment
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Les conversations apparaîtront après vos rendez-vous
-            </p>
+            {searchQuery ? (
+              <>
+                <p className="text-muted-foreground">
+                  Aucune conversation trouvée
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Essayez avec d'autres termes de recherche
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground">
+                  Aucune conversation pour le moment
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Les conversations apparaîtront après vos rendez-vous
+                </p>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -105,11 +129,14 @@ export function ConversationsList({
   }
 
   return (
-    <Card className="h-[calc(100vh-12rem)]">
+    <Card className="h-[calc(100vh-20rem)]">
       <CardHeader className="border-b pb-4">
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5" />
           Conversations
+          <Badge variant="secondary" className="ml-2">
+            {conversations.length}
+          </Badge>
           {conversations.some(c => c.unread_count > 0) && (
             <Badge variant="destructive" className="ml-auto">
               {conversations.reduce((sum, c) => sum + c.unread_count, 0)}
@@ -118,7 +145,7 @@ export function ConversationsList({
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[calc(100vh-16rem)]" ref={scrollRef}>
+        <ScrollArea className="h-[calc(100vh-24rem)]" ref={scrollRef}>
           <div className="divide-y">
             {conversations.map((conversation) => {
               const otherUserName = userType === 'patient' 
@@ -158,11 +185,20 @@ export function ConversationsList({
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <p className={`text-sm truncate ${
-                          conversation.unread_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
-                        }`}>
-                          {truncateMessage(conversation.last_message)}
-                        </p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <p className={`text-sm truncate max-w-[180px] cursor-help ${
+                                conversation.unread_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
+                              }`}>
+                                {truncateMessage(conversation.last_message)}
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-[300px]">
+                              <p className="whitespace-pre-wrap">{conversation.last_message}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         {conversation.unread_count > 0 && (
                           <Badge variant="default" className="ml-2 flex-shrink-0">
                             {conversation.unread_count}
