@@ -284,9 +284,24 @@ L'implémentation FedaPay est **prête pour le mode LIVE**.
 6. ✅ **Country code** - Minuscules partout
 7. ✅ **Pas de données test** - Aucun numéro de test pré-rempli
 
-### Prochaines étapes
+### Configuration vérifiée (2026-01-27)
 
-1. Configurer les variables d'environnement Supabase pour LIVE
-2. Configurer le webhook dans le dashboard FedaPay LIVE
-3. Exécuter `test-fedapay-connectivity` pour valider
-4. Effectuer un paiement test en LIVE
+```
+✅ test-fedapay-connectivity:
+   - Mode: live
+   - Clé publique: pk_live_* ✅
+   - Clé secrète: sk_live_* ✅
+   - Checkout FedaPay: accessible ✅
+   - CDN FedaPay: accessible ✅
+   - Test transaction: succès (ID: 109025880) ✅
+   - État global: healthy ✅
+
+✅ Webhook sécurisé:
+   - FEDAPAY_WEBHOOK_SECRET: configuré ✅
+   - Requêtes sans signature: rejetées ✅
+   - URL: https://jucqnqatncjcjlnhprsq.supabase.co/functions/v1/payment-webhook
+```
+
+### Prochaine étape
+
+Effectuer un paiement test réel en LIVE pour valider le flux complet.
