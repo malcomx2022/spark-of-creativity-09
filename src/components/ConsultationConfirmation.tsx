@@ -86,7 +86,7 @@ export function ConsultationConfirmation({
       if (!user) throw new Error('Utilisateur non connecté');
 
       // Créer un ticket de support / litige
-      const { error } = await supabase
+      const { data: disputeData, error } = await supabase
         .from('disputes')
         .insert({
           raised_by: user.id,
@@ -95,9 +95,30 @@ export function ConsultationConfirmation({
           description: issueDescription,
           status: 'open',
           priority: 'high',
-        });
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      // Notify admins about the new dispute
+      const { data: adminUsers } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .in('role', ['super_admin', 'ops', 'support']);
+
+      if (adminUsers && adminUsers.length > 0) {
+        const uniqueAdminIds = Array.from(new Set(adminUsers.map(a => a.user_id)));
+        await supabase.from('notifications').insert(
+          uniqueAdminIds.map(adminId => ({
+            user_id: adminId,
+            title: 'Nouveau litige signalé',
+            message: `Un patient a signalé un problème avec sa consultation avec ${practitionerName}. Priorité: Haute`,
+            type: 'dispute_created',
+            link: '/admin?tab=operations',
+          }))
+        );
+      }
 
       toast({
         title: '📝 Problème signalé',
