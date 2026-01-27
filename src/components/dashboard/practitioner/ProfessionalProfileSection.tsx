@@ -1,14 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { FileText, Upload, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  FileText, Upload, CheckCircle, XCircle, Clock, AlertCircle,
+  RefreshCw, User, Copy, Check, Loader2, HelpCircle, FileCheck, Info
+} from "lucide-react";
 import { getSignedFileUrl, uploadUserDocument } from "@/lib/file-upload";
+
+const BIO_MAX_LENGTH = 500;
 
 interface ProfessionalProfileSectionProps {
   practitionerId: string;
@@ -18,8 +27,11 @@ interface ProfessionalProfileSectionProps {
 
 export function ProfessionalProfileSection({ practitionerId, practitionerData, isCoach = false }: ProfessionalProfileSectionProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [documentState, setDocumentState] = useState({
     idDocument: practitionerData?.id_document_url ?? null,
     licenseDocument: practitionerData?.license_document_url ?? null,
@@ -62,6 +74,87 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
       insuranceDocument: practitionerData?.insurance_document_url ?? null,
     });
   }, [practitionerData]);
+
+  // Calcul de la complétion du profil
+  const profileCompletion = useMemo(() => {
+    if (!practitionerData) return { percentage: 0, completed: 0, total: 10 };
+
+    const fields = [
+      { name: 'bio', value: practitionerData.bio },
+      { name: 'diplomas', value: practitionerData.diplomas?.length > 0 },
+      { name: 'languages', value: practitionerData.languages?.length > 0 },
+      { name: 'years_experience', value: practitionerData.years_experience > 0 },
+      { name: 'license_number', value: practitionerData.license_number },
+      { name: 'intervention_radius', value: practitionerData.intervention_radius > 0 },
+      { name: 'communes_served', value: practitionerData.communes_served?.length > 0 },
+      { name: 'id_document', value: practitionerData.id_document_url },
+      { name: 'license_document', value: practitionerData.license_document_url },
+      { name: 'insurance_document', value: practitionerData.insurance_document_url },
+    ];
+
+    const completed = fields.filter(f => !!f.value).length;
+    const total = fields.length;
+    const percentage = Math.round((completed / total) * 100);
+
+    return { percentage, completed, total };
+  }, [practitionerData]);
+
+  // Compter les documents téléchargés
+  const documentsCount = useMemo(() => {
+    let count = 0;
+    if (documentState.idDocument) count++;
+    if (documentState.licenseDocument) count++;
+    if (documentState.insuranceDocument) count++;
+    return count;
+  }, [documentState]);
+
+  // Compter les documents en attente
+  const pendingCount = useMemo(() => {
+    let count = 0;
+    if (pendingDocuments.idDocument) count++;
+    if (pendingDocuments.licenseDocument) count++;
+    if (pendingDocuments.insuranceDocument) count++;
+    return count;
+  }, [pendingDocuments]);
+
+  // Fonction de copie
+  const handleCopy = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+      toast({
+        title: "Copié",
+        description: "Le contenu a été copié dans le presse-papiers.",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de copier le contenu.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Fonction de rafraîchissement
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["practitioner", practitionerData?.user_id] });
+      toast({
+        title: "Actualisé",
+        description: "Les données ont été rafraîchies.",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de rafraîchir les données.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -200,14 +293,126 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
     );
   };
 
+  // Skeleton loading
+  if (!practitionerData) {
+    return (
+      <div className="space-y-6">
+        {/* Skeleton en-tête */}
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-28" />
+        </div>
+
+        {/* Skeleton complétion */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+            <Skeleton className="h-2 w-full" />
+          </CardContent>
+        </Card>
+
+        {/* Skeleton KYC */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <Skeleton className="h-6 w-40 mb-2" />
+                <Skeleton className="h-4 w-56" />
+              </div>
+              <Skeleton className="h-6 w-24" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[1, 2, 3].map(i => (
+              <div key={i}>
+                <Skeleton className="h-4 w-32 mb-2" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Skeleton profil */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-40 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-24 w-full" />
+            <div className="grid gap-4 md:grid-cols-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* En-tête global */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <User className="h-6 w-6" />
+            Profil professionnel
+            {profileCompletion.percentage === 100 && (
+              <Badge className="bg-green-500">Complet</Badge>
+            )}
+          </h2>
+          <p className="text-muted-foreground">
+            Gérez vos informations et documents professionnels
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Actualiser
+        </Button>
+      </div>
+
+      {/* Barre de complétion */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium flex items-center gap-2">
+              <FileCheck className="h-4 w-4" />
+              Complétion du profil
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {profileCompletion.completed}/{profileCompletion.total} champs
+            </span>
+          </div>
+          <Progress value={profileCompletion.percentage} className="h-2" />
+          <p className="text-xs text-muted-foreground mt-2">
+            {profileCompletion.percentage < 100
+              ? `Complétez votre profil pour améliorer votre visibilité (${profileCompletion.percentage}%)`
+              : "Votre profil est complet !"}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Statut KYC */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Statut d'agrément</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Statut d'agrément
+                <Badge variant="outline">{documentsCount}/3 documents</Badge>
+              </CardTitle>
               <CardDescription>Validation de vos documents professionnels</CardDescription>
             </div>
             {getKYCStatusBadge()}
@@ -246,9 +451,31 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
           )}
 
           <div className="mt-6 space-y-4">
+            {pendingCount > 0 && (
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 rounded-lg">
+                <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                  <Info className="h-4 w-4" />
+                  {pendingCount} document{pendingCount > 1 ? 's' : ''} en attente de téléchargement
+                </p>
+              </div>
+            )}
+
             <div>
-              <Label>Pièce d'identité</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Label>Pièce d'identité</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Carte d'identité, passeport ou titre de séjour</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                {documentState.idDocument && <CheckCircle className="h-4 w-4 text-green-500" />}
+              </div>
+              <div className="flex items-center gap-2">
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
@@ -268,10 +495,29 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                   </Button>
                 )}
               </div>
+              {pendingDocuments.idDocument && (
+                <p className="text-xs text-blue-600 mt-1">
+                  📎 Fichier sélectionné : {pendingDocuments.idDocument.name}
+                </p>
+              )}
             </div>
+
             <div>
-              <Label>Document d'agrément</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Label>Document d'agrément</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Diplôme, attestation ou carte professionnelle</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                {documentState.licenseDocument && <CheckCircle className="h-4 w-4 text-green-500" />}
+              </div>
+              <div className="flex items-center gap-2">
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
@@ -291,10 +537,29 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                   </Button>
                 )}
               </div>
+              {pendingDocuments.licenseDocument && (
+                <p className="text-xs text-blue-600 mt-1">
+                  📎 Fichier sélectionné : {pendingDocuments.licenseDocument.name}
+                </p>
+              )}
             </div>
+
             <div>
-              <Label>Assurance RCP</Label>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Label>Assurance RCP</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Attestation d'assurance responsabilité civile professionnelle</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                {documentState.insuranceDocument && <CheckCircle className="h-4 w-4 text-green-500" />}
+              </div>
+              <div className="flex items-center gap-2">
                 <Input
                   type="file"
                   accept="image/*,application/pdf"
@@ -314,6 +579,11 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                   </Button>
                 )}
               </div>
+              {pendingDocuments.insuranceDocument && (
+                <p className="text-xs text-blue-600 mt-1">
+                  📎 Fichier sélectionné : {pendingDocuments.insuranceDocument.name}
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -333,11 +603,18 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
                   <Button onClick={() => setIsEditing(true)}>Modifier</Button>
                 ) : (
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setIsEditing(false)}>
+                    <Button variant="outline" onClick={() => setIsEditing(false)} disabled={loading}>
                       Annuler
                     </Button>
                     <Button onClick={handleSave} disabled={loading}>
-                      Sauvegarder
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Enregistrement...
+                        </>
+                      ) : (
+                        "Sauvegarder"
+                      )}
                     </Button>
                   </div>
                 )}
@@ -347,15 +624,21 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="bio">Biographie</Label>
-              <Textarea
-                id="bio"
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                disabled={!isEditing || isKYCValidated()}
-                rows={4}
-                placeholder="Présentez votre parcours et votre approche..."
-              />
+            <div className="flex items-center justify-between mb-2">
+              <Label htmlFor="bio">Biographie</Label>
+              <span className={`text-xs ${formData.bio.length > BIO_MAX_LENGTH ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {formData.bio.length}/{BIO_MAX_LENGTH}
+              </span>
+            </div>
+            <Textarea
+              id="bio"
+              value={formData.bio}
+              onChange={(e) => setFormData({ ...formData, bio: e.target.value.slice(0, BIO_MAX_LENGTH) })}
+              disabled={!isEditing || isKYCValidated()}
+              rows={4}
+              placeholder="Présentez votre parcours et votre approche..."
+              className={formData.bio.length > BIO_MAX_LENGTH * 0.9 ? 'border-orange-500' : ''}
+            />
           </div>
           
           <div className="grid gap-4 md:grid-cols-2">
@@ -394,13 +677,38 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             </div>
             <div>
               <Label htmlFor="license">Numéro d'agrément</Label>
-              <Input
-                id="license"
-                value={formData.license_number}
-                onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                disabled={!isEditing || isKYCValidated()}
-                placeholder="N° d'agrément"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="license"
+                  value={formData.license_number}
+                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
+                  disabled={!isEditing || isKYCValidated()}
+                  placeholder="N° d'agrément"
+                />
+                {formData.license_number && !isEditing && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopy(formData.license_number, 'license')}
+                        >
+                          {copiedField === 'license' ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Copier le numéro</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
             </div>
           </div>
 
