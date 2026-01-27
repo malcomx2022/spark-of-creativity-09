@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw, HelpCircle, Filter, FolderCheck, FolderX, Clock } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { getSignedFileUrl, uploadUserDocument } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,11 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format, formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 
 interface DocumentsSectionProps {
   practitionerData: any;
@@ -32,62 +37,104 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
     image: null,
   });
   const [loadingUrls, setLoadingUrls] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedDocumentType, setSelectedDocumentType] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  useEffect(() => {
-    const loadDocumentUrls = async () => {
-      if (!practitionerData) return;
+  // Document type descriptions for tooltips
+  const documentDescriptions: Record<string, string> = {
+    'image': 'Photo professionnelle de bonne qualité pour votre profil public',
+    'id_document_url': 'Carte d\'identité, passeport ou titre de séjour en cours de validité',
+    'license_document_url': 'Document officiel autorisant l\'exercice de votre profession',
+    'insurance_document_url': 'Diplôme, certification ou attestation de formation',
+  };
 
+  // Load document URLs function (reusable for refresh)
+  const loadDocumentUrls = async (showRefreshing = false) => {
+    if (!practitionerData) return;
+
+    if (showRefreshing) {
+      setIsRefreshing(true);
+    } else {
       setLoadingUrls(true);
-      const urls: DocumentUrls = {
-        id_document_url: null,
-        license_document_url: null,
-        insurance_document_url: null,
-        image: null,
-      };
+    }
 
-      try {
-        // Charger les URLs des documents
-        if (practitionerData.id_document_url) {
-          const signedUrl = await getSignedFileUrl(practitionerData.id_document_url);
-          urls.id_document_url = signedUrl;
-        }
-
-        if (practitionerData.license_document_url) {
-          const signedUrl = await getSignedFileUrl(practitionerData.license_document_url);
-          urls.license_document_url = signedUrl;
-        }
-
-        if (practitionerData.insurance_document_url) {
-          const signedUrl = await getSignedFileUrl(practitionerData.insurance_document_url);
-          urls.insurance_document_url = signedUrl;
-        }
-
-        if (practitionerData.image) {
-          // Si c'est un chemin Wasabi (pas une URL complète), obtenir l'URL signée
-          if (practitionerData.image.startsWith('http')) {
-            urls.image = practitionerData.image;
-          } else {
-            const signedUrl = await getSignedFileUrl(practitionerData.image);
-            urls.image = signedUrl;
-          }
-        }
-
-        setDocumentUrls(urls);
-      } catch (error) {
-        console.error('Erreur chargement URLs documents:', error);
-      } finally {
-        setLoadingUrls(false);
-      }
+    const urls: DocumentUrls = {
+      id_document_url: null,
+      license_document_url: null,
+      insurance_document_url: null,
+      image: null,
     };
 
+    try {
+      // Charger les URLs des documents
+      if (practitionerData.id_document_url) {
+        const signedUrl = await getSignedFileUrl(practitionerData.id_document_url);
+        urls.id_document_url = signedUrl;
+      }
+
+      if (practitionerData.license_document_url) {
+        const signedUrl = await getSignedFileUrl(practitionerData.license_document_url);
+        urls.license_document_url = signedUrl;
+      }
+
+      if (practitionerData.insurance_document_url) {
+        const signedUrl = await getSignedFileUrl(practitionerData.insurance_document_url);
+        urls.insurance_document_url = signedUrl;
+      }
+
+      if (practitionerData.image) {
+        // Si c'est un chemin Wasabi (pas une URL complète), obtenir l'URL signée
+        if (practitionerData.image.startsWith('http')) {
+          urls.image = practitionerData.image;
+        } else {
+          const signedUrl = await getSignedFileUrl(practitionerData.image);
+          urls.image = signedUrl;
+        }
+      }
+
+      setDocumentUrls(urls);
+    } catch (error) {
+      console.error('Erreur chargement URLs documents:', error);
+    } finally {
+      setLoadingUrls(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
     loadDocumentUrls();
   }, [practitionerData]);
+
+  // Handle refresh
+  const handleRefresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['practitioner'] });
+    await loadDocumentUrls(true);
+  };
+
+  // Format date for display
+  const formatUpdateDate = (date: string | null) => {
+    if (!date) return null;
+    try {
+      return formatDistanceToNow(new Date(date), { addSuffix: true, locale: fr });
+    } catch {
+      return null;
+    }
+  };
+
+  const formatFullDate = (date: string | null) => {
+    if (!date) return '';
+    try {
+      return format(new Date(date), 'dd MMMM yyyy à HH:mm', { locale: fr });
+    } catch {
+      return '';
+    }
+  };
 
   // Handler for document upload
   const handleDocumentUpload = async (file: File, documentType: string) => {
@@ -247,26 +294,47 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
       label: 'Photo de profil',
       url: documentUrls.image,
       icon: <FileText className="h-4 w-4" />,
+      description: documentDescriptions['image'],
     },
     {
       key: 'id_document_url',
       label: 'Pièce d\'identité',
       url: documentUrls.id_document_url,
       icon: <FileText className="h-4 w-4" />,
+      description: documentDescriptions['id_document_url'],
     },
     {
       key: 'license_document_url',
       label: 'Autorisation d\'exercice',
       url: documentUrls.license_document_url,
       icon: <FileText className="h-4 w-4" />,
+      description: documentDescriptions['license_document_url'],
     },
     {
       key: 'insurance_document_url',
       label: 'Diplôme/Certificat',
       url: documentUrls.insurance_document_url,
       icon: <FileText className="h-4 w-4" />,
+      description: documentDescriptions['insurance_document_url'],
     },
   ];
+
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const total = documents.length;
+    const uploaded = documents.filter(d => d.url).length;
+    const missing = total - uploaded;
+    const percentage = Math.round((uploaded / total) * 100);
+    return { total, uploaded, missing, percentage };
+  }, [documents]);
+
+  // Filter documents based on status filter
+  const filteredDocuments = useMemo(() => {
+    if (statusFilter === 'all') return documents;
+    if (statusFilter === 'uploaded') return documents.filter(d => d.url);
+    if (statusFilter === 'missing') return documents.filter(d => !d.url);
+    return documents;
+  }, [documents, statusFilter]);
 
   const getKycStatusBadge = () => {
     const status = practitionerData?.kyc_status;
@@ -283,24 +351,159 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
     return <Badge variant="outline"><AlertCircle className="h-3 w-3 mr-1" />En attente</Badge>;
   };
 
-  return (
-    <>
+  // Skeleton loading state
+  if (loadingUrls && !practitionerData) {
+    return (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Documents KYC
-              </CardTitle>
-              <CardDescription>
-                Vos documents d'identité et certifications
-              </CardDescription>
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-4 w-64" />
             </div>
-            {getKycStatusBadge()}
+            <Skeleton className="h-6 w-24" />
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="border rounded-lg p-4 space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-8 w-16" />
+              </div>
+            ))}
+          </div>
+          <Skeleton className="h-2 w-full" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="border rounded-lg p-4 space-y-3">
+                <div className="flex justify-between">
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-5 w-5 rounded-full" />
+                </div>
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <TooltipProvider>
+      <>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Documents KYC
+                  <Badge variant="secondary" className="ml-2">
+                    {stats.uploaded}/{stats.total}
+                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Documents requis pour valider votre profil professionnel et exercer sur la plateforme</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+                <CardDescription>
+                  Vos documents d'identité et certifications
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {getKycStatusBadge()}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={isRefreshing || loadingUrls}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Actualiser
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Statistics Dashboard */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+                  <FileText className="h-3.5 w-3.5" />
+                  Total
+                </div>
+                <p className="text-2xl font-bold">{stats.total}</p>
+              </div>
+              <div className="border rounded-lg p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-2 text-green-700 dark:text-green-300 text-xs mb-1">
+                  <FolderCheck className="h-3.5 w-3.5" />
+                  Fournis
+                </div>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-300">{stats.uploaded}</p>
+              </div>
+              <div className="border rounded-lg p-4 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
+                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300 text-xs mb-1">
+                  <FolderX className="h-3.5 w-3.5" />
+                  Manquants
+                </div>
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">{stats.missing}</p>
+              </div>
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  Mise à jour
+                </div>
+                {practitionerData?.updated_at ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-sm font-medium cursor-help truncate">
+                        {formatUpdateDate(practitionerData.updated_at)}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{formatFullDate(practitionerData.updated_at)}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <p className="text-sm text-muted-foreground">-</p>
+                )}
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Progression</span>
+                <span className="font-medium">{stats.percentage}%</span>
+              </div>
+              <Progress value={stats.percentage} className="h-2" />
+            </div>
+
+            {/* Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filtrer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous ({stats.total})</SelectItem>
+                  <SelectItem value="uploaded">Fournis ({stats.uploaded})</SelectItem>
+                  <SelectItem value="missing">Manquants ({stats.missing})</SelectItem>
+                </SelectContent>
+              </Select>
+              {statusFilter !== 'all' && (
+                <Badge variant="secondary">
+                  {filteredDocuments.length} résultat(s)
+                </Badge>
+              )}
+            </div>
           {practitionerData?.kyc_status === 'pending' && (
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
@@ -354,87 +557,136 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {documents.map((doc) => (
-              <div
-                key={doc.key}
-                className="border rounded-lg p-4 space-y-2 hover:border-primary/50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {doc.icon}
-                    <span className="font-medium text-sm">{doc.label}</span>
+            {filteredDocuments.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <FileText className="h-12 w-12 mb-4 opacity-50" />
+                <p className="text-sm">Aucun document trouvé avec ce filtre</p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => setStatusFilter('all')}
+                >
+                  Réinitialiser le filtre
+                </Button>
+              </div>
+            ) : (
+              filteredDocuments.map((doc) => (
+                <div
+                  key={doc.key}
+                  className={`border rounded-lg p-4 space-y-2 transition-all hover:shadow-sm ${
+                    doc.url
+                      ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10'
+                      : 'hover:border-primary/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {doc.icon}
+                      <span className="font-medium text-sm">{doc.label}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>{doc.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    {doc.url ? (
+                      <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Fourni
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Manquant
+                      </Badge>
+                    )}
                   </div>
-                  {doc.url ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+
+                  {loadingUrls ? (
+                    <Skeleton className="h-8 w-full" />
+                  ) : doc.url ? (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewingDocument({ url: doc.url!, name: doc.label })}
+                        className="flex-1"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        Voir
+                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(doc.url!, '_blank')}
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Télécharger</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      {/* Show update button only if KYC is incomplete or rejected */}
+                      {(practitionerData?.kyc_status === 'incomplete' || practitionerData?.kyc_status === 'rejected') && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setSelectedDocumentType(doc.key);
+                                setUploadDialogOpen(true);
+                              }}
+                              disabled={uploadingDocument === doc.key}
+                            >
+                              {uploadingDocument === doc.key ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Remplacer</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                   ) : (
-                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex gap-2 items-center">
+                      <p className="text-xs text-muted-foreground flex-1">Document non fourni</p>
+                      {/* Show upload button if KYC is incomplete or rejected */}
+                      {(practitionerData?.kyc_status === 'incomplete' || practitionerData?.kyc_status === 'rejected') && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setSelectedDocumentType(doc.key);
+                            setUploadDialogOpen(true);
+                          }}
+                          disabled={uploadingDocument === doc.key}
+                        >
+                          {uploadingDocument === doc.key ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <Upload className="h-3 w-3 mr-1" />
+                              Téléverser
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
-
-                {loadingUrls ? (
-                  <Skeleton className="h-8 w-full" />
-                ) : doc.url ? (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setViewingDocument({ url: doc.url!, name: doc.label })}
-                      className="flex-1"
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      Voir
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.open(doc.url!, '_blank')}
-                    >
-                      <Download className="h-3 w-3" />
-                    </Button>
-                    {/* Show update button only if KYC is incomplete or rejected */}
-                    {(practitionerData?.kyc_status === 'incomplete' || practitionerData?.kyc_status === 'rejected') && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setSelectedDocumentType(doc.key);
-                          setUploadDialogOpen(true);
-                        }}
-                        disabled={uploadingDocument === doc.key}
-                      >
-                        {uploadingDocument === doc.key ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3 w-3" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <p className="text-xs text-muted-foreground flex-1">Non fourni</p>
-                    {/* Show upload button if KYC is incomplete or rejected */}
-                    {(practitionerData?.kyc_status === 'incomplete' || practitionerData?.kyc_status === 'rejected') && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setSelectedDocumentType(doc.key);
-                          setUploadDialogOpen(true);
-                        }}
-                        disabled={uploadingDocument === doc.key}
-                      >
-                        {uploadingDocument === doc.key ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Upload className="h-3 w-3" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           {/* Bouton de re-soumission pour les dossiers incomplets */}
@@ -610,6 +862,7 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+      </>
+    </TooltipProvider>
   );
 }
