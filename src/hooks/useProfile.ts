@@ -132,7 +132,7 @@ export function useAddresses(userId?: string) {
     queryKey: ['addresses', userId],
     queryFn: async () => {
       if (!userId) return [];
-      
+
       const { data, error } = await withTimeout(
         supabase
           .from('addresses')
@@ -145,5 +145,157 @@ export function useAddresses(userId?: string) {
       return data || [];
     },
     enabled: !!userId,
+  });
+}
+
+// Mutation pour supprimer un contact d'urgence
+export function useDeleteEmergencyContact() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ contactId, userId }: { contactId: string; userId: string }) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('emergency_contacts')
+          .delete()
+          .eq('id', contactId)
+      );
+
+      if (error) throw error;
+      return userId;
+    },
+    onSuccess: (userId) => {
+      queryClient.invalidateQueries({ queryKey: ['emergency-contacts', userId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-profile-data'] });
+      toast({
+        title: "Contact supprimé",
+        description: "Le contact d'urgence a été supprimé avec succès."
+      });
+    },
+    onError: (error: any) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
+      toast({
+        title: "Erreur",
+        description: isTimeoutError
+          ? error.message
+          : "Impossible de supprimer le contact",
+        variant: "destructive"
+      });
+    }
+  });
+}
+
+// Mutation pour mettre à jour un contact d'urgence
+export function useUpdateEmergencyContact() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ contactId, userId, data }: { contactId: string; userId: string; data: Partial<EmergencyContact> }) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('emergency_contacts')
+          .update(data)
+          .eq('id', contactId)
+      );
+
+      if (error) throw error;
+      return userId;
+    },
+    onSuccess: (userId) => {
+      queryClient.invalidateQueries({ queryKey: ['emergency-contacts', userId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-profile-data'] });
+      toast({
+        title: "Contact mis à jour",
+        description: "Le contact d'urgence a été mis à jour avec succès."
+      });
+    },
+    onError: (error: any) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
+      toast({
+        title: "Erreur",
+        description: isTimeoutError
+          ? error.message
+          : "Impossible de mettre à jour le contact",
+        variant: "destructive"
+      });
+    }
+  });
+}
+
+// Mutation pour supprimer une adresse
+export function useDeleteAddress() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ addressId, userId }: { addressId: string; userId: string }) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('addresses')
+          .delete()
+          .eq('id', addressId)
+      );
+
+      if (error) throw error;
+      return userId;
+    },
+    onSuccess: (userId) => {
+      queryClient.invalidateQueries({ queryKey: ['addresses', userId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-profile-data'] });
+      toast({
+        title: "Adresse supprimée",
+        description: "L'adresse a été supprimée avec succès."
+      });
+    },
+    onError: (error: any) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
+      toast({
+        title: "Erreur",
+        description: isTimeoutError
+          ? error.message
+          : "Impossible de supprimer l'adresse",
+        variant: "destructive"
+      });
+    }
+  });
+}
+
+// Mutation pour mettre à jour une adresse
+export function useUpdateAddress() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ addressId, userId, data }: { addressId: string; userId: string; data: Partial<Address> }) => {
+      const { error } = await withTimeout(
+        supabase
+          .from('addresses')
+          .update(data)
+          .eq('id', addressId)
+      );
+
+      if (error) throw error;
+      return userId;
+    },
+    onSuccess: (userId) => {
+      queryClient.invalidateQueries({ queryKey: ['addresses', userId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-profile-data'] });
+      toast({
+        title: "Adresse mise à jour",
+        description: "L'adresse a été mise à jour avec succès."
+      });
+    },
+    onError: (error: any) => {
+      const isTimeoutError = error instanceof NetworkTimeoutError;
+      toast({
+        title: "Erreur",
+        description: isTimeoutError
+          ? error.message
+          : "Impossible de mettre à jour l'adresse",
+        variant: "destructive"
+      });
+    }
   });
 }
