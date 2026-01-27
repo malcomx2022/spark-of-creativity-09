@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
@@ -130,10 +131,54 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
       toast({
         title: "Séance confirmée",
-        description: "La séance a été confirmée avec succès"
+        description: "La séance a été confirmée avec succès. Les participants inscrits ont été notifiés."
       });
     },
   });
+
+  // ✅ Bug #8 FIX: Souscription temps réel pour les mises à jour de séances et participants
+  useEffect(() => {
+    // Écouter les changements sur group_sessions
+    const sessionsChannel = supabase
+      .channel('group-sessions-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_sessions',
+          ...(coachId ? { filter: `coach_id=eq.${coachId}` } : {})
+        },
+        (payload) => {
+          console.log('🔄 Realtime update for group sessions:', payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
+        }
+      )
+      .subscribe();
+
+    // Écouter les changements sur les participants (inscriptions)
+    const participantsChannel = supabase
+      .channel('group-session-participants-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_session_participants'
+        },
+        (payload) => {
+          console.log('🔄 Realtime update for participants:', payload.eventType);
+          // Rafraîchir les séances car current_participants a pu changer
+          queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(sessionsChannel);
+      supabase.removeChannel(participantsChannel);
+    };
+  }, [coachId, queryClient]);
 
   return {
     sessions: sessions?.data || [],

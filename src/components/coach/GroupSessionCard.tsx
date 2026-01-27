@@ -35,6 +35,33 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
+  // ✅ Bug #3 FIX: État pour les participants payés vs pending
+  const [participantStats, setParticipantStats] = useState<{ paid: number; pending: number }>({ paid: 0, pending: 0 });
+
+  // ✅ Bug #3 FIX: Récupérer les statistiques de participants pour le coach
+  useEffect(() => {
+    const fetchParticipantStats = async () => {
+      if (!isCoachView) return;
+
+      try {
+        const { data: participants } = await supabase
+          .from('group_session_participants')
+          .select('payment_status')
+          .eq('session_id', session.id)
+          .in('payment_status', ['paid', 'confirmed', 'pending']);
+
+        if (participants) {
+          const paid = participants.filter(p => p.payment_status === 'paid' || p.payment_status === 'confirmed').length;
+          const pending = participants.filter(p => p.payment_status === 'pending').length;
+          setParticipantStats({ paid, pending });
+        }
+      } catch (error) {
+        console.error('Erreur récupération stats participants:', error);
+      }
+    };
+
+    fetchParticipantStats();
+  }, [session.id, isCoachView, session.current_participants]);
 
   // ✅ Vérifier si l'utilisateur est déjà inscrit à cette séance
   useEffect(() => {
@@ -153,6 +180,13 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
             <Users className="h-4 w-4 text-primary" />
             <span className={isAlmostFull ? "text-orange-500 font-semibold" : ""}>
               {session.current_participants}/{session.max_participants} participants
+              {/* ✅ Bug #3 FIX: Afficher distinction payés/pending pour le coach */}
+              {isCoachView && (participantStats.paid > 0 || participantStats.pending > 0) && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  ({participantStats.paid} payé{participantStats.paid > 1 ? 's' : ''}
+                  {participantStats.pending > 0 && `, ${participantStats.pending} en attente`})
+                </span>
+              )}
             </span>
           </div>
         </div>

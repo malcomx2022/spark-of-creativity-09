@@ -59,13 +59,18 @@ export default function CoachSearch() {
   // Récupérer toutes les séances de groupe
   const { sessions: allSessions = [], isLoading: isLoadingSessions } = useGroupSessions();
 
-  // Filtrer les séances disponibles
-  const availableSessions = useMemo(() => 
-    allSessions.filter(s => 
-      s.status === 'planifiee' || s.status === 'confirmee'
-    ),
-    [allSessions]
-  );
+  // Filtrer les séances disponibles (non passées, non annulées)
+  const availableSessions = useMemo(() => {
+    const now = new Date();
+    return allSessions.filter(s => {
+      // Vérifier le statut
+      if (s.status !== 'planifiee' && s.status !== 'confirmee') return false;
+
+      // Vérifier que la séance n'est pas passée
+      const sessionDateTime = new Date(s.scheduled_date + 'T' + (s.start_time || '00:00'));
+      return sessionDateTime > now;
+    });
+  }, [allSessions]);
 
   // Zones d'intervention uniques
   const zones = useMemo(() => {
@@ -243,9 +248,16 @@ export default function CoachSearch() {
                               <p className="text-sm text-muted-foreground">{coach?.name}</p>
                             </div>
                           </div>
-                          <Badge variant={spotsLeft > 5 ? "default" : "secondary"}>
-                            {spotsLeft} places
-                          </Badge>
+                          <div className="flex flex-col gap-1 items-end">
+                            {/* ✅ Bug #11 FIX: Afficher le type de séance */}
+                            <Badge variant="outline" className="text-xs">
+                              {session.session_type === 'individuelle' ? '👤 Individuelle' :
+                               session.session_type === 'duo' ? '👥 Duo' : '👥👥 Groupe'}
+                            </Badge>
+                            <Badge variant={spotsLeft > 5 ? "default" : "secondary"}>
+                              {spotsLeft} places
+                            </Badge>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
