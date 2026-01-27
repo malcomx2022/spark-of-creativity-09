@@ -1,15 +1,18 @@
-import { useRef } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { FileText, Calendar, User, AlertCircle, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { FileText, Calendar, User, AlertCircle, ChevronLeft, ChevronRight, Download, RefreshCw, Search, Filter, ArrowUpDown, Stethoscope, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Report {
   id: string;
@@ -35,6 +38,8 @@ interface PatientConsultationReportsVirtualizedProps {
   page: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  onRefresh?: () => void;
+  isFetching?: boolean;
 }
 
 export function PatientConsultationReportsVirtualized({
@@ -43,11 +48,57 @@ export function PatientConsultationReportsVirtualized({
   page,
   totalPages,
   onPageChange,
+  onRefresh,
+  isFetching = false,
 }: PatientConsultationReportsVirtualizedProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
+  // Filtres et recherche
+  const [searchQuery, setSearchQuery] = useState('');
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  // Filtrer les rapports
+  const filteredReports = useMemo(() => {
+    let filtered = [...reports];
+
+    // Filtre par recherche
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(r =>
+        r.appointments?.practitioner_name?.toLowerCase().includes(query) ||
+        r.primary_diagnosis?.toLowerCase().includes(query) ||
+        r.consultation_reason?.toLowerCase().includes(query)
+      );
+    }
+
+    // Filtre par sévérité
+    if (severityFilter !== 'all') {
+      filtered = filtered.filter(r => r.severity_level === severityFilter);
+    }
+
+    // Tri par date
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.consultation_date).getTime();
+      const dateB = new Date(b.consultation_date).getTime();
+      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+
+    return filtered;
+  }, [reports, searchQuery, severityFilter, sortOrder]);
+
+  // Statistiques
+  const stats = useMemo(() => {
+    return {
+      total: reports.length,
+      urgent: reports.filter(r => r.severity_level === 'urgent').length,
+      modere: reports.filter(r => r.severity_level === 'modere').length,
+      leger: reports.filter(r => r.severity_level === 'leger').length,
+    };
+  }, [reports]);
+
   const virtualizer = useVirtualizer({
-    count: reports.length,
+    count: filteredReports.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 400,
     overscan: 2,
@@ -199,18 +250,119 @@ export function PatientConsultationReportsVirtualized({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold mb-2">Mes rapports de consultation</h2>
-          <p className="text-muted-foreground">Historique de vos consultations et rapports médicaux</p>
+      {/* En-tête avec titre et refresh */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-bold">Mes rapports de consultation</h2>
+          <Badge variant="secondary">{stats.total} rapport{stats.total > 1 ? 's' : ''}</Badge>
+          {onRefresh && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onRefresh}
+              disabled={isFetching}
+              title="Rafraîchir"
+            >
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
         </div>
-        {totalCount > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Affichage {startIndex}-{endIndex} sur {totalCount} rapport{totalCount > 1 ? 's' : ''}
-          </p>
-        )}
+
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Recherche */}
+          <div className="relative flex-1 sm:flex-none">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-full sm:w-[180px] h-9"
+            />
+          </div>
+
+          {/* Filtre par sévérité */}
+          <Select value={severityFilter} onValueChange={setSeverityFilter}>
+            <SelectTrigger className="w-[130px] h-9">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Sévérité" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes</SelectItem>
+              <SelectItem value="urgent">Urgent</SelectItem>
+              <SelectItem value="modere">Modéré</SelectItem>
+              <SelectItem value="leger">Léger</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Tri */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+            className="h-9"
+          >
+            <ArrowUpDown className="h-4 w-4 mr-1" />
+            {sortOrder === 'desc' ? 'Récent' : 'Ancien'}
+          </Button>
+        </div>
       </div>
 
+      {/* Statistiques */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-lg font-bold">{stats.total}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-red-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Urgent</p>
+              <p className="text-lg font-bold text-red-600">{stats.urgent}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-yellow-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Modéré</p>
+              <p className="text-lg font-bold text-yellow-600">{stats.modere}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <Stethoscope className="h-4 w-4 text-green-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Léger</p>
+              <p className="text-lg font-bold text-green-600">{stats.leger}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Message si aucun résultat */}
+      {filteredReports.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              {searchQuery ? `Aucun rapport trouvé pour "${searchQuery}"` : 'Aucun rapport correspondant aux filtres'}
+            </p>
+            <Button variant="link" onClick={() => { setSearchQuery(''); setSeverityFilter('all'); }} className="mt-2">
+              Réinitialiser les filtres
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredReports.length > 0 && (
       <div
         ref={parentRef}
         className="space-y-6 overflow-auto"
@@ -224,7 +376,7 @@ export function PatientConsultationReportsVirtualized({
           }}
         >
           {virtualizer.getVirtualItems().map((virtualItem) => {
-            const report = reports[virtualItem.index];
+            const report = filteredReports[virtualItem.index];
             return (
               <div
                 key={virtualItem.key}
@@ -244,9 +396,18 @@ export function PatientConsultationReportsVirtualized({
                           <FileText className="h-5 w-5" />
                           Rapport de consultation
                         </CardTitle>
-                        <CardDescription>
-                          {report.consultation_date && format(new Date(report.consultation_date), 'PPP à HH:mm', { locale: fr })}
-                        </CardDescription>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <CardDescription className="cursor-help">
+                                {report.consultation_date && format(new Date(report.consultation_date), 'dd MMM yyyy à HH:mm', { locale: fr })}
+                              </CardDescription>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{report.consultation_date && format(new Date(report.consultation_date), 'EEEE d MMMM yyyy à HH:mm', { locale: fr })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                       {getSeverityBadge(report.severity_level)}
                     </div>
@@ -282,19 +443,46 @@ export function PatientConsultationReportsVirtualized({
                         {report.consultation_reason && (
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">Motif de la consultation</p>
-                            <p className="text-sm">{report.consultation_reason}</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-sm line-clamp-2 cursor-help">{report.consultation_reason}</p>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-md">
+                                  <p>{report.consultation_reason}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         )}
                         {report.clinical_findings && (
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">Constat clinique / signes observés</p>
-                            <p className="text-sm">{report.clinical_findings}</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-sm line-clamp-2 cursor-help">{report.clinical_findings}</p>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-md">
+                                  <p>{report.clinical_findings}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         )}
                         {report.primary_diagnosis && (
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">Diagnostic principal</p>
-                            <p className="text-sm font-medium">{report.primary_diagnosis}</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-sm font-medium line-clamp-2 cursor-help">{report.primary_diagnosis}</p>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-md">
+                                  <p>{report.primary_diagnosis}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         )}
                       </div>
@@ -311,20 +499,47 @@ export function PatientConsultationReportsVirtualized({
                         {report.treatment_prescription && (
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">Traitement / prescription proposée</p>
-                            <p className="text-sm whitespace-pre-wrap">{report.treatment_prescription}</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-sm whitespace-pre-wrap line-clamp-3 cursor-help">{report.treatment_prescription}</p>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-md max-h-48 overflow-y-auto">
+                                  <p className="whitespace-pre-wrap">{report.treatment_prescription}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         )}
                         <div>
                           <p className="text-sm text-muted-foreground mb-1">Suivi recommandé</p>
                           <p className="text-sm font-medium">{getFollowUpLabel(report.follow_up_timeframe)}</p>
                           {report.follow_up_recommendation && (
-                            <p className="text-sm mt-1">{report.follow_up_recommendation}</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-sm mt-1 line-clamp-2 cursor-help">{report.follow_up_recommendation}</p>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-md">
+                                  <p>{report.follow_up_recommendation}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </div>
                         {report.additional_comments && (
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">Commentaires complémentaires</p>
-                            <p className="text-sm">{report.additional_comments}</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-sm line-clamp-2 cursor-help">{report.additional_comments}</p>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-md">
+                                  <p>{report.additional_comments}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         )}
                       </div>
@@ -355,6 +570,7 @@ export function PatientConsultationReportsVirtualized({
           })}
         </div>
       </div>
+      )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2 mt-6">
