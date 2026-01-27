@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MapPin, Navigation, Loader2, Check } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  MapPin, Navigation, Loader2, Check, RefreshCw, Copy, MapPinned,
+  Radius, Building2, HelpCircle, CheckCircle2, AlertCircle
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AddressSearchInput } from '@/components/AddressSearchInput';
 
@@ -16,9 +23,12 @@ interface LocationSectionProps {
 
 export function LocationSection({ practitionerId, practitionerData }: LocationSectionProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     address: practitionerData?.address || '',
@@ -33,6 +43,60 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
       longitude: practitionerData?.longitude || null,
     });
   }, [practitionerData]);
+
+  // Vérifier si la localisation est configurée
+  const isLocationConfigured = useMemo(() => {
+    return !!(practitionerData?.latitude && practitionerData?.longitude && practitionerData?.address);
+  }, [practitionerData]);
+
+  // Statistiques de la zone d'intervention
+  const locationStats = useMemo(() => {
+    return {
+      hasAddress: !!practitionerData?.address,
+      hasCoordinates: !!(practitionerData?.latitude && practitionerData?.longitude),
+      radius: practitionerData?.intervention_radius || 0,
+      communesCount: practitionerData?.communes_served?.length || 0,
+    };
+  }, [practitionerData]);
+
+  // Fonction de rafraîchissement
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["practitioner", practitionerData?.user_id] });
+      toast({
+        title: "Actualisé",
+        description: "Les données ont été rafraîchies.",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de rafraîchir les données.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Fonction de copie
+  const handleCopy = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+      toast({
+        title: "Copié",
+        description: "Le contenu a été copié dans le presse-papiers.",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de copier le contenu.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -181,12 +245,137 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
     setIsEditing(false);
   };
 
+  // Skeleton loading
+  if (!practitionerData) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-28" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <Skeleton className="h-4 w-20 mb-2" />
+                <Skeleton className="h-6 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-32" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-20 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
+    <div className="space-y-6">
+      {/* En-tête global */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <MapPinned className="h-6 w-6" />
+            Zone d'intervention
+            {isLocationConfigured ? (
+              <Badge className="bg-green-500">Configurée</Badge>
+            ) : (
+              <Badge variant="destructive">Non configurée</Badge>
+            )}
+          </h2>
+          <p className="text-muted-foreground">
+            Définissez votre localisation et zone de couverture
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Actualiser
+        </Button>
+      </div>
+
+      {/* Statistiques */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <MapPin className="h-4 w-4" />
+              Adresse
+            </div>
+            <div className="flex items-center gap-2">
+              {locationStats.hasAddress ? (
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-red-500" />
+              )}
+              <span className="font-medium">{locationStats.hasAddress ? 'Définie' : 'Non définie'}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <Navigation className="h-4 w-4" />
+              Coordonnées GPS
+            </div>
+            <div className="flex items-center gap-2">
+              {locationStats.hasCoordinates ? (
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-red-500" />
+              )}
+              <span className="font-medium">{locationStats.hasCoordinates ? 'Définies' : 'Non définies'}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <Radius className="h-4 w-4" />
+              Rayon d'intervention
+            </div>
+            <p className="text-2xl font-bold">{locationStats.radius} km</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+              <Building2 className="h-4 w-4" />
+              Communes desservies
+            </div>
+            <p className="text-2xl font-bold">{locationStats.communesCount}</p>
+          </CardContent>
+        </Card>
+      </div>
+
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MapPin className="h-5 w-5" />
           Localisation
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>Votre localisation permet aux patients de vous trouver sur la carte et de calculer la distance.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </CardTitle>
         <CardDescription>
           Définissez votre localisation de base pour les calculs de distance et l'affichage sur la carte.
@@ -194,34 +383,80 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
       </CardHeader>
       <CardContent className="space-y-4">
         {!practitionerData?.latitude && !isEditing && (
-          <Alert>
-            <AlertDescription>
-              Vous n'avez pas encore défini votre localisation. Les patients ne pourront pas vous trouver sur la carte.
-            </AlertDescription>
-          </Alert>
+          <div className="text-center py-8">
+            <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">Vous n'avez pas encore défini votre localisation</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Les patients ne pourront pas vous trouver sur la carte
+            </p>
+            <Button onClick={() => setIsEditing(true)} className="mt-4">
+              <MapPin className="h-4 w-4 mr-2" />
+              Définir ma localisation
+            </Button>
+          </div>
         )}
 
-        {!isEditing ? (
+        {practitionerData?.latitude && !isEditing && (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Adresse actuelle</Label>
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm font-medium">
-                  {formData.address || 'Non définie'}
-                </p>
-                {formData.latitude && formData.longitude && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    📍 {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">
+                    {formData.address || 'Non définie'}
                   </p>
+                  {formData.address && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopy(formData.address, 'address')}
+                    >
+                      {copiedField === 'address' ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {formData.latitude && formData.longitude && (
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="text-sm text-muted-foreground cursor-help">
+                            📍 {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                          </p>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Latitude: {formData.latitude}</p>
+                          <p>Longitude: {formData.longitude}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopy(`${formData.latitude}, ${formData.longitude}`, 'coords')}
+                    >
+                      {copiedField === 'coords' ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
 
             <Button onClick={() => setIsEditing(true)} className="w-full">
-              {formData.address ? 'Modifier ma localisation' : 'Définir ma localisation'}
+              Modifier ma localisation
             </Button>
           </div>
-        ) : (
+        )}
+
+        {isEditing && (
           <div className="space-y-4">
             <AddressSearchInput
               label="Adresse"
@@ -298,5 +533,6 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
