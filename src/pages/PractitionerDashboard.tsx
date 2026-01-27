@@ -211,7 +211,7 @@ export default function PractitionerDashboard() {
         title: 'Rendez-vous refusé',
         description: response?.practitioner
           ? `Le rendez-vous a été réassigné à ${response.practitioner.name}.`
-          : 'Le système recherche un praticien alternatif pour le patient.'
+          : 'Aucun praticien alternatif n\'a été trouvé. Le patient a été notifié.'
       });
     } catch (error: any) {
       if (import.meta.env.DEV) {
@@ -300,7 +300,7 @@ export default function PractitionerDashboard() {
 
   const categorizedAppointments = useMemo(() => ({
     awaiting: appointments.filter(apt => apt.status === 'awaiting_practitioner'),
-    pending: appointments.filter(apt => apt.status === 'pending'),
+    pendingPayment: appointments.filter(apt => apt.status === 'pending_payment'),
     confirmed: appointments.filter(apt => apt.status === 'confirmed'),
     completed: appointments.filter(apt => apt.status === 'completed'),
   }), [appointments]);
@@ -498,9 +498,12 @@ export default function PractitionerDashboard() {
             </div>
 
             <Tabs defaultValue="awaiting">
-              <TabsList>
+              <TabsList className="flex-wrap h-auto">
                 <TabsTrigger value="awaiting">
                   À traiter ({categorizedAppointments.awaiting.length})
+                </TabsTrigger>
+                <TabsTrigger value="pending-payment">
+                  💳 Paiement ({categorizedAppointments.pendingPayment.length})
                 </TabsTrigger>
                 <TabsTrigger value="confirmed">
                   Confirmés ({categorizedAppointments.confirmed.length})
@@ -548,6 +551,39 @@ export default function PractitionerDashboard() {
                         Voir plus ({categorizedAppointments.awaiting.length - awaitingLimit} demandes restantes)
                       </Button>
                     )}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="pending-payment" className="space-y-4 mt-4">
+                {categorizedAppointments.pendingPayment.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Aucun rendez-vous en attente de paiement</p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Les rendez-vous apparaîtront ici après que vous les ayez acceptés, en attendant le paiement du patient.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20 mb-4">
+                      <CardContent className="py-3">
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                          💳 Ces rendez-vous ont été acceptés et attendent le paiement du patient.
+                          Vous serez notifié dès que le paiement sera confirmé.
+                        </p>
+                      </CardContent>
+                    </Card>
+                    {categorizedAppointments.pendingPayment.map(appointment => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        userRole="practitioner"
+                        onCancel={() => handleStatusUpdate(appointment.id, 'cancelled')}
+                      />
+                    ))}
                   </>
                 )}
               </TabsContent>

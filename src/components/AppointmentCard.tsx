@@ -8,6 +8,16 @@ import { ContactDialog } from '@/components/ContactDialog';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDateFull } from '@/lib/date-utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -23,6 +33,8 @@ interface AppointmentCardProps {
 export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired, disabled = false }: AppointmentCardProps) {
   const { data: user } = useSupabaseUser();
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [confirmAcceptOpen, setConfirmAcceptOpen] = useState(false);
+  const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -131,18 +143,18 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
         <div className="flex gap-2 pt-2">
           {userRole === 'practitioner' && appointment.status === 'awaiting_practitioner' && onConfirm && onReject && (
             <>
-              <Button 
-                onClick={() => onConfirm(appointment.id)} 
-                size="sm" 
+              <Button
+                onClick={() => setConfirmAcceptOpen(true)}
+                size="sm"
                 className="flex-1"
                 disabled={disabled}
               >
                 Accepter
               </Button>
-              <Button 
-                onClick={() => onReject(appointment.id)} 
-                size="sm" 
-                variant="destructive" 
+              <Button
+                onClick={() => setConfirmRejectOpen(true)}
+                size="sm"
+                variant="destructive"
                 className="flex-1"
                 disabled={disabled}
               >
@@ -185,6 +197,59 @@ export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, on
           userId={user.id}
         />
       )}
+
+      {/* Dialog de confirmation d'acceptation */}
+      <AlertDialog open={confirmAcceptOpen} onOpenChange={setConfirmAcceptOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer l'acceptation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous accepter ce rendez-vous avec <strong>{appointment.patientName}</strong> le{' '}
+              <strong>{formatDateFull(appointment.date)}</strong> à <strong>{appointment.time}</strong> ?
+              <br /><br />
+              Le patient recevra une demande de paiement de <strong>15 000 XOF</strong> pour confirmer définitivement.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onConfirm?.(appointment.id);
+                setConfirmAcceptOpen(false);
+              }}
+            >
+              Accepter le rendez-vous
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation de refus */}
+      <AlertDialog open={confirmRejectOpen} onOpenChange={setConfirmRejectOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer le refus</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous refuser ce rendez-vous avec <strong>{appointment.patientName}</strong> ?
+              <br /><br />
+              Le système recherchera automatiquement un praticien alternatif pour le patient.
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onReject?.(appointment.id);
+                setConfirmRejectOpen(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Refuser le rendez-vous
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
