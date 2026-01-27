@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { Menu, Phone, MapPin, LogIn, UserPlus, Shield, Users, ChevronDown } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Menu, Phone, MapPin, LogIn, UserPlus, Users, ChevronDown, X } from "lucide-react";
+import { useState, useId } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
@@ -21,6 +21,7 @@ export default function Header() {
   const { data: user } = useSupabaseUser();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const mobileMenuId = useId();
 
   const handleEmergencyCall = () => {
     if (typeof window !== 'undefined' && 'ontouchstart' in window) {
@@ -70,33 +71,45 @@ export default function Header() {
       <div className="container mx-auto px-3 sm:px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <button onClick={() => navigate(ROUTES.HOME)} className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
-            <img src={logo} alt="DomiCares Logo" className="w-8 h-8 sm:w-10 sm:h-10" />
+          <Link
+            to={ROUTES.HOME}
+            className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity"
+            aria-label="DomiCares - Retour à l'accueil"
+          >
+            <img src={logo} alt="" className="w-8 h-8 sm:w-10 sm:h-10" aria-hidden="true" />
             <div>
-              <h1 className="text-base sm:text-xl font-bold text-foreground">DomiCares</h1>
-              <p className="text-[10px] sm:text-xs text-muted-foreground">Soins à domicile</p>
+              <span className="text-base sm:text-xl font-bold text-foreground block">DomiCares</span>
+              <span className="text-[10px] sm:text-xs text-muted-foreground block">Soins à domicile</span>
             </div>
-          </button>
+          </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-6">
-            <button 
-              onClick={() => navigate(ROUTES.HOME)}
+          <nav className="hidden md:flex items-center space-x-6" aria-label="Navigation principale">
+            <Link
+              to={ROUTES.HOME}
               className="text-foreground hover:text-primary transition-colors"
             >
               Accueil
-            </button>
-            <button 
-              onClick={() => navigate(ROUTES.SERVICES)}
+            </Link>
+            <Link
+              to={ROUTES.SERVICES}
               className="text-foreground hover:text-primary transition-colors"
             >
               Services
-            </button>
+            </Link>
             {user && (
-              <button 
+              <button
                 onClick={async () => {
-                  const path = await getDashboardPathForUser(user.id);
-                  navigate(path);
+                  try {
+                    const path = await getDashboardPathForUser(user.id);
+                    navigate(path);
+                  } catch {
+                    toast({
+                      title: 'Erreur',
+                      description: 'Impossible d\'accéder à votre espace.',
+                      variant: 'destructive'
+                    });
+                  }
                 }}
                 className="text-foreground hover:text-primary transition-colors"
               >
@@ -104,18 +117,21 @@ export default function Header() {
               </button>
             )}
             <DropdownMenu>
-              <DropdownMenuTrigger className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
-                <MapPin className="h-4 w-4" />
+              <DropdownMenuTrigger
+                className="text-foreground hover:text-primary transition-colors flex items-center gap-1"
+                aria-label="Menu de recherche"
+              >
+                <MapPin className="h-4 w-4" aria-hidden="true" />
                 Recherche
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="h-3 w-3" aria-hidden="true" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => navigate(ROUTES.SEARCH_PRACTITIONERS)}>
-                  <MapPin className="h-4 w-4 mr-2" />
+                  <MapPin className="h-4 w-4 mr-2" aria-hidden="true" />
                   Praticiens médicaux
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate(ROUTES.SEARCH_COACHES)}>
-                  <Users className="h-4 w-4 mr-2" />
+                  <Users className="h-4 w-4 mr-2" aria-hidden="true" />
                   Coachs sportifs
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -124,21 +140,22 @@ export default function Header() {
 
           {/* Emergency Button & Auth */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            <Button 
-              variant="urgent" 
-              size="sm" 
+            <Button
+              variant="urgent"
+              size="sm"
               className="hidden sm:flex min-h-[40px]"
               onClick={handleEmergencyCall}
+              aria-label="Appeler les urgences au 112"
             >
-              <Phone className="h-4 w-4" />
+              <Phone className="h-4 w-4" aria-hidden="true" />
               <span className="hidden md:inline">Urgence 112</span>
               <span className="md:hidden">112</span>
             </Button>
-            
+
             {user ? (
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleLogout}
                 className="hidden md:flex"
               >
@@ -146,22 +163,22 @@ export default function Header() {
               </Button>
             ) : (
               <>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => navigate('/login-email')}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(ROUTES.LOGIN_EMAIL)}
                   className="hidden md:flex"
                 >
-                  <LogIn className="h-4 w-4 mr-2" />
+                  <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
                   Connexion
                 </Button>
-                <Button 
-                  variant="default" 
-                  size="sm" 
+                <Button
+                  variant="default"
+                  size="sm"
                   onClick={() => navigate(ROUTES.SIGNUP)}
                   className="hidden md:flex"
                 >
-                  <UserPlus className="h-4 w-4 mr-2" />
+                  <UserPlus className="h-4 w-4 mr-2" aria-hidden="true" />
                   S'inscrire
                 </Button>
               </>
@@ -172,80 +189,94 @@ export default function Header() {
               size="icon"
               className="md:hidden"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-expanded={isMenuOpen}
+              aria-controls={mobileMenuId}
+              aria-label={isMenuOpen ? "Fermer le menu" : "Ouvrir le menu"}
             >
-              <Menu className="h-6 w-6" />
+              {isMenuOpen ? (
+                <X className="h-6 w-6" aria-hidden="true" />
+              ) : (
+                <Menu className="h-6 w-6" aria-hidden="true" />
+              )}
             </Button>
           </div>
         </div>
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-border">
-            <nav className="flex flex-col space-y-3 pt-4">
-              <button 
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  navigate(ROUTES.HOME);
-                }}
+          <div
+            id={mobileMenuId}
+            className="md:hidden mt-4 pb-4 border-t border-border"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu de navigation mobile"
+          >
+            <nav className="flex flex-col space-y-3 pt-4" aria-label="Navigation mobile">
+              <Link
+                to={ROUTES.HOME}
+                onClick={() => setIsMenuOpen(false)}
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
                 Accueil
-              </button>
-              <button 
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  navigate(ROUTES.SERVICES);
-                }}
+              </Link>
+              <Link
+                to={ROUTES.SERVICES}
+                onClick={() => setIsMenuOpen(false)}
                 className="text-foreground hover:text-primary transition-colors text-left"
               >
                 Services
-              </button>
+              </Link>
               {user && (
-                <button 
+                <button
                   onClick={async () => {
                     setIsMenuOpen(false);
-                    const path = await getDashboardPathForUser(user.id);
-                    navigate(path);
+                    try {
+                      const path = await getDashboardPathForUser(user.id);
+                      navigate(path);
+                    } catch {
+                      toast({
+                        title: 'Erreur',
+                        description: 'Impossible d\'accéder à votre espace.',
+                        variant: 'destructive'
+                      });
+                    }
                   }}
                   className="text-foreground hover:text-primary transition-colors text-left"
                 >
                   Mon espace
                 </button>
               )}
-              <button 
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  navigate(ROUTES.SEARCH_PRACTITIONERS);
-                }}
+              <Link
+                to={ROUTES.SEARCH_PRACTITIONERS}
+                onClick={() => setIsMenuOpen(false)}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
-                <MapPin className="h-4 w-4" />
+                <MapPin className="h-4 w-4" aria-hidden="true" />
                 Praticiens médicaux
-              </button>
-              <button 
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  navigate(ROUTES.SEARCH_COACHES);
-                }}
+              </Link>
+              <Link
+                to={ROUTES.SEARCH_COACHES}
+                onClick={() => setIsMenuOpen(false)}
                 className="text-foreground hover:text-primary transition-colors text-left flex items-center gap-2"
               >
-                <Users className="h-4 w-4" />
+                <Users className="h-4 w-4" aria-hidden="true" />
                 Coachs sportifs
-              </button>
-              <Button 
-                variant="urgent" 
-                size="sm" 
+              </Link>
+              <Button
+                variant="urgent"
+                size="sm"
                 className="w-full sm:hidden"
                 onClick={handleEmergencyCall}
+                aria-label="Appeler les urgences au 112"
               >
-                <Phone className="h-4 w-4" />
+                <Phone className="h-4 w-4" aria-hidden="true" />
                 Urgence 112
               </Button>
-              
+
               {user ? (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => {
                     setIsMenuOpen(false);
                     handleLogout();
@@ -256,28 +287,28 @@ export default function Header() {
                 </Button>
               ) : (
                 <>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       setIsMenuOpen(false);
-                      navigate('/login-email');
+                      navigate(ROUTES.LOGIN_EMAIL);
                     }}
                     className="w-full"
                   >
-                    <LogIn className="h-4 w-4 mr-2" />
+                    <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
                     Connexion
                   </Button>
-                  <Button 
-                    variant="default" 
-                    size="sm" 
+                  <Button
+                    variant="default"
+                    size="sm"
                     onClick={() => {
                       setIsMenuOpen(false);
                       navigate(ROUTES.SIGNUP);
                     }}
                     className="w-full"
                   >
-                    <UserPlus className="h-4 w-4 mr-2" />
+                    <UserPlus className="h-4 w-4 mr-2" aria-hidden="true" />
                     S'inscrire
                   </Button>
                 </>

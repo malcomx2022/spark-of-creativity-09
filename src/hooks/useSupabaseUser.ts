@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 // Cache mémoire pour éviter les appels répétés pendant le montage initial
 let cachedUser: User | null | undefined = undefined;
@@ -10,7 +10,6 @@ const CACHE_DURATION = 30_000; // 30 secondes
 
 export function useSupabaseUser() {
   const queryClient = useQueryClient();
-  const hasInitialized = useRef(false);
 
   // Écouter les changements d'état d'authentification
   useEffect(() => {

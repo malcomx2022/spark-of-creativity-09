@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Heart, User, Stethoscope, Clock, Shield, CheckCircle, Star, Phone, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -22,30 +23,17 @@ const HeroImage = () => {
   return (
     <div className="relative z-10">
       {!imageError ? (
-        <picture>
-          <source
-            media="(min-width: 1024px)"
-            srcSet={`${heroImage} 1x, ${heroImage} 2x`}
-            type="image/jpeg"
-          />
-          <source
-            media="(min-width: 768px)"
-            srcSet={`${heroImage} 1x`}
-            type="image/jpeg"
-          />
-          <img
-            src={heroImage}
-            alt="Soins médicaux à domicile en Afrique - Médecin professionnel à Cotonou"
-            className="rounded-2xl shadow-2xl animate-float w-full h-auto"
-            loading="lazy"
-            decoding="async"
-            width="800"
-            height="600"
-            onError={() => {
-              setImageError(true);
-            }}
-          />
-        </picture>
+        <img
+          src={heroImage}
+          alt="Soins médicaux à domicile en Afrique - Médecin professionnel à Cotonou"
+          className="rounded-2xl shadow-2xl animate-float w-full h-auto"
+          loading="eager"
+          decoding="async"
+          width="800"
+          height="600"
+          fetchPriority="high"
+          onError={() => setImageError(true)}
+        />
       ) : (
         <div className="w-full h-96 bg-gradient-primary rounded-2xl flex items-center justify-center text-white">
           <div className="text-center">
@@ -59,15 +47,14 @@ const HeroImage = () => {
   );
 };
 
+// URL de base du site pour les meta tags
+const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://domicares.com';
+const OG_IMAGE_URL = `${SITE_URL}/og-image.jpg`;
+
 const Index = () => {
   const navigate = useNavigate();
   const { data: user } = useSupabaseUser();
   const [dashboardLoading, setDashboardLoading] = useState(false);
-
-  const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   const { data: enabledFeatures } = useQuery<Record<string, boolean>>({
     queryKey: ['enabled-features'],
@@ -87,11 +74,12 @@ const Index = () => {
         [item.key]: item.value === true || item.value === 'true'
       }), {} as Record<string, boolean>) || {};
     },
-    staleTime: 10 * 60 * 1000,
+    staleTime: 30 * 60 * 1000, // 30 min - les features changent rarement
+    gcTime: 60 * 60 * 1000, // 1 heure en cache
   });
 
   // Utilisation des statistiques publiques sécurisées
-  const { data: publicStats } = usePublicStats();
+  const { data: publicStats, isLoading: statsLoading } = usePublicStats();
 
   const realStats = {
     practitioners: publicStats?.practitioners_count || 0,
@@ -100,9 +88,18 @@ const Index = () => {
   };
 
   const handleDashboardClick = async () => {
+    if (!user?.id) {
+      toast({
+        title: 'Erreur',
+        description: 'Vous devez être connecté pour accéder au tableau de bord.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setDashboardLoading(true);
     try {
-      const path = await getDashboardPathForUser(user!.id);
+      const path = await getDashboardPathForUser(user.id);
       navigate(path);
     } catch (error) {
       toast({
@@ -145,14 +142,18 @@ const Index = () => {
         <meta property="og:title" content="DomiCares - Soins de santé à domicile 24/7" />
         <meta property="og:description" content="Consultez un professionnel de santé certifié directement chez vous en Afrique." />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://domicares.com" />
-        <meta property="og:image" content={heroImage} />
-        
+        <meta property="og:url" content={SITE_URL} />
+        <meta property="og:image" content={OG_IMAGE_URL} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:locale" content="fr_FR" />
+        <meta property="og:site_name" content="DomiCares" />
+
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="DomiCares - Soins de santé à domicile" />
         <meta name="twitter:description" content="Professionnels de santé certifiés à domicile 24/7" />
-        <meta name="twitter:image" content={heroImage} />
+        <meta name="twitter:image" content={OG_IMAGE_URL} />
 
         {/* Structured Data */}
         <script type="application/ld+json">
@@ -161,9 +162,8 @@ const Index = () => {
             "@type": "MedicalBusiness",
             "name": "DomiCares",
             "description": "Plateforme de soins de santé à domicile en Afrique",
-            "url": "https://domicares.com",
-            "image": heroImage,
-            "telephone": "+229-XXXXXXXX",
+            "url": SITE_URL,
+            "image": OG_IMAGE_URL,
             "address": {
               "@type": "PostalAddress",
               "addressCountry": "BJ",
@@ -186,13 +186,15 @@ const Index = () => {
                 "name": "Kinésithérapie à domicile"
               }
             ],
-            "aggregateRating": {
-              "@type": "AggregateRating",
-              "ratingValue": "4.5",
-              "bestRating": "5",
-              "worstRating": "1",
-              "ratingCount": (realStats?.patients || 0).toString()
-            }
+            ...(realStats?.patients > 0 && {
+              "aggregateRating": {
+                "@type": "AggregateRating",
+                "ratingValue": "4.5",
+                "bestRating": "5",
+                "worstRating": "1",
+                "ratingCount": realStats.patients.toString()
+              }
+            })
           })}
         </script>
       </Helmet>
@@ -263,9 +265,13 @@ const Index = () => {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-6 pt-8">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {realStats?.practitioners || 0}+
-                  </div>
+                  {statsLoading ? (
+                    <Skeleton className="h-8 w-16 mx-auto mb-1" />
+                  ) : (
+                    <div className="text-2xl font-bold text-primary">
+                      {realStats.practitioners}+
+                    </div>
+                  )}
                   <div className="text-sm text-muted-foreground">Praticiens certifiés</div>
                 </div>
                 <div className="text-center">
@@ -273,9 +279,13 @@ const Index = () => {
                   <div className="text-sm text-muted-foreground">Disponibilité</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {realStats?.patients || 0}+
-                  </div>
+                  {statsLoading ? (
+                    <Skeleton className="h-8 w-16 mx-auto mb-1" />
+                  ) : (
+                    <div className="text-2xl font-bold text-primary">
+                      {realStats.patients}+
+                    </div>
+                  )}
                   <div className="text-sm text-muted-foreground">Patients</div>
                 </div>
               </div>
@@ -357,7 +367,9 @@ const Index = () => {
               {
                 icon: Stethoscope,
                 title: "3. Réservation",
-                description: `${realStats?.practitioners || 'Des'} praticiens certifiés disponibles dans votre zone`
+                description: statsLoading
+                  ? "Praticiens certifiés disponibles dans votre zone"
+                  : `${realStats.practitioners || 'Des'} praticiens certifiés disponibles dans votre zone`
               },
               {
                 icon: Heart,
