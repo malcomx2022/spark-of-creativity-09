@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mail, AlertCircle, CheckCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
@@ -15,9 +15,29 @@ export default function ConfirmEmail() {
   const [searchParams] = useSearchParams();
   const [isResending, setIsResending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  
+
   const email = searchParams.get('email');
   const userType = searchParams.get('type') || 'patient';
+  const practitionerType = searchParams.get('practitionerType');
+
+  // Déterminer le bon chemin de redirection
+  const dashboardPath = useMemo(() => {
+    if (userType === 'patient') {
+      return '/dashboard/patient';
+    }
+    if (userType === 'practitioner') {
+      // Distinguer entre coach et praticien classique
+      if (practitionerType === 'coach_sportif') {
+        return '/dashboard/coach';
+      }
+      return '/dashboard/practitioner';
+    }
+    if (userType === 'admin') {
+      return '/admin';
+    }
+    // Fallback
+    return '/dashboard/patient';
+  }, [userType, practitionerType]);
 
   const handleResendEmail = async () => {
     if (!email) {
@@ -30,13 +50,13 @@ export default function ConfirmEmail() {
     }
 
     setIsResending(true);
-    
+
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard/${userType}`
+          emailRedirectTo: `${window.location.origin}${dashboardPath}`
         }
       });
 
@@ -47,6 +67,7 @@ export default function ConfirmEmail() {
           variant: "destructive"
         });
       } else {
+        setEmailSent(true);
         toast({
           ...AUTH_MESSAGES.OTP_RESENT,
           description: "Vérifiez votre boîte de réception.",
@@ -60,7 +81,7 @@ export default function ConfirmEmail() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <div className="container mx-auto px-4 py-16 flex justify-center">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
@@ -88,7 +109,7 @@ export default function ConfirmEmail() {
                     Vérifiez votre boîte de réception
                   </p>
                   <p className="text-xs text-blue-700 dark:text-blue-300">
-                    Cliquez sur le lien dans l'email pour activer votre compte. 
+                    Cliquez sur le lien dans l'email pour activer votre compte.
                     Pensez à vérifier vos spams si vous ne le trouvez pas.
                   </p>
                 </div>
