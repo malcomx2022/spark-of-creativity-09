@@ -2,11 +2,27 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, Users, Loader2, CheckCircle } from "lucide-react";
+import { Calendar, Clock, MapPin, Users, Loader2, CheckCircle, Copy, Check } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { RegisterSessionDialog } from "./RegisterSessionDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "@/hooks/use-toast";
+
+// Traductions des statuts
+const STATUS_LABELS: Record<string, string> = {
+  planifiee: 'Planifiée',
+  confirmee: 'Confirmée',
+  annulee: 'Annulée',
+  terminee: 'Terminée',
+};
+
+const SESSION_TYPE_LABELS: Record<string, string> = {
+  individuelle: 'Individuelle',
+  duo: 'Duo',
+  groupe: 'Groupe',
+};
 
 interface GroupSessionCardProps {
   session: {
@@ -37,6 +53,20 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
   // ✅ Bug #3 FIX: État pour les participants payés vs pending
   const [participantStats, setParticipantStats] = useState<{ paid: number; pending: number }>({ paid: 0, pending: 0 });
+  // État pour copier l'adresse
+  const [locationCopied, setLocationCopied] = useState(false);
+
+  // Fonction pour copier l'adresse
+  const handleCopyLocation = async () => {
+    try {
+      await navigator.clipboard.writeText(session.location);
+      setLocationCopied(true);
+      toast({ title: 'Adresse copiée', description: 'L\'adresse a été copiée dans le presse-papiers.' });
+      setTimeout(() => setLocationCopied(false), 2000);
+    } catch {
+      toast({ title: 'Erreur', description: 'Impossible de copier l\'adresse.', variant: 'destructive' });
+    }
+  };
 
   // ✅ Bug #3 FIX: Récupérer les statistiques de participants pour le coach
   useEffect(() => {
@@ -150,10 +180,10 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
           </div>
           <div className="flex gap-2">
             <Badge className={sessionTypeColor}>
-              {session.session_type}
+              {SESSION_TYPE_LABELS[session.session_type] || session.session_type}
             </Badge>
             <Badge className={statusColor}>
-              {session.status}
+              {STATUS_LABELS[session.status] || session.status}
             </Badge>
           </div>
         </div>
@@ -172,8 +202,29 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
           </div>
           
           <div className="flex items-center gap-2 text-sm">
-            <MapPin className="h-4 w-4 text-primary" />
-            <span className="truncate">{session.location}</span>
+            <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="truncate max-w-[180px] cursor-help">{session.location}</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-sm">
+                  <p>{session.location}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 flex-shrink-0"
+              onClick={handleCopyLocation}
+            >
+              {locationCopied ? (
+                <Check className="h-3 w-3 text-green-500" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </Button>
           </div>
           
           <div className="flex items-center gap-2 text-sm">
