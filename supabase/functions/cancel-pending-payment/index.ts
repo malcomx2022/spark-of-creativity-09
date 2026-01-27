@@ -73,34 +73,75 @@ serve(async (req) => {
 
     const payment = pendingPayments[0];
 
-    // Vérifier que l'utilisateur est soit le patient, soit le praticien du rendez-vous
-    const { data: appointment, error: appointmentError } = await supabase
-      .from('appointments')
-      .select('patient_id, practitioner_id')
-      .eq('id', appointmentId)
-      .single();
-
-    if (appointmentError || !appointment) {
-      return new Response(
-        JSON.stringify({ error: 'Rendez-vous non trouvé' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Vérifier les permissions : patient OU praticien
-    const isPatient = appointment.patient_id === user.id;
-    
-    // Pour le praticien, vérifier via la table practitioners
+    // ✅ Bug #4 FIX: Détecter si c'est une séance de groupe ou un RDV classique
+    const isGroupSession = appointmentId.startsWith('group_session_');
+    let isPatient = false;
     let isPractitioner = false;
-    if (!isPatient) {
-      const { data: practitionerData } = await supabase
-        .from('practitioners')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('id', appointment.practitioner_id)
-        .maybeSingle();
-      
-      isPractitioner = !!practitionerData;
+
+    if (isGroupSession) {
+      // Format: group_session_{sessionId}_{participantId}
+      const parts = appointmentId.split('_');
+      const sessionId = parts[2];
+      const participantId = parts[3];
+
+      // Vérifier que le participant appartient à l'utilisateur
+      const { data: participant, error: participantError } = await supabase
+        .from('group_session_participants')
+        .select('patient_id, session:group_sessions(coach_id)')
+        .eq('id', participantId)
+        .single();
+
+      if (participantError || !participant) {
+        return new Response(
+          JSON.stringify({ error: 'Inscription de séance non trouvée' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      isPatient = participant.patient_id === user.id;
+
+      // Vérifier si c'est le coach
+      if (!isPatient) {
+        const sessionData = Array.isArray(participant.session) ? participant.session[0] : participant.session;
+        if (sessionData?.coach_id) {
+          const { data: coachData } = await supabase
+            .from('practitioners')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('id', sessionData.coach_id)
+            .maybeSingle();
+
+          isPractitioner = !!coachData;
+        }
+      }
+    } else {
+      // RDV classique
+      const { data: appointment, error: appointmentError } = await supabase
+        .from('appointments')
+        .select('patient_id, practitioner_id')
+        .eq('id', appointmentId)
+        .single();
+
+      if (appointmentError || !appointment) {
+        return new Response(
+          JSON.stringify({ error: 'Rendez-vous non trouvé' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      isPatient = appointment.patient_id === user.id;
+
+      // Pour le praticien, vérifier via la table practitioners
+      if (!isPatient) {
+        const { data: practitionerData } = await supabase
+          .from('practitioners')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('id', appointment.practitioner_id)
+          .maybeSingle();
+
+        isPractitioner = !!practitionerData;
+      }
     }
 
     if (!isPatient && !isPractitioner) {
@@ -110,7 +151,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('User authorized to cancel payment:', isPatient ? 'patient' : 'practitioner');
+    console.log('User authorized to cancel payment:', isPatient ? 'patient' : 'practitioner', isGroupSession ? '(group session)' : '(appointment)');
 
     // Annuler le paiement de manière atomique avec mise à jour du balance
     if (payment.practitioner_id && payment.net_amount) {
@@ -150,15 +191,32 @@ serve(async (req) => {
       }
     }
 
-    // ✅ CORRECTION P1-4: Remettre l'appointment en "pending_payment" (status avant paiement initié)
-    // Cela permet au patient de relancer le paiement sans avoir à recréer un RDV
-    await supabase
-      .from('appointments')
-      .update({
-        status: 'pending_payment',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', appointmentId);
+    // ✅ Bug #4 FIX: Mettre à jour le statut selon le type
+    if (isGroupSession) {
+      // Pour les séances de groupe, remettre le participant en status 'pending'
+      const parts = appointmentId.split('_');
+      const participantId = parts[3];
+
+      await supabase
+        .from('group_session_participants')
+        .update({
+          payment_status: 'pending',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', participantId);
+
+      console.log('Group session payment cancelled, participant status reset to pending');
+    } else {
+      // ✅ CORRECTION P1-4: Remettre l'appointment en "pending_payment" (status avant paiement initié)
+      // Cela permet au patient de relancer le paiement sans avoir à recréer un RDV
+      await supabase
+        .from('appointments')
+        .update({
+          status: 'pending_payment',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', appointmentId);
+    }
 
     console.log('Payment cancelled successfully:', payment.id);
 

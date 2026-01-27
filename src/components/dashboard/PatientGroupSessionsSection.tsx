@@ -75,9 +75,10 @@ export function PatientGroupSessionsSection() {
   const categorizeSession = (session: any) => {
     const sessionDateTime = new Date(session.session.scheduled_date);
     const isSessionPast = isPast(sessionDateTime);
-    
+
     if (session.session.status === 'annulee') return 'canceled';
-    if (session.payment_status === 'pending') return 'pending';
+    // ✅ Bug #6 FIX: Inclure 'failed' dans les paiements en attente
+    if (session.payment_status === 'pending' || session.payment_status === 'failed') return 'pending';
     if (isSessionPast) return 'past';
     return 'upcoming';
   };
@@ -183,13 +184,14 @@ export function PatientGroupSessionsSection() {
             </p>
           </div>
 
-          {session.payment_status === 'pending' && (
-            <Button 
-              variant="default" 
+          {/* ✅ Bug #6 FIX: Afficher bouton retry pour pending ET failed */}
+          {(session.payment_status === 'pending' || session.payment_status === 'failed') && (
+            <Button
+              variant="default"
               size="sm"
               onClick={() => handleRetryPayment(session)}
             >
-              Finaliser le paiement
+              {session.payment_status === 'failed' ? 'Réessayer le paiement' : 'Finaliser le paiement'}
             </Button>
           )}
         </div>

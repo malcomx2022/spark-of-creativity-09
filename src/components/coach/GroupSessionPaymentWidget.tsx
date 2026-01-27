@@ -59,10 +59,62 @@ export function GroupSessionPaymentWidget({
   const [existingRegistration, setExistingRegistration] = useState<any>(null);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
+  // ✅ Bug #2 FIX: Ajouter protection chargement script FedaPay
+  const [fedapayScriptLoaded, setFedapayScriptLoaded] = useState(false);
+  const [fedapayLoadError, setFedapayLoadError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+  const fedapayLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const queryClient = useQueryClient();
   const { addPaymentMethod } = useSavedPaymentMethods();
+
+  // ✅ Bug #2 FIX: Vérifier si le script FedaPay est chargé avec timeout
+  useEffect(() => {
+    const FEDAPAY_LOAD_TIMEOUT = 15000; // 15 secondes
+
+    const checkFedaPayLoaded = () => {
+      return typeof window !== 'undefined' && (window as any).FedaPay;
+    };
+
+    // Vérification immédiate
+    if (checkFedaPayLoaded()) {
+      setFedapayScriptLoaded(true);
+      return;
+    }
+
+    // Polling pour vérifier le chargement
+    const pollInterval = setInterval(() => {
+      if (checkFedaPayLoaded()) {
+        setFedapayScriptLoaded(true);
+        clearInterval(pollInterval);
+        if (fedapayLoadTimeoutRef.current) {
+          clearTimeout(fedapayLoadTimeoutRef.current);
+        }
+      }
+    }, 500);
+
+    // Timeout si le script ne charge pas
+    fedapayLoadTimeoutRef.current = setTimeout(() => {
+      clearInterval(pollInterval);
+      if (!checkFedaPayLoaded()) {
+        console.error('FedaPay script failed to load within timeout');
+        setFedapayLoadError(true);
+        toast({
+          title: 'Service de paiement indisponible',
+          description: 'Le service de paiement n\'a pas pu être chargé. Veuillez rafraîchir la page.',
+          variant: 'destructive',
+          duration: 10000,
+        });
+      }
+    }, FEDAPAY_LOAD_TIMEOUT);
+
+    return () => {
+      clearInterval(pollInterval);
+      if (fedapayLoadTimeoutRef.current) {
+        clearTimeout(fedapayLoadTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ✅ CORRECTION P2 #12 & P0 #1-2: Vérifier disponibilité et validité AVANT affichage formulaire
   useEffect(() => {
@@ -191,10 +243,11 @@ export function GroupSessionPaymentWidget({
         const { data, error } = await supabase.functions.invoke('get-fedapay-config');
         if (error) throw error;
         setFedapayConfig(data);
-        
-        // En mode sandbox, pré-remplir avec un numéro de test MTN
-        if (data?.environment === 'sandbox' && !phoneNumber) {
-          setPhoneNumber('+22966000001');
+
+        // ✅ Bug #1 FIX: NE PAS pré-remplir le numéro de test
+        // Les numéros de test sont affichés dans l'alerte visuelle
+        if (data?.environment === 'sandbox') {
+          console.log('🧪 MODE SANDBOX - Numéros de test disponibles dans l\'interface');
         }
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
@@ -457,11 +510,29 @@ export function GroupSessionPaymentWidget({
   useEffect(() => {
     if (paymentStatus === 'pending' && transactionId && fedapayConfig && containerRef.current && !widgetInitialized) {
       console.log('Initializing FedaPay widget with transaction:', transactionId);
-      
+
+      // ✅ Bug #2 FIX: Vérifier si le script a eu une erreur de chargement
+      if (fedapayLoadError) {
+        console.error('FedaPay script failed to load, cannot initialize widget');
+        setPaymentStatus('error');
+        toast({
+          title: 'Erreur de paiement',
+          description: 'Le service de paiement n\'est pas disponible. Veuillez rafraîchir la page et réessayer.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Attendre que le script soit chargé
+      if (!fedapayScriptLoaded) {
+        console.log('Waiting for FedaPay script to load...');
+        return;
+      }
+
       if (containerRef.current) {
         containerRef.current.innerHTML = '';
       }
-      
+
       if (typeof window !== 'undefined' && (window as any).FedaPay) {
         try {
           const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
@@ -498,8 +569,26 @@ export function GroupSessionPaymentWidget({
                 console.log('Payment completed successfully');
                 setPaymentStatus('success');
                 setIsProcessing(false);
-                
+
                 clearPersistedPaymentState();
+
+                // ✅ Bug #5 FIX: Sauvegarder la méthode de paiement si demandé
+                if (saveMethod && phoneNumber) {
+                  try {
+                    const sanitizedPhone = normalizePhoneNumber(phoneNumber);
+                    if (sanitizedPhone) {
+                      await addPaymentMethod({
+                        provider: paymentMethod,
+                        phoneNumber: sanitizedPhone,
+                        setAsDefault: true,
+                      });
+                      console.log('Payment method saved successfully');
+                    }
+                  } catch (saveError) {
+                    console.error('Failed to save payment method:', saveError);
+                    // Ne pas bloquer le succès du paiement si la sauvegarde échoue
+                  }
+                }
                 
                 // Synchroniser et rafraîchir
                 const syncAndRefresh = async () => {
@@ -567,7 +656,7 @@ export function GroupSessionPaymentWidget({
         });
       }
     }
-  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, phoneNumber, payerName, payerEmail, session]);
+  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, fedapayScriptLoaded, fedapayLoadError, phoneNumber, payerName, payerEmail, session]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
