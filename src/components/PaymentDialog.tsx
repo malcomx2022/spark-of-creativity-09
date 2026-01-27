@@ -136,6 +136,8 @@ export function PaymentDialog({
   const [existingPaymentChecked, setExistingPaymentChecked] = useState(false);
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
+  const [networkErrorCount, setNetworkErrorCount] = useState(0);
+  const [showNetworkWarning, setShowNetworkWarning] = useState(false);
   // ✅ CORRECTION P2-7: État de chargement pour vérification paiement existant
   const [isCheckingExistingPayment, setIsCheckingExistingPayment] = useState(false);
   const hasRehydratedRef = useRef(false);
@@ -1121,6 +1123,8 @@ export function PaymentDialog({
     setSelectedSavedMethod('');
     setAutoPrefilled(false);
     setAttemptNumber(0);
+    setNetworkErrorCount(0);
+    setShowNetworkWarning(false);
     hasRehydratedRef.current = false;
     clearPersistedPaymentState();
   }, []);
@@ -1182,7 +1186,28 @@ export function PaymentDialog({
 
         if (error) {
           console.error('Error polling payment:', error);
+          // Incrémenter le compteur d'erreurs réseau
+          setNetworkErrorCount(prev => {
+            const newCount = prev + 1;
+            // Afficher un avertissement après 3 erreurs consécutives
+            if (newCount >= 3 && !showNetworkWarning) {
+              setShowNetworkWarning(true);
+              toast({
+                title: '⚠️ Connexion instable',
+                description: 'La vérification du paiement rencontre des difficultés réseau. Le paiement peut avoir réussi - ne fermez pas cette page.',
+                variant: 'destructive',
+                duration: 10000,
+              });
+            }
+            return newCount;
+          });
           return;
+        }
+
+        // Réinitialiser le compteur d'erreurs si la requête réussit
+        if (networkErrorCount > 0) {
+          setNetworkErrorCount(0);
+          setShowNetworkWarning(false);
         }
 
         if (!isMounted) return;
@@ -1257,7 +1282,7 @@ export function PaymentDialog({
         pollIntervalRef.current = null;
       }
     };
-  }, [paymentId, paymentStatus, onSuccess, onComplete, closeDialog]);
+  }, [paymentId, paymentStatus, onSuccess, onComplete, closeDialog, networkErrorCount, showNetworkWarning]);
 
   const handleDialogOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {

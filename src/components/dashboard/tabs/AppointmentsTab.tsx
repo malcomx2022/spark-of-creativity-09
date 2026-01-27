@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,12 +7,13 @@ import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
 import { useSupabaseUser } from '@/hooks/useSupabaseUser';
 import { usePatientAppointments, useMutateAppointment, useCreateAppointment } from '@/hooks/useAppointments';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, AlertCircle, Calendar, Clock, CreditCard, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, Calendar, Clock, CreditCard, FileText, RefreshCw, XCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatAmount } from '@/lib/payment-config';
+import { getPersistedPaymentState, clearPersistedPaymentState, PersistedPaymentState } from '@/lib/payment-storage';
 
 interface AppointmentsTabProps {
   onPaymentRequired: (appointmentId: string) => void;
@@ -21,11 +23,161 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
   const { data: user } = useSupabaseUser();
   const patientId = user?.id;
   const patientName = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'Patient';
-  
+  const queryClient = useQueryClient();
+
+  const [orphanedPayment, setOrphanedPayment] = useState<PersistedPaymentState | null>(null);
+  const [isRecoveringPayment, setIsRecoveringPayment] = useState(false);
+
   const { data: appointmentsResult, isLoading } = usePatientAppointments(patientId, 0, 100);
   const appointments = appointmentsResult?.data || [];
   const mutateAppointment = useMutateAppointment();
   const createAppointment = useCreateAppointment(patientId, patientName);
+
+  // Vérifier les paiements orphelins au chargement
+  useEffect(() => {
+    const checkOrphanedPayment = async () => {
+      const persistedPayment = getPersistedPaymentState();
+
+      if (!persistedPayment) {
+        setOrphanedPayment(null);
+        return;
+      }
+
+      // Vérifier si le paiement est ancien (> 30 minutes = probablement expiré)
+      const MAX_AGE_MS = 30 * 60 * 1000;
+      if (Date.now() - persistedPayment.lastUpdated > MAX_AGE_MS) {
+        console.log('[OrphanedPayment] Payment state too old, clearing');
+        clearPersistedPaymentState();
+        setOrphanedPayment(null);
+        return;
+      }
+
+      // Vérifier si le paiement était en cours
+      if (persistedPayment.paymentStatus !== 'pending') {
+        clearPersistedPaymentState();
+        setOrphanedPayment(null);
+        return;
+      }
+
+      // Vérifier le statut réel du paiement côté serveur
+      if (persistedPayment.paymentId) {
+        try {
+          const { data: paymentData } = await supabase
+            .from('payments')
+            .select('status')
+            .eq('id', persistedPayment.paymentId)
+            .single();
+
+          if (paymentData) {
+            if (paymentData.status === 'paid') {
+              // Le paiement a réussi via webhook, nettoyer et rafraîchir
+              clearPersistedPaymentState();
+              setOrphanedPayment(null);
+              queryClient.invalidateQueries({ queryKey: ['patient-appointments'] });
+              queryClient.invalidateQueries({ queryKey: ['payments'] });
+              toast({
+                title: '✅ Paiement confirmé',
+                description: 'Votre paiement précédent a été validé avec succès.',
+              });
+              return;
+            } else if (paymentData.status === 'failed' || paymentData.status === 'canceled') {
+              // Le paiement a échoué, nettoyer
+              clearPersistedPaymentState();
+              setOrphanedPayment(null);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('[OrphanedPayment] Error checking payment status:', error);
+        }
+      }
+
+      // Le paiement est vraiment orphelin
+      console.log('[OrphanedPayment] Found orphaned payment:', persistedPayment.appointmentId);
+      setOrphanedPayment(persistedPayment);
+    };
+
+    checkOrphanedPayment();
+  }, [queryClient]);
+
+  // Récupérer un paiement orphelin
+  const handleRecoverPayment = async () => {
+    if (!orphanedPayment) return;
+
+    setIsRecoveringPayment(true);
+
+    try {
+      // Synchroniser le statut avec FedaPay
+      if (orphanedPayment.paymentId) {
+        const { error } = await supabase.functions.invoke('sync-payment-status', {
+          body: { paymentId: orphanedPayment.paymentId }
+        });
+
+        if (!error) {
+          // Rafraîchir les données
+          await queryClient.invalidateQueries({ queryKey: ['patient-appointments'] });
+          await queryClient.invalidateQueries({ queryKey: ['payments'] });
+
+          // Revérifier le statut
+          const { data: paymentData } = await supabase
+            .from('payments')
+            .select('status')
+            .eq('id', orphanedPayment.paymentId)
+            .single();
+
+          if (paymentData?.status === 'paid') {
+            clearPersistedPaymentState();
+            setOrphanedPayment(null);
+            toast({
+              title: '✅ Paiement confirmé',
+              description: 'Votre paiement a été validé avec succès.',
+            });
+            return;
+          }
+        }
+      }
+
+      // Le paiement n'est pas encore confirmé, proposer de réessayer
+      toast({
+        title: 'Paiement non finalisé',
+        description: 'Le paiement n\'a pas encore été confirmé. Vous pouvez réessayer ou annuler.',
+        variant: 'destructive',
+      });
+
+    } catch (error) {
+      console.error('[OrphanedPayment] Recovery error:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de vérifier le statut du paiement.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRecoveringPayment(false);
+    }
+  };
+
+  // Annuler un paiement orphelin
+  const handleDismissOrphanedPayment = async () => {
+    if (!orphanedPayment) return;
+
+    try {
+      // Essayer d'annuler le paiement côté serveur
+      if (orphanedPayment.appointmentId) {
+        await supabase.functions.invoke('cancel-pending-payment', {
+          body: { appointmentId: orphanedPayment.appointmentId }
+        });
+      }
+    } catch (error) {
+      console.error('[OrphanedPayment] Cancel error:', error);
+    }
+
+    clearPersistedPaymentState();
+    setOrphanedPayment(null);
+    toast({
+      title: 'Paiement annulé',
+      description: 'Le paiement en cours a été annulé. Vous pouvez en créer un nouveau.',
+    });
+  };
 
   const { data: payments } = useQuery({
     queryKey: ['payments', patientId],
@@ -91,6 +243,63 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
 
   return (
     <div className="space-y-6">
+      {/* Alerte paiement orphelin */}
+      {orphanedPayment && (
+        <Card className="border-orange-500 bg-orange-500/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-orange-600 flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              Paiement interrompu détecté
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Un paiement a été initié mais n'a pas été finalisé. Vérifiez son statut ou annulez-le.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 space-y-1">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Montant:</span>{' '}
+                  <span className="font-semibold">{formatAmount(orphanedPayment.amount)}</span>
+                </p>
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Opérateur:</span>{' '}
+                  <span className="font-semibold uppercase">{orphanedPayment.paymentMethod}</span>
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleRecoverPayment}
+                  disabled={isRecoveringPayment}
+                >
+                  {isRecoveringPayment ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Vérification...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Vérifier le statut
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDismissOrphanedPayment}
+                  disabled={isRecoveringPayment}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Annuler
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {confirmedAwaitingPayment.length > 0 && (
         <Card className="border-destructive bg-destructive/5">
           <CardHeader>
