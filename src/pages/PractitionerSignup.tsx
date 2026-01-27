@@ -24,6 +24,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 import { TermsDialog, useTermsDialogs } from "@/components/TermsDialog";
+import {
+  savePendingRegistration,
+  getPendingRegistration,
+  clearPendingRegistration,
+  hasPendingRegistrationForUser
+} from "@/lib/registration-recovery";
 
 interface SignupFormData {
   firstName: string;
@@ -943,6 +949,21 @@ export default function PractitionerSignup() {
           }, 100);
         }
         
+        // ⚠️ IMPORTANT: Sauvegarder les données pour récupération
+        // Le compte auth existe mais le profil praticien n'a pas été créé
+        // Permettre à l'utilisateur de réessayer sans avoir à se réinscrire
+        savePendingRegistration({
+          userId,
+          email: formData.email,
+          userType: 'practitioner',
+          practitionerType,
+          profileData,
+          practitionerData,
+          documents: documentsBase64
+        });
+
+        console.log('⚠️ Inscription sauvegardée pour récupération, userId:', userId);
+
         // Afficher toast avec les détails
         toast({
           title: "Erreur d'inscription",
@@ -956,6 +977,7 @@ export default function PractitionerSignup() {
                   ))}
                 </ul>
               )}
+              <p className="text-xs mt-2">Vos données ont été sauvegardées. Vous pouvez réessayer.</p>
             </div>
           ),
           variant: "destructive",
@@ -969,6 +991,9 @@ export default function PractitionerSignup() {
       if (import.meta.env.DEV) {
         console.log('✅ Compte praticien créé avec succès');
       }
+
+      // Nettoyer toute inscription en attente sauvegardée
+      clearPendingRegistration();
 
       setSubmissionStep('finalizing');
 

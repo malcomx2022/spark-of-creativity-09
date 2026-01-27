@@ -40,6 +40,7 @@ const Contact = lazy(() => import("./pages/Contact"));
 const CreateTestAccounts = lazy(() => import("./pages/CreateTestAccounts"));
 const ConfirmEmail = lazy(() => import("./pages/ConfirmEmail"));
 const RegistrationSuccess = lazy(() => import("./pages/RegistrationSuccess"));
+const CompleteRegistration = lazy(() => import("./pages/CompleteRegistration"));
 
 // Lazy loading pour ProtectedRoute
 const ProtectedRoute = lazy(() => import("./components/ProtectedRoute"));
@@ -124,7 +125,7 @@ const App = () => (
                   </PublicRoute>
                 } />
                 <Route path="/registration-success" element={<RegistrationSuccess />} />
-                <Route path="/complete-registration" element={<Navigate to="/signup/practitioner" replace />} />
+                <Route path="/complete-registration" element={<CompleteRegistration />} />
                 <Route path="/triage" element={<Triage />} />
                 <Route path="/search-practitioners" element={<PractitionerSearch />} />
                 <Route path="/search-coaches" element={<CoachSearch />} />
