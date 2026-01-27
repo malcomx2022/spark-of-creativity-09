@@ -17,6 +17,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/patient-onboarding";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
+import { getDashboardPathFromAuth } from "@/lib/userRoleResolver";
+import { savePendingRegistration, clearPendingRegistration } from "@/lib/registration-recovery";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 import { z } from "zod";
@@ -105,7 +107,10 @@ export default function PatientSignup() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      navigate("/dashboard/patient", { replace: true });
+      // Rediriger vers le bon dashboard selon le rôle de l'utilisateur
+      getDashboardPathFromAuth().then(path => {
+        navigate(path, { replace: true });
+      });
     }
   }, [user, isLoading, navigate]);
   const [formData, setFormData] = useState({
@@ -282,14 +287,8 @@ export default function PatientSignup() {
 
       // Vérifier si l'email nécessite une confirmation
       if (authData.user && !authData.user.confirmed_at && !authData.session) {
-        // Sauvegarder les données dans user_metadata pour finalisation après confirmation
-        await supabase.auth.updateUser({
-          data: {
-            pending_onboarding: onboardingPayload,
-            needs_onboarding: true
-          }
-        });
-
+        // Les données d'onboarding sont déjà sauvegardées dans user_metadata lors du signUp
+        // Pas besoin d'appeler updateUser car il n'y a pas de session active
         toast({
           ...AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION,
           description: "Vos données sont sauvegardées. Après confirmation de l'email, vous pourrez finaliser votre inscription.",
@@ -322,6 +321,14 @@ export default function PatientSignup() {
           console.error('Erreur lors de la finalisation:', registrationError);
         }
 
+        // Sauvegarder les données pour récupération ultérieure
+        savePendingRegistration({
+          userId,
+          email: formData.email,
+          userType: 'patient',
+          profileData: onboardingPayload.profile as unknown as Record<string, unknown>,
+        });
+
         // Ne PAS déconnecter, proposer de réessayer
         toast({
           title: "Finalisation en attente",
@@ -330,7 +337,7 @@ export default function PatientSignup() {
           action: (
             <Button 
               size="sm"
-              onClick={() => handleRetryFinalization(userId, onboardingPayload)}
+              onClick={() => handleRetryFinalization(userId, onboardingPayload, formData.email)}
             >
               Réessayer
             </Button>
@@ -350,14 +357,17 @@ export default function PatientSignup() {
         }
       });
 
+      // Nettoyer les données de récupération localStorage
+      clearPendingRegistration();
+
       // ✅ Inscription réussie : reste connecté et redirige vers succès
       toast({
         title: "Inscription réussie !",
         description: "Bienvenue sur Domicares",
       });
       
-      // Rediriger vers la page de confirmation
-      navigate('/registration-success?type=patient', { replace: true });
+      // Rediriger vers la page de confirmation avec l'email
+      navigate(`/registration-success?type=patient&email=${encodeURIComponent(formData.email)}`, { replace: true });
     } catch (error: any) {
       console.error('Erreur inscription:', error);
       const isTimeoutError = error instanceof NetworkTimeoutError;
@@ -383,7 +393,7 @@ export default function PatientSignup() {
   };
 
   // Fonction de retry manuel de l'edge function
-  const handleRetryFinalization = async (userId: string, payload: any) => {
+  const handleRetryFinalization = async (userId: string, payload: any, email: string) => {
     setIsSubmitting(true);
 
     const { error } = await withTimeout(
@@ -399,11 +409,14 @@ export default function PatientSignup() {
         variant: "destructive"
       });
     } else {
-      toast({ 
-        title: "Finalisation réussie !", 
-        description: "Bienvenue sur Domicares" 
+      // Nettoyer les données de récupération
+      clearPendingRegistration();
+
+      toast({
+        title: "Finalisation réussie !",
+        description: "Bienvenue sur Domicares"
       });
-      navigate('/registration-success?type=patient', { replace: true });
+      navigate(`/registration-success?type=patient&email=${encodeURIComponent(email)}`, { replace: true });
     }
 
     setIsSubmitting(false);
