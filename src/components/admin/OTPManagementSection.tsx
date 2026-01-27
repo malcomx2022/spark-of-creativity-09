@@ -1,8 +1,13 @@
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, CheckCircle, Phone, Trash2, RefreshCw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertCircle, CheckCircle, Phone, Trash2, RefreshCw, Search, Download, Clock, XCircle, MessageSquare, PhoneCall, Activity, TrendingUp, Filter } from 'lucide-react';
 import { useOTPAttempts, useBlockedNumbers, useResetOTPAttempts, useDeleteOTPAttempt } from '@/hooks/useOTPManagement';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
   TableBody,
@@ -13,12 +18,152 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
+
+// Labels français pour les statuts
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'En attente',
+  failed: 'Échoué',
+  delivered: 'Délivré',
+  expired: 'Expiré',
+};
+
+// Labels français pour les canaux
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  call: 'Appel',
+};
 
 export function OTPManagementSection() {
-  const { data: attempts = [], isLoading: attemptsLoading } = useOTPAttempts();
-  const { data: blockedNumbers = [], isLoading: blockedLoading } = useBlockedNumbers();
+  const { admin } = useAdminAuth();
+  const { data: attempts = [], isLoading: attemptsLoading, refetch: refetchAttempts } = useOTPAttempts();
+  const { data: blockedNumbers = [], isLoading: blockedLoading, refetch: refetchBlocked } = useBlockedNumbers();
   const resetAttempts = useResetOTPAttempts();
   const deleteAttempt = useDeleteOTPAttempt();
+
+  // États pour les filtres
+  const [searchPhone, setSearchPhone] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [channelFilter, setChannelFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
+  const limit = 50;
+
+  // Statistiques globales
+  const { data: stats } = useQuery({
+    queryKey: ['otp-stats'],
+    queryFn: async () => {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: allAttempts } = await supabase
+        .from('otp_attempts')
+        .select('status, created_at, channel');
+
+      if (!allAttempts) return { total: 0, today: 0, week: 0, successRate: 0, byChannel: {} };
+
+      const total = allAttempts.length;
+      const todayCount = allAttempts.filter(a => a.created_at >= today).length;
+      const weekCount = allAttempts.filter(a => a.created_at >= weekAgo).length;
+      const delivered = allAttempts.filter(a => a.status === 'delivered').length;
+      const successRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
+
+      const byChannel: Record<string, number> = {};
+      allAttempts.forEach(a => {
+        byChannel[a.channel] = (byChannel[a.channel] || 0) + 1;
+      });
+
+      return { total, today: todayCount, week: weekCount, successRate, byChannel };
+    },
+  });
+
+  // Filtrage des tentatives
+  const filteredAttempts = attempts.filter(attempt => {
+    if (searchPhone && !attempt.phone_number.includes(searchPhone)) return false;
+    if (statusFilter !== 'all' && attempt.status !== statusFilter) return false;
+    if (channelFilter !== 'all' && attempt.channel !== channelFilter) return false;
+    if (dateFrom && attempt.created_at < dateFrom) return false;
+    if (dateTo && attempt.created_at > dateTo + 'T23:59:59') return false;
+    return true;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAttempts.length / limit);
+  const paginatedAttempts = filteredAttempts.slice((page - 1) * limit, page * limit);
+
+  const hasActiveFilters = searchPhone || statusFilter !== 'all' || channelFilter !== 'all' || dateFrom || dateTo;
+
+  const resetFilters = () => {
+    setSearchPhone('');
+    setStatusFilter('all');
+    setChannelFilter('all');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+  };
+
+  // Audit log helper
+  const logAuditAction = async (action: string, entityType: string, entityId: string, details?: any) => {
+    if (!admin?.id) return;
+    try {
+      await supabase.from('admin_audit_logs').insert({
+        admin_id: admin.id,
+        action,
+        entity_type: entityType,
+        entity_id: entityId,
+        details,
+      });
+    } catch (error) {
+      console.error('Audit log error:', error);
+    }
+  };
+
+  // Export CSV
+  const handleExport = () => {
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = ['Date', 'Numéro', 'Canal', 'Statut', 'Erreur', 'Twilio SID'];
+    const rows = filteredAttempts.map(a => [
+      escapeCSV(formatDate(a.created_at)),
+      escapeCSV(a.phone_number),
+      escapeCSV(CHANNEL_LABELS[a.channel] || a.channel),
+      escapeCSV(STATUS_LABELS[a.status] || a.status),
+      escapeCSV(a.error_message || ''),
+      escapeCSV(a.twilio_sid || ''),
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `otp_attempts_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Wrapper pour reset avec audit
+  const handleReset = async (phoneNumber: string) => {
+    await resetAttempts.mutateAsync(phoneNumber);
+    await logAuditAction('reset_otp_attempts', 'otp', phoneNumber, { phone_number: phoneNumber });
+  };
+
+  // Wrapper pour delete avec audit
+  const handleDelete = async (attemptId: string, phoneNumber: string) => {
+    await deleteAttempt.mutateAsync(attemptId);
+    await logAuditAction('delete_otp_attempt', 'otp', attemptId, { phone_number: phoneNumber });
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -65,6 +210,60 @@ export function OTPManagementSection() {
         </p>
       </div>
 
+      {/* Statistiques */}
+      <div className="grid gap-4 md:grid-cols-5">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.total || 0}</div>
+            <p className="text-xs text-muted-foreground">tentatives enregistrées</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Aujourd'hui</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.today || 0}</div>
+            <p className="text-xs text-muted-foreground">dernières 24h</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Cette semaine</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.week || 0}</div>
+            <p className="text-xs text-muted-foreground">7 derniers jours</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Taux succès</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{stats?.successRate || 0}%</div>
+            <p className="text-xs text-muted-foreground">OTP délivrés</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Bloqués</CardTitle>
+            <AlertCircle className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">{blockedNumbers.length}</div>
+            <p className="text-xs text-muted-foreground">numéros à débloquer</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="blocked" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="blocked">
@@ -81,9 +280,15 @@ export function OTPManagementSection() {
         <TabsContent value="blocked" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-destructive" />
-                <CardTitle>Numéros potentiellement bloqués</CardTitle>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                  <CardTitle>Numéros potentiellement bloqués</CardTitle>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => refetchBlocked()}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Actualiser
+                </Button>
               </div>
               <CardDescription>
                 Numéros ayant 3+ tentatives OTP dans la dernière heure
@@ -153,7 +358,7 @@ export function OTPManagementSection() {
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Annuler</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => resetAttempts.mutate(entry.phone_number)}
+                                  onClick={() => handleReset(entry.phone_number)}
                                 >
                                   Confirmer
                                 </AlertDialogAction>
@@ -173,87 +378,197 @@ export function OTPManagementSection() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Historique des tentatives OTP</CardTitle>
-              <CardDescription>
-                Les 100 dernières tentatives d'envoi d'OTP
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Historique des tentatives OTP</CardTitle>
+                  <CardDescription>
+                    {filteredAttempts.length} tentatives {hasActiveFilters && '(filtré)'}
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleExport}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => refetchAttempts()}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Actualiser
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Filtres */}
+              <div className="flex flex-wrap gap-4 p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Filtres:</span>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Rechercher un numéro..."
+                      value={searchPhone}
+                      onChange={(e) => { setSearchPhone(e.target.value); setPage(1); }}
+                      className="pl-8"
+                    />
+                  </div>
+                </div>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Statut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="pending">En attente</SelectItem>
+                    <SelectItem value="delivered">Délivré</SelectItem>
+                    <SelectItem value="failed">Échoué</SelectItem>
+                    <SelectItem value="expired">Expiré</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={channelFilter} onValueChange={(v) => { setChannelFilter(v); setPage(1); }}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Canal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les canaux</SelectItem>
+                    <SelectItem value="sms">SMS</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                    <SelectItem value="call">Appel</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+                  className="w-[150px]"
+                  placeholder="Du"
+                />
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+                  className="w-[150px]"
+                  placeholder="Au"
+                />
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={resetFilters}>
+                    Réinitialiser
+                  </Button>
+                )}
+              </div>
+
               {attemptsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Chargement...
                 </div>
-              ) : attempts.length === 0 ? (
+              ) : paginatedAttempts.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  Aucune tentative enregistrée
+                  {hasActiveFilters ? 'Aucune tentative correspondant aux filtres' : 'Aucune tentative enregistrée'}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Numéro</TableHead>
-                        <TableHead>Canal</TableHead>
-                        <TableHead>Statut</TableHead>
-                        <TableHead>Erreur</TableHead>
-                        <TableHead>Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {attempts.map((attempt) => (
-                        <TableRow key={attempt.id}>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDate(attempt.created_at)}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {attempt.phone_number}
-                          </TableCell>
-                          <TableCell>{getChannelBadge(attempt.channel)}</TableCell>
-                          <TableCell>{getStatusBadge(attempt.status)}</TableCell>
-                          <TableCell className="max-w-xs">
-                            {attempt.error_message && (
-                              <span className="text-xs text-red-500 truncate block">
-                                {attempt.error_message}
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {/* P3: Add tooltip and aria-label for accessibility */}
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={deleteAttempt.isPending}
-                                  title="Supprimer cette tentative"
-                                  aria-label="Supprimer cette tentative OTP"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Supprimer la tentative</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Êtes-vous sûr de vouloir supprimer cette tentative ?
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteAttempt.mutate(attempt.id)}
-                                  >
-                                    Supprimer
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </TableCell>
+                <TooltipProvider>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Numéro</TableHead>
+                          <TableHead>Canal</TableHead>
+                          <TableHead>Statut</TableHead>
+                          <TableHead>Erreur</TableHead>
+                          <TableHead>Action</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedAttempts.map((attempt) => (
+                          <TableRow key={attempt.id}>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDate(attempt.created_at)}
+                            </TableCell>
+                            <TableCell className="font-medium font-mono">
+                              {attempt.phone_number}
+                            </TableCell>
+                            <TableCell>{getChannelBadge(attempt.channel)}</TableCell>
+                            <TableCell>{getStatusBadge(attempt.status)}</TableCell>
+                            <TableCell className="max-w-xs">
+                              {attempt.error_message && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-xs text-red-500 truncate block cursor-help max-w-[200px]">
+                                      {attempt.error_message}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-md">
+                                    <p className="text-sm">{attempt.error_message}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={deleteAttempt.isPending}
+                                    title="Supprimer cette tentative"
+                                    aria-label="Supprimer cette tentative OTP"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Supprimer la tentative</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Êtes-vous sûr de vouloir supprimer cette tentative pour {attempt.phone_number} ?
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDelete(attempt.id, attempt.phone_number)}
+                                    >
+                                      Supprimer
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TooltipProvider>
+              )}
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    {(page - 1) * limit + 1}-{Math.min(page * limit, filteredAttempts.length)} sur {filteredAttempts.length}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
