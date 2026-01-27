@@ -18,6 +18,7 @@ interface ResetPasswordRequest {
 
 interface DisableAdminRequest {
   userId: string;
+  reason?: string;
 }
 
 Deno.serve(async (req) => {
@@ -280,7 +281,7 @@ Deno.serve(async (req) => {
       }
 
       case 'disable': {
-        const { userId } = body as DisableAdminRequest & { action: string };
+        const { userId, reason } = body as DisableAdminRequest & { action: string };
 
         if (!userId) {
           return new Response(
@@ -305,6 +306,19 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Récupérer les infos de l'admin à désactiver pour l'audit
+        const { data: targetAdmin } = await supabaseAdmin
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .maybeSingle();
+
+        // Supprimer le rôle admin d'abord
+        await supabaseAdmin
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId);
+
         // Supprimer l'utilisateur (soft delete via Supabase)
         const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
@@ -316,15 +330,19 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Logger l'audit
+        // Logger l'audit avec la raison
         await supabaseAdmin.from('admin_audit_logs').insert({
           admin_id: user.id,
           action: 'disable_admin',
           entity_type: 'user',
           entity_id: userId,
+          details: {
+            admin_name: targetAdmin?.full_name || 'Unknown',
+            reason: reason || 'Non spécifiée',
+          },
         });
 
-        console.log('Admin disabled:', userId);
+        console.log('Admin disabled:', userId, 'Reason:', reason);
 
         return new Response(
           JSON.stringify({ success: true, message: 'Admin désactivé avec succès' }),
