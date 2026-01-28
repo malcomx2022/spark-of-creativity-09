@@ -1,8 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw, HelpCircle, Filter, FolderCheck, FolderX, Clock } from "lucide-react";
+import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw, HelpCircle, Filter, FolderCheck, FolderX, Clock, ExternalLink } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { getSignedFileUrl, uploadUserDocument } from "@/lib/file-upload";
+import { getSignedFileUrl, uploadUserDocument, isPdfFile, isImageFile } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -16,6 +16,91 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+
+// Composant pour visualiser les documents (PDF ou Image)
+function DocumentViewer({ url, name }: { url: string; name: string }) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Déterminer le type de fichier
+  const isPdf = isPdfFile(url);
+  const isImage = isImageFile(url);
+
+  if (hasError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+        <p className="text-muted-foreground mb-4">
+          Impossible de charger le document dans l'aperçu.
+        </p>
+        <Button onClick={() => window.open(url, '_blank')}>
+          <Download className="h-4 w-4 mr-2" />
+          Télécharger le fichier
+        </Button>
+      </div>
+    );
+  }
+
+  if (isPdf) {
+    return (
+      <div className="flex flex-col gap-2 mt-4">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            Chargement du PDF...
+          </div>
+        )}
+        <iframe
+          src={`${url}#toolbar=0&navpanes=0`}
+          className={`w-full border rounded ${isLoading ? 'h-0' : ''}`}
+          style={{ minHeight: isLoading ? 0 : '70vh' }}
+          title={name}
+          onLoad={() => setIsLoading(false)}
+        />
+        <p className="text-xs text-muted-foreground text-center">
+          Si le PDF ne s'affiche pas, utilisez le bouton "Nouvel onglet" ci-dessus.
+        </p>
+      </div>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <div className="mt-4">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            Chargement de l'image...
+          </div>
+        )}
+        <img
+          src={url}
+          alt={name}
+          className={`w-full h-auto rounded ${isLoading ? 'hidden' : ''}`}
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setIsLoading(false);
+            setHasError(true);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Type de fichier inconnu - proposer le téléchargement
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+      <p className="text-muted-foreground mb-4">
+        Aperçu non disponible pour ce type de fichier.
+      </p>
+      <Button onClick={() => window.open(url, '_blank')}>
+        <Download className="h-4 w-4 mr-2" />
+        Télécharger le fichier
+      </Button>
+    </div>
+  );
+}
 
 interface DocumentsSectionProps {
   practitionerData: any;
@@ -765,47 +850,22 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
       <Dialog open={!!viewingDocument} onOpenChange={() => setViewingDocument(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>{viewingDocument?.name}</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{viewingDocument?.name}</span>
+              {viewingDocument && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(viewingDocument.url, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Nouvel onglet
+                </Button>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {viewingDocument && (
-            <div className="mt-4">
-              {viewingDocument.url.toLowerCase().split('?')[0].endsWith('.pdf') ? (
-                <div className="flex flex-col gap-2">
-                  <iframe
-                    src={`${viewingDocument.url}#toolbar=0`}
-                    className="w-full border rounded"
-                    style={{ minHeight: '70vh' }}
-                    title={viewingDocument.name}
-                    onError={(e) => {
-                      console.error("Error loading PDF in iframe:", e);
-                    }}
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() => window.open(viewingDocument.url, '_blank')}
-                    className="w-full"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Ouvrir dans un nouvel onglet
-                  </Button>
-                </div>
-              ) : (
-                <img
-                  src={viewingDocument.url}
-                  alt={viewingDocument.name}
-                  className="w-full h-auto rounded"
-                  onError={(e) => {
-                    console.error("Error loading image:", e);
-                    const img = e.target as HTMLImageElement;
-                    img.style.display = 'none';
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'text-center py-8 text-muted-foreground';
-                    errorDiv.textContent = 'Impossible de charger l\'image. Essayez de la télécharger.';
-                    img.parentElement?.appendChild(errorDiv);
-                  }}
-                />
-              )}
-            </div>
+            <DocumentViewer url={viewingDocument.url} name={viewingDocument.name} />
           )}
         </DialogContent>
       </Dialog>
