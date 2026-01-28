@@ -86,6 +86,39 @@ export type Database = {
         }
         Relationships: []
       }
+      admins: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+          phone: string | null
+          role: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          role?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          role?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       appointments: {
         Row: {
           address: string
@@ -774,6 +807,60 @@ export type Database = {
           {
             foreignKeyName: "group_sessions_coach_id_fkey"
             columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners_public_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kyc_documents: {
+        Row: {
+          created_at: string | null
+          document_type: string
+          document_url: string
+          id: string
+          notes: string | null
+          practitioner_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          document_type: string
+          document_url: string
+          id?: string
+          notes?: string | null
+          practitioner_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          document_type?: string
+          document_url?: string
+          id?: string
+          notes?: string | null
+          practitioner_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kyc_documents_practitioner_id_fkey"
+            columns: ["practitioner_id"]
+            isOneToOne: false
+            referencedRelation: "practitioners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kyc_documents_practitioner_id_fkey"
+            columns: ["practitioner_id"]
             isOneToOne: false
             referencedRelation: "practitioners_public_view"
             referencedColumns: ["id"]
@@ -2224,6 +2311,7 @@ export type Database = {
       }
       support_tickets: {
         Row: {
+          admin_response: string | null
           appointment_id: string | null
           assigned_to: string | null
           attachments: string[] | null
@@ -2232,6 +2320,8 @@ export type Database = {
           id: string
           priority: string | null
           resolved_at: string | null
+          responded_at: string | null
+          responded_by: string | null
           status: Database["public"]["Enums"]["ticket_status"] | null
           subject: string
           tags: string[] | null
@@ -2239,6 +2329,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          admin_response?: string | null
           appointment_id?: string | null
           assigned_to?: string | null
           attachments?: string[] | null
@@ -2247,6 +2338,8 @@ export type Database = {
           id?: string
           priority?: string | null
           resolved_at?: string | null
+          responded_at?: string | null
+          responded_by?: string | null
           status?: Database["public"]["Enums"]["ticket_status"] | null
           subject: string
           tags?: string[] | null
@@ -2254,6 +2347,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          admin_response?: string | null
           appointment_id?: string | null
           assigned_to?: string | null
           attachments?: string[] | null
@@ -2262,6 +2356,8 @@ export type Database = {
           id?: string
           priority?: string | null
           resolved_at?: string | null
+          responded_at?: string | null
+          responded_by?: string | null
           status?: Database["public"]["Enums"]["ticket_status"] | null
           subject?: string
           tags?: string[] | null
@@ -2274,6 +2370,13 @@ export type Database = {
             columns: ["appointment_id"]
             isOneToOne: false
             referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2337,6 +2440,50 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_consents: {
+        Row: {
+          accepted_at: string | null
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at: string | null
+          id: string
+          ip_address: unknown
+          is_accepted: boolean
+          user_agent: string | null
+          user_id: string
+          version_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          is_accepted?: boolean
+          user_agent?: string | null
+          user_id: string
+          version_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          consent_type?: Database["public"]["Enums"]["consent_type"]
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          is_accepted?: boolean
+          user_agent?: string | null
+          user_id?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_consents_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "consent_versions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

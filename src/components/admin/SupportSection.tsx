@@ -50,19 +50,51 @@ export function SupportSection() {
     target_audience: 'all',
   });
 
-  const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useQuery({
+  // Local type for ticket with user profile
+  interface TicketWithUser {
+    id: string;
+    user_id: string;
+    subject: string;
+    description: string;
+    status: string;
+    priority: string;
+    created_at: string;
+    updated_at: string;
+    admin_response?: string;
+    responded_at?: string;
+    responded_by?: string;
+    user?: {
+      id: string;
+      full_name?: string;
+      phone?: string;
+    };
+  }
+
+  const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useQuery<TicketWithUser[]>({
     queryKey: ['admin-support-tickets'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fetch tickets
+      const { data: ticketsData, error: ticketsError } = await supabase
         .from('support_tickets')
-        .select(`
-          *,
-          user:profiles!support_tickets_user_id_fkey(id, full_name, phone)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data || [];
+      if (ticketsError) throw ticketsError;
+      
+      // Fetch profiles for these tickets
+      const userIds = [...new Set((ticketsData || []).map(t => t.user_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, phone')
+        .in('id', userIds);
+      
+      const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
+      
+      // Merge tickets with user profiles
+      return (ticketsData || []).map(ticket => ({
+        ...ticket,
+        user: profilesMap.get(ticket.user_id),
+      })) as TicketWithUser[];
     },
   });
 
