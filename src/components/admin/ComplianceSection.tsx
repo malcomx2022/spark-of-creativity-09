@@ -47,18 +47,18 @@ export function ComplianceSection() {
   const [configValue, setConfigValue] = useState<string>('');
   const [showCreateConsentDialog, setShowCreateConsentDialog] = useState(false);
 
-  // Stats des consentements utilisateurs
+  // Stats des consentements utilisateurs - using existing consents table
   const { data: consentStats } = useQuery({
     queryKey: ['admin-consent-stats'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('user_consents')
+        .from('consents')
         .select('consent_type, is_accepted');
 
       if (error) throw error;
 
       const stats: Record<string, { total: number; accepted: number }> = {};
-      (data || []).forEach((consent: any) => {
+      (data || []).forEach((consent: { consent_type: string; is_accepted: boolean | null }) => {
         if (!stats[consent.consent_type]) {
           stats[consent.consent_type] = { total: 0, accepted: 0 };
         }
@@ -81,7 +81,7 @@ export function ComplianceSection() {
         .order('created_at', { ascending: false });
 
       if (consentTypeFilter !== 'all') {
-        query = query.eq('consent_type', consentTypeFilter);
+        query = query.eq('consent_type', consentTypeFilter as 'cgu' | 'charte' | 'partage_donnees' | 'marketing');
       }
 
       const { data, error, count } = await query
@@ -161,7 +161,7 @@ export function ComplianceSection() {
         await supabase
           .from('consent_versions')
           .update({ is_active: false })
-          .eq('consent_type', consent_type);
+          .eq('consent_type', consent_type as 'cgu' | 'charte' | 'partage_donnees' | 'marketing');
       }
 
       // Activer/désactiver la version sélectionnée

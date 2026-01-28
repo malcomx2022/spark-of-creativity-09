@@ -18,22 +18,34 @@ export function useAdminAuth() {
         return null;
       }
 
-      // Get admin info from admins table
-      const { data: adminData } = await supabase
-        .from('admins')
-        .select('id, email, full_name, role')
+      // Get admin role from user_roles table
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (adminData) {
-        return adminData as Admin;
+      // Get profile info
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (roleData) {
+        return {
+          id: user.id,
+          email: user.email || '',
+          full_name: profileData?.full_name,
+          role: roleData.role,
+        } as Admin;
       }
 
-      // Fallback: return user info if not in admins table
+      // Fallback: return user info if not in user_roles table
       return {
         id: user.id,
         email: user.email || '',
-        full_name: user.user_metadata?.full_name,
+        full_name: profileData?.full_name || user.user_metadata?.full_name,
       };
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
