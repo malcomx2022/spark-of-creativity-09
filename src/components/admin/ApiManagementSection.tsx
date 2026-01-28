@@ -102,10 +102,11 @@ export function ApiManagementSection() {
       const otpToday = otpAttempts?.filter(o => o.created_at >= today).length || 0;
       const otpDelivered = otpAttempts?.filter(o => o.status === "delivered").length || 0;
 
-      // Documents (Wasabi) - from profiles or kyc_documents
+      // Documents (Wasabi) - from practitioners (KYC documents URLs)
       const { count: documentsCount } = await supabase
-        .from("kyc_documents")
-        .select("id", { count: "exact", head: true });
+        .from("practitioners")
+        .select("id", { count: "exact", head: true })
+        .not("id_document_url", "is", null);
 
       return {
         fedapay: {

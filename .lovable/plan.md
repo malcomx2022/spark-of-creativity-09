@@ -1,176 +1,234 @@
 
-# Plan : Migration de SendGrid vers Resend.com
+# Plan de correction des erreurs de build TypeScript
 
-## Contexte actuel
+## Résumé du problème
 
-Le projet utilise actuellement **SendGrid** pour l'envoi d'emails dans 3 edge functions :
-- `send-registration-notification` - Notification d'inscription (patients et praticiens)
-- `send-account-activation` - Activation de compte praticien
-- `send-kyc-status-notification` - Notifications de statut KYC (approved/rejected/incomplete)
+L'application a des erreurs de build car le code fait référence à des tables et colonnes qui n'existent pas dans la base de données :
 
-La fonction utilitaire `_shared/notifications.ts` est déjà configurée pour Resend mais le secret `RESEND_API_KEY` est manquant.
+| Élément manquant | Fichier impacté | Description |
+|------------------|-----------------|-------------|
+| Table `kyc_documents` | ApiManagementSection.tsx | Stockage des documents KYC |
+| Table `user_consents` | ComplianceSection.tsx | Historique des consentements utilisateurs |
+| Table `admins` | useAdminAuth.ts | Informations sur les administrateurs |
+| Relation `support_tickets` → `profiles` | SupportSection.tsx | Lien manquant pour afficher le nom de l'utilisateur |
+| Colonnes `admin_response`, `responded_at`, `responded_by` | SupportSection.tsx | Colonnes pour la réponse admin aux tickets |
 
-## Avantages de Resend
+## Solution proposée
 
-- API moderne et simple
-- Excellente documentation
-- SDK npm natif (`npm:resend`)
-- Dashboard intuitif
-- Domaine de test gratuit pour le développement
+### Étape 1 : Créer les tables manquantes
 
----
+#### 1.1 Table `kyc_documents`
+Stocke les documents KYC des praticiens (CNI, diplômes, assurances).
 
-## Etape 1 : Configuration du compte Resend
-
-### Actions utilisateur requises :
-
-1. Aller sur **https://resend.com** et créer un compte
-2. Valider le domaine email sur **https://resend.com/domains** :
-   - Ajouter `domicares.life` ou `domicares.com`
-   - Configurer les enregistrements DNS (SPF, DKIM, DMARC)
-3. Créer une clé API sur **https://resend.com/api-keys**
-4. Fournir la clé API pour la stocker dans les secrets du projet
-
----
-
-## Etape 2 : Ajouter le secret RESEND_API_KEY
-
-Je demanderai l'ajout du secret `RESEND_API_KEY` via l'outil de gestion des secrets.
-
-Optionnellement, ajouter aussi :
-- `RESEND_FROM_EMAIL` = `noreply@domicares.life`
-
----
-
-## Etape 3 : Modifier les Edge Functions
-
-### 3.1 - send-registration-notification/index.ts
-
-**Modifications :**
-- Remplacer `SENDGRID_API_KEY` par `RESEND_API_KEY`
-- Utiliser le SDK Resend (`npm:resend@2.0.0`)
-- Mettre à jour l'appel API
-
-**Code avant (SendGrid) :**
-```typescript
-const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
-if (!SENDGRID_API_KEY) {
-  throw new Error('SENDGRID_API_KEY is not configured');
-}
-
-const emailResponse = await fetch('https://api.sendgrid.com/v3/mail/send', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    personalizations: [{ to: [{ email }], subject: emailSubject }],
-    from: { email: 'noreply@domicares.life', name: 'DomiCares' },
-    content: [{ type: 'text/html', value: emailContent }]
-  })
-});
+```text
++------------------+------------------------+
+| Colonne          | Type                   |
++------------------+------------------------+
+| id               | UUID (PK)              |
+| practitioner_id  | UUID → practitioners   |
+| document_type    | TEXT                   |
+| document_url     | TEXT                   |
+| status           | TEXT                   |
+| created_at       | TIMESTAMPTZ            |
+| updated_at       | TIMESTAMPTZ            |
++------------------+------------------------+
 ```
 
-**Code après (Resend) :**
-```typescript
-import { Resend } from "npm:resend@2.0.0";
+#### 1.2 Table `user_consents`
+Stocke l'historique des acceptations de consentement par utilisateur.
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-if (!RESEND_API_KEY) {
-  throw new Error('RESEND_API_KEY is not configured');
-}
-
-const resend = new Resend(RESEND_API_KEY);
-
-const { data, error } = await resend.emails.send({
-  from: 'DomiCares <noreply@domicares.life>',
-  to: [email],
-  subject: emailSubject,
-  html: emailContent,
-});
+```text
++------------------+------------------------+
+| Colonne          | Type                   |
++------------------+------------------------+
+| id               | UUID (PK)              |
+| user_id          | UUID → auth.users      |
+| consent_type     | consent_type (enum)    |
+| version_id       | UUID → consent_versions|
+| is_accepted      | BOOLEAN                |
+| accepted_at      | TIMESTAMPTZ            |
+| ip_address       | INET                   |
+| created_at       | TIMESTAMPTZ            |
++------------------+------------------------+
 ```
 
-### 3.2 - send-account-activation/index.ts
+#### 1.3 Table `admins`
+Stocke les informations supplémentaires des administrateurs.
 
-Mêmes modifications que 3.1 :
-- Import du SDK Resend
-- Remplacement de l'appel SendGrid par Resend
+```text
++------------------+------------------------+
+| Colonne          | Type                   |
++------------------+------------------------+
+| id               | UUID (PK)              |
+| user_id          | UUID → auth.users      |
+| email            | TEXT                   |
+| full_name        | TEXT                   |
+| role             | TEXT                   |
+| created_at       | TIMESTAMPTZ            |
+| updated_at       | TIMESTAMPTZ            |
++------------------+------------------------+
+```
 
-### 3.3 - send-kyc-status-notification/index.ts
+### Étape 2 : Ajouter les colonnes manquantes à `support_tickets`
 
-Mêmes modifications :
-- Import du SDK Resend
-- Remplacement de l'appel SendGrid par Resend
-- Correction de l'email expéditeur : `noreply@domicares.com` → `noreply@domicares.life`
+```sql
+ALTER TABLE support_tickets
+ADD COLUMN IF NOT EXISTS admin_response TEXT,
+ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS responded_by UUID;
+```
 
----
+### Étape 3 : Créer la relation `support_tickets` → `profiles`
 
-## Etape 4 : Mettre à jour la fonction utilitaire partagée
+Ajouter une clé étrangère :
+```sql
+ALTER TABLE support_tickets
+ADD CONSTRAINT support_tickets_user_id_fkey
+FOREIGN KEY (user_id) REFERENCES profiles(id);
+```
 
-### _shared/notifications.ts
+### Étape 4 : Mettre en place les politiques RLS
 
-Cette fonction est déjà configurée pour Resend (lignes 50-86), mais utilise l'API REST directement. Je vais :
-- Garder la logique existante (déjà compatible Resend)
-- Vérifier que `RESEND_FROM_EMAIL` est utilisé comme fallback
+- `kyc_documents` : Lecture seule pour les admins, praticiens peuvent voir leurs propres documents
+- `user_consents` : Lecture seule pour les admins, utilisateurs peuvent voir leurs propres consentements
+- `admins` : Lecture seule pour les admins authentifiés
 
----
+### Étape 5 : Adapter le code TypeScript
 
-## Etape 5 : Mettre à jour la documentation
+Après l'application des migrations, les types seront automatiquement régénérés et les erreurs disparaîtront.
 
-### Fichiers à mettre à jour :
-- `docs/WORKFLOW_NOTIFICATIONS_KYC.md` - Remplacer les références SendGrid par Resend
-- `docs/WORKFLOW_OPTIMISATION_CENTRALISATION.md` - Mettre à jour les secrets requis
-- `docs/TEST_PRACTITIONER_SIGNUP.md` - Mettre à jour le troubleshooting
+**Modifications de code nécessaires** (en attendant la régénération des types) :
 
----
-
-## Resume des modifications
-
-| Fichier | Action |
-|---------|--------|
-| `send-registration-notification/index.ts` | Migrer vers Resend SDK |
-| `send-account-activation/index.ts` | Migrer vers Resend SDK |
-| `send-kyc-status-notification/index.ts` | Migrer vers Resend SDK |
-| `_shared/notifications.ts` | Déjà compatible (vérification) |
-| Documentation (3 fichiers) | Mettre à jour références |
-| Secrets | Ajouter `RESEND_API_KEY` |
-
----
-
-## Secrets a configurer
-
-| Secret | Valeur | Obligatoire |
-|--------|--------|-------------|
-| `RESEND_API_KEY` | `re_xxxxxxxx` (depuis dashboard Resend) | Oui |
-| `RESEND_FROM_EMAIL` | `noreply@domicares.life` | Optionnel |
+1. **useAdminAuth.ts** : Refactorer pour utiliser `user_roles` + `profiles` au lieu de la table `admins`
+2. **SupportSection.tsx** : Ajouter un type local pour la jointure
+3. **ComplianceSection.tsx** : Ajouter un type local pour `user_consents`
+4. **ApiManagementSection.tsx** : Ajouter un type local pour `kyc_documents`
 
 ---
 
-## Verification du domaine Resend
+## Détails techniques
 
-Pour que les emails soient délivrés correctement, il faut valider le domaine `domicares.life` sur Resend :
+### Migration SQL complète
 
-1. Ajouter le domaine sur https://resend.com/domains
-2. Configurer les enregistrements DNS :
-   - **SPF** : `v=spf1 include:_spf.resend.com ~all`
-   - **DKIM** : Fourni par Resend
-   - **DMARC** : `v=DMARC1; p=none;`
-3. Attendre la validation (quelques minutes à quelques heures)
+```sql
+-- 1. Table kyc_documents
+CREATE TABLE IF NOT EXISTS public.kyc_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  practitioner_id UUID NOT NULL REFERENCES practitioners(id) ON DELETE CASCADE,
+  document_type TEXT NOT NULL,
+  document_url TEXT NOT NULL,
+  status TEXT DEFAULT 'pending',
+  notes TEXT,
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by UUID,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Table user_consents
+CREATE TABLE IF NOT EXISTS public.user_consents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  consent_type consent_type NOT NULL,
+  version_id UUID REFERENCES consent_versions(id),
+  is_accepted BOOLEAN NOT NULL DEFAULT false,
+  accepted_at TIMESTAMPTZ,
+  ip_address INET,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Table admins
+CREATE TABLE IF NOT EXISTS public.admins (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  full_name TEXT,
+  role TEXT,
+  phone TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. Colonnes support_tickets
+ALTER TABLE public.support_tickets
+ADD COLUMN IF NOT EXISTS admin_response TEXT,
+ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS responded_by UUID;
+
+-- 5. Relation support_tickets → profiles
+ALTER TABLE public.support_tickets
+DROP CONSTRAINT IF EXISTS support_tickets_user_id_fkey;
+
+ALTER TABLE public.support_tickets
+ADD CONSTRAINT support_tickets_user_id_fkey
+FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+
+-- 6. RLS et index
+ALTER TABLE public.kyc_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_consents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Admins can view all kyc_documents"
+  ON public.kyc_documents FOR SELECT
+  TO authenticated
+  USING (public.is_admin(auth.uid()));
+
+CREATE POLICY "Practitioners can view own kyc_documents"
+  ON public.kyc_documents FOR SELECT
+  TO authenticated
+  USING (practitioner_id IN (
+    SELECT id FROM practitioners WHERE user_id = auth.uid()
+  ));
+
+CREATE POLICY "Admins can view all user_consents"
+  ON public.user_consents FOR SELECT
+  TO authenticated
+  USING (public.is_admin(auth.uid()));
+
+CREATE POLICY "Users can view own consents"
+  ON public.user_consents FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Admins can view admins table"
+  ON public.admins FOR SELECT
+  TO authenticated
+  USING (public.is_admin(auth.uid()));
+```
+
+### Modifications de code alternatives
+
+Si vous préférez ne pas créer certaines tables, voici les adaptations de code possibles :
+
+**Option A pour `admins`** : Utiliser `user_roles` + `profiles` (déjà existants)
+```typescript
+// useAdminAuth.ts - Utiliser user_roles + profiles
+const { data: roleData } = await supabase
+  .from('user_roles')
+  .select('role')
+  .eq('user_id', user.id)
+  .maybeSingle();
+
+const { data: profileData } = await supabase
+  .from('profiles')
+  .select('full_name')
+  .eq('id', user.id)
+  .maybeSingle();
+```
+
+**Option B pour `user_consents`** : Utiliser la table `consents` existante (si elle a les mêmes champs)
 
 ---
 
-## Tests post-migration
+## Ordre d'exécution
 
-1. **Test d'inscription patient** → Vérifier email de bienvenue
-2. **Test d'inscription praticien** → Vérifier email "dossier en cours"
-3. **Test activation compte** → Vérifier email d'activation
-4. **Test KYC approved** → Vérifier email de validation
-5. **Test KYC rejected** → Vérifier email de refus
-6. **Test KYC incomplete** → Vérifier email de dossier incomplet
+1. Exécuter la migration SQL (création des tables + colonnes)
+2. Les types TypeScript seront automatiquement régénérés
+3. Le build passera sans erreurs
 
----
+## Risques et considérations
 
-## Avantage bonus
-
-Une fois `RESEND_API_KEY` configuré, la fonction `dispatchNotification()` dans `_shared/notifications.ts` fonctionnera automatiquement pour tous les autres emails du système.
+- La création de la FK `support_tickets_user_id_fkey` échouera si des `user_id` dans `support_tickets` n'existent pas dans `profiles`
+- Il faudra peut-être nettoyer les données orphelines avant d'ajouter la contrainte
