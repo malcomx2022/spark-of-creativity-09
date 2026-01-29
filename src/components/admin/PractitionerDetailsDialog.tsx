@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { getFunctionAuthHeaders } from '@/lib/function-auth';
 
 interface PractitionerDetailsDialogProps {
   practitionerId: string | null;
@@ -24,8 +25,10 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
 
   const deleteMutation = useMutation({
     mutationFn: async (userId: string) => {
+      const headers = await getFunctionAuthHeaders();
       const { data, error } = await supabase.functions.invoke('delete-single-user', {
-        body: { userId, userType: 'practitioner' }
+        body: { userId, userType: 'practitioner' },
+        headers,
       });
       if (error) throw error;
       return data;
