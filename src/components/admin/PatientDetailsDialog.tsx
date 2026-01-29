@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Phone, MapPin, Heart, Calendar, Stethoscope, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { getFunctionAuthHeaders } from '@/lib/function-auth';
 
 interface PatientDetailsDialogProps {
   patientId: string | null;
@@ -23,8 +24,14 @@ export function PatientDetailsDialog({ patientId, onOpenChange }: PatientDetails
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
+      if (!patientId) {
+        throw new Error("Aucun patient sélectionné");
+      }
+
+      const headers = await getFunctionAuthHeaders();
       const { data, error } = await supabase.functions.invoke('delete-single-user', {
-        body: { userId: patientId, userType: 'patient' }
+        body: { userId: patientId, userType: 'patient' },
+        headers,
       });
       if (error) throw error;
       return data;
