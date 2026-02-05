@@ -16,6 +16,7 @@ import {
   RefreshCw, User, Copy, Check, Loader2, HelpCircle, FileCheck, Info
 } from "lucide-react";
 import { getSignedFileUrl, uploadUserDocument } from "@/lib/file-upload";
+import { AvatarUpload } from "@/components/dashboard/AvatarUpload";
 
 const BIO_MAX_LENGTH = 500;
 
@@ -358,6 +359,36 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
 
   return (
     <div className="space-y-6">
+      {/* Photo de profil */}
+      <Card>
+        <CardContent className="py-6 flex justify-center">
+          <AvatarUpload
+            userId={practitionerData?.user_id || ""}
+            currentImageUrl={practitionerData?.image}
+            userName={practitionerData?.name || ""}
+            editable={!isKYCValidated()}
+            onImageUploaded={async (path) => {
+              const { error } = await supabase
+                .from('practitioners')
+                .update({ image: path })
+                .eq('id', practitionerId);
+              
+              if (error) throw error;
+              
+              // Synchroniser aussi avec le profil utilisateur
+              if (practitionerData?.user_id) {
+                await supabase
+                  .from('profiles')
+                  .update({ avatar_url: path })
+                  .eq('id', practitionerData.user_id);
+              }
+              
+              queryClient.invalidateQueries({ queryKey: ["practitioner", practitionerData?.user_id] });
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {/* En-tête global */}
       <div className="flex items-center justify-between">
         <div>
