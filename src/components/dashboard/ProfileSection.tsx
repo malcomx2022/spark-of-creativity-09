@@ -26,6 +26,9 @@ import { AddEmergencyContactDialog } from '@/components/AddEmergencyContactDialo
 import { AddAddressDialog } from '@/components/AddAddressDialog';
 import { EditEmergencyContactDialog } from '@/components/EditEmergencyContactDialog';
 import { EditAddressDialog } from '@/components/EditAddressDialog';
+import { AvatarUpload } from '@/components/dashboard/AvatarUpload';
+import { supabase } from '@/integrations/supabase/client';
+
 
 export function ProfileSection() {
   const { data: user } = useSupabaseUser();
@@ -203,12 +206,45 @@ export function ProfileSection() {
       </div>
 
       <Card>
+        <CardHeader className="flex flex-col items-center pb-2">
+          <AvatarUpload
+            userId={user?.id || ""}
+            currentImageUrl={profile?.avatar_url}
+            userName={profile?.full_name || ""}
+            onImageUploaded={async (path) => {
+              if (!user?.id) return;
+              const { error } = await supabase
+                .from('profiles')
+                .update({ avatar_url: path })
+                .eq('id', user.id);
+              
+              if (error) throw error;
+              
+              // Si c'est un praticien, on synchronise aussi sa table practitioner
+              const { data: practitioner } = await supabase
+                .from('practitioners')
+                .select('id')
+                .eq('user_id', user.id)
+                .maybeSingle();
+                
+              if (practitioner) {
+                await supabase
+                  .from('practitioners')
+                  .update({ image: path })
+                  .eq('id', practitioner.id);
+              }
+              
+              refetch();
+            }}
+          />
+        </CardHeader>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Informations personnelles
           </CardTitle>
         </CardHeader>
+
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
