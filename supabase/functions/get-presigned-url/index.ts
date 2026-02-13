@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,8 +7,8 @@ const corsHeaders = {
 };
 
 /**
- * EPIC 7: Génération d'URLs signées pour accès temporaire aux fichiers Wasabi
- * Génère une URL signée valide pour 1 heure permettant l'accès à un fichier privé
+ * Génération d'URLs signées pour accès temporaire aux fichiers Supabase Storage
+ * (migré depuis Wasabi S3)
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -19,15 +18,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const wasabiAccessKeyId = Deno.env.get('WASABI_ACCESS_KEY_ID');
-    const wasabiSecretAccessKey = Deno.env.get('WASABI_SECRET_ACCESS_KEY');
-    const wasabiBucketName = Deno.env.get('WASABI_BUCKET_NAME');
-    const wasabiRegion = Deno.env.get('WASABI_REGION');
-    const wasabiEndpoint = Deno.env.get('WASABI_ENDPOINT');
-
-    if (!wasabiAccessKeyId || !wasabiSecretAccessKey || !wasabiBucketName || !wasabiRegion || !wasabiEndpoint) {
-      throw new Error('Wasabi credentials not configured');
-    }
 
     // Authenticate user
     const authHeader = req.headers.get('Authorization');
@@ -58,7 +48,7 @@ serve(async (req) => {
       );
     }
 
-    // Check if user is admin (only specific admin roles)
+    // Check if user is admin
     const ADMIN_ROLES = ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst'];
     const { data: roleData, error: roleError } = await supabase
       .from('user_roles')
@@ -76,9 +66,6 @@ serve(async (req) => {
     });
 
     // Verify user has access to this file
-    // 1. Admins can access all files
-    // 2. Users can access files in paths containing their user ID
-    // 3. Practitioners can access their KYC documents
     let hasAccess = isAdmin || filePath.includes(user.id);
     
     if (!hasAccess) {
@@ -97,11 +84,6 @@ serve(async (req) => {
         ].filter(Boolean);
         
         hasAccess = practitionerDocs.some(doc => doc === filePath);
-        console.log('Practitioner document check:', {
-          filePath,
-          practitionerDocs,
-          hasAccess
-        });
       }
     }
     
@@ -113,87 +95,43 @@ serve(async (req) => {
       );
     }
 
-    console.log('Generating presigned URL for:', filePath);
+    console.log('Generating signed URL for:', filePath);
 
-    // Create AWS Signature V4 for presigned URL
-    const now = new Date();
-    const expirationTime = Math.floor(now.getTime() / 1000) + expiresIn;
-    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    // Parse the filePath to extract bucket and storage path
+    // Format: {folder}/{userId}/{timestamp}-{filename}
+    // folder determines the bucket: 'avatars' -> avatars bucket, anything else -> documents bucket
+    const pathParts = filePath.split('/');
+    const folder = pathParts[0];
+    const bucketName = folder === 'avatars' ? 'avatars' : 'documents';
+    // The storage path is everything after the folder prefix
+    const storagePath = pathParts.slice(1).join('/');
 
-    // Helper function to create HMAC
-    const hmac = async (key: Uint8Array, data: string): Promise<Uint8Array> => {
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        key as BufferSource,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      const signature = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data));
-      return new Uint8Array(signature);
-    };
+    // Generate a signed URL using Supabase Storage
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from(bucketName)
+      .createSignedUrl(storagePath, expiresIn);
 
-    // Create signing key
-    const kDate = await hmac(new TextEncoder().encode(`AWS4${wasabiSecretAccessKey}`), dateStamp);
-    const kRegion = await hmac(kDate, wasabiRegion);
-    const kService = await hmac(kRegion, 's3');
-    const kSigning = await hmac(kService, 'aws4_request');
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error('Error generating signed URL:', signedUrlError);
+      throw new Error(`Failed to generate signed URL: ${signedUrlError?.message || 'Unknown error'}`);
+    }
 
-    // Create canonical request for presigned URL
-    const credential = `${wasabiAccessKeyId}/${dateStamp}/${wasabiRegion}/s3/aws4_request`;
-    const queryParams = new URLSearchParams({
-      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-      'X-Amz-Credential': credential,
-      'X-Amz-Date': amzDate,
-      'X-Amz-Expires': expiresIn.toString(),
-      'X-Amz-SignedHeaders': 'host',
-    });
+    const signedUrl = signedUrlData.signedUrl;
 
-    const canonicalRequest = [
-      'GET',
-      `/${wasabiBucketName}/${filePath}`,
-      queryParams.toString(),
-      `host:${wasabiEndpoint}`,
-      '',
-      'host',
-      'UNSIGNED-PAYLOAD'
-    ].join('\n');
-
-    // Create string to sign
-    const canonicalRequestHash = Array.from(
-      new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalRequest)))
-    ).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      `${dateStamp}/${wasabiRegion}/s3/aws4_request`,
-      canonicalRequestHash
-    ].join('\n');
-
-    // Create signature
-    const signature = Array.from(await hmac(kSigning, stringToSign))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    // Create presigned URL
-    queryParams.append('X-Amz-Signature', signature);
-    const presignedUrl = `https://${wasabiEndpoint}/${wasabiBucketName}/${filePath}?${queryParams.toString()}`;
-
-    console.log('Presigned URL generated successfully:', {
+    console.log('Signed URL generated successfully:', {
       filePath,
-      urlLength: presignedUrl.length,
+      urlLength: signedUrl.length,
       expiresIn,
       userId: user.id,
-      isAdmin
+      isAdmin,
+      bucket: bucketName
     });
 
     return new Response(
       JSON.stringify({
         success: true,
-        url: presignedUrl,
-        expiresAt: new Date(expirationTime * 1000).toISOString(),
+        url: signedUrl,
+        expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
         expiresIn,
         filePath,
       }),

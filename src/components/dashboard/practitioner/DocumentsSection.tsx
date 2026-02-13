@@ -174,7 +174,7 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
       }
 
       if (practitionerData.image) {
-        // Si c'est un chemin Wasabi (pas une URL complète), obtenir l'URL signée
+        // Si c'est déjà une URL complète, l'utiliser directement
         if (practitionerData.image.startsWith('http')) {
           urls.image = practitionerData.image;
         } else {
