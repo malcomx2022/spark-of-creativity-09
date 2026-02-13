@@ -191,7 +191,6 @@ async function uploadDocument(
 
   console.log(`Upload document ${fileName}...`);
 
-  // ✅ FIX: Appel direct via fetch avec le service role key pour éviter les problèmes d'auth
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -199,47 +198,52 @@ async function uploadDocument(
     throw new Error('Missing Supabase configuration');
   }
 
-  const uploadResponse = await fetch(`${supabaseUrl}/functions/v1/upload-to-wasabi`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${serviceRoleKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      fileName,
-      fileContent: base64Content,
-      contentType,
-      folder: "practitioner-documents",
-      userId: userId
-    })
-  });
+  // Decode base64 to binary
+  const binaryContent = Uint8Array.from(atob(base64Content), c => c.charCodeAt(0));
 
-  if (!uploadResponse.ok) {
-    const errorText = await uploadResponse.text();
-    console.error('Erreur upload Wasabi:', uploadResponse.status, errorText);
-    throw new Error(`Échec upload: ${uploadResponse.status} - ${errorText}`);
+  // Generate unique file path
+  const timestamp = Date.now();
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const storagePath = `${userId}/${timestamp}-${sanitizedFileName}`;
+
+  // Upload directly to Supabase Storage using service role client
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('documents')
+    .upload(storagePath, binaryContent, {
+      contentType: contentType || 'application/octet-stream',
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('Supabase Storage upload error:', uploadError);
+    throw new Error(`Upload failed: ${uploadError.message}`);
   }
 
-  const data = await uploadResponse.json();
-
-  if (!data || !data.success) {
-    throw new Error(data?.error || 'Échec upload Wasabi');
-  }
+  const filePath = `practitioner-documents/${storagePath}`;
 
   return {
-    path: data.filePath,
-    url: data.url,
+    path: filePath,
+    url: filePath,
   };
 }
 
-async function deleteWasabiDocument(supabase: any, filePath: string): Promise<void> {
+async function deleteStorageDocument(supabase: any, filePath: string): Promise<void> {
   try {
-    // Appeler l'edge function pour supprimer de Wasabi
-    // NOTE: Nécessite une fonction dédiée ou extension de upload-to-wasabi
-    console.log(`🗑️ Suppression document Wasabi: ${filePath}`);
-    // TODO: Implémenter fonction de suppression Wasabi quand disponible
+    // Parse the filePath to extract bucket and storage path
+    const pathParts = filePath.split('/');
+    const folder = pathParts[0];
+    const bucketName = folder === 'avatars' ? 'avatars' : 'documents';
+    const storagePath = pathParts.slice(1).join('/');
+    
+    console.log(`🗑️ Suppression document Storage: ${filePath}`);
+    const { error } = await supabase.storage.from(bucketName).remove([storagePath]);
+    if (error) {
+      console.error(`❌ Erreur suppression Storage ${filePath}:`, error);
+    }
   } catch (error) {
-    console.error(`❌ Erreur suppression Wasabi ${filePath}:`, error);
+    console.error(`❌ Erreur suppression Storage ${filePath}:`, error);
   }
 }
 
@@ -729,10 +733,11 @@ serve(async (req) => {
       }
 
       // Rollback: Supprimer les documents uploadés
-      // Note: Implémenter suppression Wasabi si nécessaire
       if (uploadedDocuments.length > 0) {
         console.log(`🔄 ${uploadedDocuments.length} documents à supprimer (rollback)`);
-        // TODO: Appeler edge function pour supprimer de Wasabi
+        for (const doc of uploadedDocuments) {
+          await deleteStorageDocument(supabase, doc.path);
+        }
       }
 
       throw error;
