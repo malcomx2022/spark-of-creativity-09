@@ -923,7 +923,7 @@ export default function PractitionerSignup() {
         } else if (errorMessage.includes('validation') || errorMessage.includes('invalide')) {
           userMessage = "Certaines informations du formulaire sont invalides.";
           errorDetails = ["Vérifiez que tous les champs obligatoires sont correctement remplis."];
-        } else if (errorMessage.includes('upload') || errorMessage.includes('Wasabi') || errorMessage.includes('storage')) {
+        } else if (errorMessage.includes('upload') || errorMessage.includes('storage') || errorMessage.includes('Storage')) {
           userMessage = "Erreur lors de l'upload des documents.";
           errorDetails = ["Veuillez vérifier votre connexion internet et réessayer."];
         } else if (errorMessage.includes('phone') || errorMessage.includes('téléphone')) {
