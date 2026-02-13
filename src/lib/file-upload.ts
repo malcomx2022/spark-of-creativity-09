@@ -6,7 +6,7 @@ interface UploadResult {
   path: string;
 }
 
-interface WasabiUploadResponse {
+interface StorageUploadResponse {
   filePath: string;
   url: string;
 }
@@ -36,7 +36,7 @@ export async function uploadUserDocument({
   const content = await file.arrayBuffer();
   const fileContent = arrayBufferToBase64(content);
 
-  const { data, error } = await invokeEdgeFunctionWithRetry<WasabiUploadResponse>("upload-to-wasabi", {
+  const { data, error } = await invokeEdgeFunctionWithRetry<StorageUploadResponse>("upload-to-wasabi", {
     body: {
       fileName: file.name,
       fileContent,
