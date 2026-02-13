@@ -33,7 +33,7 @@ export function ApiManagementSection() {
   // Dialog states
   const [fedapayDialogOpen, setFedapayDialogOpen] = useState(false);
   const [twilioDialogOpen, setTwilioDialogOpen] = useState(false);
-  const [wasabiDialogOpen, setWasabiDialogOpen] = useState(false);
+  const [storageDialogOpen, setStorageDialogOpen] = useState(false);
   const [mapboxDialogOpen, setMapboxDialogOpen] = useState(false);
 
   // Récupérer la configuration actuelle avec date de modification
@@ -102,7 +102,7 @@ export function ApiManagementSection() {
       const otpToday = otpAttempts?.filter(o => o.created_at >= today).length || 0;
       const otpDelivered = otpAttempts?.filter(o => o.status === "delivered").length || 0;
 
-      // Documents (Wasabi) - from practitioners (KYC documents URLs)
+      // Documents (Supabase Storage) - from practitioners (KYC documents URLs)
       const { count: documentsCount } = await supabase
         .from("practitioners")
         .select("id", { count: "exact", head: true })
@@ -119,7 +119,7 @@ export function ApiManagementSection() {
           today: otpToday,
           successRate: otpTotal > 0 ? Math.round((otpDelivered / otpTotal) * 100) : 0,
         },
-        wasabi: {
+        storage: {
           documents: documentsCount || 0,
         },
       };
@@ -283,11 +283,11 @@ export function ApiManagementSection() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Wasabi</CardTitle>
+            <CardTitle className="text-sm font-medium">Stockage</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{apiStats?.wasabi.documents || 0}</div>
+            <div className="text-2xl font-bold">{apiStats?.storage?.documents || 0}</div>
             <p className="text-xs text-muted-foreground">
               documents stockés
             </p>
@@ -518,9 +518,9 @@ export function ApiManagementSection() {
               <div className="flex items-center gap-3">
                 <Wifi className="h-5 w-5 text-green-500" />
                 <div>
-                  <p className="font-medium">Wasabi (Stockage)</p>
+                  <p className="font-medium">Stockage (Supabase Storage)</p>
                   <p className="text-sm text-muted-foreground">
-                    {apiStats?.wasabi.documents || 0} documents stockés
+                    {apiStats?.storage?.documents || 0} documents stockés
                   </p>
                 </div>
               </div>
@@ -531,7 +531,7 @@ export function ApiManagementSection() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setWasabiDialogOpen(true)}
+                  onClick={() => setStorageDialogOpen(true)}
                 >
                   Gérer
                 </Button>
@@ -657,31 +657,28 @@ export function ApiManagementSection() {
         </DialogContent>
       </Dialog>
 
-      {/* Wasabi Keys Dialog */}
-      <Dialog open={wasabiDialogOpen} onOpenChange={setWasabiDialogOpen}>
+      {/* Storage Info Dialog */}
+      <Dialog open={storageDialogOpen} onOpenChange={setStorageDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Gérer les clés API Wasabi</DialogTitle>
+            <DialogTitle>Stockage des fichiers</DialogTitle>
             <DialogDescription>
-              Mettez à jour les identifiants Wasabi pour le stockage de fichiers.
+              Le stockage des documents utilise Supabase Storage intégré.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <Alert>
-              <AlertCircle className="h-4 w-4" />
+              <CheckCircle2 className="h-4 w-4" />
               <AlertDescription>
-                Pour mettre à jour les clés Wasabi, veuillez utiliser l'outil de gestion des secrets
-                dans les paramètres du projet ou contacter un administrateur.
+                Le stockage est géré nativement par la plateforme. Aucune configuration externe n'est nécessaire.
               </AlertDescription>
             </Alert>
             <div className="space-y-3">
-              <p className="text-sm font-medium">Secrets à configurer :</p>
+              <p className="text-sm font-medium">Buckets configurés :</p>
               <ul className="text-sm space-y-2 ml-4 list-disc">
-                <li><code className="bg-muted px-1">WASABI_ACCESS_KEY_ID</code> - Access Key ID</li>
-                <li><code className="bg-muted px-1">WASABI_SECRET_ACCESS_KEY</code> - Secret Access Key</li>
-                <li><code className="bg-muted px-1">WASABI_ENDPOINT</code> - Endpoint URL</li>
-                <li><code className="bg-muted px-1">WASABI_REGION</code> - Région</li>
-                <li><code className="bg-muted px-1">WASABI_BUCKET_NAME</code> - Nom du bucket</li>
+                <li><code className="bg-muted px-1">documents</code> - Documents KYC des praticiens</li>
+                <li><code className="bg-muted px-1">avatars</code> - Photos de profil</li>
+                <li><code className="bg-muted px-1">message-attachments</code> - Pièces jointes des messages</li>
               </ul>
             </div>
           </div>
