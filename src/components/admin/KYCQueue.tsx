@@ -225,6 +225,7 @@ export function KYCQueue() {
             kyc_reviewed_by: user.id,
             kyc_reviewed_at: new Date().toISOString(),
             can_accept_missions: status === 'approved',
+            ...(status === 'approved' ? { kyc_validated_at: new Date().toISOString() } : {}),
           })
           .eq('id', id)
       );
