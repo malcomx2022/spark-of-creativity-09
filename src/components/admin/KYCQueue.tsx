@@ -361,8 +361,12 @@ export function KYCQueue() {
     loadDocumentUrls();
   }, [practitioners]);
 
-  const getExpiryBadge = (date: string | null, isRequired: boolean = true) => {
+  const getExpiryBadge = (date: string | null, isRequired: boolean = true, documentUrl?: string | null) => {
+    // Si le document est uploadé mais pas de date d'expiration, montrer "Fourni"
     if (!date) {
+      if (documentUrl) {
+        return <Badge variant="outline" className="border-green-500">✓ Fourni</Badge>;
+      }
       return isRequired 
         ? <Badge variant="destructive">Non renseigné</Badge>
         : <Badge variant="outline" className="opacity-60">Non requis</Badge>;
@@ -550,7 +554,7 @@ export function KYCQueue() {
                                 <Label className="text-base font-semibold">
                                   Pièce d'identité <span className="text-destructive">*</span>
                                 </Label>
-                                {getExpiryBadge(practitioner.id_document_expiry, true)}
+                                {getExpiryBadge(practitioner.id_document_expiry, true, practitioner.id_document_url)}
                               </div>
                               <DocumentLink 
                                 url={documentUrls[practitioner.id]?.id_document_url || null}
@@ -675,7 +679,7 @@ export function KYCQueue() {
                                     <Label className="text-base font-semibold">
                                       Autorisation d'exercice <span className="text-destructive">*</span>
                                     </Label>
-                                    {getExpiryBadge(practitioner.license_expiry, true)}
+                                    {getExpiryBadge(practitioner.license_expiry, true, practitioner.license_document_url)}
                                   </div>
                                   <div className="text-sm text-muted-foreground mb-2">
                                     Numéro: {practitioner.license_number || <span className="text-destructive">Non renseigné</span>}
@@ -692,7 +696,7 @@ export function KYCQueue() {
                                     <Label className="text-base font-semibold">
                                       Assurance RCP <span className="text-destructive">*</span>
                                     </Label>
-                                    {getExpiryBadge(practitioner.insurance_expiry, true)}
+                                    {getExpiryBadge(practitioner.insurance_expiry, true, practitioner.insurance_document_url)}
                                   </div>
                                   <DocumentLink 
                                     url={documentUrls[practitioner.id]?.insurance_document_url || null}
