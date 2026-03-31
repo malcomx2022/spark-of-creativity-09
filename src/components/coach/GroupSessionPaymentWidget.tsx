@@ -63,7 +63,7 @@ export function GroupSessionPaymentWidget({
   const [fedapayScriptLoaded, setFedapayScriptLoaded] = useState(false);
   const [fedapayLoadError, setFedapayLoadError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const fedapayLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fedapayLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const queryClient = useQueryClient();
   const { addPaymentMethod } = useSavedPaymentMethods();

@@ -42,7 +42,7 @@ export default function ResetPassword() {
     hasCheckedSession.current = true;
 
     let isMounted = true;
-    let timeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     // Fonction pour extraire les paramètres de l'URL (hash ou query)
     const extractUrlParams = () => {

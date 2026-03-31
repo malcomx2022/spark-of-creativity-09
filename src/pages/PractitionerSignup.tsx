@@ -99,7 +99,7 @@ export default function PractitionerSignup() {
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isCheckingPhone, setIsCheckingPhone] = useState(false);
-  const [phoneCheckTimeout, setPhoneCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [phoneCheckTimeout, setPhoneCheckTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const redirectAuthenticatedUser = async () => {

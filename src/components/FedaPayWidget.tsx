@@ -43,7 +43,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   const [fedapayScriptLoaded, setFedapayScriptLoaded] = useState(false);
   const [fedapayLoadError, setFedapayLoadError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const fedapayLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fedapayLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const queryClient = useQueryClient();
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();

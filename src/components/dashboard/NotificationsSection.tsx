@@ -84,7 +84,7 @@ export function NotificationsSection() {
     push: false,
   });
 
-  const debounceTimers = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  const debounceTimers = useRef<{ [key: string]: ReturnType<typeof setTimeout> }>({});
 
   // Filtrer les notifications
   const filteredNotifications = useMemo(() => {
