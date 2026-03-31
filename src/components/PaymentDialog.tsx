@@ -141,7 +141,7 @@ export function PaymentDialog({
   // ✅ CORRECTION P2-7: État de chargement pour vérification paiement existant
   const [isCheckingExistingPayment, setIsCheckingExistingPayment] = useState(false);
   const hasRehydratedRef = useRef(false);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartTimeRef = useRef<number>(0);
   const widgetRef = useRef<any>(null);
   // ✅ CORRECTION P0-2: Ref pour protection double-clic robuste (timestamp-based)

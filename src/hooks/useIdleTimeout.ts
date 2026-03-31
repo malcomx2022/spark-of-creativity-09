@@ -10,8 +10,8 @@ const WARNING_BEFORE_TIMEOUT = 60 * 1000; // 1 minute warning
 export function useIdleTimeout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const warningRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showWarning, setShowWarning] = useState(false);
 
   const logout = useCallback(async () => {

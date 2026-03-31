@@ -58,7 +58,7 @@ export function AddressSearchInput({
   const [results, setResults] = useState<MapboxFeature[]>([]);
   const [recentSearches, setRecentSearches] = useState<LocationData[]>([]);
   const [loading, setLoading] = useState(false);
-  const debounceRef = useRef<NodeJS.Timeout>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Charger les recherches récentes
   useEffect(() => {

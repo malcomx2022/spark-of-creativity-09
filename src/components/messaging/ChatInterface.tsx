@@ -45,7 +45,7 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
   const [attachment, setAttachment] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const { data: messages = [], isLoading: isLoadingMessages } = useConversationMessages(conversation.appointment_id, currentUserId);
   const sendMessage = useSendMessage();
   const markAsRead = useMarkMessagesAsRead();
