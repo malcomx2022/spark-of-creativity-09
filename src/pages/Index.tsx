@@ -262,33 +262,6 @@ const Index = () => {
                 </>
               )}
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-6 pt-8">
-                <div className="text-center">
-                  {statsLoading ? (
-                    <Skeleton className="h-8 w-16 mx-auto mb-1" />
-                  ) : (
-                    <div className="text-2xl font-bold text-primary">
-                      {realStats.practitioners}+
-                    </div>
-                  )}
-                  <div className="text-sm text-muted-foreground">Praticiens certifiés</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-secondary">24/7</div>
-                  <div className="text-sm text-muted-foreground">Disponibilité</div>
-                </div>
-                <div className="text-center">
-                  {statsLoading ? (
-                    <Skeleton className="h-8 w-16 mx-auto mb-1" />
-                  ) : (
-                    <div className="text-2xl font-bold text-primary">
-                      {realStats.patients}+
-                    </div>
-                  )}
-                  <div className="text-sm text-muted-foreground">Patients</div>
-                </div>
-              </div>
             </div>
 
             <div className="relative hidden lg:block">
