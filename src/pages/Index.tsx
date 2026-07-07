@@ -262,8 +262,8 @@ const Index = () => {
                 </>
               )}
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-6 pt-8">
+              {/* Stats — temporairement masquées */}
+              {/* <div className="grid grid-cols-3 gap-6 pt-8">
                 <div className="text-center">
                   {statsLoading ? (
                     <Skeleton className="h-8 w-16 mx-auto mb-1" />
@@ -288,7 +288,7 @@ const Index = () => {
                   )}
                   <div className="text-sm text-muted-foreground">Patients</div>
                 </div>
-              </div>
+              </div> */}
             </div>
 
             <div className="relative hidden lg:block">
