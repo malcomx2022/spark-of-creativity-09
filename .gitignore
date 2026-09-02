@@ -30,3 +30,8 @@ dist-ssr
 
 # Supabase temporary files
 supabase/.temp/
+
+# Exports Supabase (données personnelles) — ne jamais versionner
+export/
+deploy/vps/.env
+deploy/vps/backups/

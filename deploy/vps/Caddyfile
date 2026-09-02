@@ -1,0 +1,39 @@
+# Reverse proxy Domicares — TLS automatique (Let's Encrypt)
+{
+  email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+  encode zstd gzip
+
+  # API REST + WebSocket (Socket.IO) → back-end NestJS
+  handle_path /api/* {
+    reverse_proxy api:3000
+  }
+  handle /socket.io/* {
+    reverse_proxy api:3000
+  }
+  # Webhook FedaPay : POST https://<DOMAIN>/api/webhooks/fedapay (géré par l'API)
+
+  # Front (SPA) — fallback index.html géré par nginx dans l'image web
+  handle {
+    reverse_proxy web:80
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+  }
+  log {
+    output file /data/access.log
+  }
+}
+
+www.{$DOMAIN} {
+  redir https://{$DOMAIN}{uri} permanent
+}
+
+# Console MinIO (optionnel, à protéger) : files.{$DOMAIN} → minio:9000
