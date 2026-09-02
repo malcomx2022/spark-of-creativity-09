@@ -52,6 +52,7 @@ echo "▶ 4-5. Conversion native"
 $PSQL -d "$DB" -f "$ROOT/db/native/100_to_native.sql"
 $PSQL -d "$DB" -f "$ROOT/db/native/110_realtime_notify.sql"
 if [[ "${DROP_RLS:-0}" == "1" ]]; then $PSQL -d "$DB" -f "$ROOT/db/native/120_drop_rls_optional.sql"; fi
+$PSQL -d "$DB" -f "$ROOT/db/native/020_grants.sql"
 
 echo "▶ 6. Contrôle des comptages (source Supabase vs cible)"
 while IFS=, read -r tbl n; do

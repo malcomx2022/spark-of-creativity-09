@@ -1,0 +1,52 @@
+name: API CI
+
+on:
+  pull_request:
+    paths: ['api/**', 'db/native/**', '.github/workflows/api-ci.yml']
+  push:
+    branches: [main]
+    paths: ['api/**', 'db/native/**', '.github/workflows/api-ci.yml']
+
+jobs:
+  test:
+    name: Typecheck, build, e2e (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: domicares
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Charger le schéma natif
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 020_grants.sql; do
+            psql -h localhost -U postgres -d domicares -v ON_ERROR_STOP=1 -q -f ../db/native/$f
+          done
+          psql -h localhost -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD 'ci'"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Tests e2e
+        env:
+          DATABASE_URL: postgresql://domicares_app:ci@localhost:5432/domicares
+          JWT_ACCESS_SECRET: ci-secret-ci-secret-ci-secret-ci-secret-1234
+        run: npm run test:e2e

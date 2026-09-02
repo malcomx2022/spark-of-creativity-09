@@ -1,6 +1,6 @@
 -- FICHIER GÉNÉRÉ par scripts/db/build-native-schema.sh — ne pas éditer à la main.
 -- Schéma PostgreSQL natif Domicares = supabase/migrations/* rejoués + db/native/100 + 110.
--- Pré-requis : db/native/010_roles.sql. Les policies RLS sont conservées ;
+-- Pré-requis : db/native/010_roles.sql avant, db/native/020_grants.sql après. Les policies RLS sont conservées ;
 -- exécuter db/native/120_drop_rls_optional.sql pour les retirer (option B).
 -- Généré le 2026-09-02T04:39:24Z
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
