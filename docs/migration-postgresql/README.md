@@ -38,7 +38,10 @@ bcrypt toujours valides, 0 clé étrangère restante vers `auth.users`.
 Étape 1 du chemin critique livrée : NestJS + Fastify + Kysely, authentification complète
 (inscription, connexion, refresh tournant, OTP Twilio, e-mail de vérification, mots de
 passe), `GET /api/auth/me` avec résolution de rôle identique au front, profil, garde
-`@AdminOnly`, worker `LISTEN table_changes`. Tests e2e sur base réelle
+`@AdminOnly`, worker `LISTEN table_changes`. Étape 2 livrée : inscription praticien
+atomique avec documents KYC, recherche de praticiens disponibles, disponibilités /
+exceptions / tarifs, fichiers S3 (URLs pré-signées, journal d'accès), file KYC admin avec
+notifications e-mail, SMS et in-app. Tests e2e sur base réelle
 (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
 ## Ordre de lecture recommandé

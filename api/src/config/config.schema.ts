@@ -28,6 +28,19 @@ export const configSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_VERIFY_SERVICE_SID: z.string().optional(),
+  SMS_PROVIDER: z.enum(['twilio', 'console']).default('console'),
+  TWILIO_PHONE_NUMBER: z.string().optional(),
+
+  STORAGE_PROVIDER: z.enum(['s3', 'fake']).default('fake'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_ACCESS_KEY: z.string().optional(),
+  S3_SECRET_KEY: z.string().optional(),
+  S3_FORCE_PATH_STYLE: bool.default('true'),
+  S3_BUCKET_DOCUMENTS: z.string().default('documents'),
+  S3_BUCKET_AVATARS: z.string().default('avatars'),
+  S3_BUCKET_ATTACHMENTS: z.string().default('message-attachments'),
+  FILE_URL_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -49,6 +62,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.OTP_PROVIDER === 'fake') {
     throw new Error('OTP_PROVIDER=fake est interdit en production');
+  }
+  if (parsed.data.SMS_PROVIDER === 'twilio' && !(parsed.data.TWILIO_ACCOUNT_SID && parsed.data.TWILIO_AUTH_TOKEN && parsed.data.TWILIO_PHONE_NUMBER)) {
+    throw new Error('TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_PHONE_NUMBER requis avec SMS_PROVIDER=twilio');
+  }
+  if (parsed.data.STORAGE_PROVIDER === 's3' && !(parsed.data.S3_ACCESS_KEY && parsed.data.S3_SECRET_KEY)) {
+    throw new Error('S3_ACCESS_KEY et S3_SECRET_KEY requis avec STORAGE_PROVIDER=s3');
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.STORAGE_PROVIDER === 'fake') {
+    throw new Error('STORAGE_PROVIDER=fake est interdit en production');
   }
   return parsed.data;
 }
