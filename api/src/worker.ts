@@ -1,14 +1,20 @@
 /**
  * Worker Domicares — point d'entrée `node dist/worker.js` (service `worker` du docker-compose).
  *
- * Étape 1 : relais des notifications PostgreSQL émises par db/native/110_realtime_notify.sql
- * (canal `table_changes`) vers un bus applicatif. Les abonnés Socket.IO et les jobs BullMQ
- * (consultations.tick, payments.sync, relances…) se brancheront ici aux étapes suivantes.
+ * 1. Relais des notifications PostgreSQL émises par db/native/110_realtime_notify.sql
+ *    (canal `table_changes`) vers un bus applicatif (futurs abonnés Socket.IO).
+ * 2. Ordonnanceur des jobs (JobsService) : remplace les Edge Functions planifiées.
+ *    Chaque exécution prend un verrou consultatif PostgreSQL : plusieurs workers
+ *    peuvent tourner sans doublon.
  */
 import 'reflect-metadata';
 import { EventEmitter } from 'node:events';
+import { Logger } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { Client } from 'pg';
-import { loadConfig } from './config/config.schema';
+import { AppModule } from './app.module';
+import { APP_CONFIG, AppConfig } from './config/config.module';
+import { JobsService } from './jobs/jobs.service';
 
 export interface TableChangeEvent {
   table: string;
@@ -46,15 +52,29 @@ export async function startChangeListener(databaseUrl: string): Promise<Client> 
   return client;
 }
 
+export function startScheduler(jobs: JobsService, logger = new Logger('Scheduler')): NodeJS.Timeout[] {
+  return jobs.definitions.map((def) => {
+    const tick = () => jobs.run(def.name).then((r) => logger.log(`${def.name}: ${JSON.stringify(r)}`)).catch((err) => logger.error(`${def.name}: ${err instanceof Error ? err.message : err}`));
+    setTimeout(tick, 5_000);
+    return setInterval(tick, def.everyMs);
+  });
+}
+
+async function main(): Promise<void> {
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['log', 'error', 'warn'] });
+  const config = app.get<AppConfig>(APP_CONFIG);
+  await startChangeListener(config.DATABASE_URL);
+  console.log('[worker] à l’écoute du canal table_changes');
+  changeBus.on('change', (e: TableChangeEvent) => console.log(`[worker] ${e.op} ${e.table} ${e.id ?? ''}`));
+  if (config.JOBS_ENABLED) {
+    startScheduler(app.get(JobsService));
+    console.log('[worker] ordonnanceur démarré');
+  }
+}
+
 if (require.main === module) {
-  const config = loadConfig();
-  startChangeListener(config.DATABASE_URL)
-    .then(() => {
-      console.log('[worker] à l’écoute du canal table_changes');
-      changeBus.on('change', (e: TableChangeEvent) => console.log(`[worker] ${e.op} ${e.table} ${e.id ?? ''}`));
-    })
-    .catch((err) => {
-      console.error('[worker] démarrage impossible', err);
-      process.exit(1);
-    });
+  main().catch((err) => {
+    console.error('[worker] démarrage impossible', err);
+    process.exit(1);
+  });
 }

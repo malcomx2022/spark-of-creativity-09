@@ -190,6 +190,184 @@ export interface NotificationsTable {
   created_at: GeneratedTimestamp;
 }
 
+export type AppointmentStatus =
+  | 'pending_payment' | 'awaiting_practitioner' | 'confirmed' | 'pending' | 'in-progress'
+  | 'awaiting_confirmation' | 'completed' | 'cancelled_unpaid' | 'cancelled' | 'rejected';
+export type PractitionerStatus = 'assigned' | 'preparing' | 'en_route' | 'arrived' | 'in_progress';
+export type VisitStatus = 'scheduled' | 'en_route' | 'arrived' | 'in_progress' | 'completed' | 'cancelled';
+
+/** Identifiants en TEXT (héritage du schéma Lovable) : patient_id / practitioner_id sont des UUID sérialisés. */
+export interface AppointmentsTable {
+  id: Generated<string>;
+  patient_id: string;
+  patient_name: string;
+  practitioner_id: string;
+  practitioner_name: string;
+  specialty: string;
+  date: string;
+  time: string;
+  duration: Generated<number>;
+  status: Generated<AppointmentStatus>;
+  address: string;
+  reason: string;
+  notes: string | null;
+  urgency_level: string | null;
+  visit_status: Generated<VisitStatus | null>;
+  pre_visit_checklist: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  internal_notes: string | null;
+  payment_amount: number | null;
+  practitioner_status: Generated<PractitionerStatus | null>;
+  payment_expires_at: Timestamp | null;
+  confirmation_requested_at: Timestamp | null;
+  patient_confirmed_at: Timestamp | null;
+  practitioner_latitude: ColumnType<string | null, number | null, number | null>;
+  practitioner_longitude: ColumnType<string | null, number | null, number | null>;
+  practitioner_last_location_update: Timestamp | null;
+  consultation_started_at: Timestamp | null;
+  consultation_ended_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export type PaymentStatus = 'initiated' | 'pending' | 'authorized' | 'paid' | 'failed' | 'canceled' | 'refunded' | 'chargeback';
+export type PayoutStatus = 'pending' | 'held' | 'ready' | 'paid' | 'failed';
+
+export interface PaymentsTable {
+  id: Generated<string>;
+  appointment_id: string;
+  patient_id: string;
+  amount: number;
+  currency: Generated<string>;
+  payment_method: string;
+  status: Generated<PaymentStatus>;
+  fedapay_transaction_id: string | null;
+  fedapay_payment_url: string | null;
+  commission_amount: Generated<number | null>;
+  fees_amount: Generated<number | null>;
+  net_amount: number | null;
+  gateway_fees_amount: Generated<number | null>;
+  hold_until: Timestamp | null;
+  payout_status: Generated<PayoutStatus | null>;
+  idempotency_key: string | null;
+  channel: 'card' | 'momo' | null;
+  provider_ref: string | null;
+  payment_session_data: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  receipt_url: string | null;
+  invoice_number: string | null;
+  payer_name: string | null;
+  payer_email: string | null;
+  payer_phone: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface PaymentEventsTable {
+  id: Generated<string>;
+  payment_id: string;
+  event_type: string;
+  event_data: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  created_at: GeneratedTimestamp;
+}
+
+export interface PaymentAttemptsTable {
+  id: Generated<string>;
+  payment_id: string | null;
+  appointment_id: string | null;
+  user_id: string;
+  attempt_number: Generated<number>;
+  status: 'pending' | 'success' | 'failed' | 'timeout';
+  error_type: string | null;
+  error_message: string | null;
+  error_details: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  payment_method: string;
+  phone_number_encrypted: string | null;
+  amount: number;
+  retry_after: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  completed_at: Timestamp | null;
+}
+
+export interface WebhookEventsTable {
+  id: Generated<string>;
+  event_id: string;
+  event_type: string;
+  payload: ColumnType<Record<string, unknown>, string, string>;
+  processed_at: GeneratedTimestamp;
+  created_at: GeneratedTimestamp;
+  processing_status: Generated<'pending' | 'processing' | 'success' | 'failed' | 'permanently_failed' | null>;
+  retry_count: Generated<number | null>;
+  last_retry_at: Timestamp | null;
+  error_message: string | null;
+  error_stack: string | null;
+}
+
+export type LedgerOwnerType = 'platform' | 'patient' | 'practitioner';
+export type LedgerAccountType = 'cash' | 'payable' | 'receivable' | 'revenue_commission' | 'revenue_fees' | 'obligation';
+
+export interface LedgerAccountsTable {
+  id: Generated<string>;
+  owner_type: LedgerOwnerType;
+  owner_id: string | null;
+  account_type: LedgerAccountType;
+  currency: Generated<string>;
+  created_at: GeneratedTimestamp;
+}
+
+export interface LedgerEntriesTable {
+  id: Generated<string>;
+  account_id: string;
+  debit: Generated<number>;
+  credit: Generated<number>;
+  currency: Generated<string>;
+  reference_type: string;
+  reference_id: string;
+  description: string | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface PractitionerBalancesTable {
+  practitioner_id: string;
+  balance_available: Generated<number>;
+  balance_pending: Generated<number>;
+  balance_on_hold: Generated<number>;
+  currency: Generated<string>;
+  last_payout_at: Timestamp | null;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface SystemConfigTable {
+  id: Generated<string>;
+  key: string;
+  value: ColumnType<unknown, string, string>;
+  description: string | null;
+  updated_by: string | null;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AddressesTable {
+  id: Generated<string>;
+  user_id: string;
+  label: string;
+  address: string;
+  city: string | null;
+  postal_code: string | null;
+  latitude: ColumnType<string | null, number | null, number | null>;
+  longitude: ColumnType<string | null, number | null, number | null>;
+  is_default: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+}
+
+export interface ServicesTable {
+  id: Generated<string>;
+  name: string;
+  description: string | null;
+  category: string | null;
+  base_price: number | null;
+  duration: number | null;
+  is_active: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+}
+
 export interface OtpAttemptsTable {
   id: Generated<string>;
   phone_number: string;
@@ -215,6 +393,17 @@ export interface DB {
   files: FilesTable;
   file_access_logs: FileAccessLogsTable;
   notifications: NotificationsTable;
+  appointments: AppointmentsTable;
+  payments: PaymentsTable;
+  payment_events: PaymentEventsTable;
+  payment_attempts: PaymentAttemptsTable;
+  webhook_events: WebhookEventsTable;
+  ledger_accounts: LedgerAccountsTable;
+  ledger_entries: LedgerEntriesTable;
+  practitioner_balances: PractitionerBalancesTable;
+  system_config: SystemConfigTable;
+  addresses: AddressesTable;
+  services: ServicesTable;
   otp_attempts: OtpAttemptsTable;
 }
 
@@ -226,3 +415,6 @@ export type ProfileUpdate = Updateable<ProfilesTable>;
 export type Practitioner = Selectable<PractitionersTable>;
 export type PractitionerUpdate = Updateable<PractitionersTable>;
 export type FileRow = Selectable<FilesTable>;
+export type Appointment = Selectable<AppointmentsTable>;
+export type AppointmentUpdate = Updateable<AppointmentsTable>;
+export type Payment = Selectable<PaymentsTable>;

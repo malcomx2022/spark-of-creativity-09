@@ -1,0 +1,62 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { sql } from 'kysely';
+import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
+import { PaymentsService } from '../payments/payments.service';
+
+export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup';
+
+export interface JobDefinition {
+  name: JobName;
+  /** Intervalle d'exécution (ms) dans le worker. */
+  everyMs: number;
+  description: string;
+}
+
+/** Remplace les Edge Functions planifiées ; chaque job est aussi exécutable via POST /admin/jobs/:name/run. */
+@Injectable()
+export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
+  readonly definitions: JobDefinition[] = [
+    { name: 'consultations.tick', everyMs: 5 * 60_000, description: 'cleanup_expired_payment_slots(), request_consultation_confirmation(), auto_confirm_consultations() (ex schedule-consultation-tasks)' },
+    { name: 'payments.sync', everyMs: 10 * 60_000, description: 'Resynchronise les paiements ouverts depuis FedaPay (ex auto-sync-pending-payments)' },
+    { name: 'payments.cleanup', everyMs: 15 * 60_000, description: 'Annule les paiements bloqués et libère les rendez-vous (ex cleanup-stuck-payments)' },
+  ];
+
+  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService) {}
+
+  /** Verrou consultatif PostgreSQL : un seul exécutant par job, même avec plusieurs workers. */
+  async run(name: JobName, options: Record<string, unknown> = {}) {
+    const lockKey = hashKey(name);
+    const startedAt = Date.now();
+    return this.database.runAs(SERVICE_CONTEXT, async (trx) => {
+      const lock = (await sql<{ ok: boolean }>`select pg_try_advisory_xact_lock(${lockKey}) as ok`.execute(trx)).rows[0]?.ok;
+      if (!lock) return { job: name, skipped: true, reason: 'already_running' };
+      let result: unknown;
+      switch (name) {
+        case 'consultations.tick': {
+          await sql`select cleanup_expired_payment_slots()`.execute(trx);
+          await sql`select request_consultation_confirmation()`.execute(trx);
+          await sql`select auto_confirm_consultations()`.execute(trx);
+          const rows = await trx.selectFrom('appointments').select(['status']).where('status', 'in', ['pending_payment', 'awaiting_confirmation', 'cancelled_unpaid']).execute();
+          result = { pending_payment: rows.filter((r) => r.status === 'pending_payment').length, awaiting_confirmation: rows.filter((r) => r.status === 'awaiting_confirmation').length, cancelled_unpaid: rows.filter((r) => r.status === 'cancelled_unpaid').length };
+          break;
+        }
+        case 'payments.sync':
+          result = await this.payments.syncStalePayments(typeof options.staleMinutes === 'number' ? options.staleMinutes : undefined);
+          break;
+        case 'payments.cleanup':
+          result = await this.payments.cleanupStuckPayments(typeof options.expirationMinutes === 'number' ? options.expirationMinutes : undefined, options.dryRun === true);
+          break;
+      }
+      this.logger.log(`job ${name} terminé en ${Date.now() - startedAt} ms`);
+      return { job: name, skipped: false, durationMs: Date.now() - startedAt, result };
+    });
+  }
+}
+
+function hashKey(s: string): number {
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return h;
+}

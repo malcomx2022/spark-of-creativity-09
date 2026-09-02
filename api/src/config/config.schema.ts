@@ -41,6 +41,20 @@ export const configSchema = z.object({
   S3_BUCKET_AVATARS: z.string().default('avatars'),
   S3_BUCKET_ATTACHMENTS: z.string().default('message-attachments'),
   FILE_URL_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+
+  // Paiement FedaPay (ex secrets des Edge Functions create-payment / payment-webhook)
+  FEDAPAY_PROVIDER: z.enum(['fedapay', 'fake']).default('fake'),
+  FEDAPAY_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
+  FEDAPAY_PUBLIC_KEY: z.string().optional(),
+  FEDAPAY_SECRET_KEY: z.string().optional(),
+  FEDAPAY_WEBHOOK_SECRET: z.string().optional(),
+  APP_BASE_URL: z.string().url().optional(),
+  PAYMENT_PENDING_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(2),
+  PAYMENT_SLOT_EXPIRY_MINUTES: z.coerce.number().int().positive().default(30),
+  PAYMENT_HOLD_PERIOD_DAYS: z.coerce.number().int().nonnegative().default(2),
+  PAYMENT_STALE_SYNC_MINUTES: z.coerce.number().int().positive().default(5),
+  PAYMENT_STUCK_EXPIRATION_MINUTES: z.coerce.number().int().positive().default(10),
+  JOBS_ENABLED: bool.default('true'),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -71,6 +85,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.STORAGE_PROVIDER === 'fake') {
     throw new Error('STORAGE_PROVIDER=fake est interdit en production');
+  }
+  if (parsed.data.FEDAPAY_PROVIDER === 'fedapay' && !(parsed.data.FEDAPAY_SECRET_KEY && parsed.data.FEDAPAY_PUBLIC_KEY && parsed.data.FEDAPAY_WEBHOOK_SECRET)) {
+    throw new Error('FEDAPAY_SECRET_KEY, FEDAPAY_PUBLIC_KEY et FEDAPAY_WEBHOOK_SECRET requis avec FEDAPAY_PROVIDER=fedapay');
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.FEDAPAY_PROVIDER === 'fake') {
+    throw new Error('FEDAPAY_PROVIDER=fake est interdit en production');
   }
   return parsed.data;
 }
