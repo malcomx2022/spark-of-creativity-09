@@ -43,7 +43,7 @@ echo "▶ Export du schéma consolidé"
 {
   echo "-- FICHIER GÉNÉRÉ par scripts/db/build-native-schema.sh — ne pas éditer à la main."
   echo "-- Schéma PostgreSQL natif Domicares = supabase/migrations/* rejoués + db/native/100 + 110."
-  echo "-- Pré-requis : db/native/010_roles.sql. Les policies RLS sont conservées ;"
+  echo "-- Pré-requis : db/native/010_roles.sql avant, db/native/020_grants.sql après. Les policies RLS sont conservées ;"
   echo "-- exécuter db/native/120_drop_rls_optional.sql pour les retirer (option B)."
   echo "-- Généré le $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
@@ -59,6 +59,7 @@ echo "▶ Validation : rejeu dans une base vierge ($CHECK_DB)"
 $PSQL -d postgres -c "DROP DATABASE IF EXISTS $CHECK_DB" -c "CREATE DATABASE $CHECK_DB"
 $PSQL -d "$CHECK_DB" -f "$ROOT/db/native/010_roles.sql"
 $PSQL -d "$CHECK_DB" -f "$OUT"
+$PSQL -d "$CHECK_DB" -f "$ROOT/db/native/020_grants.sql"
 psql -X -At -d "$CHECK_DB" <<'SQL'
 select 'tables='||count(*) from pg_tables where schemaname='public';
 select 'views='||count(*) from pg_views where schemaname='public';

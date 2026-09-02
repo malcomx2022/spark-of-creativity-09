@@ -18,6 +18,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 |---|---|
 | `db/native/000_supabase_compat_shim.sql` | Émule `auth.*`, `storage.*`, rôles Supabase pour rejouer les migrations sur un Postgres vierge |
 | `db/native/010_roles.sql` | Rôles `domicares_app`, `domicares_migrator`, `anon/authenticated/service_role` |
+| `db/native/020_grants.sql` | Privilèges de `domicares_app` (à exécuter après `schema.native.sql`) |
 | `db/native/100_to_native.sql` | Conversion : `public.users`, tokens, re-pointage des 31 FK, GUC `app.user_id`, suppression `storage`/`auth.users` |
 | `db/native/110_realtime_notify.sql` | Triggers `pg_notify` sur les 10 tables suivies en temps réel par le front |
 | `db/native/120_drop_rls_optional.sql` | Option B : retrait des 155 policies RLS (autorisation côté API) |
@@ -31,6 +32,14 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 Validation effectuée dans ce dépôt (PostgreSQL 16.13) : rejeu des 93 migrations, conversion,
 export d'une base « Supabase simulée » puis import natif : comptages identiques, mots de passe
 bcrypt toujours valides, 0 clé étrangère restante vers `auth.users`.
+
+## Back-end natif (`api/`)
+
+Étape 1 du chemin critique livrée : NestJS + Fastify + Kysely, authentification complète
+(inscription, connexion, refresh tournant, OTP Twilio, e-mail de vérification, mots de
+passe), `GET /api/auth/me` avec résolution de rôle identique au front, profil, garde
+`@AdminOnly`, worker `LISTEN table_changes`. Tests e2e sur base réelle
+(`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
 ## Ordre de lecture recommandé
 

@@ -1,0 +1,38 @@
+import fastifyCookie from '@fastify/cookie';
+import { Logger } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { APP_CONFIG, AppConfig } from './config/config.module';
+
+/** Construit l'application (utilisé par main.ts et par les tests e2e). */
+export async function createApp(): Promise<NestFastifyApplication> {
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true }), {
+    logger: process.env.NODE_ENV === 'test' ? ['error', 'warn'] : ['log', 'error', 'warn'],
+  });
+  const config = app.get<AppConfig>(APP_CONFIG);
+
+  // Le type du plugin est lié à la version de fastify embarquée par @fastify/cookie ; le cast
+  // évite un conflit de déclarations entre les deux copies de fastify (comportement identique).
+  await app.register(fastifyCookie as unknown as Parameters<typeof app.register>[0]);
+  app.setGlobalPrefix(config.API_PREFIX);
+  app.useGlobalFilters(new HttpExceptionFilter());
+  app.enableCors({
+    origin: config.CORS_ORIGINS.split(',').map((o) => o.trim()),
+    credentials: true,
+  });
+  app.enableShutdownHooks();
+
+  const doc = new DocumentBuilder()
+    .setTitle('Domicares API')
+    .setDescription("Back-end natif Domicares — remplace Supabase Auth, PostgREST et les Edge Functions")
+    .setVersion('0.1.0')
+    .addBearerAuth()
+    .build();
+  SwaggerModule.setup(`${config.API_PREFIX}/docs`, app, SwaggerModule.createDocument(app, doc));
+
+  Logger.log(`Documentation OpenAPI : /${config.API_PREFIX}/docs`, 'Bootstrap');
+  return app;
+}
