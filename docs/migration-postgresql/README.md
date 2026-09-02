@@ -41,7 +41,11 @@ passe), `GET /api/auth/me` avec résolution de rôle identique au front, profil,
 `@AdminOnly`, worker `LISTEN table_changes`. Étape 2 livrée : inscription praticien
 atomique avec documents KYC, recherche de praticiens disponibles, disponibilités /
 exceptions / tarifs, fichiers S3 (URLs pré-signées, journal d'accès), file KYC admin avec
-notifications e-mail, SMS et in-app. Tests e2e sur base réelle
+notifications e-mail, SMS et in-app. Étape 3 livrée : rendez-vous (demande, réponse du
+praticien avec demande de paiement ou réassignation, déroulement de la consultation),
+paiements FedaPay (client réel ou factice, frais et commission, ledger en partie double),
+webhook signé et idempotent, jobs planifiés dans le worker (expiration des créneaux,
+confirmation automatique, resynchronisation et nettoyage des paiements). Tests e2e sur base réelle
 (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
 ## Ordre de lecture recommandé
