@@ -357,6 +357,41 @@ export interface AddressesTable {
   created_at: GeneratedTimestamp;
 }
 
+export interface MessagesTable {
+  id: Generated<string>;
+  appointment_id: string;
+  sender_id: string;
+  content: string;
+  is_read: Generated<boolean | null>;
+  attachment_url: string | null;
+  attachment_type: string | null;
+  attachment_name: string | null;
+  attachment_size: number | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface NotificationPreferencesTable {
+  id: Generated<string>;
+  user_id: string;
+  email_enabled: Generated<boolean | null>;
+  sms_enabled: Generated<boolean | null>;
+  whatsapp_enabled: Generated<boolean | null>;
+  push_enabled: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface PushSubscriptionsTable {
+  id: Generated<string>;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface ServicesTable {
   id: Generated<string>;
   name: string;
@@ -404,6 +439,9 @@ export interface DB {
   system_config: SystemConfigTable;
   addresses: AddressesTable;
   services: ServicesTable;
+  messages: MessagesTable;
+  notification_preferences: NotificationPreferencesTable;
+  push_subscriptions: PushSubscriptionsTable;
   otp_attempts: OtpAttemptsTable;
 }
 
@@ -418,3 +456,5 @@ export type FileRow = Selectable<FilesTable>;
 export type Appointment = Selectable<AppointmentsTable>;
 export type AppointmentUpdate = Updateable<AppointmentsTable>;
 export type Payment = Selectable<PaymentsTable>;
+export type Message = Selectable<MessagesTable>;
+export type Notification = Selectable<NotificationsTable>;

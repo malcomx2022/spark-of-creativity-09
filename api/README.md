@@ -2,8 +2,9 @@
 
 Back-end qui remplace Supabase Auth, PostgREST et les Edge Functions. Chemin critique de
 `docs/migration-postgresql/03-RETRO-INGENIERIE.md` §8 : étape 1 **authentification, profil,
-rôles**, étape 2 **praticiens, fichiers, KYC** et étape 3 **rendez-vous, paiements FedaPay,
-webhook, jobs planifiés** livrées.
+rôles**, étape 2 **praticiens, fichiers, KYC**, étape 3 **rendez-vous, paiements FedaPay,
+webhook, jobs planifiés** et étape 4 **messagerie, notifications, temps réel Socket.IO,
+push Web** livrées.
 
 ## Ce qui est implémenté
 
@@ -33,6 +34,12 @@ webhook, jobs planifiés** livrées.
 | `POST /api/webhooks/fedapay` | Edge Function `payment-webhook` (HMAC-SHA256, idempotence `webhook_events`, ledger, notifications) |
 | `POST /api/admin/payments/simulate-webhook`, `POST /api/admin/payments/:id/sync` | Edge Function `simulate-webhook` (client factice) |
 | `GET /api/admin/jobs`, `POST /api/admin/jobs/:name/run` | Edge Functions `schedule-consultation-tasks`, `auto-sync-pending-payments`, `cleanup-stuck-payments` (exécutées par le worker toutes les 5 / 10 / 15 min) |
+| `GET /api/conversations`, `GET /api/conversations/unread-count` | `useConversations` (rendez-vous confirmés/terminés, dernier message, non-lus) |
+| `GET/POST /api/conversations/:appointmentId/messages`, `POST …/read` | `useMessages` (table `messages`, pièces jointes via `POST /api/files/upload-url` dossier `message-attachments`, notification push au destinataire) |
+| `GET /api/notifications[?unreadOnly]`, `GET …/unread-count`, `POST …/:id/read`, `POST …/read-all`, `DELETE …/:id` | `useNotifications` |
+| `GET/PUT /api/notifications/preferences` | `notification_preferences` (e-mail, SMS, WhatsApp, push) |
+| `GET /api/push/vapid-public-key`, `POST/DELETE /api/push/subscriptions` | `src/lib/push-notifications.ts` (clé VAPID en dur remplacée) + table `push_subscriptions` |
+| WebSocket Socket.IO `/socket.io` | Supabase Realtime `postgres_changes` (événement `change`) et canal presence `typing` |
 | `GET /api/health`, `GET /api/docs` | — |
 
 Autorisation : `JwtAuthGuard` (Bearer ou cookie) et `@AdminOnly('finance', …)` qui
@@ -71,7 +78,28 @@ Soldes praticien : ils sont recalculés par le trigger `trigger_update_balance_o
 combinée au trigger, cette fonction doublait le montant en attente (défaut hérité de la
 version Supabase, compensé alors par `repair-balances`).
 
+## Temps réel, notifications et push (étape 4)
+
+- **Socket.IO dans le processus API** (`RealtimeGateway`). Le client se connecte avec
+  `io(url, { auth: { token: accessToken } })` ; il est placé dans les rooms `user:<id>`,
+  `practitioner:<id>` (si praticien) et `admin` (si rôle admin), puis reçoit `ready`.
+  `subscribe:appointment { appointmentId }` (contrôle d'accès identique à la messagerie) donne
+  accès à la room `appointment:<id>` et à l'indicateur `typing`.
+- Les triggers `db/native/110_realtime_notify.sql` publient sur `LISTEN table_changes` ;
+  la passerelle relaie chaque événement `{ table, op, id, user_id, patient_id,
+  practitioner_id, appointment_id, status, at }` vers les rooms concernées (événement
+  `change`). Le front remplace `supabase.channel(...).on('postgres_changes', …)` par
+  `socket.on('change', e => e.table === '…' && refetch())`.
+- `REALTIME_ENABLED=false` désactive la passerelle (le worker le force : il n'exécute que
+  les jobs). Derrière Caddy, `/socket.io/*` est routé vers l'API.
+- **Notifications** : `DispatchService` reprend `_shared/notifications.ts` (ligne
+  `notifications` + e-mail + SMS + push selon `notification_preferences`). La messagerie
+  n'envoie qu'in-app + push, comme le comportement Supabase.
+- **Push Web** : `PUSH_PROVIDER=webpush` avec `WEB_PUSH_PUBLIC_KEY` / `WEB_PUSH_PRIVATE_KEY`
+  (`npx web-push generate-vapid-keys`) ; abonnements expirés (404/410) supprimés
+  automatiquement. `PUSH_PROVIDER=console` en développement (interdit en production).
+
 ## Prochaines étapes (ordre du chemin critique)
 
-4. Messaging + Notifications + Realtime (Socket.IO branché sur `worker.ts`) + Push
-5. GroupSessions, Finance, Admin — 6. Support, disputes, audit, stats
+5. GroupSessions, Finance (payouts, remboursements), Admin
+6. Support, disputes, audit, stats

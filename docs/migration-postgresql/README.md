@@ -45,7 +45,11 @@ notifications e-mail, SMS et in-app. Étape 3 livrée : rendez-vous (demande, r�
 praticien avec demande de paiement ou réassignation, déroulement de la consultation),
 paiements FedaPay (client réel ou factice, frais et commission, ledger en partie double),
 webhook signé et idempotent, jobs planifiés dans le worker (expiration des créneaux,
-confirmation automatique, resynchronisation et nettoyage des paiements). Tests e2e sur base réelle
+confirmation automatique, resynchronisation et nettoyage des paiements). Étape 4 livrée :
+messagerie liée aux rendez-vous (pièces jointes S3), notifications in-app avec préférences,
+abonnements push Web (VAPID) et passerelle Socket.IO dans l'API qui relaie `LISTEN
+table_changes` vers les rooms utilisateur / praticien / admin / rendez-vous (remplace Supabase
+Realtime). Tests e2e sur base réelle
 (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
 ## Ordre de lecture recommandé
