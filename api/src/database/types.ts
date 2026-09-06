@@ -403,6 +403,179 @@ export interface ServicesTable {
   created_at: GeneratedTimestamp;
 }
 
+export type GroupSessionStatus = 'planifiee' | 'confirmee' | 'annulee' | 'terminee';
+export type GroupSessionType = 'individuelle' | 'duo' | 'groupe';
+export type ParticipantPaymentStatus = 'pending' | 'paid' | 'refunded';
+
+export interface GroupSessionsTable {
+  id: Generated<string>;
+  coach_id: string;
+  session_name: string;
+  session_type: GroupSessionType;
+  max_participants: Generated<number | null>;
+  min_participants: Generated<number | null>;
+  current_participants: Generated<number | null>;
+  scheduled_date: ColumnType<Date | string, string, string>;
+  start_time: string;
+  end_time: string;
+  price_per_person: number;
+  location: string;
+  status: Generated<GroupSessionStatus | null>;
+  description: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface GroupSessionParticipantsTable {
+  id: Generated<string>;
+  session_id: string;
+  patient_id: string;
+  payment_status: Generated<ParticipantPaymentStatus | null>;
+  joined_at: GeneratedTimestamp;
+}
+
+export type PractitionerPayoutStatus = 'planned' | 'sent' | 'completed' | 'failed';
+export type PayoutBatchStatus = 'queued' | 'processing' | 'sent' | 'failed' | 'partially_sent';
+export type PayoutMethod = 'mtn' | 'orange' | 'moov' | 'bank';
+
+export interface PractitionerPayoutsTable {
+  id: Generated<string>;
+  practitioner_id: string;
+  amount: number;
+  currency: Generated<string | null>;
+  payment_method: string;
+  account_details: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  status: Generated<PractitionerPayoutStatus | null>;
+  period_start: ColumnType<Date | string, string, string>;
+  period_end: ColumnType<Date | string, string, string>;
+  created_at: GeneratedTimestamp;
+  processed_at: Timestamp | null;
+  batch_id: string | null;
+  net_amount: number | null;
+  commission_amount: number | null;
+  fees_amount: number | null;
+  transaction_ids: string[] | null;
+}
+
+export interface PayoutBatchesTable {
+  id: Generated<string>;
+  created_by: string;
+  batch_date: ColumnType<Date | string, string | undefined, string>;
+  payment_method: string;
+  status: Generated<PayoutBatchStatus>;
+  total_amount: Generated<number>;
+  practitioners_count: Generated<number>;
+  statement_url: string | null;
+  processed_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface PayoutPaymentsTable {
+  id: Generated<string>;
+  payout_id: string;
+  payment_id: string;
+  amount_included: number;
+  created_at: GeneratedTimestamp;
+}
+
+export interface PaymentRefundsTable {
+  id: Generated<string>;
+  payment_id: string;
+  refund_amount: number;
+  refund_reason: string | null;
+  refunded_by: string;
+  provider_refund_id: string | null;
+  status: Generated<string>;
+  created_at: GeneratedTimestamp;
+  processed_at: Timestamp | null;
+}
+
+export interface PractitionerPaymentInfoTable {
+  id: Generated<string>;
+  practitioner_id: string;
+  payment_method: PayoutMethod;
+  phone_number: string | null;
+  bank_account_number: string | null;
+  bank_name: string | null;
+  account_holder_name: string;
+  is_verified: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface PaymentReconciliationsTable {
+  id: Generated<string>;
+  payment_id: string | null;
+  old_status: string;
+  new_status: string;
+  fedapay_status: string;
+  fedapay_transaction_data: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  reconciliation_type: 'status_mismatch' | 'manual' | 'webhook_replay';
+  reconciled_by: string | null;
+  reconciled_at: GeneratedTimestamp;
+  notes: string | null;
+}
+
+export interface ReconciliationReportsTable {
+  id: Generated<string>;
+  created_at: GeneratedTimestamp;
+  created_by: string | null;
+  period_start: Timestamp;
+  period_end: Timestamp;
+  status: Generated<string>;
+  total_fedapay_transactions: Generated<number>;
+  total_db_payments: Generated<number>;
+  matched_count: Generated<number>;
+  missing_in_db_count: Generated<number>;
+  missing_in_fedapay_count: Generated<number>;
+  amount_mismatch_count: Generated<number>;
+  status_mismatch_count: Generated<number>;
+  total_amount_discrepancy: Generated<number>;
+  anomalies: ColumnType<unknown, string | null, string | null>;
+  recommendations: ColumnType<unknown, string | null, string | null>;
+  completed_at: Timestamp | null;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AdminAuditLogsTable {
+  id: Generated<string>;
+  admin_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  details: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  ip_address: string | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface SearchActivityLogsTable {
+  id: Generated<string>;
+  user_id: string | null;
+  session_id: string;
+  action_type: string;
+  practitioner_id: string | null;
+  search_filters: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  metadata: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface ReviewsTable {
+  id: Generated<string>;
+  appointment_id: string;
+  patient_id: string;
+  practitioner_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: GeneratedTimestamp;
+  is_hidden: Generated<boolean | null>;
+  moderation_reason: string | null;
+  moderated_by: string | null;
+  moderated_at: Timestamp | null;
+}
+
 export interface OtpAttemptsTable {
   id: Generated<string>;
   phone_number: string;
@@ -443,6 +616,18 @@ export interface DB {
   notification_preferences: NotificationPreferencesTable;
   push_subscriptions: PushSubscriptionsTable;
   otp_attempts: OtpAttemptsTable;
+  group_sessions: GroupSessionsTable;
+  group_session_participants: GroupSessionParticipantsTable;
+  practitioner_payouts: PractitionerPayoutsTable;
+  payout_batches: PayoutBatchesTable;
+  payout_payments: PayoutPaymentsTable;
+  payment_refunds: PaymentRefundsTable;
+  practitioner_payment_info: PractitionerPaymentInfoTable;
+  payment_reconciliations: PaymentReconciliationsTable;
+  reconciliation_reports: ReconciliationReportsTable;
+  admin_audit_logs: AdminAuditLogsTable;
+  search_activity_logs: SearchActivityLogsTable;
+  reviews: ReviewsTable;
 }
 
 export type User = Selectable<UsersTable>;
@@ -458,3 +643,7 @@ export type AppointmentUpdate = Updateable<AppointmentsTable>;
 export type Payment = Selectable<PaymentsTable>;
 export type Message = Selectable<MessagesTable>;
 export type Notification = Selectable<NotificationsTable>;
+export type GroupSession = Selectable<GroupSessionsTable>;
+export type GroupSessionParticipant = Selectable<GroupSessionParticipantsTable>;
+export type PractitionerPayout = Selectable<PractitionerPayoutsTable>;
+export type PayoutBatch = Selectable<PayoutBatchesTable>;
