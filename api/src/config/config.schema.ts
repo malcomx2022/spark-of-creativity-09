@@ -55,6 +55,14 @@ export const configSchema = z.object({
   PAYMENT_STALE_SYNC_MINUTES: z.coerce.number().int().positive().default(5),
   PAYMENT_STUCK_EXPIRATION_MINUTES: z.coerce.number().int().positive().default(10),
   JOBS_ENABLED: bool.default('true'),
+
+  // Push Web (VAPID) : webpush | console
+  PUSH_PROVIDER: z.enum(['webpush', 'console']).default('console'),
+  WEB_PUSH_PUBLIC_KEY: z.string().optional(),
+  WEB_PUSH_PRIVATE_KEY: z.string().optional(),
+  WEB_PUSH_EMAIL: z.string().default('mailto:admin@domicares.life'),
+  // Temps réel (Socket.IO + LISTEN table_changes)
+  REALTIME_ENABLED: bool.default('true'),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -91,6 +99,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.FEDAPAY_PROVIDER === 'fake') {
     throw new Error('FEDAPAY_PROVIDER=fake est interdit en production');
+  }
+  if (parsed.data.PUSH_PROVIDER === 'webpush' && !(parsed.data.WEB_PUSH_PUBLIC_KEY && parsed.data.WEB_PUSH_PRIVATE_KEY)) {
+    throw new Error('WEB_PUSH_PUBLIC_KEY et WEB_PUSH_PRIVATE_KEY requis avec PUSH_PROVIDER=webpush');
   }
   return parsed.data;
 }

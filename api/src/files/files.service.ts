@@ -79,7 +79,15 @@ export class FilesService {
         .select(['id_document_url', 'license_document_url', 'insurance_document_url', 'image'])
         .where('user_id', '=', userId)
         .executeTakeFirst();
-      return !!p && [p.id_document_url, p.license_document_url, p.insurance_document_url, p.image].includes(filePath);
+      if (p && [p.id_document_url, p.license_document_url, p.insurance_document_url, p.image].includes(filePath)) return true;
+      // Pièce jointe de messagerie : le destinataire (patient ou praticien du rendez-vous) y a accès.
+      const msg = await trx.selectFrom('messages').select('appointment_id').where('attachment_url', '=', filePath).executeTakeFirst();
+      if (!msg) return false;
+      const a = await trx.selectFrom('appointments').select(['patient_id', 'practitioner_id']).where('id', '=', msg.appointment_id).executeTakeFirst();
+      if (!a) return false;
+      if (a.patient_id === userId) return true;
+      const pr = await trx.selectFrom('practitioners').select('user_id').where('id', '=', a.practitioner_id).executeTakeFirst();
+      return pr?.user_id === userId;
     });
     if (!allowed) throw new ForbiddenException('Accès non autorisé à ce fichier');
 

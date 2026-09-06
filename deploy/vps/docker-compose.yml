@@ -2,8 +2,9 @@
 # Domicares — stack VPS PostgreSQL natif (production mono-nœud)
 #   caddy     : reverse proxy + TLS Let's Encrypt automatique
 #   web       : front Vite/React buildé, servi par nginx
-#   api       : back-end (NestJS) — remplace les 46 Edge Functions Supabase
-#   worker    : tâches planifiées + relais LISTEN/NOTIFY → WebSocket
+#   api       : back-end (NestJS) — remplace les 46 Edge Functions Supabase + Socket.IO
+#                (relais LISTEN/NOTIFY → WebSocket, à la place de Supabase Realtime)
+#   worker    : tâches planifiées (jobs) — REALTIME_ENABLED forcé à false
 #   postgres  : PostgreSQL 16 (schéma db/native)
 #   redis     : files BullMQ, cache OTP/rate-limit, adapter Socket.IO
 #   minio     : stockage S3 compatible (ou utiliser Wasabi : supprimer ce service)
