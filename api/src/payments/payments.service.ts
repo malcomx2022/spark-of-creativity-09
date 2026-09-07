@@ -195,6 +195,15 @@ export class PaymentsService {
     return (await trx.selectFrom('appointments').select('practitioner_id').where('id', '=', appointmentId).executeTakeFirst())?.practitioner_id ?? null;
   }
 
+  /** Historique des tentatives (PaymentAttemptsHistory), limité au propriétaire. */
+  listAttempts(userId: string, appointmentId?: string) {
+    return this.database.runAs({ role: 'service_role', userId }, (trx) => {
+      let q = trx.selectFrom('payment_attempts').selectAll().where('user_id', '=', userId);
+      if (appointmentId) q = q.where('appointment_id', '=', appointmentId);
+      return q.orderBy('created_at', 'desc').limit(100).execute();
+    });
+  }
+
   async listOwn(userId: string, q: ListPaymentsQuery) {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const practitioner = await trx.selectFrom('practitioners').select('id').where('user_id', '=', userId).executeTakeFirst();

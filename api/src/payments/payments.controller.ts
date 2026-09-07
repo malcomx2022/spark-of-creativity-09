@@ -38,6 +38,14 @@ export class PaymentsController {
     return this.payments.listOwn(user.id, q);
   }
 
+  @Get('attempts')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Tentatives de paiement de l’utilisateur (ex lecture directe de payment_attempts)' })
+  attempts(@CurrentUser() user: AuthenticatedUser, @Query('appointmentId') appointmentId?: string) {
+    return this.payments.listAttempts(user.id, appointmentId);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

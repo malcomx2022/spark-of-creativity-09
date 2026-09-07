@@ -65,6 +65,8 @@ export const configSchema = z.object({
   REALTIME_ENABLED: bool.default('true'),
   // Chiffrement des numéros Mobile Money enregistrés (ex secure-phone) : clé AES-256-GCM en base64 (32 octets)
   PHONE_ENCRYPTION_KEY: z.string().optional(),
+  /** Jeton public Mapbox exposé au front par GET /config/public (ex Edge Function get-mapbox-token). */
+  MAPBOX_TOKEN: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
