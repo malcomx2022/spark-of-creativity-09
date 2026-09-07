@@ -10,7 +10,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -53,7 +53,7 @@ const OG_IMAGE_URL = `${SITE_URL}/og-image.jpg`;
 
 const Index = () => {
   const navigate = useNavigate();
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const { data: enabledFeatures } = useQuery<Record<string, boolean>>({

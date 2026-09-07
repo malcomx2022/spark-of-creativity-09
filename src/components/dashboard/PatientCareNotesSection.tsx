@@ -11,7 +11,7 @@ import {
   Calendar,
   User
 } from 'lucide-react';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePatientCareNotes } from '@/hooks/usePatientCareNotes';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -35,7 +35,7 @@ interface CareNote {
 }
 
 export function PatientCareNotesSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [page, setPage] = useState(1);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [selectedNote, setSelectedNote] = useState<CareNote | null>(null);

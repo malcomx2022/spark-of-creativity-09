@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useSupabaseUser } from './useSupabaseUser';
+import { useAuthUser } from './useAuthUser';
 
 export type SearchActionType = 
   | 'view_search_page'
@@ -35,7 +35,7 @@ function getOrCreateSessionId(): string {
 }
 
 export function useSearchActivityLog() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const sessionIdRef = useRef<string>(getOrCreateSessionId());
 
   // Mettre à jour le session ID si l'utilisateur se connecte

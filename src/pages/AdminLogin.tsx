@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage } from "@/lib/api";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -22,46 +22,36 @@ export default function AdminLogin() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: formData.email,
-      password: formData.password,
-    });
-
-    if (error) {
+    try {
+      await auth.signInWithPassword({ email: formData.email, password: formData.password });
+    } catch (error) {
       toast({
         title: "Erreur lors de la connexion",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive"
       });
       setIsSubmitting(false);
       return;
     }
-    
-    if (data.user) {
-      // Vérifier le rôle admin avant redirection
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
 
-      if (!roleData?.role) {
-        toast({
-          title: "Accès refusé",
-          description: "Ce compte n'a pas les privilèges administrateur.",
-          variant: "destructive"
-        });
-        await supabase.auth.signOut();
-        setIsSubmitting(false);
-        return;
-      }
-
+    // Vérifier le rôle admin avant redirection (rôles user_roles résolus par l'API)
+    const me = await auth.me({ force: true });
+    if (!me || me.adminRoles.length === 0) {
       toast({
-        title: "Connexion réussie !",
-        description: "Bienvenue sur le tableau de bord administrateur.",
+        title: "Accès refusé",
+        description: "Ce compte n'a pas les privilèges administrateur.",
+        variant: "destructive"
       });
-      navigate("/admin");
+      await auth.signOut();
+      setIsSubmitting(false);
+      return;
     }
+
+    toast({
+      title: "Connexion réussie !",
+      description: "Bienvenue sur le tableau de bord administrateur.",
+    });
+    navigate("/admin");
 
     setIsSubmitting(false);
   };

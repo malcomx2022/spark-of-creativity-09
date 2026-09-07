@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +36,7 @@ interface TriageHistoryProps {
 }
 
 export function TriageHistory({ open, onOpenChange }: TriageHistoryProps) {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
 
   const [urgencyFilter, setUrgencyFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'score_desc' | 'score_asc'>('date_desc');

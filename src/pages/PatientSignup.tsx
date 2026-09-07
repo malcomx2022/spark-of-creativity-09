@@ -10,10 +10,10 @@ import { ArrowLeft, User, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage, isApiError, type AuthSession, type AuthUser } from "@/lib/api";
 import { completePatientOnboarding, type PatientOnboardingPayload } from "@/lib/patient-onboarding";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";
@@ -101,7 +101,7 @@ export default function PatientSignup() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { data: user, isLoading } = useSupabaseUser();
+  const { data: user, isLoading } = useAuthUser();
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const termsDialogs = useTermsDialogs();
 
@@ -215,54 +215,38 @@ export default function PatientSignup() {
 
     // Inscription avec Supabase
     try {
-      // ✅ Vérifier si le téléphone est déjà utilisé
-      const { data: existingProfile, error: profileCheckError } = await supabase
-        .from('profiles')
-        .select('id, phone')
-        .eq('phone', formData.phone)
-        .maybeSingle();
-
-      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
-        // PGRST116 = not found (ce qui est bon)
-        throw profileCheckError;
-      }
-
-      if (existingProfile) {
-        // Téléphone déjà utilisé
-        toast({
-          title: "Téléphone déjà utilisé",
-          description: "Ce numéro de téléphone est déjà lié à un compte. Veuillez vous connecter ou utiliser un autre numéro.",
-          variant: "destructive",
-          action: (
-            <Button size="sm" onClick={() => navigate('/login')}>
-              Se connecter
-            </Button>
-          ),
-          duration: 10000,
-        });
-        setIsSubmitting(false);
-        return;
-      }
       // 1. Créer le compte utilisateur Supabase (auto-confirmé)
-      const { data: authData, error: authError } = await retryWithTimeout(
-        supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard/patient`,
-          data: {
-            full_name: `${formData.firstName} ${formData.lastName}`,
-            user_type: 'patient',
-            // ✅ Sauvegarder les données en backup au cas où edge function échoue
-            pending_onboarding: onboardingPayload
-          }
-        }
-      })
-      );
+      let authData: { user: AuthUser; session: AuthSession | null; requiresEmailVerification: boolean } | null = null;
+      let authError: Error | null = null;
+      try {
+        authData = await retryWithTimeout(
+          auth.signUp({
+            email: formData.email,
+            password: formData.password,
+            fullName: `${formData.firstName} ${formData.lastName}`,
+            phone: formData.phone,
+            userType: 'patient',
+            // ✅ Sauvegarder les données en backup dans les métadonnées au cas où la finalisation échoue
+            pendingOnboarding: onboardingPayload as unknown as Record<string, unknown>,
+          })
+        );
+      } catch (e) {
+        authError = e instanceof Error ? e : new Error(String(e));
+      }
 
       if (authError) {
         const normalizedMessage = authError.message?.toLowerCase() ?? '';
-        const isEmailAlreadyUsed = normalizedMessage.includes('already registered') || normalizedMessage.includes('already been registered');
+        const isEmailAlreadyUsed = normalizedMessage.includes('already registered') || normalizedMessage.includes('already been registered') || normalizedMessage.includes('existe déjà avec cette adresse');
+        const isPhoneAlreadyUsed = isApiError(authError, 409) && normalizedMessage.includes('téléphone');
+        if (isPhoneAlreadyUsed) {
+          toast({
+            title: "Téléphone déjà utilisé",
+            description: "Ce numéro de téléphone est déjà associé à un compte. Veuillez en utiliser un autre ou vous connecter.",
+            variant: "destructive"
+          });
+          setIsSubmitting(false);
+          return;
+        }
 
         toast({
           ...AUTH_MESSAGES.SIGNUP_ERROR,
@@ -275,7 +259,7 @@ export default function PatientSignup() {
         return;
       }
       
-      if (!authData.user) {
+      if (!authData?.user) {
         toast({
           ...AUTH_MESSAGES.SIGNUP_ERROR,
           description: "Échec de création du compte",
@@ -286,7 +270,7 @@ export default function PatientSignup() {
       }
 
       // Vérifier si l'email nécessite une confirmation
-      if (authData.user && !authData.user.confirmed_at && !authData.session) {
+      if (!authData.session) {
         // Les données d'onboarding sont déjà sauvegardées dans user_metadata lors du signUp
         // Pas besoin d'appeler updateUser car il n'y a pas de session active
         toast({
@@ -302,19 +286,13 @@ export default function PatientSignup() {
       // Si l'utilisateur est auto-confirmé et a une session, on continue
       const userId = authData.user.id;
 
-      // 2. Finaliser l'inscription via edge function centralisée
-      const { error: registrationError } = await retryWithTimeout(
-        supabase.functions.invoke('complete-user-registration',
-        {
-          body: {
-            userId,
-            data: {
-              userType: 'patient',
-              ...onboardingPayload
-            }
-          }
-        })
-      );
+      // 2. Finaliser l'inscription (profil, adresse, contact d'urgence, profil médical, CGU) via l'API
+      let registrationError: unknown = null;
+      try {
+        await completePatientOnboarding(userId, onboardingPayload);
+      } catch (e) {
+        registrationError = e;
+      }
 
       if (registrationError) {
         if (import.meta.env.DEV) {
@@ -350,11 +328,9 @@ export default function PatientSignup() {
       }
 
       // ✅ Finalisation réussie : nettoyer le pending_onboarding
-      await supabase.auth.updateUser({
-        data: {
-          pending_onboarding: null,
-          patient_onboarding_completed: true
-        }
+      await auth.updateMetadata({
+        pending_onboarding: null,
+        patient_onboarding_completed: true
       });
 
       // Nettoyer les données de récupération localStorage
@@ -396,16 +372,18 @@ export default function PatientSignup() {
   const handleRetryFinalization = async (userId: string, payload: any, email: string) => {
     setIsSubmitting(true);
 
-    const { error } = await withTimeout(
-      supabase.functions.invoke('complete-user-registration', {
-        body: { userId, data: { userType: 'patient', ...payload } }
-      })
-    );
+    let error: unknown = null;
+    try {
+      await completePatientOnboarding(userId, payload as PatientOnboardingPayload);
+      await auth.updateMetadata({ pending_onboarding: null, patient_onboarding_completed: true });
+    } catch (e) {
+      error = e;
+    }
 
     if (error) {
       toast({
         title: "Échec du retry",
-        description: "Veuillez vous déconnecter et vous reconnecter pour réessayer",
+        description: errorMessage(error, "Veuillez vous déconnecter et vous reconnecter pour réessayer"),
         variant: "destructive"
       });
     } else {

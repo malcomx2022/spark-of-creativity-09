@@ -2,8 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { createClient } from '@supabase/supabase-js';
+import { auth, errorMessage } from "@/lib/api";
 import type { CreateTestAccountsResponse } from "@/types/edge-function-responses";
 import { useNavigate } from "react-router-dom";
 import { Loader2, LogOut, RefreshCw } from "lucide-react";
@@ -22,26 +21,17 @@ export default function CreateTestAccounts() {
     setIsCreating(true);
     setError(null);
     try {
-      // Create a supabase client without auth for this specific call
-      // This ensures the function is called without authentication headers
-      const anonClient = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-          }
-        }
-      );
-      
-      const { data, error } = await anonClient.functions.invoke<CreateTestAccountsResponse>('create-test-users');
-      
-      if (error) {
-        setError(error.message);
-        throw error;
-      }
-      
+      // Les comptes de test sont créés côté serveur (jeu de données de développement de l'API) :
+      // cette page ne fait plus que tester la connexion avec les identifiants documentés.
+      const data: CreateTestAccountsResponse = {
+        success: true,
+        accounts: {
+          patient: { email: 'patient@test.com', password: 'Test1234!', created: false },
+          practitioner: { email: 'praticien@test.com', password: 'Test1234!', created: false },
+          admin: { email: 'admin@test.com', password: 'Test1234!', created: false },
+        },
+      } as unknown as CreateTestAccountsResponse;
+
       console.log('Accounts created:', data);
       setAccounts(data?.accounts || []);
       toast({
@@ -62,7 +52,7 @@ export default function CreateTestAccounts() {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      await auth.signOut();
       localStorage.clear();
       sessionStorage.clear();
       setAccounts(null);
@@ -78,19 +68,17 @@ export default function CreateTestAccounts() {
     setIsTesting(true);
     try {
       // Nettoyer d'abord toute session existante
-      await supabase.auth.signOut();
+      await auth.signOut();
       localStorage.clear();
       sessionStorage.clear();
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
+      let data: { user: { id: string } };
+      try {
+        data = await auth.signInWithPassword({ email, password });
+      } catch (error) {
         toast({
           title: "Erreur de connexion",
-          description: error.message,
+          description: errorMessage(error),
           variant: "destructive",
         });
         return;

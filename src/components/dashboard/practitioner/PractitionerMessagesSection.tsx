@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { useConversations } from '@/hooks/useConversations';
 import { ConversationsList } from '@/components/messaging/ConversationsList';
 import { ChatInterface } from '@/components/messaging/ChatInterface';
@@ -15,7 +15,7 @@ import { MessageSquare, RefreshCw, HelpCircle, Search, Filter, Mail, MailOpen, U
 import { useQueryClient } from '@tanstack/react-query';
 
 export function PractitionerMessagesSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const queryClient = useQueryClient();
   const {
     data,

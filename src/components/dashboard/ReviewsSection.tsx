@@ -11,12 +11,12 @@ import {
   TrendingUp, MessageSquare
 } from 'lucide-react';
 import { usePatientReviews } from '@/hooks/useReviews';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export function ReviewsSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { data: reviews = [], isLoading, isFetching, refetch } = usePatientReviews(user?.id);
 
   const [ratingFilter, setRatingFilter] = useState<string>('all');

@@ -1,21 +1,11 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { auth, errorMessage } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Session } from '@supabase/supabase-js';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
 const OTP_PHONE_KEY = 'otp_last_phone';
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
-
-/**
- * Génère un token CSRF sécurisé pour les requêtes OTP
- */
-function generateCsrfToken(): string {
-  return crypto.randomUUID() + crypto.randomUUID(); // 72 caractères
-}
 
 interface SendOTPParams {
   phoneNumber: string;
@@ -27,41 +17,16 @@ interface VerifyOTPParams {
   code: string;
 }
 
-interface SendOTPResponse {
-  success: boolean;
-  message?: string;
-  status?: string;
-  error?: string;
-}
-
-interface VerifyOTPResponse {
-  success: boolean;
-  verified?: boolean;
-  is_new_user?: boolean;
-  session?: {
-    access_token: string;
-    refresh_token: string;
-    expires_at?: number;
-    expires_in?: number;
-  };
-  user?: {
-    id: string;
-    phone: string;
-    email?: string;
-  };
-  error?: string;
-}
-
 /**
- * Hook personnalisé pour l'authentification via OTP
- * 
+ * Hook personnalisé pour l'authentification via OTP (ex Edge Functions send-otp / verify-otp,
+ * désormais `POST /api/auth/otp/send` et `POST /api/auth/otp/verify`)
+ *
  * Fonctionnalités:
  * - Envoi d'OTP via SMS/WhatsApp/Appel
- * - Vérification d'OTP avec authentification automatique
+ * - Vérification d'OTP avec ouverture de session automatique
  * - Gestion des états (loading, error, success)
  * - Stockage du numéro de téléphone en localStorage
  * - Toasts de feedback utilisateur
- * - Mise à jour automatique de la session Supabase
  */
 export function useOTPAuth() {
   const { toast } = useToast();
@@ -72,28 +37,10 @@ export function useOTPAuth() {
   // Mutation pour envoyer l'OTP
   const sendOTPMutation = useMutation({
     mutationFn: async ({ phoneNumber, channel = 'sms' }: SendOTPParams) => {
-      const csrfToken = generateCsrfToken();
-      
-      const { data, error } = await withTimeout(
-        invokeEdgeFunctionWithRetry<SendOTPResponse>('send-otp', {
-          headers: {
-            'x-csrf-token': csrfToken,
-          },
-          body: {
-            phoneNumber,
-            channel
-          },
-        })
-      );
-
-      if (error) {
-        throw new Error(error.message || 'Failed to send OTP');
-      }
-
+      const data = await auth.sendOtp(phoneNumber, channel);
       if (!data?.success) {
-        throw new Error(data?.error || 'Failed to send OTP');
+        throw new Error(data?.message || "Impossible d'envoyer le code");
       }
-
       return data;
     },
     onSuccess: (data, variables) => {
@@ -101,7 +48,7 @@ export function useOTPAuth() {
       localStorage.setItem(OTP_PHONE_KEY, variables.phoneNumber);
       setPhoneStored(variables.phoneNumber);
 
-      const channelText = variables.channel === 'whatsapp' ? 'WhatsApp' : 
+      const channelText = variables.channel === 'whatsapp' ? 'WhatsApp' :
                          variables.channel === 'call' ? 'appel vocal' : 'SMS';
 
       toast({
@@ -109,59 +56,21 @@ export function useOTPAuth() {
         description: `Un code de vérification a été envoyé par ${channelText} au ${variables.phoneNumber}`,
       });
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       console.error('Error sending OTP:', error);
-      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: "Erreur d'envoi",
-        description: isTimeoutError ? error.message : (error.message || "Impossible d'envoyer le code. Veuillez réessayer."),
+        description: errorMessage(error, "Impossible d'envoyer le code. Veuillez réessayer."),
         variant: "destructive",
       });
     },
   });
 
-  // Mutation pour vérifier l'OTP
+  // Mutation pour vérifier l'OTP (la session est ouverte par l'API et conservée localement)
   const verifyOTPMutation = useMutation({
-    mutationFn: async ({ phoneNumber, code }: VerifyOTPParams) => {
-      const csrfToken = generateCsrfToken();
-      
-      const { data, error } = await withTimeout(
-        invokeEdgeFunctionWithRetry<VerifyOTPResponse>('verify-otp', {
-          headers: {
-            'x-csrf-token': csrfToken,
-          },
-          body: {
-            phoneNumber,
-            code
-          },
-        })
-      );
-
-      if (error) {
-        throw new Error(error.message || 'Failed to verify OTP');
-      }
-
-      if (!data?.success || !data?.verified) {
-        throw new Error(data?.error || 'Code invalide ou expiré');
-      }
-
-      return data;
-    },
-    onSuccess: async (data) => {
-      // Mettre à jour la session Supabase avec les tokens reçus
-      if (data.session) {
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
-
-        if (sessionError) {
-          console.error('Error setting session:', sessionError);
-          throw new Error('Échec de la connexion');
-        }
-      }
-
-      if (data.is_new_user) {
+    mutationFn: async ({ phoneNumber, code }: VerifyOTPParams) => auth.verifyOtp(phoneNumber, code),
+    onSuccess: (data) => {
+      if (data.isNewUser) {
         toast({
           title: "Bienvenue !",
           description: "Votre compte a été créé avec succès.",
@@ -173,12 +82,11 @@ export function useOTPAuth() {
         });
       }
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       console.error('Error verifying OTP:', error);
-      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: "Code invalide",
-        description: isTimeoutError ? error.message : (error.message || "Le code est invalide ou a expiré. Veuillez réessayer."),
+        description: errorMessage(error, "Le code est invalide ou a expiré. Veuillez réessayer."),
         variant: "destructive",
       });
     },
@@ -186,18 +94,18 @@ export function useOTPAuth() {
 
   return {
     // Fonctions
-    sendOTP: (phoneNumber: string, channel?: OTPChannel) => 
+    sendOTP: (phoneNumber: string, channel?: OTPChannel) =>
       sendOTPMutation.mutateAsync({ phoneNumber, channel }),
-    verifyOTP: (phoneNumber: string, code: string) => 
+    verifyOTP: (phoneNumber: string, code: string) =>
       verifyOTPMutation.mutateAsync({ phoneNumber, code }),
-    
+
     // États
     loading: sendOTPMutation.isPending || verifyOTPMutation.isPending,
     error: sendOTPMutation.error || verifyOTPMutation.error,
     sendingOTP: sendOTPMutation.isPending,
     verifyingOTP: verifyOTPMutation.isPending,
     phoneStored,
-    
+
     // Méthodes utilitaires
     clearStoredPhone: () => {
       localStorage.removeItem(OTP_PHONE_KEY);

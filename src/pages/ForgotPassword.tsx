@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -36,14 +36,18 @@ export default function ForgotPassword() {
     
     setIsSubmitting(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    // L'API envoie un lien `${FRONTEND_URL}/reset-password?token=…` (réponse identique que l'adresse existe ou non)
+    let error: unknown = null;
+    try {
+      await auth.forgotPassword(email.trim().toLowerCase());
+    } catch (e) {
+      error = e;
+    }
 
     if (error) {
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive"
       });
       setIsSubmitting(false);

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 
@@ -29,14 +29,11 @@ export function AddEmergencyContactDialog({ userId }: AddEmergencyContactDialogP
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('emergency_contacts')
-        .insert({
-          user_id: userId,
-          ...formData,
-        });
-
-      if (error) throw error;
+      await api.post('/medical/emergency-contacts', {
+        name: formData.name,
+        phone: formData.phone,
+        relationship: formData.relationship || null,
+      });
 
       toast({
         title: 'Contact ajouté',
@@ -44,6 +41,7 @@ export function AddEmergencyContactDialog({ userId }: AddEmergencyContactDialogP
       });
 
       queryClient.invalidateQueries({ queryKey: ['emergency-contacts', userId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-profile-full', userId] });
       setFormData({ name: '', phone: '', relationship: '' });
       setOpen(false);
     } catch (error) {

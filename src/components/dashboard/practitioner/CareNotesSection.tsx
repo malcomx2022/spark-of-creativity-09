@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote, useCareNotes, type CareNoteWithAppointment } from '@/hooks/useCareNotes';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,7 +25,7 @@ import { toast } from '@/hooks/use-toast';
 import { CareNotesConfirmDialog } from './CareNotesConfirmDialog';
 
 export default function CareNotesSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [shareWithPatient, setShareWithPatient] = useState(false);
   const [notesLimit, setNotesLimit] = useState(10);

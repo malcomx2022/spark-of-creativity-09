@@ -11,11 +11,11 @@ import { FileUploadInput } from "@/components/FileUploadInput";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { auth, type AuthSession, type AuthUser } from "@/lib/api";
+import { registerPractitioner, toPractitionerRegisterPayload } from "@/lib/practitioner-registration";
 import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
 import { uploadUserDocument } from "@/lib/file-upload";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
@@ -65,7 +65,7 @@ export default function PractitionerSignup() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStep, setSubmissionStep] = useState<'idle' | 'auth' | 'profile' | 'documents' | 'finalizing'>('idle');
-  const { data: user, isLoading } = useSupabaseUser();
+  const { data: user, isLoading } = useAuthUser();
   const termsDialogs = useTermsDialogs();
 
   const [formData, setFormData] = useState<SignupFormData>({
@@ -227,57 +227,10 @@ export default function PractitionerSignup() {
 
   // Vérification en temps réel du numéro de téléphone
   const checkPhoneAvailability = async (phone: string) => {
-    if (!phone || phone.length < 8) {
-      return;
-    }
-
-    setIsCheckingPhone(true);
-    
-    try {
-      // Vérifier dans profiles
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('phone', phone)
-        .maybeSingle();
-
-      if (profileData) {
-        setFieldErrors(prev => ({
-          ...prev,
-          phone: "Ce numéro est déjà utilisé par un autre utilisateur"
-        }));
-        setIsCheckingPhone(false);
-        return;
-      }
-
-      // Vérifier dans practitioners
-      const { data: practitionerData } = await supabase
-        .from('practitioners')
-        .select('id')
-        .eq('phone', phone)
-        .maybeSingle();
-
-      if (practitionerData) {
-        setFieldErrors(prev => ({
-          ...prev,
-          phone: "Ce numéro est déjà utilisé par un autre praticien"
-        }));
-      } else {
-        // Numéro disponible - enlever l'erreur si elle existe
-        setFieldErrors(prev => {
-          const newErrors = { ...prev };
-          if (newErrors.phone === "Ce numéro est déjà utilisé par un autre utilisateur" ||
-              newErrors.phone === "Ce numéro est déjà utilisé par un autre praticien") {
-            delete newErrors.phone;
-          }
-          return newErrors;
-        });
-      }
-    } catch (error) {
-      console.warn('Erreur vérification téléphone en temps réel:', error);
-    } finally {
-      setIsCheckingPhone(false);
-    }
+    // L'unicité du numéro (profiles + practitioners) est vérifiée par l'API à l'inscription
+    // (409 « Ce numéro de téléphone est déjà utilisé ») : plus de lecture directe des tables.
+    void phone;
+    setIsCheckingPhone(false);
   };
 
   const handleInputChange = (name: string, value: unknown) => {
@@ -514,10 +467,8 @@ export default function PractitionerSignup() {
     setIsSubmitting(true);
 
     try {
-      const retryResult = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
-        'create-practitioner-account',
-        { body: { userId, profileData, practitionerData, documents } }
-      );
+      void userId; // l'API rattache le praticien à l'utilisateur connecté
+      const retryResult = await registerPractitioner(toPractitionerRegisterPayload(profileData, practitionerData, documents));
 
       const { data: createResult, error: createError, details: resultDetails } = retryResult;
 
@@ -573,92 +524,25 @@ export default function PractitionerSignup() {
     setSubmissionStep('auth');
 
     try {
-      // ✅ Vérifier l'unicité du téléphone dans profiles ET practitioners AVANT inscription
-      let existingPhone = false;
-      try {
-        // Vérifier dans profiles (prioritaire car c'est là que le trigger check_phone_uniqueness vérifie)
-        const profileCheckResult = await withTimeout(
-          supabase
-            .from('profiles')
-            .select('id, full_name')
-            .eq('phone', formData.phone)
-            .maybeSingle(),
-          8000
-        );
-
-        if (profileCheckResult.error && profileCheckResult.error.code !== 'PGRST116') {
-          console.warn('Erreur vérification téléphone dans profiles:', profileCheckResult.error);
-        } else if (profileCheckResult.data) {
-          existingPhone = true;
-        }
-
-        // Vérifier aussi dans practitioners au cas où
-        if (!existingPhone) {
-          const practitionerCheckResult = await withTimeout(
-            supabase
-              .from('practitioners')
-              .select('id')
-              .eq('phone', formData.phone)
-              .maybeSingle(),
-            8000
-          );
-
-          if (practitionerCheckResult.error && practitionerCheckResult.error.code !== 'PGRST116') {
-            console.warn('Erreur vérification téléphone dans practitioners:', practitionerCheckResult.error);
-          } else if (practitionerCheckResult.data) {
-            existingPhone = true;
-          }
-        }
-      } catch (phoneCheckError) {
-        if (phoneCheckError instanceof NetworkTimeoutError) {
-          console.warn('Timeout lors de la vérification du téléphone, on continue quand même');
-        } else {
-          console.warn('Erreur réseau vérification téléphone:', phoneCheckError);
-        }
-      }
-
-      if (existingPhone) {
-        setFieldErrors(prev => ({
-          ...prev,
-          phone: "Ce numéro de téléphone est déjà utilisé"
-        }));
-        
-        toast({
-          title: "Numéro de téléphone déjà utilisé",
-          description: "Ce numéro de téléphone est déjà enregistré dans notre système. Veuillez en utiliser un autre ou vous connecter si c'est votre compte.",
-          variant: "destructive"
-        });
-        
-        const phoneInput = document.getElementById('phone');
-        if (phoneInput) {
-          phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          phoneInput.focus();
-        }
-
-        setIsSubmitting(false);
-        setSubmissionStep('idle');
-        return;
-      }
-
       // Déterminer le dashboard selon le type de praticien
       const practitionerTypeForSignup = professionToType[formData.profession as keyof typeof professionToType] ?? "autre";
       const dashboardPath = practitionerTypeForSignup === 'coach_sportif' ? '/dashboard/coach' : '/dashboard/practitioner';
 
-      const { data, error } = await withTimeout(
-        supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}${dashboardPath}`,
-          data: {
-            full_name: `${formData.firstName} ${formData.lastName}`.trim(),
-            user_type: "practitioner",
-            practitioner_type: practitionerTypeForSignup,
-            phone: formData.phone,
-          },
-        },
-      })
-      );
+      void dashboardPath;
+      let data: { user: AuthUser; session: AuthSession | null; requiresEmailVerification: boolean } | null = null;
+      let error: Error | null = null;
+      try {
+        data = await auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+          phone: formData.phone,
+          userType: "practitioner",
+          practitionerType: practitionerTypeForSignup,
+        });
+      } catch (e) {
+        error = e instanceof Error ? e : new Error(String(e));
+      }
 
       if (error) {
         let userMessage = "Une erreur est survenue lors de l'inscription";
@@ -667,7 +551,7 @@ export default function PractitionerSignup() {
 
         const errorMsg = error.message.toLowerCase();
 
-        if (errorMsg.includes('already registered') || errorMsg.includes('already been registered')) {
+        if (errorMsg.includes('already registered') || errorMsg.includes('already been registered') || errorMsg.includes('existe déjà avec cette adresse')) {
           userMessage = "Email déjà utilisé";
           userDescription = "Un compte existe déjà avec cet email. Veuillez vous connecter si c'est votre compte, ou utiliser un autre email.";
           errorField = 'email';
@@ -686,7 +570,13 @@ export default function PractitionerSignup() {
               emailInput.focus();
             }
           }, 100);
-        } else if (errorMsg.includes('password')) {
+        } else if (errorMsg.includes('téléphone') || errorMsg.includes('numéro')) {
+          userMessage = "Numéro de téléphone déjà utilisé ou invalide";
+          userDescription = error.message;
+          errorField = 'phone';
+          setFieldErrors(prev => ({ ...prev, phone: error?.message ?? "Numéro de téléphone invalide" }));
+          setTimeout(() => document.getElementById('phone')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+        } else if (errorMsg.includes('password') || errorMsg.includes('mot de passe')) {
           userMessage = "Mot de passe invalide";
           userDescription = "Le mot de passe doit contenir au moins 8 caractères avec lettres et chiffres.";
           errorField = 'password';
@@ -722,7 +612,7 @@ export default function PractitionerSignup() {
         return;
       }
 
-      if (!data.user) {
+      if (!data?.user) {
         throw new Error("Échec de création du compte");
       }
 
@@ -805,17 +695,19 @@ export default function PractitionerSignup() {
       setSubmissionStep('documents');
 
       // Appeler l'edge function transactionnelle
-      const edgeFunctionResult = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
-        'create-practitioner-account',
-        {
-          body: {
-            userId,
-            profileData,
-            practitionerData,
-            documents: documentsBase64,
-          }
-        }
-      );
+      // Sans session (confirmation d'e-mail exigée), le profil ne peut pas encore être créé :
+      // les données sont conservées pour /complete-registration après la première connexion.
+      if (!data.session) {
+        savePendingRegistration({ userId, email: formData.email, userType: 'practitioner', practitionerType, profileData, practitionerData, documents: documentsBase64 });
+        toast({
+          ...AUTH_MESSAGES.EMAIL_NEEDS_CONFIRMATION,
+          description: "Confirmez votre adresse e-mail puis connectez-vous pour finaliser votre profil praticien.",
+        });
+        navigateToEmailConfirmation(navigate, formData.email, 'practitioner');
+        return;
+      }
+
+      const edgeFunctionResult = await registerPractitioner(toPractitionerRegisterPayload(profileData, practitionerData, documentsBase64));
 
       const { data: createResult, error: createError, details: resultDetails } = edgeFunctionResult;
 
@@ -1010,36 +902,7 @@ export default function PractitionerSignup() {
 
       setSubmissionStep('finalizing');
 
-      // Finaliser l'inscription et envoyer notification via edge function centralisée
-      try {
-        const { data: completeResult, error: completeError } = await withTimeout(
-          supabase.functions.invoke('complete-user-registration', {
-          body: {
-            userId: userId,
-            data: {
-              userType: 'practitioner',
-              email: formData.email,
-              phone: formData.phone,
-              fullName: `${formData.firstName} ${formData.lastName}`
-            }
-          }
-        })
-        );
-        
-        if (completeError) {
-          if (import.meta.env.DEV) {
-            console.error('⚠️ Erreur notification (non bloquante):', completeError);
-          }
-        } else {
-          if (import.meta.env.DEV) {
-            console.log('✅ Notification envoyée avec succès');
-          }
-        }
-      } catch (notifError) {
-        if (import.meta.env.DEV) {
-          console.error('⚠️ Erreur notification (non bloquante):', notifError);
-        }
-      }
+      // La notification des administrateurs est envoyée par l'API lors de l'inscription.
 
       // ✅ Succès : rediriger vers la page de succès avec le message de validation
       toast({

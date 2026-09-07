@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2, Webhook, Search } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { useAdminStats } from "@/hooks/useAdminStats";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { useNotifications, useMarkNotificationAsRead } from "@/hooks/useNotifications";
 import { Badge } from "@/components/ui/badge";
 
@@ -33,7 +33,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { isAdmin, isLoading, role } = useIsAdmin();
   const { data: stats } = useAdminStats();
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const userId = user?.id;
   // P2 #20: Récupérer uniquement les notifications non lues pour éviter surcharge
   const { data: allNotifications = [] } = useNotifications(isAdmin ? userId : undefined);

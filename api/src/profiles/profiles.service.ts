@@ -27,9 +27,12 @@ export class ProfilesService {
       updated_at: new Date(),
     };
     try {
-      const profile = await this.database.runAs({ role: 'authenticated', userId }, (trx) =>
-        trx.updateTable('profiles').set(patch).where('id', '=', userId).returningAll().executeTakeFirst(),
-      );
+      const profile = await this.database.runAs({ role: 'authenticated', userId }, async (trx) => {
+        const row = await trx.updateTable('profiles').set(patch).where('id', '=', userId).returningAll().executeTakeFirst();
+        // Ex ProfileSection : la photo de profil est aussi celle de la fiche praticien.
+        if (row && dto.avatarUrl !== undefined) await trx.updateTable('practitioners').set({ image: dto.avatarUrl, updated_at: new Date() }).where('user_id', '=', userId).execute();
+        return row;
+      });
       if (!profile) throw new NotFoundException('Profil introuvable');
       return profile;
     } catch (err) {

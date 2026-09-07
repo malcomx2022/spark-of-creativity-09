@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // API NestJS locale (npm run start:dev dans api/) : même origine pour les cookies httpOnly
+    proxy: {
+      "/api": { target: process.env.VITE_DEV_API_TARGET || "http://localhost:3000", changeOrigin: true },
+      "/socket.io": { target: process.env.VITE_DEV_API_TARGET || "http://localhost:3000", ws: true, changeOrigin: true },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

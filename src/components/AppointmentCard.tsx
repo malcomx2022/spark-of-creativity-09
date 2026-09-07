@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, MapPin, User, FileText, Phone, Info, Copy, Check } from 'lucide-react';
 import type { Appointment } from '@/types/appointment';
 import { ContactDialog } from '@/components/ContactDialog';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDateFull } from '@/lib/date-utils';
 import { formatAmount } from '@/lib/payment-config';
@@ -43,7 +43,7 @@ interface AppointmentCardProps {
 }
 
 export function AppointmentCard({ appointment, userRole, onCancel, onConfirm, onReject, onComplete, onPaymentRequired, disabled = false }: AppointmentCardProps) {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [confirmAcceptOpen, setConfirmAcceptOpen] = useState(false);
   const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);

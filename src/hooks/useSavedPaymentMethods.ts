@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
-import { useSupabaseUser } from './useSupabaseUser';
+import { useAuthUser } from './useAuthUser';
 import { toast } from './use-toast';
 import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
@@ -27,7 +27,7 @@ function maskPhoneNumber(phone: string): string {
 }
 
 export function useSavedPaymentMethods() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const queryClient = useQueryClient();
 
   const encryptPhone = useCallback(async (phone: string): Promise<string> => {

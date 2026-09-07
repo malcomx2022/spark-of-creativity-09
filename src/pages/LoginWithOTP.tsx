@@ -7,10 +7,9 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useOTPAuth } from '@/hooks/useOTPAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/api';
 import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
 import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 import { useToast } from "@/hooks/use-toast";
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
@@ -33,18 +32,9 @@ export default function LoginWithOTP() {
 
   // Vérifier si l'utilisateur est déjà connecté
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await withTimeout(supabase.auth.getSession());
-        if (session) {
-          await redirectToDashboard();
-        }
-      } catch (error) {
-        // Silencieux - l'utilisateur n'est simplement pas connecté
-        console.error('Session check timeout:', error);
-      }
-    };
-    void checkSession();
+    if (auth.getSession()) {
+      void redirectToDashboard();
+    }
   }, [redirectToDashboard]);
 
   // Countdown pour le renvoi du code
@@ -190,6 +180,8 @@ export default function LoginWithOTP() {
                     <Label htmlFor="code">Code de vérification</Label>
                     <div className="flex justify-center">
                       <InputOTP
+                        id="code"
+                        aria-label="Code de vérification"
                         maxLength={6}
                         value={code}
                         onChange={(value) => setCode(value)}

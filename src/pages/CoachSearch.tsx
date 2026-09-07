@@ -22,7 +22,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePractitioners } from "@/hooks/usePractitioners";
 import { useGroupSessions } from "@/hooks/useGroupSessions";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { useCreateAppointment } from "@/hooks/useAppointments";
 import { NewAppointmentDialog } from "@/components/NewAppointmentDialog";
 import { RegisterSessionDialog } from "@/components/coach/RegisterSessionDialog";
@@ -33,7 +33,7 @@ import { toast } from "@/hooks/use-toast";
 
 export default function CoachSearch() {
   const navigate = useNavigate();
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [selectedZone, setSelectedZone] = useState<string>("all");
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
@@ -44,7 +44,7 @@ export default function CoachSearch() {
   const ITEMS_PER_PAGE = 6;
 
   const patientId = user?.id;
-  const patientName = (user?.user_metadata?.full_name as string) || user?.email || "Patient";
+  const patientName = (user?.metadata?.full_name as string) || user?.email || "Patient";
   
   const createAppointment = useCreateAppointment(patientId, patientName);
 

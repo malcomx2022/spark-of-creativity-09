@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/api";
 import { getDashboardPathFromAuth } from "@/lib/dashboardNavigation";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToLogin } from "@/lib/auth-navigation";
@@ -46,13 +46,10 @@ export default function VerifyOTP() {
     setAttempts(prev => prev + 1);
 
     try {
-      const verifyOptions = type === "sms" 
-        ? { phone, token: otp, type: 'sms' as const }
-        : { email, token: otp, type: 'email' as const };
-
-      const { error } = await supabase.auth.verifyOtp(verifyOptions);
-
-      if (error) throw error;
+      if (type !== "sms" || !phone) {
+        throw new Error("La vérification par e-mail n'est plus disponible : utilisez le lien reçu par e-mail.");
+      }
+      await auth.verifyOtp(phone, otp);
 
       toast(AUTH_MESSAGES.LOGIN_SUCCESS);
 
@@ -80,17 +77,10 @@ export default function VerifyOTP() {
     }
     
     try {
-      if (type === "sms") {
-        const { error } = await supabase.auth.signInWithOtp({ phone });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            emailRedirectTo: window.location.origin,
-          },
-        });
-        if (error) throw error;
+      if (type === "sms" && phone) {
+        await auth.sendOtp(phone, 'sms');
+      } else if (email) {
+        await auth.resendVerification(email);
       }
 
       setAttempts(0); // Réinitialiser les tentatives

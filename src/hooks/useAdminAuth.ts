@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/api';
 
 interface Admin {
   id: string;
@@ -12,41 +12,14 @@ export function useAdminAuth() {
   const { data: admin, isLoading, error } = useQuery<Admin | null>({
     queryKey: ['admin-auth'],
     queryFn: async () => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        return null;
+      const me = await auth.me();
+      if (!me) return null;
+      const fullName = me.profile?.full_name ?? (me.user.metadata?.full_name as string | undefined);
+      if (me.adminRoles.length > 0) {
+        return { id: me.user.id, email: me.user.email || '', full_name: fullName, role: me.adminRoles[0] };
       }
-
-      // Get admin role from user_roles table
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      // Get profile info
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (roleData) {
-        return {
-          id: user.id,
-          email: user.email || '',
-          full_name: profileData?.full_name,
-          role: roleData.role,
-        } as Admin;
-      }
-
       // Fallback: return user info if not in user_roles table
-      return {
-        id: user.id,
-        email: user.email || '',
-        full_name: profileData?.full_name || user.user_metadata?.full_name,
-      };
+      return { id: me.user.id, email: me.user.email || '', full_name: fullName };
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
