@@ -585,6 +585,8 @@ export interface ConsentsTable {
   is_accepted: Generated<boolean | null>;
   accepted_at: Timestamp | null;
   created_at: GeneratedTimestamp;
+  /** Ajoutée par db/native/130_fixes_heritage.sql : version de consent_versions acceptée. */
+  accepted_version: string | null;
 }
 
 export interface ConsentVersionsTable {

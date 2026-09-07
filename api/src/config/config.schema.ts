@@ -63,6 +63,8 @@ export const configSchema = z.object({
   WEB_PUSH_EMAIL: z.string().default('mailto:admin@domicares.life'),
   // Temps réel (Socket.IO + LISTEN table_changes)
   REALTIME_ENABLED: bool.default('true'),
+  // Chiffrement des numéros Mobile Money enregistrés (ex secure-phone) : clé AES-256-GCM en base64 (32 octets)
+  PHONE_ENCRYPTION_KEY: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -90,6 +92,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if (parsed.data.STORAGE_PROVIDER === 's3' && !(parsed.data.S3_ACCESS_KEY && parsed.data.S3_SECRET_KEY)) {
     throw new Error('S3_ACCESS_KEY et S3_SECRET_KEY requis avec STORAGE_PROVIDER=s3');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.PHONE_ENCRYPTION_KEY) {
+    throw new Error('PHONE_ENCRYPTION_KEY requis en production (moyens de paiement enregistrés)');
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.STORAGE_PROVIDER === 'fake') {
     throw new Error('STORAGE_PROVIDER=fake est interdit en production');

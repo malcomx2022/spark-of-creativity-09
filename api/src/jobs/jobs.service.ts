@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { sql } from 'kysely';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
+import { DisputesService } from '../disputes/disputes.service';
 import { FinanceService } from '../finance/finance.service';
 import { PaymentsService } from '../payments/payments.service';
 
-export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup' | 'funds.release' | 'webhooks.retry' | 'payments.reminders';
+export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup' | 'funds.release' | 'webhooks.retry' | 'payments.reminders' | 'disputes.sla';
 
 export interface JobDefinition {
   name: JobName;
@@ -25,9 +26,10 @@ export class JobsService {
     { name: 'funds.release', everyMs: 60 * 60_000, description: 'Libère les fonds retenus dont hold_until est dépassé (ex release-held-funds, horaire)' },
     { name: 'webhooks.retry', everyMs: 5 * 60_000, description: 'Rejoue les webhooks FedaPay en échec avec backoff exponentiel (ex retry-failed-webhooks)' },
     { name: 'payments.reminders', everyMs: 6 * 60 * 60_000, description: 'Rappelle les inscriptions aux séances de groupe en attente de paiement depuis plus de 24 h (ex send-payment-reminders)' },
+    { name: 'disputes.sla', everyMs: 60 * 60_000, description: 'Passe en priorité haute les litiges dont le délai de traitement est dépassé (ex check_overdue_disputes)' },
   ];
 
-  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService, private readonly finance: FinanceService) {}
+  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService, private readonly finance: FinanceService, private readonly disputes: DisputesService) {}
 
   /** Verrou consultatif PostgreSQL : un seul exécutant par job, même avec plusieurs workers. */
   async run(name: JobName, options: Record<string, unknown> = {}) {
@@ -60,6 +62,9 @@ export class JobsService {
           break;
         case 'payments.reminders':
           result = await this.finance.sendPaymentReminders();
+          break;
+        case 'disputes.sla':
+          result = await this.disputes.escalateOverdue();
           break;
       }
       this.logger.log(`job ${name} terminé en ${Date.now() - startedAt} ms`);
