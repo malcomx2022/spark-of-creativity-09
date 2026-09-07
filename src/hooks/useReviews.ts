@@ -29,6 +29,7 @@ interface MyReviewRow {
   created_at: string;
   is_hidden?: boolean | null;
   practitioner: { id: string; name: string; specialty: string } | null;
+  appointment: { id: string; specialty: string; date: string; practitioner_name: string } | null;
 }
 
 /** Avis du patient connecté (l'API déduit le patient du jeton ; `patientId` ne sert qu'à activer la requête). */
@@ -42,7 +43,6 @@ export function usePatientReviews(patientId?: string) {
       const data = await api.get<MyReviewRow[]>('/reviews/mine');
 
       // Transform data to match Review interface
-      // TODO(api): GET /reviews/mine ne renvoie pas la spécialité du rendez-vous (`appointment.specialty`).
       return (data || []).map((item) => ({
         id: item.id,
         patient_id: item.patient_id,
@@ -57,7 +57,7 @@ export function usePatientReviews(patientId?: string) {
               specialty: item.practitioner.specialty,
             }
           : undefined,
-        appointment: undefined,
+        appointment: item.appointment ? { specialty: item.appointment.specialty } : undefined,
       }));
     },
     enabled: !!patientId,
