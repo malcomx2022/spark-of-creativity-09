@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock, Trash2, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Filter, Search, ArrowUpDown, Wallet, AlertCircle, Loader2, Copy, Check } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import type { Payment } from '@/types/payment';
 import { useState, useMemo } from 'react';
 import { PaymentReceiptDialog } from '@/components/PaymentReceiptDialog';
@@ -63,7 +63,7 @@ const escapeCSV = (value: any): string => {
 };
 
 export function PaymentsSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const queryClient = useQueryClient();
 
   // Pagination

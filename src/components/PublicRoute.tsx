@@ -1,8 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import type { Session } from '@supabase/supabase-js';
 
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getDashboardPathFromAuth } from '@/lib/userRoleResolver';
 
@@ -23,76 +22,39 @@ interface PublicRouteProps {
 }
 
 /**
- * PublicRoute - Bloque l'accès aux routes publiques (inscription, login) 
+ * PublicRoute - Bloque l'accès aux routes publiques (inscription, login)
  * pour les utilisateurs déjà connectés et les redirige vers leur tableau de bord.
  */
 export default function PublicRoute({ children }: PublicRouteProps) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
+  const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>(() => (auth.getSession() ? 'loading' : 'unauthenticated'));
   const [redirectPath, setRedirectPath] = useState<string | null>(null);
   const location = useLocation();
-  const hasCheckedSession = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    const checkSession = async () => {
-      if (hasCheckedSession.current) return;
-      
-      const { data, error } = await supabase.auth.getSession();
-
-      if (!isMounted) return;
-
-      if (error) {
-        console.error('PublicRoute: Unable to retrieve session:', error);
-        setSession(null);
-        setStatus('unauthenticated');
-        return;
-      }
-
-      hasCheckedSession.current = true;
-      setSession(data.session ?? null);
-      
-      if (data.session) {
-        // Utilisateur connecté - déterminer où le rediriger
-        try {
-          const dashboardPath = await getDashboardPathFromAuth();
-          if (isMounted) {
-            setRedirectPath(dashboardPath);
-            setStatus('authenticated');
-          }
-        } catch (err) {
-          console.error('PublicRoute: Error getting dashboard path:', err);
-          if (isMounted) {
-            setRedirectPath('/');
-            setStatus('authenticated');
-          }
+    const resolveRedirect = async () => {
+      try {
+        const dashboardPath = await getDashboardPathFromAuth();
+        if (isMounted) {
+          setRedirectPath(dashboardPath);
+          setStatus('authenticated');
         }
-      } else {
-        setStatus('unauthenticated');
+      } catch (err) {
+        console.error('PublicRoute: Error getting dashboard path:', err);
+        if (isMounted) {
+          setRedirectPath('/');
+          setStatus('authenticated');
+        }
       }
     };
 
-    void checkSession();
+    if (auth.getSession()) void resolveRedirect();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    const unsubscribe = auth.onAuthStateChange((_event, nextSession) => {
       if (!isMounted) return;
-
-      setSession(nextSession ?? null);
-      
       if (nextSession) {
-        try {
-          const dashboardPath = await getDashboardPathFromAuth();
-          if (isMounted) {
-            setRedirectPath(dashboardPath);
-            setStatus('authenticated');
-          }
-        } catch {
-          if (isMounted) {
-            setRedirectPath('/');
-            setStatus('authenticated');
-          }
-        }
+        void resolveRedirect();
       } else {
         setStatus('unauthenticated');
         setRedirectPath(null);
@@ -101,7 +63,7 @@ export default function PublicRoute({ children }: PublicRouteProps) {
 
     return () => {
       isMounted = false;
-      authListener.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 

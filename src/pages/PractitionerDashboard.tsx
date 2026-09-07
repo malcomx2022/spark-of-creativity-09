@@ -20,7 +20,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
@@ -44,7 +44,7 @@ const LocationSection = lazy(() => import('@/components/dashboard/practitioner/L
 const DocumentsSection = lazy(() => import('@/components/dashboard/practitioner/DocumentsSection').then(m => ({ default: m.DocumentsSection })));
 
 export default function PractitionerDashboard() {
-  const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
+  const { data: user, isLoading: isLoadingUser } = useAuthUser();
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
   // ✅ CORRECTION P2-6: Augmenter la pagination par défaut pour les praticiens actifs
@@ -56,7 +56,7 @@ export default function PractitionerDashboard() {
   // 🔔 Activer les notifications en temps réel
   useNotifications(practitionerUserId);
   const practitionerName =
-    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.metadata?.full_name as string | undefined) ||
     user?.email ||
     'Praticien';
 

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import GPSTracking from '@/components/GPSTracking';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePatientAppointments, useMutateAppointment, useCreateAppointment } from '@/hooks/useAppointments';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,9 +22,9 @@ interface AppointmentsTabProps {
 }
 
 export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabProps) {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const patientId = user?.id;
-  const patientName = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'Patient';
+  const patientName = (user?.metadata?.full_name as string | undefined) || user?.email || 'Patient';
   const queryClient = useQueryClient();
 
   const [orphanedPayment, setOrphanedPayment] = useState<PersistedPaymentState | null>(null);

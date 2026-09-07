@@ -12,7 +12,7 @@ import { MapPin, Search, Loader2, AlertCircle, LogIn, Lock } from 'lucide-react'
 import { toast } from '@/hooks/use-toast';
 import type { PractitionerLocation, UserLocation } from '@/types/practitioner';
 import { usePractitioners } from '@/hooks/usePractitioners';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { useCreateAppointment } from '@/hooks/useAppointments';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -47,12 +47,12 @@ export default function PractitionerSearch() {
   const [selectedPractitioner, setSelectedPractitioner] = useState<PractitionerLocation | null>(null);
   const [viewedPractitioner, setViewedPractitioner] = useState<PractitionerLocation | null>(null);
 
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { logActivity, isAuthenticated } = useSearchActivityLog();
   
   // Hook pour créer les rendez-vous (avec notifications automatiques)
   const patientId = user?.id;
-  const patientName = (user?.user_metadata?.full_name as string) || user?.email || 'Patient';
+  const patientName = (user?.metadata?.full_name as string) || user?.email || 'Patient';
   const createAppointment = useCreateAppointment(patientId, patientName);
   
   // Utiliser le hook de géolocalisation amélioré

@@ -1,8 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import type { Session } from '@supabase/supabase-js';
 
-import { supabase } from '@/integrations/supabase/client';
+import { auth, type AuthSession } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { type AppRole, resolveUserRole, getDashboardPathForRole } from '@/lib/userRoleResolver';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
@@ -31,57 +30,27 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
+  const [session, setSession] = useState<AuthSession | null>(() => auth.getSession());
+  const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>(() => (auth.getSession() ? 'authenticated' : 'unauthenticated'));
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [roleStatus, setRoleStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
   const location = useLocation();
-  const hasCheckedSession = useRef(false);
-  
+
   // Initialize idle timeout for auto-logout
   useIdleTimeout();
 
   useEffect(() => {
-    let isMounted = true;
-
-    const syncSession = async () => {
-      // Éviter les appels multiples
-      if (hasCheckedSession.current && session) return;
-      
-      const { data, error } = await supabase.auth.getSession();
-
-      if (!isMounted) return;
-
-      if (error) {
-        console.error('Unable to retrieve current session:', error);
-        setSession(null);
-        setStatus('unauthenticated');
-        return;
-      }
-
-      hasCheckedSession.current = true;
-      setSession(data.session ?? null);
-      setStatus(data.session ? 'authenticated' : 'unauthenticated');
-    };
-
-    void syncSession();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) return;
-
-      setSession(nextSession ?? null);
+    // La session est lue localement (jetons conservés par src/lib/api/session.ts) ; un jeton
+    // expiré est renouvelé de façon transparente par le client API au premier appel.
+    return auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
       setStatus(nextSession ? 'authenticated' : 'unauthenticated');
-      
+
       // Invalider le cache de rôle si déconnexion
       if (!nextSession) {
         roleCache.clear();
       }
     });
-
-    return () => {
-      isMounted = false;
-      authListener.subscription.unsubscribe();
-    };
   }, []);
 
   useEffect(() => {
@@ -96,7 +65,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       // Vérifier le cache d'abord
       const cached = roleCache.get(userId);
       const now = Date.now();
-      
+
       if (cached && (now - cached.timestamp) < ROLE_CACHE_DURATION) {
         if (isMounted) {
           setUserRole(cached.role);

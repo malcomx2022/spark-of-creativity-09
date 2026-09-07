@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useUpdateProfile, useDeleteEmergencyContact, useDeleteAddress } from '@/hooks/useProfile';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePatientProfileData } from '@/hooks/usePatientProfileData';
 import { User, MapPin, Phone, RefreshCw, Copy, Check, Trash2, Pencil } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
@@ -27,11 +27,11 @@ import { AddAddressDialog } from '@/components/AddAddressDialog';
 import { EditEmergencyContactDialog } from '@/components/EditEmergencyContactDialog';
 import { EditAddressDialog } from '@/components/EditAddressDialog';
 import { AvatarUpload } from '@/components/dashboard/AvatarUpload';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
 
 export function ProfileSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { data: profileData, isLoading, isFetching, refetch } = usePatientProfileData(user?.id);
   const profile = profileData?.profile;
   const emergencyContacts = profileData?.contacts || [];
@@ -213,27 +213,9 @@ export function ProfileSection() {
             userName={profile?.full_name || ""}
             onImageUploaded={async (path) => {
               if (!user?.id) return;
-              const { error } = await supabase
-                .from('profiles')
-                .update({ avatar_url: path })
-                .eq('id', user.id);
-              
-              if (error) throw error;
-              
-              // Si c'est un praticien, on synchronise aussi sa table practitioner
-              const { data: practitioner } = await supabase
-                .from('practitioners')
-                .select('id')
-                .eq('user_id', user.id)
-                .maybeSingle();
-                
-              if (practitioner) {
-                await supabase
-                  .from('practitioners')
-                  .update({ image: path })
-                  .eq('id', practitioner.id);
-              }
-              
+              // L'API met à jour profiles.avatar_url et synchronise practitioners.image le cas échéant
+              await api.patch('/profile', { avatarUrl: path });
+
               refetch();
             }}
           />

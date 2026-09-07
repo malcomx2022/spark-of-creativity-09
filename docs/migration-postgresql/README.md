@@ -61,6 +61,17 @@ rendus avec lecture journalisée, triage calculé côté serveur, consentements 
 RGPD), avis avec note recalculée, moyens de paiement chiffrés côté serveur et statistiques des
 tableaux de bord. Tests e2e sur base réelle (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
+## Recodage du front sur l'API (étape 7)
+
+Étape 7a livrée : socle client dans `src/lib/api/` (`client.ts` fetch + rotation automatique du
+refresh token, `session.ts` session locale et événements d'authentification, `auth.ts` ex
+`supabase.auth.*`, `realtime.ts` Socket.IO ex Supabase Realtime, `files.ts` upload S3 pré-signé),
+hook `useAuthUser` (ex `useSupabaseUser`), rôle résolu par `GET /api/auth/me`
+(`userRoleResolver.ts`), routes protégées, pages de connexion / inscription / OTP / mot de passe /
+confirmation d'e-mail, profil (adresses, contacts d'urgence, profil médical, avatar), onboarding
+patient et notifications push. Étapes suivantes : 7b hooks et écrans patient / praticien / coach,
+7c écrans admin puis retrait de `@supabase/supabase-js`.
+
 ## Ordre de lecture recommandé
 
 1. **Urgent** : §1 de `02-RECUPERATION…` — les deux projets Supabase sont en pause (`INACTIVE`).

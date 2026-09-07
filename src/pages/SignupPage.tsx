@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowLeft, User, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import Header from "@/components/Header";
 import UserTypeCard from "@/components/UserTypeCard";
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const { data: user, isLoading } = useSupabaseUser();
+  const { data: user, isLoading } = useAuthUser();
 
   useEffect(() => {
     if (!isLoading && user) {

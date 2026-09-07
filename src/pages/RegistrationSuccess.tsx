@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Mail, Clock, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage } from "@/lib/api";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,9 +30,11 @@ export default function RegistrationSuccess() {
       setIsCheckingEmail(true);
 
       try {
-        const { data: { user }, error } = await supabase.auth.getUser();
+        // Compte connecté ? (session locale) puis état de vérification depuis l'API
+        const me = auth.getSession() ? await auth.me({ force: true }) : null;
+        const user = me?.user ?? null;
 
-        if (error || !user) {
+        if (!user) {
           // Pas d'utilisateur connecté - l'email n'est probablement pas confirmé
           setEmailConfirmed(false);
           setIsCheckingEmail(false);
@@ -41,8 +43,7 @@ export default function RegistrationSuccess() {
 
         setCurrentUserEmail(user.email || null);
 
-        // Vérifier si email_confirmed_at est défini
-        const isConfirmed = !!user.email_confirmed_at;
+        const isConfirmed = user.emailVerified;
         setEmailConfirmed(isConfirmed);
 
         // Si confirmé, démarrer le countdown pour redirection
@@ -81,7 +82,7 @@ export default function RegistrationSuccess() {
         } else if (practitionerType) {
           targetPath = "/dashboard/practitioner";
         } else {
-          const { data: { user } } = await supabase.auth.getUser();
+          const user = auth.getUser();
           if (user) {
             targetPath = await getDashboardPathForUser(user.id);
           } else {
@@ -128,18 +129,17 @@ export default function RegistrationSuccess() {
     setIsResendingEmail(true);
 
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: currentUserEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}${dashboardPath}`
-        }
-      });
+      let error: unknown = null;
+      try {
+        await auth.resendVerification(currentUserEmail);
+      } catch (e) {
+        error = e;
+      }
 
       if (error) {
         toast({
           title: "Erreur",
-          description: error.message || "Impossible de renvoyer l'email",
+          description: errorMessage(error, "Impossible de renvoyer l'email"),
           variant: "destructive"
         });
       } else {

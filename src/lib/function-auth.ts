@@ -1,14 +1,11 @@
-import { supabase } from "@/integrations/supabase/client";
+import { getAccessToken } from "@/lib/api";
 
 /**
- * Certains déploiements externes n'injectent pas toujours automatiquement le JWT
- * dans supabase.functions.invoke(). On force donc l'envoi du Bearer token.
+ * En-tête d'authentification pour les appels HTTP directs (ex Edge Functions).
+ * Conservé pour les écrans admin non encore migrés sur `src/lib/api` ; à supprimer à l'étape 7c.
  */
 export async function getFunctionAuthHeaders() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) {
     throw new Error("Session expirée. Veuillez vous reconnecter puis réessayer.");
   }

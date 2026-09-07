@@ -1,11 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mail, AlertCircle, CheckCircle } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage } from "@/lib/api";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToLogin } from "@/lib/auth-navigation";
 
@@ -17,6 +17,8 @@ export default function ConfirmEmail() {
   const [emailSent, setEmailSent] = useState(false);
 
   const email = searchParams.get('email');
+  const token = searchParams.get('token');
+  const [verifyState, setVerifyState] = useState<'idle' | 'verifying' | 'verified' | 'failed'>(token ? 'verifying' : 'idle');
   const userType = searchParams.get('type') || 'patient';
   const practitionerType = searchParams.get('practitionerType');
 
@@ -39,6 +41,28 @@ export default function ConfirmEmail() {
     return '/dashboard/patient';
   }, [userType, practitionerType]);
 
+  // Lien reçu par e-mail : `/confirm-email?token=…` (POST /api/auth/verify-email)
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    auth.verifyEmail(token)
+      .then(() => {
+        if (cancelled) return;
+        setVerifyState('verified');
+        toast({ title: "Adresse e-mail confirmée", description: "Vous pouvez maintenant vous connecter." });
+        setTimeout(() => navigateToLogin(navigate, true), 1500);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setVerifyState('failed');
+        toast({ ...AUTH_MESSAGES.EMAIL_CONFIRMATION_ERROR, description: errorMessage(error, "Lien de confirmation invalide ou expiré."), variant: "destructive" });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   const handleResendEmail = async () => {
     if (!email) {
       toast({
@@ -52,18 +76,17 @@ export default function ConfirmEmail() {
     setIsResending(true);
 
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}${dashboardPath}`
-        }
-      });
+      let error: unknown = null;
+      try {
+        await auth.resendVerification(email);
+      } catch (e) {
+        error = e;
+      }
 
       if (error) {
         toast({
           ...AUTH_MESSAGES.EMAIL_CONFIRMATION_ERROR,
-          description: error.message || AUTH_MESSAGES.EMAIL_CONFIRMATION_ERROR.defaultDescription,
+          description: errorMessage(error, AUTH_MESSAGES.EMAIL_CONFIRMATION_ERROR.defaultDescription),
           variant: "destructive"
         });
       } else {
@@ -88,9 +111,15 @@ export default function ConfirmEmail() {
             <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-4">
               <Mail className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle className="text-2xl">Confirmez votre email</CardTitle>
+            <CardTitle className="text-2xl">
+              {verifyState === 'verifying' ? 'Vérification en cours…' : verifyState === 'verified' ? 'Adresse confirmée' : 'Confirmez votre email'}
+            </CardTitle>
             <CardDescription>
-              Un email de confirmation a été envoyé à votre adresse
+              {verifyState === 'verified'
+                ? 'Votre adresse e-mail est confirmée. Redirection vers la connexion…'
+                : verifyState === 'failed'
+                  ? 'Le lien de confirmation est invalide ou a expiré. Demandez un nouvel e-mail ci-dessous.'
+                  : 'Un email de confirmation a été envoyé à votre adresse'}
             </CardDescription>
           </CardHeader>
 

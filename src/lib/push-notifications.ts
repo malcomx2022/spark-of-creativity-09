@@ -1,7 +1,11 @@
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
-// Get the public VAPID key from environment
-const VAPID_PUBLIC_KEY = 'BKxJpXKxmXvVzCzGh1W9Dt8lFfCz6CnB7KpQKmLZlJ_gJmVzP7g8W7NQCzGh1W9Dt8lFfCz6CnB7KpQKmLZlJ_g';
+/** Clé publique VAPID fournie par l'API (`GET /api/push/vapid-public-key`), plus de clé en dur. */
+async function getVapidPublicKey(): Promise<string> {
+  const res = await api.get<{ publicKey: string | null }>('/push/vapid-public-key', { auth: false });
+  if (!res.publicKey) throw new Error('Notifications push non configurées sur le serveur');
+  return res.publicKey;
+}
 
 /**
  * Convert base64 VAPID key to Uint8Array
@@ -98,30 +102,20 @@ export async function subscribeToPush(userId: string): Promise<boolean> {
     // Subscribe to push
     const subscription = await (registration as any).pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as unknown as BufferSource,
+      applicationServerKey: urlBase64ToUint8Array(await getVapidPublicKey()) as unknown as BufferSource,
     });
 
     console.log('Push subscription:', subscription);
 
-    // Save subscription to database
+    // Save subscription via the API (table push_subscriptions, upsert user_id + endpoint)
     const subscriptionData = subscription.toJSON();
-    
-    const { error } = await supabase
-      .from('push_subscriptions')
-      .upsert({
-        user_id: userId,
-        endpoint: subscriptionData.endpoint!,
-        p256dh: subscriptionData.keys!.p256dh,
-        auth: subscriptionData.keys!.auth,
-        user_agent: navigator.userAgent,
-      }, {
-        onConflict: 'user_id,endpoint',
-      });
+    void userId; // le propriétaire est déduit du jeton d'accès
 
-    if (error) {
-      console.error('Error saving subscription:', error);
-      throw error;
-    }
+    await api.post('/push/subscriptions', {
+      endpoint: subscriptionData.endpoint!,
+      keys: { p256dh: subscriptionData.keys!.p256dh, auth: subscriptionData.keys!.auth },
+      userAgent: navigator.userAgent,
+    });
 
     console.log('Push subscription saved successfully');
     return true;
@@ -148,14 +142,11 @@ export async function unsubscribeFromPush(userId: string): Promise<void> {
       await subscription.unsubscribe();
       console.log('Unsubscribed from push');
 
-      // Remove from database
-      const { error } = await supabase
-        .from('push_subscriptions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('endpoint', subscription.endpoint);
-
-      if (error) {
+      // Remove from database via the API
+      void userId;
+      try {
+        await api.delete('/push/subscriptions', { endpoint: subscription.endpoint });
+      } catch (error) {
         console.error('Error removing subscription:', error);
       }
     }

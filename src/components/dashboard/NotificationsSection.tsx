@@ -30,7 +30,7 @@ import {
   useDeleteNotification
 } from '@/hooks/useNotifications';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -59,7 +59,7 @@ const NOTIFICATION_COLORS: Record<string, string> = {
 };
 
 export function NotificationsSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { data: notifications = [], isLoading, isFetching, refetch } = useNotifications(user?.id);
   const { data: preferences } = useNotificationPreferences(user?.id);
   const markAsRead = useMarkNotificationAsRead();

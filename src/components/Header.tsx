@@ -2,8 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Menu, Phone, MapPin, LogIn, UserPlus, Users, ChevronDown, X } from "lucide-react";
 import { useState, useId } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { auth } from "@/lib/api";
+import { AUTH_USER_QUERY_KEY, useAuthUser } from "@/hooks/useAuthUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
 import { ROUTES } from "@/lib/routes";
 import { toast } from "@/hooks/use-toast";
@@ -18,7 +18,7 @@ import {
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mobileMenuId = useId();
@@ -42,12 +42,11 @@ export default function Header() {
     sessionStorage.setItem('logging_out', 'true');
     
     // Invalider immédiatement le cache utilisateur pour que l'UI se mette à jour
-    queryClient.setQueryData(['supabase', 'auth', 'user'], null);
-    queryClient.invalidateQueries({ queryKey: ['supabase', 'auth', 'user'] });
+    queryClient.setQueryData(AUTH_USER_QUERY_KEY, null);
+    queryClient.invalidateQueries({ queryKey: AUTH_USER_QUERY_KEY });
     
     // Nettoyer les données de l'app
     const keysToRemove = [
-      'supabase.auth.token',
       'recent_location_searches',
       'payment_state',
       'user_preferences'
@@ -57,7 +56,7 @@ export default function Header() {
       localStorage.removeItem(key);
     });
 
-    await supabase.auth.signOut();
+    await auth.signOut();
     
     // Fermer le menu mobile si ouvert
     setIsMenuOpen(false);

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
@@ -32,6 +32,7 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
   
   // Ref pour éviter les doubles exécutions
   const hasCheckedSession = useRef(false);
@@ -41,104 +42,30 @@ export default function ResetPassword() {
     if (hasCheckedSession.current) return;
     hasCheckedSession.current = true;
 
-    let isMounted = true;
-    let timeoutId: NodeJS.Timeout | null = null;
-
-    // Fonction pour extraire les paramètres de l'URL (hash ou query)
-    const extractUrlParams = () => {
-      // Supabase peut utiliser # ou ? selon la configuration
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const queryParams = new URLSearchParams(window.location.search);
-      
-      // Vérifier d'abord le hash, puis les query params
-      const accessToken = hashParams.get('access_token') || queryParams.get('access_token');
-      const type = hashParams.get('type') || queryParams.get('type');
-      const errorCode = hashParams.get('error') || queryParams.get('error');
-      const errorDescription = hashParams.get('error_description') || queryParams.get('error_description');
-      
-      return { accessToken, type, errorCode, errorDescription };
-    };
-
-    const { accessToken, type, errorCode, errorDescription } = extractUrlParams();
+    // Le lien envoyé par l'API est `/reset-password?token=…` ; l'ancien format Supabase (#access_token) est accepté
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const queryParams = new URLSearchParams(window.location.search);
+    const token = queryParams.get('token') || hashParams.get('access_token') || queryParams.get('access_token');
+    const errorCode = hashParams.get('error') || queryParams.get('error');
+    const errorDescription = hashParams.get('error_description') || queryParams.get('error_description');
 
     // Gérer les erreurs dans l'URL (token expiré, etc.)
     if (errorCode) {
-      if (isMounted) {
-        const message = errorDescription 
-          ? decodeURIComponent(errorDescription.replace(/\+/g, ' '))
-          : "Le lien de réinitialisation est invalide ou a expiré.";
-        setError(message);
-        setIsLoading(false);
-      }
+      const message = errorDescription
+        ? decodeURIComponent(errorDescription.replace(/\+/g, ' '))
+        : "Le lien de réinitialisation est invalide ou a expiré.";
+      setError(message);
+      setIsLoading(false);
       return;
     }
 
-    // Écouter les changements d'auth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!isMounted) return;
-        
-        console.log('Auth event:', event);
-        
-        if (event === 'PASSWORD_RECOVERY') {
-          setIsValidSession(true);
-          setIsLoading(false);
-          if (timeoutId) clearTimeout(timeoutId);
-        } else if (event === 'SIGNED_IN' && session) {
-          // Vérifier si c'est une session de récupération
-          setIsValidSession(true);
-          setIsLoading(false);
-          if (timeoutId) clearTimeout(timeoutId);
-        }
-      }
-    );
-
-    // Vérifier la session existante
-    const checkSession = async () => {
-      try {
-        // Si on a un token de type recovery dans l'URL
-        if (type === 'recovery' && accessToken) {
-          if (isMounted) {
-            setIsValidSession(true);
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        // Vérifier la session actuelle
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session && isMounted) {
-          setIsValidSession(true);
-          setIsLoading(false);
-          return;
-        }
-
-        // Si pas de session et pas de token, attendre l'événement auth
-        // Timeout plus court pour une meilleure UX
-        timeoutId = setTimeout(() => {
-          if (isMounted && !isValidSession) {
-            setError("Le lien de réinitialisation est invalide ou a expiré. Veuillez demander un nouveau lien.");
-            setIsLoading(false);
-          }
-        }, 3000);
-        
-      } catch (err) {
-        console.error('Erreur vérification session:', err);
-        if (isMounted) {
-          setError("Une erreur est survenue. Veuillez réessayer.");
-          setIsLoading(false);
-        }
-      }
-    };
-    
-    checkSession();
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-      if (timeoutId) clearTimeout(timeoutId);
-    };
+    if (token) {
+      setResetToken(token);
+      setIsValidSession(true);
+    } else {
+      setError("Le lien de réinitialisation est invalide ou a expiré. Veuillez demander un nouveau lien.");
+    }
+    setIsLoading(false);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -158,22 +85,13 @@ export default function ResetPassword() {
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: password
-      });
-
-      if (error) {
-        toast({
-          title: "Erreur",
-          description: error.message,
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
+      if (!resetToken) {
+        throw new Error("Le lien de réinitialisation est invalide ou a expiré.");
       }
+      await auth.resetPassword(resetToken, password);
 
-      // Succès - déconnecter et rediriger
-      await supabase.auth.signOut();
+      // Succès - l'API a révoqué les sessions existantes ; rediriger vers la connexion
+      await auth.signOut();
       
       toast({
         title: "Mot de passe réinitialisé",
@@ -184,7 +102,7 @@ export default function ResetPassword() {
     } catch (err: any) {
       toast({
         title: "Erreur",
-        description: err.message || "Une erreur est survenue",
+        description: errorMessage(err),
         variant: "destructive"
       });
       setIsSubmitting(false);

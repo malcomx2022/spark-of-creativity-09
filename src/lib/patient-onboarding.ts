@@ -1,5 +1,5 @@
-import type { User } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { api, auth, type AuthUser } from '@/lib/api';
+import type { Address, EmergencyContact } from '@/types/profile';
 
 export interface PatientOnboardingPayload {
   profile: {
@@ -21,188 +21,59 @@ export interface PatientOnboardingPayload {
   acceptTermsAt: string;
 }
 
-async function upsertProfile(userId: string, payload: PatientOnboardingPayload['profile']) {
-  const { data: existingProfile, error: profileSelectError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle();
+const GENDERS = ['homme', 'femme', 'autre', 'non_specifie'] as const;
+type Gender = (typeof GENDERS)[number];
 
-  if (profileSelectError) throw profileSelectError;
-
-  const genderMap: Record<string, 'homme' | 'femme' | 'autre' | 'non_specifie'> = {
-    'homme': 'homme',
-    'femme': 'femme',
-    'autre': 'autre',
-    'non_specifie': 'non_specifie',
-  };
-  
-  const normalizedGender = payload.gender ? (genderMap[payload.gender] || 'non_specifie') : 'non_specifie';
-
-  if (!existingProfile) {
-    const { error } = await supabase
-      .from('profiles')
-      .insert({
-        id: userId,
-        full_name: payload.fullName,
-        phone: payload.phone,
-        gender: normalizedGender,
-        date_of_birth: payload.dateOfBirth || null,
-      });
-
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        full_name: payload.fullName,
-        phone: payload.phone,
-        gender: normalizedGender,
-        date_of_birth: payload.dateOfBirth || null,
-      })
-      .eq('id', userId);
-
-    if (error) throw error;
-  }
+async function upsertProfile(payload: PatientOnboardingPayload['profile']) {
+  const gender: Gender = (GENDERS as readonly string[]).includes(payload.gender) ? (payload.gender as Gender) : 'non_specifie';
+  await api.patch('/profile', {
+    fullName: payload.fullName,
+    phone: payload.phone,
+    gender,
+    ...(payload.dateOfBirth ? { dateOfBirth: payload.dateOfBirth } : {}),
+  });
 }
 
-async function upsertAddress(userId: string, address: PatientOnboardingPayload['address']) {
+async function upsertAddress(address: PatientOnboardingPayload['address']) {
   if (!address || !address.address.trim()) {
     return;
   }
-
-  const { data: existingAddress, error: addressError } = await supabase
-    .from('addresses')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('is_default', true)
-    .maybeSingle();
-
-  if (addressError) throw addressError;
-
-  if (existingAddress) {
-    const { error } = await supabase
-      .from('addresses')
-      .update({
-        label: address.label,
-        address: address.address,
-        is_default: true,
-      })
-      .eq('id', existingAddress.id);
-
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('addresses')
-      .insert({
-        user_id: userId,
-        label: address.label,
-        address: address.address,
-        is_default: true,
-      });
-
-    if (error) throw error;
-  }
+  const existing = (await api.get<Address[]>('/addresses')).find((a) => a.is_default);
+  const body = { label: address.label, address: address.address, isDefault: true };
+  if (existing) await api.patch(`/addresses/${existing.id}`, body);
+  else await api.post('/addresses', body);
 }
 
-async function upsertEmergencyContact(userId: string, emergencyContact: PatientOnboardingPayload['emergencyContact']) {
+async function upsertEmergencyContact(emergencyContact: PatientOnboardingPayload['emergencyContact']) {
   if (!emergencyContact || !emergencyContact.name.trim() || !emergencyContact.phone.trim()) {
     return;
   }
-
-  const { data: existingContact, error: contactError } = await supabase
-    .from('emergency_contacts')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (contactError) throw contactError;
-
-  if (existingContact) {
-    const { error } = await supabase
-      .from('emergency_contacts')
-      .update({
-        name: emergencyContact.name,
-        phone: emergencyContact.phone,
-        relationship: emergencyContact.relationship ?? "Contact d'urgence",
-      })
-      .eq('id', existingContact.id);
-
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('emergency_contacts')
-      .insert({
-        user_id: userId,
-        name: emergencyContact.name,
-        phone: emergencyContact.phone,
-        relationship: emergencyContact.relationship ?? "Contact d'urgence",
-      });
-
-    if (error) throw error;
-  }
+  const existing = (await api.get<EmergencyContact[]>('/medical/emergency-contacts'))[0];
+  const body = { name: emergencyContact.name, phone: emergencyContact.phone, relationship: emergencyContact.relationship ?? "Contact d'urgence" };
+  if (existing) await api.patch(`/medical/emergency-contacts/${existing.id}`, body);
+  else await api.post('/medical/emergency-contacts', body);
 }
 
-async function upsertMedicalProfile(userId: string, medicalHistory: string[]) {
-  const chronicDiseases = medicalHistory.length > 0 ? medicalHistory.join(', ') : null;
-
-  const { error } = await supabase
-    .from('medical_profiles')
-    .upsert({
-      user_id: userId,
-      chronic_diseases: chronicDiseases,
-    });
-
-  if (error) throw error;
+async function upsertMedicalProfile(medicalHistory: string[]) {
+  await api.put('/medical/profile', { chronicDiseases: medicalHistory.length > 0 ? medicalHistory.join(', ') : null });
 }
 
-async function recordTermsConsent(userId: string, acceptedAt: string) {
-  const { data: existingConsent, error: consentSelectError } = await supabase
-    .from('consents')
-    .select('id, is_accepted, accepted_at')
-    .eq('user_id', userId)
-    .eq('consent_type', 'cgu')
-    .maybeSingle();
-
-  if (consentSelectError) throw consentSelectError;
-
-  if (!existingConsent) {
-  const { error } = await supabase
-    .from('consents')
-    .insert({
-      user_id: userId,
-      consent_type: 'cgu',
-      is_accepted: true,
-      accepted_at: acceptedAt,
-    });
-
-    if (error) throw error;
-    return;
-  }
-
-  if (!existingConsent.is_accepted || !existingConsent.accepted_at) {
-    const { error } = await supabase
-      .from('consents')
-      .update({
-        is_accepted: true,
-        accepted_at: acceptedAt,
-      })
-      .eq('id', existingConsent.id);
-
-    if (error) throw error;
-  }
+async function recordTermsConsent() {
+  // `POST /api/medical/consents` fait un upsert (user_id, consent_type) et mémorise la version active des CGU.
+  await api.post('/medical/consents', { consentType: 'cgu', accepted: true });
 }
 
 export async function completePatientOnboarding(userId: string, payload: PatientOnboardingPayload) {
-  await upsertProfile(userId, payload.profile);
-  await upsertAddress(userId, payload.address);
-  await upsertEmergencyContact(userId, payload.emergencyContact);
-  await upsertMedicalProfile(userId, payload.medicalHistory);
-  await recordTermsConsent(userId, payload.acceptTermsAt);
+  void userId; // l'API agit toujours pour l'utilisateur authentifié
+  await upsertProfile(payload.profile);
+  await upsertAddress(payload.address);
+  await upsertEmergencyContact(payload.emergencyContact);
+  await upsertMedicalProfile(payload.medicalHistory);
+  await recordTermsConsent();
 }
 
-export async function completePatientOnboardingFromMetadata(user: User) {
-  const metadata = user.user_metadata ?? {};
+export async function completePatientOnboardingFromMetadata(user: AuthUser) {
+  const metadata = user.metadata ?? {};
   const pendingPayload = metadata.pending_onboarding as PatientOnboardingPayload | undefined;
 
   if (!pendingPayload || metadata.patient_onboarding_completed) {
@@ -211,16 +82,10 @@ export async function completePatientOnboardingFromMetadata(user: User) {
 
   await completePatientOnboarding(user.id, pendingPayload);
 
-  const { error: updateError } = await supabase.auth.updateUser({
-    data: {
-      patient_onboarding_completed: true,
-      pending_onboarding: null,
-    },
+  await auth.updateMetadata({
+    patient_onboarding_completed: true,
+    pending_onboarding: null,
   });
-
-  if (updateError) {
-    throw updateError;
-  }
 
   return { completed: true } as const;
 }

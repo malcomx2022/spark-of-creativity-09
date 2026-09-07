@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -45,7 +45,7 @@ const CoachPayoutsSection = lazy(() => import("@/components/dashboard/coach/Coac
 const PaymentInfoSection = lazy(() => import("@/components/dashboard/practitioner/PaymentInfoSection").then(m => ({ default: m.PaymentInfoSection })));
 
 export default function CoachDashboard() {
-  const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
+  const { data: user, isLoading: isLoadingUser } = useAuthUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();

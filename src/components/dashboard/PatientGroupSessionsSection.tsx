@@ -6,7 +6,7 @@ import { Calendar, Clock, MapPin, Users, User, CheckCircle, XCircle, AlertCircle
 import { format, isPast, isFuture } from "date-fns";
 import { fr } from "date-fns/locale";
 import { usePatientGroupSessions } from "@/hooks/usePatientGroupSessions";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { useState, useMemo } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +23,7 @@ const SESSION_STATUS_LABELS: Record<string, string> = {
 };
 
 export function PatientGroupSessionsSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [page, setPage] = useState(0);
   const { data: sessionsResult, isLoading, isFetching, refetch } = usePatientGroupSessions(user?.id, page, 20);
   const sessions = sessionsResult?.data || [];

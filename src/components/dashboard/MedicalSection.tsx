@@ -10,7 +10,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMedicalProfile, useUpdateMedicalProfile } from '@/hooks/useProfile';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import {
   Heart, AlertCircle, Pill, Stethoscope, User, Mail, Phone,
   RefreshCw, Copy, Check, Activity, ShieldCheck, FileText
@@ -18,7 +18,7 @@ import {
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
 type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'inconnu';
 
@@ -36,7 +36,7 @@ const BLOOD_TYPE_COLORS: Record<string, string> = {
 };
 
 export function MedicalSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { data: medicalProfile, isLoading, isFetching, refetch } = useMedicalProfile(user?.id);
   const updateMedicalProfile = useUpdateMedicalProfile();
 
@@ -47,15 +47,8 @@ export function MedicalSection() {
   const { data: practitioners = [] } = useQuery({
     queryKey: ['practitioners-for-doctor-selection'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('id, name, specialty, phone')
-        .eq('kyc_status', 'approved')
-        .eq('available', true)
-        .in('practitioner_type', ['medecin', 'infirmier', 'sage_femme', 'autre'])
-        .order('name');
-
-      if (error) throw error;
+      // Praticiens de santé approuvés et disponibles (GET /api/medical/profile/doctors)
+      const data = await api.get<{ id: string; name: string; specialty: string; practitioner_type: string }[]>('/medical/profile/doctors');
       return data || [];
     },
   });

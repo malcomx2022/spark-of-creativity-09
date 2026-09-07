@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
@@ -28,8 +28,7 @@ export function useIdleTimeout() {
     }
     
     try {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
+      await auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -37,7 +36,6 @@ export function useIdleTimeout() {
     // Clear all localStorage items related to auth
     localStorage.removeItem('user_type');
     localStorage.removeItem('practitioner_id');
-    localStorage.removeItem('sb-kskkufjliwdfqqyemcpf-auth-token');
     
     // Clear all React Query cache to reset app state
     queryClient.clear();

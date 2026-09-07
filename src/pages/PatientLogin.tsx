@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, errorMessage } from "@/lib/api";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
@@ -44,54 +44,38 @@ export default function PatientLogin() {
     setIsSubmitting(true);
 
     try {
-      const { data, error } = await withTimeout(
-        supabase.auth.signInWithPassword({
-          email: formData.email.trim().toLowerCase(),
-          password: formData.password,
-        })
-      );
-
-      if (error) {
+      let session;
+      try {
+        session = await withTimeout(
+          auth.signInWithPassword({
+            email: formData.email.trim().toLowerCase(),
+            password: formData.password,
+          })
+        );
+      } catch (error) {
         toast({
           ...AUTH_MESSAGES.LOGIN_ERROR,
-          description: error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription,
+          description: errorMessage(error, AUTH_MESSAGES.LOGIN_ERROR.defaultDescription),
           variant: "destructive"
         });
         setIsSubmitting(false);
         return;
       }
 
-      // Exécuter les vérifications en parallèle pour accélérer la connexion
-      const [roleResult, practitionerResult, profileResult] = await Promise.all([
-        supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .maybeSingle(),
-        supabase
-          .from('practitioners')
-          .select('id')
-          .eq('user_id', data.user.id)
-          .maybeSingle(),
-        supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', data.user.id)
-          .maybeSingle()
-      ]);
-
-      const roleData = roleResult.data;
-      const practitionerData = practitionerResult.data;
-      const profileData = profileResult.data;
+      // Rôle résolu côté serveur (user_roles → practitioners → métadonnées → patient)
+      const me = await auth.me({ force: true });
+      const isSuperAdmin = me?.adminRoles.includes('super_admin') ?? false;
+      const practitionerData = me?.role === 'practitioner' || me?.role === 'coach';
+      const profileData = me?.profile ?? null;
 
       // Si super_admin, bloquer - les admins ne peuvent pas se connecter comme patients
-      if (roleData?.role === 'super_admin') {
+      if (isSuperAdmin) {
         toast({
           title: "Erreur de connexion",
           description: "Les comptes administrateurs doivent utiliser la connexion admin.",
           variant: "destructive"
         });
-        await supabase.auth.signOut();
+        await auth.signOut();
         setIsSubmitting(false);
         return;
       }
@@ -104,14 +88,14 @@ export default function PatientLogin() {
           description: "Ce compte est enregistré comme praticien. Veuillez utiliser la connexion praticien pour accéder à votre tableau de bord complet.",
           variant: "destructive"
         });
-        await supabase.auth.signOut();
+        await auth.signOut();
         setIsSubmitting(false);
         return;
       }
 
       // Si l'utilisateur a des métadonnées practitioner mais pas de profil ni praticien créé,
       // c'est une inscription praticien incomplète
-      const userType = data.user.user_metadata?.user_type;
+      const userType = session.user.metadata?.user_type;
       if (userType === 'practitioner' && !practitionerData && !profileData) {
         toast({
           title: "Inscription praticien incomplète",

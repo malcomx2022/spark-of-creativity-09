@@ -14,7 +14,7 @@ import {
   ArrowUp, ArrowRight, ArrowDown, FileText
 } from 'lucide-react';
 import { useSupportTickets, useCreateSupportTicket } from '@/hooks/useSupportTickets';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { useState, useMemo } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
@@ -40,7 +40,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; icon: React.ElementType; 
 
 export function SupportSection() {
   const navigate = useNavigate();
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { data: tickets = [], isLoading, isFetching, refetch } = useSupportTickets(user?.id);
   const createTicket = useCreateSupportTicket();
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { useConversations } from '@/hooks/useConversations';
 import { ConversationsList } from '@/components/messaging/ConversationsList';
 import { ChatInterface } from '@/components/messaging/ChatInterface';
@@ -15,7 +15,7 @@ import {
 import type { Conversation } from '@/hooks/useConversations';
 
 export function MessagesSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const {
     data,
     isLoading,

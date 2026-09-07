@@ -4,10 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
-import { supabase } from "@/integrations/supabase/client";
+import { api, auth, isApiError } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
-import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
+import { registerPractitioner, toPractitionerRegisterPayload } from "@/lib/practitioner-registration";
 import {
   getPendingRegistration,
   clearPendingRegistration,
@@ -37,9 +36,9 @@ export default function CompleteRegistration() {
       const pending = getPendingRegistration();
 
       // 2. Vérifier si l'utilisateur est connecté
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const user = auth.getUser();
 
-      if (error || !user) {
+      if (!user) {
         // Pas connecté - rediriger vers la connexion
         if (pending) {
           toast({
@@ -56,11 +55,12 @@ export default function CompleteRegistration() {
       setCurrentUser({ id: user.id, email: user.email || '' });
 
       // 3. Vérifier si le profil praticien existe déjà
-      const { data: practitioner, error: practitionerError } = await supabase
-        .from('practitioners')
-        .select('id, kyc_status')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      let practitioner: { id: string } | null = null;
+      try {
+        practitioner = await api.get<{ id: string }>('/practitioners/me');
+      } catch (e) {
+        if (!isApiError(e, 404)) throw e;
+      }
 
       if (practitioner) {
         // Profil existe déjà - tout va bien
@@ -101,16 +101,8 @@ export default function CompleteRegistration() {
 
     try {
       // Appeler l'edge function avec les données sauvegardées
-      const result = await invokeEdgeFunctionWithRetry<CreatePractitionerResponse>(
-        'create-practitioner-account',
-        {
-          body: {
-            userId: currentUser.id,
-            profileData: pendingRegistration.profileData,
-            practitionerData: pendingRegistration.practitionerData,
-            documents: pendingRegistration.documents
-          }
-        }
+      const result = await registerPractitioner(
+        toPractitionerRegisterPayload(pendingRegistration.profileData, pendingRegistration.practitionerData ?? {}, pendingRegistration.documents ?? {})
       );
 
       if (result.error || (result.data && !result.data.success)) {

@@ -1,46 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { withTimeout } from '@/lib/network-timeout';
+import { api } from '@/lib/api';
+import type { Address, EmergencyContact, Profile } from '@/types/profile';
 
 export function usePatientProfileData(userId?: string) {
   return useQuery({
     queryKey: ['patient-profile-full', userId],
     queryFn: async () => {
-      if (!userId) return { profile: null, contacts: [], addresses: [] };
-      
-      const [profileResult, contactsResult, addressesResult] = await Promise.all([
-        withTimeout(
-          supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .maybeSingle()
-        ),
-        withTimeout(
-          supabase
-            .from('emergency_contacts')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-        ),
-        withTimeout(
-          supabase
-            .from('addresses')
-            .select('*')
-            .eq('user_id', userId)
-            .order('is_default', { ascending: false })
-        ),
+      if (!userId) return { profile: null as Profile | null, contacts: [] as EmergencyContact[], addresses: [] as Address[] };
+
+      const [profile, contacts, addresses] = await Promise.all([
+        api.get<Profile>('/profile'),
+        api.get<EmergencyContact[]>('/medical/emergency-contacts'),
+        api.get<Address[]>('/addresses'),
       ]);
 
-      if (profileResult.error) throw profileResult.error;
-      if (contactsResult.error) throw contactsResult.error;
-      if (addressesResult.error) throw addressesResult.error;
-
-      return {
-        profile: profileResult.data,
-        contacts: contactsResult.data || [],
-        addresses: addressesResult.data || [],
-      };
+      return { profile, contacts, addresses };
     },
     enabled: !!userId,
     staleTime: 30000,

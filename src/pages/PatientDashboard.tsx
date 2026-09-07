@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users, ClipboardList } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { Loader2 } from 'lucide-react';
@@ -42,10 +42,10 @@ export default function PatientDashboard() {
   const [isCancelling, setIsCancelling] = useState<string | null>(null);
   const [isPreparingPayment, setIsPreparingPayment] = useState(false);
   const queryClient = useQueryClient();
-  const { data: user, isLoading: isLoadingUser } = useSupabaseUser();
+  const { data: user, isLoading: isLoadingUser } = useAuthUser();
   const patientId = user?.id;
   const patientName =
-    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.metadata?.full_name as string | undefined) ||
     user?.email ||
     'Patient';
 
@@ -114,7 +114,7 @@ export default function PatientDashboard() {
     if (!user) return;
 
     // Ne pas tenter la synchronisation si déjà complété
-    const metadata = user.user_metadata ?? {};
+    const metadata = user.metadata ?? {};
     if (metadata.patient_onboarding_completed || !metadata.pending_onboarding) {
       return;
     }

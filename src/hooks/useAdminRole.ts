@@ -1,23 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { auth, type AdminRole } from '@/lib/api';
 
-export type AdminRole = 'super_admin' | 'ops' | 'finance' | 'compliance' | 'support' | 'analyst';
+export type { AdminRole };
 
+/** Rôle administrateur de l'utilisateur connecté (premier rôle de `user_roles`, résolu par `GET /api/auth/me`). */
 export function useAdminRole() {
   return useQuery({
     queryKey: ['admin-role'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data?.role as AdminRole | null;
+      const me = await auth.me();
+      if (!me) return null;
+      return (me.adminRoles[0] ?? null) as AdminRole | null;
     },
   });
 }

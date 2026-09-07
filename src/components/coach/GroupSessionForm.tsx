@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { cn } from "@/lib/utils";
 
 export interface GroupSessionFormData {
@@ -31,7 +31,7 @@ interface GroupSessionFormProps {
 }
 
 export function GroupSessionForm({ formData, onChange, fieldErrors = {} }: GroupSessionFormProps) {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   
   // Vérifier que l'utilisateur est bien un coach sportif
   const { data: practitionerProfile } = useQuery({

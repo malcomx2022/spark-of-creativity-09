@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Loader2, Calendar } from 'lucide-react';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePatientConsultationReports } from '@/hooks/useConsultationReports';
 import { PatientConsultationReportsVirtualized } from './PatientConsultationReportsVirtualized';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function PatientConsultationReportsSection() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [page, setPage] = useState(1);
   const pageSize = 10;
 

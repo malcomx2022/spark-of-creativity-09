@@ -199,6 +199,14 @@ version Supabase, compensé alors par `repair-balances`).
   filtré, minutes réelles `consultation_started_at → consultation_ended_at` ; coach : revenus nets
   au taux `1 - commission` lu dans `system_config`, 63 % par défaut).
 
+## Front (étape 7)
+
+Le client web appelle l'API via `src/lib/api/` (voir `docs/migration-postgresql/README.md`) :
+`VITE_API_URL` (défaut `/api`), `VITE_WS_URL` (Socket.IO, défaut même origine). En développement,
+`vite.config.ts` proxyfie `/api` et `/socket.io` vers `VITE_DEV_API_TARGET`
+(`http://localhost:3000`) pour que les cookies httpOnly restent sur la même origine.
+
 ## Prochaines étapes (ordre du chemin critique)
 
-7. Recodage du front sur l'API (remplacement de `@supabase/supabase-js`)
+7. Recodage du front sur l'API : 7a socle + authentification + profil (livré), 7b hooks et
+   écrans patient / praticien / coach, 7c écrans admin et retrait de `@supabase/supabase-js`

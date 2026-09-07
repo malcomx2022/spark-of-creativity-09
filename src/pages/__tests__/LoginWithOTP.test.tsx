@@ -1,29 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LoginWithOTP from '../LoginWithOTP';
-
-// Helper functions to access testing-library functionality
-const screen = {
-  findByLabelText: async (matcher: RegExp) => {
-    const { container } = render(<div />);
-    return container.querySelector('input') as HTMLElement;
-  },
-  getByRole: (role: string, options?: { name: RegExp }) => {
-    const { container } = render(<div />);
-    return container.querySelector('button') as HTMLElement;
-  }
-};
-
-const waitFor = async (callback: () => void) => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      callback();
-      resolve(undefined);
-    }, 100);
-  });
-};
 
 const mocks = vi.hoisted(() => ({
   mockSendOTP: vi.fn(),
@@ -31,10 +11,7 @@ const mocks = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockGetSession: vi.fn(),
   mockGetUser: vi.fn(),
-  mockMaybeSingle: vi.fn(),
-  mockSelect: vi.fn(),
-  mockEq: vi.fn(),
-  mockOnAuthStateChange: vi.fn(),
+  mockMe: vi.fn(),
 }));
 
 vi.mock('@/hooks/useOTPAuth', () => ({
@@ -49,46 +26,29 @@ vi.mock('@/hooks/useOTPAuth', () => ({
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
-    return {
-      ...actual,
-      useNavigate: () => mocks.mockNavigate,
-    };
-  });
+  return {
+    ...actual,
+    useNavigate: () => mocks.mockNavigate,
+  };
+});
 
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: {
-    auth: {
-      getSession: mocks.mockGetSession,
-      getUser: mocks.mockGetUser,
-      onAuthStateChange: mocks.mockOnAuthStateChange,
-    },
-    from: vi.fn(() => ({
-      select: (columns: string) => {
-        mocks.mockSelect(columns);
-        return {
-          eq: (column: string, value: string) => {
-            mocks.mockEq(column, value);
-            return {
-              maybeSingle: mocks.mockMaybeSingle,
-            };
-          },
-        };
-      },
-    })),
+// Client API : la session locale et la résolution de rôle (`GET /api/auth/me`) sont simulées
+vi.mock('@/lib/api', () => ({
+  auth: {
+    getSession: mocks.mockGetSession,
+    getUser: mocks.mockGetUser,
+    me: mocks.mockMe,
+    onAuthStateChange: () => () => undefined,
+    signOut: vi.fn(),
   },
+  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
+  errorMessage: (e: unknown, fallback = '') => (e instanceof Error ? e.message : fallback),
+  isApiError: () => false,
 }));
 
-const {
-  mockSendOTP,
-  mockVerifyOTP,
-  mockNavigate,
-  mockGetSession,
-  mockGetUser,
-  mockMaybeSingle,
-  mockSelect,
-  mockEq,
-  mockOnAuthStateChange,
-} = mocks;
+const { mockSendOTP, mockVerifyOTP, mockNavigate, mockGetSession, mockGetUser, mockMe } = mocks;
+
+const user = { id: 'user-1', email: 'u@test.com', phone: '+22912345678', emailVerified: true, phoneVerified: true, metadata: {}, createdAt: '' };
 
 describe('LoginWithOTP navigation', () => {
   beforeEach(() => {
@@ -96,97 +56,71 @@ describe('LoginWithOTP navigation', () => {
 
     mockSendOTP.mockResolvedValue(undefined);
     mockVerifyOTP.mockResolvedValue(undefined);
-
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
-      error: null,
-    });
-
-    mockGetUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
-      error: null,
-    });
-
-    mockOnAuthStateChange.mockReturnValue({
-      data: {
-        subscription: {
-          unsubscribe: vi.fn(),
-        },
-      },
-    });
-
-    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    mockGetSession.mockReturnValue(null);
+    mockGetUser.mockReturnValue(user);
+    mockMe.mockResolvedValue({ user, profile: null, role: 'patient', source: 'default', adminRoles: [] });
   });
 
   async function completeOtpFlow() {
-    const user = userEvent.setup();
+    const ue = userEvent.setup();
 
     render(
-      <MemoryRouter>
-        <LoginWithOTP />
-      </MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <LoginWithOTP />
+        </MemoryRouter>
+      </QueryClientProvider>
     );
 
     const phoneInput = await screen.findByLabelText(/numéro de téléphone/i);
-    await user.clear(phoneInput);
-    await user.type(phoneInput, '+22912345678');
+    await ue.clear(phoneInput);
+    await ue.type(phoneInput, '+22912345678');
 
-    const sendButton = screen.getByRole('button', { name: /envoyer le code/i });
-    await user.click(sendButton);
+    await ue.click(screen.getByRole('button', { name: /envoyer le code/i }));
 
     const codeInput = await screen.findByLabelText(/code de vérification/i);
-    await user.clear(codeInput);
-    await user.type(codeInput, '123456');
+    await ue.clear(codeInput);
+    await ue.type(codeInput, '123456');
 
-    const verifyButton = screen.getByRole('button', { name: /vérifier le code/i });
-    await user.click(verifyButton);
+    await ue.click(screen.getByRole('button', { name: /vérifier le code/i }));
   }
 
   it('redirige les coachs vers le dashboard coach', async () => {
-    mockMaybeSingle.mockResolvedValue({
-      data: { practitioner_type: 'coach_sportif' },
-      error: null,
-    });
+    mockMe.mockResolvedValue({ user, profile: null, role: 'coach', source: 'practitioners', adminRoles: [] });
 
     await completeOtpFlow();
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/coach');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/coach', { replace: true });
     });
   });
 
   it('redirige les praticiens non coach vers le dashboard praticien', async () => {
-    mockMaybeSingle.mockResolvedValue({
-      data: { practitioner_type: 'medecin' },
-      error: null,
-    });
+    mockMe.mockResolvedValue({ user, profile: null, role: 'practitioner', source: 'practitioners', practitionerType: 'medecin', adminRoles: [] });
 
     await completeOtpFlow();
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/practitioner');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/practitioner', { replace: true });
     });
   });
 
   it('redirige les patients vers le dashboard patient', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
-
     await completeOtpFlow();
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/patient');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/patient', { replace: true });
     });
   });
 
   it('redirige les utilisateurs sans session active vers le dashboard patient', async () => {
-    mockGetUser
-      .mockResolvedValueOnce({ data: { user: null }, error: null })
-      .mockResolvedValueOnce({ data: { user: null }, error: null });
+    mockGetUser.mockReturnValue(null);
+    mockMe.mockResolvedValue(null);
 
     await completeOtpFlow();
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/patient');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard/patient', { replace: true });
     });
   });
 });

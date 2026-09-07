@@ -1,7 +1,7 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { auth } from '@/lib/api';
+import { useAuthUser } from '@/hooks/useAuthUser';
 
 interface UserTypeContextValue {
   isPractitioner: boolean | undefined;
@@ -16,20 +16,14 @@ const UserTypeContext = createContext<UserTypeContextValue>({
 });
 
 export function UserTypeProvider({ children }: { children: ReactNode }) {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
 
   const { data: isPractitioner, isLoading, error } = useQuery({
     queryKey: ['user-type', user?.id],
     queryFn: async () => {
       if (!user?.id) return false;
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      return !!data;
+      const me = await auth.me();
+      return me?.role === 'practitioner' || me?.role === 'coach';
     },
     enabled: !!user?.id,
     staleTime: 5 * 60 * 1000,

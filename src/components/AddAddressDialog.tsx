@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { AddressSearchInput, type LocationData } from './AddressSearchInput';
@@ -34,20 +34,15 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('addresses')
-        .insert({
-          user_id: userId,
-          label: formData.label,
-          address: formData.address,
-          city: formData.city || null,
-          postal_code: formData.postal_code || null,
-          latitude: formData.latitude,
-          longitude: formData.longitude,
-          is_default: formData.is_default,
-        });
-
-      if (error) throw error;
+      await api.post('/addresses', {
+        label: formData.label,
+        address: formData.address,
+        city: formData.city || null,
+        postalCode: formData.postal_code || null,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        isDefault: formData.is_default,
+      });
 
       toast({
         title: 'Adresse ajoutée',
@@ -55,6 +50,7 @@ export function AddAddressDialog({ userId }: AddAddressDialogProps) {
       });
 
       queryClient.invalidateQueries({ queryKey: ['addresses', userId] });
+      queryClient.invalidateQueries({ queryKey: ['patient-profile-full', userId] });
       setFormData({
         label: '',
         address: '',

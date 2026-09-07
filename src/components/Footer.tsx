@@ -1,14 +1,14 @@
 import { useNavigate, Link } from "react-router-dom";
 import logo from "@/assets/logo.png";
 import { Phone, Mail } from "lucide-react";
-import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { useUserType } from "@/contexts/UserTypeContext";
 import { ROUTES } from "@/lib/routes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function Footer() {
   const navigate = useNavigate();
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const { isPractitioner, error } = useUserType();
 
   // Afficher un fallback minimal si erreur de chargement du type utilisateur

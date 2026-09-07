@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { triageQuestions, calculateTriageScore, type TriageResult } from '@/types/triage';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useSupabaseUser } from '@/hooks/useSupabaseUser';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { TriageHistory } from '@/components/TriageHistory';
 
 const formSchema = z.object({
@@ -26,7 +26,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export function TriageForm() {
-  const { data: user } = useSupabaseUser();
+  const { data: user } = useAuthUser();
   const [result, setResult] = useState<TriageResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);

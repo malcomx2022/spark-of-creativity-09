@@ -1,29 +1,14 @@
-import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { uploadFile, getSignedFileUrl as getSignedUrl, type StorageFolder } from '@/lib/api';
 
 interface UploadResult {
   url: string;
   path: string;
 }
 
-interface StorageUploadResponse {
-  filePath: string;
-  url: string;
-}
-
-interface PresignedUrlResponse {
-  url: string;
-}
-
-const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-};
-
+/**
+ * Téléverse un document de l'utilisateur (ex Edge Function upload-to-wasabi + table files) :
+ * URL pré-signée PUT vers S3 puis enregistrement dans `files` via l'API.
+ */
 export async function uploadUserDocument({
   file,
   folder,
@@ -33,47 +18,11 @@ export async function uploadUserDocument({
   folder: string;
   userId: string;
 }): Promise<UploadResult> {
-  const content = await file.arrayBuffer();
-  const fileContent = arrayBufferToBase64(content);
-
-  const { data, error } = await invokeEdgeFunctionWithRetry<StorageUploadResponse>("upload-to-wasabi", {
-    body: {
-      fileName: file.name,
-      fileContent,
-      contentType: file.type,
-      folder,
-    },
-  });
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data?.filePath || !data?.url) {
-    throw new Error("Échec du téléchargement du document");
-  }
-
-  // Enregistrer la référence dans la table files pour audit
-  const { error: logError } = await supabase.from("files").insert({
-    user_id: userId,
-    file_name: file.name,
-    file_path: data.filePath,
-    file_size: file.size,
-    file_type: file.type,
-    folder,
-    metadata: {
-      originalName: file.name,
-    },
-  });
-
-  if (logError) {
-    console.warn("Impossible d'enregistrer la trace du fichier", logError);
-  }
-
-  return {
-    url: data.url as string,
-    path: data.filePath as string,
-  };
+  void userId; // l'API déduit le propriétaire du jeton
+  const allowed: StorageFolder[] = ['documents', 'avatars', 'message-attachments'];
+  const target = (allowed.includes(folder as StorageFolder) ? folder : 'documents') as StorageFolder;
+  const result = await uploadFile(file, { folder: target, metadata: { originalName: file.name, requestedFolder: folder } });
+  return { url: result.url, path: result.path };
 }
 
 export async function getSignedFileUrl(filePath?: string | null): Promise<string | null> {
@@ -82,37 +31,8 @@ export async function getSignedFileUrl(filePath?: string | null): Promise<string
     return null;
   }
 
-  // Already a full URL, return as is
-  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
-    console.log("File path is already a full URL:", filePath.substring(0, 50) + "...");
-    return filePath;
-  }
-
   try {
-    console.log("Requesting presigned URL for:", filePath);
-    
-    const { data, error } = await invokeEdgeFunctionWithRetry<PresignedUrlResponse>("get-presigned-url", {
-      body: {
-        filePath,
-        expiresIn: 3600,
-      },
-    });
-
-    if (error) {
-      console.error("Error getting presigned URL:", {
-        filePath,
-        error: error.message,
-      });
-      throw error;
-    }
-
-    if (!data?.url) {
-      console.error("No URL returned from presigned URL function for:", filePath);
-      return null;
-    }
-
-    console.log("Presigned URL generated successfully for:", filePath);
-    return data.url;
+    return await getSignedUrl(filePath, 3600);
   } catch (error) {
     console.error("Failed to get signed file URL:", {
       filePath,
