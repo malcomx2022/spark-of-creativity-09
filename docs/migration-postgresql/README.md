@@ -11,6 +11,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | [02-RECUPERATION-DONNEES-SUPABASE.md](02-RECUPERATION-DONNEES-SUPABASE.md) | Procédure d'extraction complète : schéma, données, comptes (avec mots de passe), fichiers, secrets |
 | [03-RETRO-INGENIERIE.md](03-RETRO-INGENIERIE.md) | Cartographie de tout ce qui dépend de Supabase et sa cible native (auth, RLS, functions, realtime, storage, front) |
 | [04-PLAN-EXECUTION-VPS.md](04-PLAN-EXECUTION-VPS.md) | Plan phasé jusqu'à la mise en production sur VPS, bascule, rollback, exploitation |
+| [05-POINT-FONCTIONNEL.md](05-POINT-FONCTIONNEL.md) | Point d'alignement après l'étape 7 : ce qui est cohérent, les écarts restants (données, CI/CD, fichiers, rétention, infra) et les lots proposés avant la bascule |
 
 ## Outillage livré (testé)
 

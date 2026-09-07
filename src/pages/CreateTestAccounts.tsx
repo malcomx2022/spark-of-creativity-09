@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, errorMessage } from "@/lib/api";
-import type { CreateTestAccountsResponse } from "@/types/edge-function-responses";
+import type { CreateTestAccountsResponse } from "@/types/api-responses";
 import { useNavigate } from "react-router-dom";
 import { Loader2, LogOut, RefreshCw } from "lucide-react";
 import { toast as sonnerToast } from "sonner";

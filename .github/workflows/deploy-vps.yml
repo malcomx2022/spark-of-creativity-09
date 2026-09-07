@@ -1,0 +1,47 @@
+name: Deploy VPS
+
+# Déploiement de la pile deploy/vps (Caddy, web, api, worker, PostgreSQL, MinIO, backup)
+# par SSH puis `docker compose`. Manuel tant que le VPS n'est pas en service ; pour
+# l'automatiser sur main, décommenter le déclencheur `push`.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Tapez DEPLOYER pour confirmer"
+        required: true
+  # push:
+  #   branches: [main]
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'push' || github.event.inputs.confirm == 'DEPLOYER'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mettre à jour le dépôt et relancer la pile
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.VPS_APP_DIR }}"
+            git fetch origin main
+            git reset --hard origin/main
+            cd deploy/vps
+            docker compose build --pull web api worker
+            docker compose up -d --remove-orphans
+            docker image prune -f
+      - name: Vérifier l'API
+        run: |
+          for i in $(seq 1 18); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.DOMAIN_NAME }}/api/health" || echo 000)
+            if [ "$code" = "200" ]; then echo "API OK"; exit 0; fi
+            sleep 10
+          done
+          echo "API injoignable (HTTP $code)"; exit 1

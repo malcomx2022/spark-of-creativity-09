@@ -5,8 +5,9 @@
 #   api       : back-end (NestJS) — remplace les 46 Edge Functions Supabase + Socket.IO
 #                (relais LISTEN/NOTIFY → WebSocket, à la place de Supabase Realtime)
 #   worker    : tâches planifiées (jobs) — REALTIME_ENABLED forcé à false
+#   (Redis n'est pas nécessaire sur un nœud unique : à ajouter comme adaptateur Socket.IO
+#    seulement si l'API est déployée en plusieurs réplicas)
 #   postgres  : PostgreSQL 16 (schéma db/native)
-#   redis     : files BullMQ, cache OTP/rate-limit, adapter Socket.IO
 #   minio     : stockage S3 compatible (ou utiliser Wasabi : supprimer ce service)
 # Variables : voir .env.example
 # =============================================================================
@@ -38,17 +39,15 @@ services:
 
   api:
     build:
-      context: ../../api        # dépôt/dossier du back-end NestJS (à créer — voir docs/migration-postgresql/03)
+      context: ../../api        # back-end NestJS : même image pour l'API et le worker
     restart: unless-stopped
     expose: ["3000"]
     env_file: .env
     environment:
       DATABASE_URL: postgresql://domicares_app:${DOMICARES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379
       NODE_ENV: production
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
 
   worker:
     build:
@@ -58,11 +57,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://domicares_app:${DOMICARES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379
       NODE_ENV: production
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
 
   postgres:
     image: postgres:16-alpine
@@ -97,12 +94,6 @@ services:
     # Ne PAS exposer 5432 publiquement. Pour un accès admin : ssh -L 5432:localhost:5432
     ports: ["127.0.0.1:5432:5432"]
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
-    volumes: [redis_data:/data]
-
   minio:
     image: minio/minio:latest
     restart: unless-stopped
@@ -131,7 +122,6 @@ services:
 
 volumes:
   pg_data:
-  redis_data:
   minio_data:
   caddy_data:
   caddy_config:

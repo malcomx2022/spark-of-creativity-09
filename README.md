@@ -1,73 +1,47 @@
-# Welcome to your Lovable project
+# Domicares
 
-## Project info
+Plateforme de soins à domicile (patients, praticiens, coachs sportifs, administration) :
+recherche de praticiens, rendez-vous, paiements FedaPay, séances de groupe, messagerie,
+dossier médical, support et back-office.
 
-**URL**: https://lovable.dev/projects/a6f5c529-824c-4e8e-a92c-c4acad4413c7
+## Architecture
 
-## How can I edit this code?
+| Composant | Technologie | Dossier |
+|---|---|---|
+| Front web (SPA) | Vite, React, TanStack Query, Tailwind, Socket.IO client | `src/` |
+| API et worker | NestJS 11 (Fastify), Kysely, Socket.IO, jobs planifiés | `api/` |
+| Base de données | PostgreSQL 16, schéma natif consolidé | `db/native/` |
+| Stockage de fichiers | S3 compatible (MinIO sur le VPS, Wasabi possible) | `api/src/storage` |
+| Déploiement | Docker Compose + Caddy (TLS automatique) | `deploy/vps/` |
 
-There are several ways of editing your application.
+Le front ne parle qu'à l'API (`VITE_API_URL`, défaut `/api`) et au WebSocket Socket.IO
+(`VITE_WS_URL`, défaut même origine). Le dossier `supabase/` contient les migrations et Edge
+Functions de l'ancienne plateforme, conservées uniquement comme référence de la migration.
 
-**Use Lovable**
+## Démarrer en local
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/a6f5c529-824c-4e8e-a92c-c4acad4413c7) and start prompting.
+1. **Base** : créer une base PostgreSQL 16 et charger, dans l'ordre, `db/native/010_roles.sql`,
+   `schema.native.sql`, `120_drop_rls_optional.sql`, `130_fixes_heritage.sql`, `020_grants.sql`
+   (voir `api/README.md`, « Démarrer en local »).
+2. **API** : `cd api && cp .env.example .env && npm ci && npm run start:dev` (fournisseurs
+   `console` / `fake` par défaut ; documentation Swagger sur `/api/docs`).
+3. **Front** : à la racine, `cp .env.example .env && npm ci && npm run dev`. Le serveur Vite
+   proxyfie `/api` et `/socket.io` vers `VITE_DEV_API_TARGET` (`http://localhost:3000`).
 
-Changes made via Lovable will be committed automatically to this repo.
+## Vérifications
 
-**Use your preferred IDE**
+| Commande | Rôle |
+|---|---|
+| `npx tsc --noEmit -p tsconfig.app.json` | Typecheck du front |
+| `npm test` | Tests Vitest du front |
+| `npm run build` | Build de production Vite |
+| `cd api && npm run typecheck && npm run test:e2e` | Typecheck et tests e2e de l'API (base réelle) |
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml` (déploiement).
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Documentation
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/a6f5c529-824c-4e8e-a92c-c4acad4413c7) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- `docs/migration-postgresql/` : état des lieux, récupération des données Supabase,
+  rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement.
+- `api/README.md` : table des routes de l'API (et ce qu'elles remplacent), jobs, configuration.
+- `docs/archive/` : documents de l'ère Lovable / Supabase, conservés pour l'historique.

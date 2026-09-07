@@ -49,7 +49,7 @@ directement sur les hash `$2a$10$` de GoTrue. Aucune réinitialisation.
 |---|---|---|---|
 | `send-otp`, `verify-otp` | `POST /auth/otp/send`, `/auth/otp/verify` | Auth | Twilio Verify inchangé |
 | `complete-user-registration` | `POST /auth/register/complete` | Auth/Onboarding | consomme `pending_onboarding` |
-| `create-practitioner-account` | `POST /practitioners/register` | Practitioners | transaction atomique (voir `docs/PRACTITIONER_ATOMIC_SIGNUP.md`) |
+| `create-practitioner-account` | `POST /practitioners/register` | Practitioners | transaction atomique (voir `docs/archive/PRACTITIONER_ATOMIC_SIGNUP.md`) |
 | `delete-single-user` | `DELETE /admin/users/:id` | Admin | remplace `auth.admin.deleteUser` par `DELETE FROM users` (cascade) |
 | `create-test-users`, `cleanup-non-test-accounts` | `POST /admin/dev/*` | Admin (désactivés en prod) | |
 | `secure-phone` | `POST /profile/phone/secure` | Profile | même `PHONE_ENCRYPTION_KEY` (AES-GCM) |

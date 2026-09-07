@@ -204,6 +204,16 @@ describe('Admin (e2e)', () => {
     await sql`delete from public.consent_versions where id = ${v2.json().id}::uuid`.execute(db.db);
   });
 
+  it('maintenance : job de rétention quotidien (purges, profils manquants, comptes orphelins en compte-rendu)', async () => {
+    const run = await app.inject({ method: 'POST', url: '/api/admin/jobs/maintenance.cleanup/run', headers: auth('root'), payload: {} });
+    expect(run.statusCode).toBe(200);
+    expect(run.json().skipped).toBe(false);
+    expect(run.json().result).toMatchObject({ executed: expect.arrayContaining(['cleanup_old_file_access_logs', 'cleanup_old_search_activity_logs']), orphansDeleted: null });
+    expect(typeof run.json().result.orphanCandidates).toBe('number');
+    const listed = await app.inject({ method: 'GET', url: '/api/admin/jobs', headers: auth('root') });
+    expect(listed.json().some((j: { name: string }) => j.name === 'maintenance.cleanup')).toBe(true);
+  });
+
   it('opérations : rendez-vous du jour, modération d’un avis, usage API', async () => {
     const today = await app.inject({ method: 'GET', url: '/api/admin/operations/appointments', headers: auth('root') });
     expect(today.statusCode).toBe(200);

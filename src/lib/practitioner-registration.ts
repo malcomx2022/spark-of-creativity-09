@@ -4,7 +4,7 @@
  * snake_case historique ; ce module les convertit vers le contrat de l'API.
  */
 import { api, ApiError } from '@/lib/api';
-import type { CreatePractitionerResponse } from '@/types/edge-function-responses';
+import type { CreatePractitionerResponse } from '@/types/api-responses';
 
 export interface PractitionerRegisterPayload {
   profile: { fullName: string; phone: string; gender?: string | null; dateOfBirth?: string | null };
