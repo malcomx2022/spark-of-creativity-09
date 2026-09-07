@@ -1,18 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Navigation, 
-  MapPin, 
-  Play, 
-  CheckCircle2, 
+import {
+  Navigation,
+  MapPin,
+  Play,
+  CheckCircle2,
   Clock,
-  AlertCircle 
+  AlertCircle
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import type { PractitionerTrackingStatus } from '@/types/appointment';
 
 interface PractitionerStatusControlProps {
@@ -24,11 +24,20 @@ interface PractitionerStatusControlProps {
   onStatusChange?: (newStatus: PractitionerTrackingStatus) => void;
 }
 
+/** Statuts acceptés par `PATCH /appointments/:id/practitioner-status` (`assigned` est l'état initial). */
+type ProgressStatus = Exclude<PractitionerTrackingStatus, 'assigned'>;
+
+interface PractitionerStatusBody {
+  status: ProgressStatus;
+  latitude?: number;
+  longitude?: number;
+}
+
 const STATUS_CONFIG: Record<PractitionerTrackingStatus, {
   label: string;
   color: string;
   icon: React.ReactNode;
-  nextStatus?: PractitionerTrackingStatus;
+  nextStatus?: ProgressStatus;
   nextLabel?: string;
 }> = {
   assigned: {
@@ -75,20 +84,16 @@ export function PractitionerStatusControl({
   onStatusChange,
 }: PractitionerStatusControlProps) {
   const [isUpdating, setIsUpdating] = useState(false);
-  const [geoLocation, setGeoLocation] = useState<GeolocationPosition | null>(null);
+  const [, setGeoLocation] = useState<GeolocationPosition | null>(null);
 
   const config = STATUS_CONFIG[currentStatus];
 
-  const updateStatus = async (newStatus: PractitionerTrackingStatus) => {
+  const updateStatus = async (newStatus: ProgressStatus) => {
     setIsUpdating(true);
 
     try {
       // Obtenir la position GPS si en route ou arrivé
-      let locationUpdate: {
-        practitioner_latitude?: number;
-        practitioner_longitude?: number;
-        practitioner_last_location_update?: string;
-      } = {};
+      const body: PractitionerStatusBody = { status: newStatus };
 
       if (newStatus === 'en_route' || newStatus === 'arrived') {
         try {
@@ -100,11 +105,8 @@ export function PractitionerStatusControl({
           });
 
           setGeoLocation(position);
-          locationUpdate = {
-            practitioner_latitude: position.coords.latitude,
-            practitioner_longitude: position.coords.longitude,
-            practitioner_last_location_update: new Date().toISOString(),
-          };
+          body.latitude = position.coords.latitude;
+          body.longitude = position.coords.longitude;
         } catch (geoError) {
           console.warn('Impossible d\'obtenir la position GPS:', geoError);
           toast({
@@ -115,25 +117,9 @@ export function PractitionerStatusControl({
         }
       }
 
-      // Mettre à jour le statut dans la base
-      const updatePayload: Record<string, unknown> = {
-        practitioner_status: newStatus,
-        ...locationUpdate,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Enregistrer le timestamp de début de consultation
-      if (newStatus === 'in_progress') {
-        updatePayload.status = 'in-progress';
-        updatePayload.consultation_started_at = new Date().toISOString();
-      }
-
-      const { error } = await supabase
-        .from('appointments')
-        .update(updatePayload)
-        .eq('id', appointmentId);
-
-      if (error) throw error;
+      // Mettre à jour le statut (in_progress : l'API passe aussi le rendez-vous en cours et
+      // enregistre le début de consultation)
+      await api.patch(`/appointments/${appointmentId}/practitioner-status`, body);
 
       toast({
         title: '✅ Statut mis à jour',
@@ -145,7 +131,7 @@ export function PractitionerStatusControl({
       console.error('Erreur mise à jour statut:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de mettre à jour le statut.',
+        description: errorMessage(error, 'Impossible de mettre à jour le statut.'),
         variant: 'destructive',
       });
     } finally {
@@ -154,7 +140,9 @@ export function PractitionerStatusControl({
   };
 
   // Activer le tracking GPS continu quand en route
-  const startGPSTracking = async () => {
+  useEffect(() => {
+    if (currentStatus !== 'en_route') return;
+
     if (!('geolocation' in navigator)) {
       toast({
         title: 'GPS non disponible',
@@ -165,16 +153,15 @@ export function PractitionerStatusControl({
     }
 
     const watchId = navigator.geolocation.watchPosition(
-      async (position) => {
+      (position) => {
         // Mettre à jour la position dans la base toutes les 30 secondes
-        await supabase
-          .from('appointments')
-          .update({
-            practitioner_latitude: position.coords.latitude,
-            practitioner_longitude: position.coords.longitude,
-            practitioner_last_location_update: new Date().toISOString(),
-          })
-          .eq('id', appointmentId);
+        api
+          .patch(`/appointments/${appointmentId}/practitioner-status`, {
+            status: 'en_route',
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          } satisfies PractitionerStatusBody)
+          .catch((error) => console.error('Erreur mise à jour position GPS:', error));
       },
       (error) => {
         console.error('Erreur tracking GPS:', error);
@@ -190,12 +177,7 @@ export function PractitionerStatusControl({
     return () => {
       navigator.geolocation.clearWatch(watchId);
     };
-  };
-
-  // Démarrer le tracking GPS quand en route
-  if (currentStatus === 'en_route') {
-    startGPSTracking();
-  }
+  }, [appointmentId, currentStatus]);
 
   return (
     <Card>

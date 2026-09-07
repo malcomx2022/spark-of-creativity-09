@@ -107,3 +107,13 @@ export const rateSchema = z.object({ serviceType: z.string().trim().min(2).max(1
 export type RateDto = z.infer<typeof rateSchema>;
 export const rateUpdateSchema = rateSchema.partial();
 export type RateUpdateDto = z.infer<typeof rateUpdateSchema>;
+
+/** Ex DocumentsSection : nouveau document KYC téléversé via POST /files/upload-url (dossier documents). */
+export const updateDocumentsSchema = z
+  .object({
+    idDocumentUrl: z.string().trim().min(3).max(1024).optional(),
+    licenseDocumentUrl: z.string().trim().min(3).max(1024).optional(),
+    insuranceDocumentUrl: z.string().trim().min(3).max(1024).optional(),
+  })
+  .refine((d) => Object.values(d).some((v) => v !== undefined), { message: 'Aucun document fourni' });
+export type UpdateDocumentsDto = z.infer<typeof updateDocumentsSchema>;

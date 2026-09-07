@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -6,7 +6,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   AvailabilityDto, availabilitySchema, AvailabilityUpdateDto, availabilityUpdateSchema, AvailableQuery, availableQuerySchema,
   ExceptionDto, exceptionSchema, ListPractitionersQuery, listPractitionersQuerySchema, RateDto, rateSchema, RateUpdateDto, rateUpdateSchema,
-  RegisterPractitionerDto, registerPractitionerSchema, UpdatePractitionerDto, updatePractitionerSchema,
+  RegisterPractitionerDto, registerPractitionerSchema, UpdatePractitionerDto, updatePractitionerSchema, updateDocumentsSchema, UpdateDocumentsDto,
 } from './practitioners.dto';
 import { PractitionersService } from './practitioners.service';
 import { ScheduleService } from './schedule.service';
@@ -50,6 +50,14 @@ export class PractitionersController {
   @ApiBearerAuth()
   updateOwn(@CurrentUser() user: AuthenticatedUser, @Body(new ZodValidationPipe(updatePractitionerSchema)) dto: UpdatePractitionerDto) {
     return this.practitioners.updateOwn(user.id, dto);
+  }
+
+  @Put('me/documents')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remplace un document KYC et remet le dossier en attente de validation (ex DocumentsSection)' })
+  updateDocuments(@CurrentUser() user: AuthenticatedUser, @Body(new ZodValidationPipe(updateDocumentsSchema)) dto: UpdateDocumentsDto) {
+    return this.practitioners.updateDocuments(user.id, dto);
   }
 
   @Post('me/availability')

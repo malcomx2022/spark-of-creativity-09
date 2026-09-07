@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Activity, Calendar, Clock, FileText, User, Heart, CreditCard, Bell, MessageSquare, Star, HelpCircle, Shield, ClipboardCheck, AlertCircle, Users, ClipboardList } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuthUser, AUTH_USER_QUERY_KEY } from '@/hooks/useAuthUser';
 import { useCreateAppointment, useMutateAppointment, usePatientAppointments } from '@/hooks/useAppointments';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { Loader2 } from 'lucide-react';
@@ -28,10 +28,29 @@ import { FedaPayWidget } from '@/components/FedaPayWidget';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, auth, errorMessage } from '@/lib/api';
 import { completePatientOnboardingFromMetadata } from '@/lib/patient-onboarding';
 import { formatAmount } from '@/lib/payment-config';
 import { getPersistedPaymentState, clearPersistedPaymentState } from '@/lib/payment-storage';
+
+/** Colonnes de `GET /payments` utilisées par le tableau de bord. */
+interface PatientPaymentSummary {
+  id: string;
+  appointment_id: string;
+  status: string;
+  payout_status: string | null;
+  amount: number;
+  created_at: string;
+}
+
+/** Compteurs de `GET /stats/patient`. */
+interface PatientStats {
+  upcoming: number;
+  past: number;
+  completed: number;
+  awaitingPayment: number;
+  awaitingConfirmation: number;
+}
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("appointments");
@@ -97,17 +116,19 @@ export default function PatientDashboard() {
     queryKey: ['payments', patientId],
     queryFn: async () => {
       if (!patientId) return [];
-      const { data, error } = await supabase
-        .from('payments')
-        .select('id, appointment_id, status, payout_status, amount, created_at')
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false })
-        .limit(100); // ✅ Limiter à 100 derniers paiements
-      if (error) throw error;
-      return data;
+      // ✅ Limiter à 100 derniers paiements (l'utilisateur est déduit du jeton)
+      return api.get<PatientPaymentSummary[]>('/payments', { query: { limit: 100 } });
     },
     enabled: !!patientId,
     staleTime: 30000, // ✅ Cache pendant 30 secondes
+  });
+
+  // Compteurs du tableau de bord calculés côté API (repli sur les rendez-vous chargés)
+  const { data: patientStats } = useQuery({
+    queryKey: ['stats', 'patient', patientId],
+    queryFn: () => api.get<PatientStats>('/stats/patient'),
+    enabled: !!patientId,
+    staleTime: 30000,
   });
 
   useEffect(() => {
@@ -129,7 +150,7 @@ export default function PatientDashboard() {
             title: 'Profil patient mis à jour',
             description: 'Vos informations ont été synchronisées avec succès.',
           });
-          queryClient.invalidateQueries({ queryKey: ['supabase', 'auth', 'user'] });
+          queryClient.invalidateQueries({ queryKey: AUTH_USER_QUERY_KEY });
         }
       } catch (error) {
         console.error('Erreur lors de la finalisation du profil patient', error);
@@ -215,40 +236,9 @@ export default function PatientDashboard() {
       let amount = appointment.paymentAmount ?? null;
 
       if (amount === null) {
-        const { data: refreshed, error: refreshError } = await supabase
-          .from('appointments')
-          .select('payment_amount, practitioner_id, specialty')
-          .eq('id', appointmentId)
-          .maybeSingle();
-
-        if (refreshError) throw refreshError;
-
-        amount = refreshed?.payment_amount ?? null;
-
-        if (amount === null && refreshed?.practitioner_id) {
-          const { data: rate, error: rateError } = await supabase
-            .from('practitioner_rates')
-            .select('base_price')
-            .eq('practitioner_id', refreshed.practitioner_id)
-            .eq('service_type', refreshed.specialty)
-            .maybeSingle();
-
-          if (rateError) throw rateError;
-
-          amount = rate?.base_price ?? null;
-
-          if (amount === null) {
-            const { data: service, error: serviceError } = await supabase
-              .from('services')
-              .select('base_price')
-              .eq('name', refreshed.specialty)
-              .maybeSingle();
-
-            if (serviceError) throw serviceError;
-
-            amount = service?.base_price ?? null;
-          }
-        }
+        // Le montant est fixé par l'API lorsque le praticien accepte (tarif du praticien, service ou défaut)
+        const refreshed = await api.get<{ payment_amount: number | null }>(`/appointments/${appointmentId}`);
+        amount = refreshed.payment_amount ?? null;
       }
 
       // ✅ CORRECTION P0-3: Validation robuste du montant
@@ -295,18 +285,10 @@ export default function PatientDashboard() {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Vérifier que le paiement existe avec un status valide
-        const { data: payment, error } = await supabase
-          .from('payments')
-          .select('id, status')
-          .eq('appointment_id', appointmentIdForPayment)
-          .in('status', ['paid', 'pending', 'initiated'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const payment = (await api.get<PatientPaymentSummary[]>('/payments', { query: { appointmentId: appointmentIdForPayment, limit: 5 } }))
+          .find((p) => ['paid', 'pending', 'initiated'].includes(p.status));
 
-        if (error) {
-          console.error('[Payment] Erreur vérification paiement:', error);
-        } else if (!payment) {
+        if (!payment) {
           console.warn('[Payment] Paiement non trouvé en DB, état potentiellement incohérent');
         } else {
           console.log('[Payment] Paiement vérifié en DB:', payment.id, 'Status:', payment.status);
@@ -379,8 +361,8 @@ export default function PatientDashboard() {
     setIsCancelling(id);
 
     try {
-      // ✅ CORRECTION P1-1: Vérifier que le rendez-vous appartient au patient actuel
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      // ✅ CORRECTION P1-1: session requise (l'API vérifie que le rendez-vous appartient au patient)
+      const currentUser = auth.getUser();
       if (!currentUser) {
         toast({
           title: 'Session expirée',
@@ -390,34 +372,10 @@ export default function PatientDashboard() {
         return;
       }
 
-      // Vérifier l'ownership du rendez-vous
-      const { data: appointment, error: appointmentError } = await supabase
-        .from('appointments')
-        .select('id, patient_id, status')
-        .eq('id', id)
-        .single();
-
-      if (appointmentError || !appointment) {
-        toast({
-          title: 'Erreur',
-          description: 'Rendez-vous introuvable.',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      if (appointment.patient_id !== currentUser.id) {
-        console.error('[Security] Tentative non autorisée d\'annulation - patient_id mismatch');
-        toast({
-          title: 'Non autorisé',
-          description: 'Vous n\'êtes pas autorisé à annuler ce rendez-vous.',
-          variant: 'destructive'
-        });
-        return;
-      }
+      const appointment = appointments.find((apt) => apt.id === id);
 
       // Vérifier que le rendez-vous peut être annulé (pas déjà annulé ou complété)
-      if (appointment.status === 'cancelled') {
+      if (appointment?.status === 'cancelled') {
         toast({
           title: 'Déjà annulé',
           description: 'Ce rendez-vous a déjà été annulé.',
@@ -426,7 +384,7 @@ export default function PatientDashboard() {
         return;
       }
 
-      if (appointment.status === 'completed') {
+      if (appointment?.status === 'completed') {
         toast({
           title: 'Impossible d\'annuler',
           description: 'Vous ne pouvez pas annuler un rendez-vous terminé.',
@@ -435,33 +393,14 @@ export default function PatientDashboard() {
         return;
       }
 
-      // 1. Vérifier et annuler le paiement en attente s'il existe
+      // Paiement en attente éventuel (annulé par l'API en même temps que le rendez-vous)
       const pendingPayment = payments?.find(p =>
         p.appointment_id === id &&
         (p.status === 'initiated' || p.status === 'pending')
       );
 
-      if (pendingPayment) {
-        console.log('Annulation du paiement en attente:', pendingPayment.id);
-
-        // Annuler le paiement via l'edge function
-        const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-          body: { appointmentId: id }
-        });
-
-        if (cancelError) {
-          console.warn('Erreur lors de l\'annulation du paiement:', cancelError);
-          // Ne pas bloquer l'annulation du rendez-vous si le paiement échoue
-        } else {
-          console.log('Paiement annulé avec succès');
-        }
-      }
-
-      // 2. Annuler le rendez-vous
-      await mutateAppointment.mutateAsync({
-        id,
-        data: { status: 'cancelled' }
-      });
+      // Annuler le rendez-vous (POST /appointments/:id/cancel)
+      await mutateAppointment.mutateAsync({ id, action: 'cancel' });
 
       // 3. Nettoyer l'état de paiement persisté si c'était le rendez-vous en cours
       if (appointmentIdForPayment === id) {
@@ -485,7 +424,7 @@ export default function PatientDashboard() {
       console.error('Erreur lors de l\'annulation du rendez-vous', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible d\'annuler le rendez-vous.',
+        description: errorMessage(error, 'Impossible d\'annuler le rendez-vous.'),
         variant: 'destructive'
       });
     } finally {
@@ -517,6 +456,7 @@ export default function PatientDashboard() {
   const pastAppointments = appointments.filter(
     apt => apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'rejected'
   );
+  const upcomingCount = patientStats?.upcoming ?? upcomingAppointments.length;
 
   const isLoading = isLoadingUser || isLoadingAppointments;
 
@@ -566,11 +506,11 @@ export default function PatientDashboard() {
               <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{upcomingAppointments.length}</div>
+              <div className="text-2xl font-bold">{upcomingCount}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {upcomingAppointments.length === 0
+                {upcomingCount === 0
                   ? 'Aucun rendez-vous planifié'
-                  : upcomingAppointments.length === 1
+                  : upcomingCount === 1
                   ? 'Prochain rendez-vous planifié'
                   : 'Rendez-vous planifiés'}
               </p>
@@ -608,7 +548,7 @@ export default function PatientDashboard() {
             </CardHeader>
             <CardContent>
               {(() => {
-                const completedCount = appointments.filter(apt => apt.status === 'completed').length;
+                const completedCount = patientStats?.completed ?? appointments.filter(apt => apt.status === 'completed').length;
                 return (
                   <>
                     <div className="text-2xl font-bold">{completedCount}</div>

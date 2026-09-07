@@ -27,11 +27,13 @@ import {
   useNotificationPreferences,
   useMarkNotificationAsRead,
   useMarkAllNotificationsAsRead,
-  useDeleteNotification
+  useDeleteNotification,
+  useUpdateNotificationPreferences,
+  type NotificationPreferencesUpdate,
 } from '@/hooks/useNotifications';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAuthUser } from '@/hooks/useAuthUser';
-import { supabase } from '@/integrations/supabase/client';
+import { errorMessage } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -65,6 +67,7 @@ export function NotificationsSection() {
   const markAsRead = useMarkNotificationAsRead();
   const markAllAsRead = useMarkAllNotificationsAsRead();
   const deleteNotification = useDeleteNotification();
+  const { mutateAsync: savePreferences } = useUpdateNotificationPreferences();
   const { isSupported, isSubscribed, isLoading: isPushLoading, subscribe, unsubscribe } = usePushNotifications(user?.id);
 
   const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read'>('all');
@@ -131,36 +134,25 @@ export function NotificationsSection() {
       setIsUpdating(prev => ({ ...prev, [key]: true }));
 
       try {
-        const columnMap = {
-          email: 'email_enabled',
-          sms: 'sms_enabled',
-          whatsapp: 'whatsapp_enabled',
-          push: 'push_enabled',
+        const fieldMap: Record<keyof typeof localPrefs, keyof NotificationPreferencesUpdate> = {
+          email: 'emailEnabled',
+          sms: 'smsEnabled',
+          whatsapp: 'whatsappEnabled',
+          push: 'pushEnabled',
         };
 
-        const updateData: any = {
-          user_id: user.id,
-          [columnMap[key]]: value
-        };
-
-        const { error } = await supabase
-          .from('notification_preferences')
-          .upsert(updateData, {
-            onConflict: 'user_id',
-            ignoreDuplicates: false
-          });
-
-        if (error) throw error;
+        // PUT /notifications/preferences (upsert côté API, utilisateur déduit du jeton)
+        await savePreferences({ userId: user.id, data: { [fieldMap[key]]: value } });
 
         toast({
           title: 'Préférences mises à jour',
           description: 'Vos préférences de notification ont été enregistrées.'
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error updating preferences:', error);
         toast({
           title: 'Erreur lors de la mise à jour',
-          description: error.message || 'Impossible de mettre à jour vos préférences.',
+          description: errorMessage(error, 'Impossible de mettre à jour vos préférences.'),
           variant: 'destructive'
         });
         // Revert optimistic update
@@ -169,7 +161,7 @@ export function NotificationsSection() {
         setIsUpdating(prev => ({ ...prev, [key]: false }));
       }
     }, 300);
-  }, [user?.id]);
+  }, [user?.id, savePreferences]);
 
   // Nettoyer les timers au démontage
   useEffect(() => {
@@ -350,7 +342,7 @@ export function NotificationsSection() {
               <Badge variant="secondary">{filteredNotifications.length}</Badge>
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
+              <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as 'all' | 'unread' | 'read')}>
                 <SelectTrigger className="w-[140px]">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue />
@@ -421,7 +413,7 @@ export function NotificationsSection() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 mt-1">
-                        {getNotificationIcon((notification as any).type)}
+                        {getNotificationIcon(notification.type)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start mb-1">

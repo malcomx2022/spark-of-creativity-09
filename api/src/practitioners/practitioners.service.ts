@@ -5,7 +5,7 @@ import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import type { DB, Practitioner, PractitionerUpdate } from '../database/types';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { decodeDataUrl, MAX_KYC_DOCUMENT_SIZE, StorageService } from '../storage/storage.service';
-import type { AvailableQuery, ListPractitionersQuery, RegisterPractitionerDto, UpdatePractitionerDto } from './practitioners.dto';
+import type { AvailableQuery, ListPractitionersQuery, RegisterPractitionerDto, UpdateDocumentsDto, UpdatePractitionerDto } from './practitioners.dto';
 
 /** Colonnes exposées publiquement (= get_public_practitioners / practitioners_public_view). */
 const PUBLIC_COLUMNS = [
@@ -249,6 +249,28 @@ export class PractitionersService {
     );
     if (!p) throw new NotFoundException('Aucun enregistrement praticien pour ce compte');
     return p;
+  }
+
+  /** Nouveau document KYC : URLs mises à jour, dossier repassé en `pending`, administrateurs notifiés. */
+  async updateDocuments(userId: string, dto: UpdateDocumentsDto): Promise<Practitioner> {
+    return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
+      const p = await trx
+        .updateTable('practitioners')
+        .set({
+          ...(dto.idDocumentUrl !== undefined ? { id_document_url: dto.idDocumentUrl } : {}),
+          ...(dto.licenseDocumentUrl !== undefined ? { license_document_url: dto.licenseDocumentUrl } : {}),
+          ...(dto.insuranceDocumentUrl !== undefined ? { insurance_document_url: dto.insuranceDocumentUrl } : {}),
+          kyc_status: 'pending',
+          kyc_comment: null,
+          updated_at: new Date(),
+        })
+        .where('user_id', '=', userId)
+        .returningAll()
+        .executeTakeFirst();
+      if (!p) throw new NotFoundException('Aucun enregistrement praticien pour ce compte');
+      await this.inApp.notifyAdmins(trx, { title: 'Documents KYC mis à jour', message: `${p.name} a téléversé de nouveaux documents : dossier à revalider.`, type: 'kyc', link: '/admin?tab=kyc' });
+      return p;
+    });
   }
 }
 

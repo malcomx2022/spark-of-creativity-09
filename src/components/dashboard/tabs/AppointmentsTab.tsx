@@ -8,7 +8,7 @@ import GPSTracking from '@/components/GPSTracking';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePatientAppointments, useMutateAppointment, useCreateAppointment } from '@/hooks/useAppointments';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, AlertCircle, Calendar, Clock, CreditCard, FileText, RefreshCw, XCircle, ChevronLeft, ChevronRight, Filter, ArrowUpDown, CheckCircle2, TimerIcon, Ban } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -16,6 +16,14 @@ import { formatAmount } from '@/lib/payment-config';
 import { getPersistedPaymentState, clearPersistedPaymentState, PersistedPaymentState } from '@/lib/payment-storage';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+/** Colonnes de `GET /payments` utilisées par l'onglet. */
+interface PaymentSummary {
+  id: string;
+  appointment_id: string;
+  status: string;
+  payout_status: string | null;
+}
 
 interface AppointmentsTabProps {
   onPaymentRequired: (appointmentId: string) => void;
@@ -72,11 +80,7 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
       // Vérifier le statut réel du paiement côté serveur
       if (persistedPayment.paymentId) {
         try {
-          const { data: paymentData } = await supabase
-            .from('payments')
-            .select('status')
-            .eq('id', persistedPayment.paymentId)
-            .single();
+          const paymentData = await api.get<PaymentSummary>(`/payments/${persistedPayment.paymentId}`);
 
           if (paymentData) {
             if (paymentData.status === 'paid') {
@@ -119,21 +123,21 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
     try {
       // Synchroniser le statut avec FedaPay
       if (orphanedPayment.paymentId) {
-        const { error } = await supabase.functions.invoke('sync-payment-status', {
-          body: { paymentId: orphanedPayment.paymentId }
-        });
+        let synced = false;
+        try {
+          await api.post(`/payments/${orphanedPayment.paymentId}/sync`);
+          synced = true;
+        } catch (error) {
+          console.warn('[OrphanedPayment] Sync error:', errorMessage(error));
+        }
 
-        if (!error) {
+        if (synced) {
           // Rafraîchir les données
           await queryClient.invalidateQueries({ queryKey: ['patient-appointments'] });
           await queryClient.invalidateQueries({ queryKey: ['payments'] });
 
           // Revérifier le statut
-          const { data: paymentData } = await supabase
-            .from('payments')
-            .select('status')
-            .eq('id', orphanedPayment.paymentId)
-            .single();
+          const paymentData = await api.get<PaymentSummary>(`/payments/${orphanedPayment.paymentId}`);
 
           if (paymentData?.status === 'paid') {
             clearPersistedPaymentState();
@@ -171,11 +175,14 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
     if (!orphanedPayment) return;
 
     try {
-      // Essayer d'annuler le paiement côté serveur
-      if (orphanedPayment.appointmentId) {
-        await supabase.functions.invoke('cancel-pending-payment', {
-          body: { appointmentId: orphanedPayment.appointmentId }
-        });
+      // Essayer d'annuler le paiement côté serveur (POST /payments/:id/cancel)
+      let paymentId = orphanedPayment.paymentId;
+      if (!paymentId && orphanedPayment.appointmentId) {
+        const open = await api.get<PaymentSummary[]>('/payments', { query: { appointmentId: orphanedPayment.appointmentId, limit: 5 } });
+        paymentId = open.find((p) => ['initiated', 'pending', 'authorized'].includes(p.status))?.id ?? null;
+      }
+      if (paymentId) {
+        await api.post(`/payments/${paymentId}/cancel`);
       }
     } catch (error) {
       console.error('[OrphanedPayment] Cancel error:', error);
@@ -193,24 +200,16 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
     queryKey: ['payments', patientId],
     queryFn: async () => {
       if (!patientId) return [];
-      const { data, error } = await supabase
-        .from('payments')
-        .select('id, appointment_id, status, payout_status')
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return data;
+      // L'utilisateur est déduit du jeton
+      return api.get<PaymentSummary[]>('/payments', { query: { limit: 100 } });
     },
     enabled: !!patientId,
   });
 
   const handleCancel = async (id: string) => {
     try {
-      await mutateAppointment.mutateAsync({
-        id,
-        data: { status: 'cancelled' }
-      });
+      // POST /appointments/:id/cancel (annule aussi le paiement en attente)
+      await mutateAppointment.mutateAsync({ id, action: 'cancel' });
       toast({
         title: 'Rendez-vous annulé',
         description: 'Le rendez-vous a été annulé avec succès.'
@@ -218,7 +217,7 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
     } catch (error) {
       toast({
         title: 'Erreur',
-        description: 'Impossible d\'annuler le rendez-vous.',
+        description: errorMessage(error, 'Impossible d\'annuler le rendez-vous.'),
         variant: 'destructive'
       });
     }

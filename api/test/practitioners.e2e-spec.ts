@@ -245,4 +245,22 @@ describe('Practitioners, files, KYC (e2e)', () => {
     const farAway = await app.inject({ method: 'GET', url: '/api/practitioners/available?type=medecin&latitude=9.30&longitude=2.31&date=2030-01-14&time=09:30&radiusKm=10' });
     expect(farAway.json().practitioners.length).toBe(0);
   });
+
+  it('nouveau document KYC : dossier repassé en attente, administrateurs notifiés ; configuration publique ; tentatives de paiement', async () => {
+    const forbidden = await app.inject({ method: 'PUT', url: '/api/practitioners/me/documents', headers: auth('patient'), payload: { idDocumentUrl: `documents/${userIds['patient']}/1-id.pdf` } });
+    expect(forbidden.statusCode).toBe(404);
+    const empty = await app.inject({ method: 'PUT', url: '/api/practitioners/me/documents', headers: auth('practitioner'), payload: {} });
+    expect(empty.statusCode).toBe(400);
+    const updated = await app.inject({ method: 'PUT', url: '/api/practitioners/me/documents', headers: auth('practitioner'), payload: { licenseDocumentUrl: `documents/${userIds['practitioner']}/2-licence.pdf` } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({ kyc_status: 'pending', license_document_url: `documents/${userIds['practitioner']}/2-licence.pdf` });
+    const adminNotif = await db.db.selectFrom('notifications').select('title').where('user_id', '=', userIds['admin']).where('title', '=', 'Documents KYC mis à jour').executeTakeFirst();
+    expect(adminNotif).toBeTruthy();
+    const config = await app.inject({ method: 'GET', url: '/api/config/public' });
+    expect(config.statusCode).toBe(200);
+    expect(config.json()).toMatchObject({ features: expect.any(Object) });
+    const attempts = await app.inject({ method: 'GET', url: '/api/payments/attempts', headers: auth('patient') });
+    expect(attempts.statusCode).toBe(200);
+    expect(attempts.json()).toEqual([]);
+  });
 });

@@ -16,13 +16,20 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { usePractitionerAppointments } from '@/hooks/useAppointments';
-import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote, useCareNotes, type CareNoteWithAppointment } from '@/hooks/useCareNotes';
+import { useCareNoteByAppointment, useCreateCareNote, useUpdateCareNote, useShareCareNote, useCareNotes, type CareNoteWithAppointment } from '@/hooks/useCareNotes';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { supabase } from '@/integrations/supabase/client';
+import { api, isApiError, errorMessage } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { CareNotesConfirmDialog } from './CareNotesConfirmDialog';
+
+/** Fiche praticien de l'utilisateur connecté (GET /practitioners/me). */
+interface PractitionerMe {
+  id: string;
+  user_id: string;
+  name: string;
+}
 
 export default function CareNotesSection() {
   const { data: user } = useAuthUser();
@@ -31,7 +38,7 @@ export default function CareNotesSection() {
   const [notesLimit, setNotesLimit] = useState(10);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [selectedNoteForDetail, setSelectedNoteForDetail] = useState<any>(null);
+  const [selectedNoteForDetail, setSelectedNoteForDetail] = useState<CareNoteWithAppointment | null>(null);
   const [formData, setFormData] = useState({
     subjective: '',
     objective: '',
@@ -39,16 +46,17 @@ export default function CareNotesSection() {
     plan: '',
   });
 
-  const { data: practitioner } = useQuery({
+  const { data: practitioner } = useQuery<PractitionerMe | null>({
     queryKey: ['practitioner', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase
-        .from('practitioners')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      return data;
+      try {
+        return await api.get<PractitionerMe>('/practitioners/me');
+      } catch (error) {
+        // Pas de fiche praticien pour cet utilisateur
+        if (isApiError(error, 404) || isApiError(error, 403)) return null;
+        throw error;
+      }
     },
     enabled: !!user?.id,
   });
@@ -72,6 +80,7 @@ export default function CareNotesSection() {
   };
   const createNote = useCreateCareNote();
   const updateNote = useUpdateCareNote();
+  const shareNote = useShareCareNote();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -119,8 +128,8 @@ export default function CareNotesSection() {
       });
     }
 
+    // Le praticien est déduit du jeton par l'API
     return createNote.mutateAsync({
-      practitioner_id: practitioner.id,
       appointment_id: selectedAppointmentId,
       ...payload,
     });
@@ -138,7 +147,7 @@ export default function CareNotesSection() {
     } catch (error) {
       toast({
         title: 'Erreur',
-        description: 'Impossible de sauvegarder la note.',
+        description: errorMessage(error, 'Impossible de sauvegarder la note.'),
         variant: 'destructive',
       });
     }
@@ -163,79 +172,25 @@ export default function CareNotesSection() {
     setShowConfirmDialog(false);
 
     try {
-      // ✅ CORRECTION P1-2: Vérifier que le RDV appartient bien au praticien connecté
-      const appointment = completedAppointments.find((apt) => apt.id === selectedAppointmentId);
+      // ✅ CORRECTION P1-1: Persister le contenu AVANT le partage (l'API vérifie que le RDV appartient au praticien)
+      const note = await persistNote(currentNote?.shared_with_patient ?? false);
 
-      if (!appointment) {
-        toast({
-          title: 'Erreur',
-          description: 'Rendez-vous introuvable.',
-          variant: 'destructive',
-        });
-        return;
-      }
+      // POST /care-notes/:id/share : notification in-app + message au patient, journal de partage côté API
+      await shareNote.mutateAsync(note.id);
 
-      // Vérification d'autorisation : le praticien doit être celui du RDV
-      if (appointment.practitionerId && appointment.practitionerId !== practitioner.id) {
-        toast({
-          title: 'Non autorisé',
-          description: 'Vous ne pouvez partager que les notes de vos propres consultations.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // ✅ CORRECTION P1-1: Persister la note AVANT de mettre à jour l'état local
-      const note = await persistNote(true);
-
-      // Notifications non-bloquantes (on continue même si elles échouent)
-      let notificationSuccess = true;
-      if (appointment?.patientId) {
-        try {
-          const { error: notificationError } = await supabase.from('notifications').insert({
-            user_id: appointment.patientId,
-            title: 'Nouvelle note de soin',
-            message: `Votre praticien ${practitioner?.name ?? ''} a partagé une note de soin pour votre rendez-vous du ${new Date(appointment.date).toLocaleDateString('fr-FR')}.`,
-            link: `/patient/appointments/${appointment.id}`,
-            type: 'care_note',
-          });
-
-          if (notificationError) {
-            console.warn('Erreur notification (non bloquant):', notificationError);
-            notificationSuccess = false;
-          }
-
-          const { error: messageError } = await supabase.from('messages').insert({
-            appointment_id: appointment.id,
-            sender_id: user.id,
-            content: 'Une nouvelle note de soin est disponible dans votre dossier patient.',
-          });
-
-          if (messageError) {
-            console.warn('Erreur message (non bloquant):', messageError);
-            notificationSuccess = false;
-          }
-        } catch (notifError) {
-          console.warn('Erreur lors des notifications (non bloquant):', notifError);
-          notificationSuccess = false;
-        }
-      }
-
-      // ✅ CORRECTION P1-1: Mettre à jour l'état APRÈS succès de persistNote
+      // ✅ CORRECTION P1-1: Mettre à jour l'état APRÈS succès du partage
       setShareWithPatient(true);
       queryClient.invalidateQueries({ queryKey: ['care-note', 'appointment', selectedAppointmentId] });
 
       toast({
         title: 'Note partagée',
-        description: notificationSuccess
-          ? 'Le patient a été notifié de la note de soin.'
-          : 'La note a été partagée, mais la notification n\'a pas pu être envoyée.',
+        description: 'Le patient a été notifié de la note de soin.',
       });
     } catch (error) {
       console.error(error);
       toast({
         title: 'Erreur lors du partage',
-        description: 'Impossible de partager la note pour le moment.',
+        description: errorMessage(error, 'Impossible de partager la note pour le moment.'),
         variant: 'destructive',
       });
     }
@@ -407,7 +362,7 @@ export default function CareNotesSection() {
                 <Button
                   className="flex-1"
                   onClick={handleSave}
-                  disabled={createNote.isPending || updateNote.isPending}
+                  disabled={createNote.isPending || updateNote.isPending || shareNote.isPending}
                 >
                   {createNote.isPending || updateNote.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
                 </Button>
@@ -415,7 +370,7 @@ export default function CareNotesSection() {
                   <Button
                     variant="outline"
                     onClick={handleShare}
-                    disabled={createNote.isPending || updateNote.isPending}
+                    disabled={createNote.isPending || updateNote.isPending || shareNote.isPending}
                   >
                     <Share2 className="h-4 w-4 mr-2" />
                     Partager

@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { MapPin, Building2, Home, Loader2, Clock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 export interface LocationData {
   address: string;
@@ -101,12 +102,13 @@ export function AddressSearchInput({
   useEffect(() => {
     const fetchToken = async () => {
       try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        const { data, error } = await supabase.functions.invoke('get-mapbox-token');
-        
-        if (error || !data?.token) {
+        // Variable d'environnement en priorité, sinon configuration publique de l'API (ex get-mapbox-token)
+        const envToken = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+        const token = envToken || (await api.get<{ mapboxToken: string | null }>('/config/public', { auth: false })).mapboxToken;
+
+        if (!token) {
           setTokenError(true);
-          console.error('❌ Token Mapbox non configuré:', error);
+          console.error('❌ Token Mapbox non configuré');
           toast({
             variant: 'destructive',
             title: '⚙️ Configuration manquante',
@@ -116,7 +118,7 @@ export function AddressSearchInput({
           return;
         }
         
-        setMapboxToken(data.token);
+        setMapboxToken(token);
         console.log('✅ Token Mapbox chargé avec succès');
       } catch (err) {
         console.error('❌ Erreur lors du chargement du token Mapbox:', err);

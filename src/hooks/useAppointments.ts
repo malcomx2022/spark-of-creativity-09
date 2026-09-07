@@ -1,12 +1,43 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
-import type { Appointment, AppointmentStatus, CreateAppointmentData } from '@/types/appointment';
-import { withTimeout } from '@/lib/network-timeout';
-import { formatDateWithDateFns } from '@/lib/date-utils';
 import { useEffect } from 'react';
+import { api, isApiError, onTableChange } from '@/lib/api';
+import type { Appointment, AppointmentStatus, CreateAppointmentData, PractitionerTrackingStatus } from '@/types/appointment';
 
-function toAppointment(row: Tables<'appointments'>): Appointment {
+export type { Appointment } from '@/types/appointment';
+
+/** Ligne `appointments` telle que renvoyée par l'API (snake_case, comme l'ancienne réponse Supabase). */
+export interface AppointmentRow {
+  id: string;
+  patient_id: string;
+  patient_name: string | null;
+  practitioner_id: string | null;
+  practitioner_name: string | null;
+  specialty: string | null;
+  date: string | null;
+  time: string | null;
+  duration: number | null;
+  status: string | null;
+  address: string | null;
+  reason: string | null;
+  notes: string | null;
+  internal_notes?: string | null;
+  urgency_level: string | null;
+  payment_amount: number | null;
+  practitioner_status?: string | null;
+  practitioner_latitude?: number | null;
+  practitioner_longitude?: number | null;
+  practitioner_last_location_update?: string | null;
+  patient_confirmed_at?: string | null;
+  consultation_started_at?: string | null;
+  consultation_ended_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Limite maximale acceptée par `GET /appointments`. */
+const API_LIST_LIMIT = 200;
+
+export function toAppointment(row: AppointmentRow): Appointment {
   return {
     id: row.id,
     patientName: row.patient_name ?? 'Patient',
@@ -27,79 +58,24 @@ function toAppointment(row: Tables<'appointments'>): Appointment {
   };
 }
 
-async function fetchAppointmentsByField(field: 'patient_id' | 'practitioner_id', id?: string) {
-  if (!id) {
-    return [];
-  }
-
-  const { data, error } = await withTimeout(
-    supabase
-      .from('appointments')
-      .select('*')
-      .eq(field, id)
-      .order('date', { ascending: true })
-  );
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).map(toAppointment);
-}
-
-async function insertAppointment(payload: TablesInsert<'appointments'>) {
-  const { error, data } = await withTimeout(
-    supabase
-      .from('appointments')
-      .insert(payload)
-      .select()
-      .single()
-  );
-
-  if (error) {
-    throw error;
-  }
-
-  return toAppointment(data);
-}
-
-async function updateAppointment(id: string, payload: TablesUpdate<'appointments'>) {
-  const { error, data } = await withTimeout(
-    supabase
-      .from('appointments')
-      .update(payload)
-      .eq('id', id)
-      .select()
-      .single()
-  );
-
-  if (error) {
-    throw error;
-  }
-
-  return toAppointment(data);
+/**
+ * `GET /appointments` renvoie les rendez-vous de l'utilisateur connecté (patient et/ou praticien),
+ * triés par date puis heure décroissantes. La pagination reste côté client (au plus 200 lignes).
+ */
+async function fetchOwnAppointments(field: 'patient_id' | 'practitioner_id', id: string, page: number, pageSize: number) {
+  const rows = await api.get<AppointmentRow[]>('/appointments', { query: { limit: API_LIST_LIMIT } });
+  const mine = rows.filter((row) => row[field] === id);
+  return { data: mine.slice(page * pageSize, (page + 1) * pageSize).map(toAppointment), count: mine.length };
 }
 
 export function usePatientAppointments(patientId?: string, page = 0, pageSize = 100) {
   const queryClient = useQueryClient();
-  
+
   const query = useQuery({
     queryKey: ['appointments', 'patient', patientId, page],
     queryFn: async () => {
       if (!patientId) return { data: [], count: 0 };
-
-      const { data, error, count } = await withTimeout(
-        supabase
-          .from('appointments')
-          .select('*', { count: 'exact' })
-          .eq('patient_id', patientId)
-          .order('date', { ascending: false })
-          .order('time', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-      );
-
-      if (error) throw error;
-      return { data: (data ?? []).map(toAppointment), count: count || 0 };
+      return fetchOwnAppointments('patient_id', patientId, page, pageSize);
     },
     enabled: !!patientId,
   });
@@ -108,26 +84,9 @@ export function usePatientAppointments(patientId?: string, page = 0, pageSize = 
   useEffect(() => {
     if (!patientId) return;
 
-    const channel = supabase
-      .channel('patient-appointments-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'appointments',
-          filter: `patient_id=eq.${patientId}`
-        },
-        (payload) => {
-          console.log('📅 Realtime update for appointments:', payload);
-          queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return onTableChange('appointments', () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
+    });
   }, [patientId, queryClient]);
 
   return query;
@@ -135,31 +94,12 @@ export function usePatientAppointments(patientId?: string, page = 0, pageSize = 
 
 export function usePractitionerAppointments(practitionerId?: string, page = 0, pageSize = 100) {
   const queryClient = useQueryClient();
-  
+
   const query = useQuery({
     queryKey: ['appointments', 'practitioner', practitionerId, page],
     queryFn: async () => {
       if (!practitionerId) return { data: [], count: 0 };
-
-      console.log('🔍 Fetching appointments for practitioner:', practitionerId);
-
-      const { data, error, count } = await withTimeout(
-        supabase
-          .from('appointments')
-          .select('*', { count: 'exact' })
-          .eq('practitioner_id', practitionerId)
-          .order('date', { ascending: false })
-          .order('time', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-      );
-
-      if (error) {
-        console.error('❌ Error fetching practitioner appointments:', error);
-        throw error;
-      }
-      
-      console.log('✅ Fetched appointments:', data?.length, 'for practitioner:', practitionerId);
-      return { data: (data ?? []).map(toAppointment), count: count || 0 };
+      return fetchOwnAppointments('practitioner_id', practitionerId, page, pageSize);
     },
     enabled: !!practitionerId,
     staleTime: 0, // Toujours rafraîchir
@@ -171,34 +111,43 @@ export function usePractitionerAppointments(practitionerId?: string, page = 0, p
   useEffect(() => {
     if (!practitionerId) return;
 
-    console.log('📡 Setting up realtime listener for practitioner:', practitionerId);
-
-    const channel = supabase
-      .channel(`practitioner-appointments-${practitionerId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'appointments',
-          filter: `practitioner_id=eq.${practitionerId}`
-        },
-        (payload) => {
-          console.log('📅 Realtime update for practitioner appointments:', payload);
-          queryClient.invalidateQueries({ queryKey: ['appointments', 'practitioner', practitionerId] });
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Realtime subscription status:', status);
-      });
-
-    return () => {
-      console.log('📡 Removing realtime channel for practitioner:', practitionerId);
-      supabase.removeChannel(channel);
-    };
+    return onTableChange('appointments', () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments', 'practitioner', practitionerId] });
+    });
   }, [practitionerId, queryClient]);
 
   return query;
+}
+
+/** Valeurs du formulaire (NewAppointmentDialog) → énumération de l'API. */
+function toApiUrgency(level?: string): 'low' | 'normal' | 'high' | 'urgent' | undefined {
+  switch (level) {
+    case undefined:
+    case '':
+      return undefined;
+    case 'low':
+    case 'normal':
+    case 'high':
+    case 'urgent':
+      return level;
+    case 'non-urgent':
+      return 'normal';
+    case 'semi-urgent':
+      return 'high';
+    case 'immediate':
+      return 'urgent';
+    default:
+      return 'normal';
+  }
+}
+
+/** Date locale AAAA-MM-JJ (évite les décalages de fuseau horaire). */
+function toLocalDate(value: string): string {
+  const dateObj = new Date(value);
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function useCreateAppointment(patientId?: string, patientName?: string) {
@@ -209,145 +158,28 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       if (!patientId) {
         throw new Error('Patient non identifié');
       }
+      void patientName; // Le nom du patient est déduit du profil côté API.
 
-      const currentUser = await supabase.auth.getUser();
-      if (!currentUser.data.user) throw new Error('Utilisateur non connecté');
-
-      // Utiliser le formatage local pour éviter les décalages de fuseau horaire
-      const dateObj = new Date(data.date);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const appointmentDate = `${year}-${month}-${day}`;
-
-      // ✅ CORRECTION P1-6: Vérifier que la date est dans le futur ou aujourd'hui
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const appointmentDateObj = new Date(appointmentDate);
-      appointmentDateObj.setHours(0, 0, 0, 0);
-
-      if (appointmentDateObj < today) {
-        throw new Error('Impossible de créer un rendez-vous pour une date passée. Veuillez sélectionner une date future.');
+      if (!data.practitionerId) {
+        // TODO(api): `POST /appointments` exige un praticien (practitionerId UUID). Le mode « demande sans
+        // praticien » (fallbackMode de NewAppointmentDialog) n'a pas d'équivalent côté API.
+        throw new Error("Aucun praticien n'a pu être associé à cette demande. Veuillez sélectionner un praticien.");
       }
 
-      // ✅ CORRECTION P1 #6: Vérification anti-doublon patient ET praticien
-      if (data.practitionerId) {
-        // Vérifier les RDV existants du patient avec ce praticien
-        const { data: patientExistingAppts, error: patientCheckError } = await withTimeout(
-          supabase
-            .from('appointments')
-            .select('date, time, practitioner_name')
-            .eq('patient_id', patientId)
-            .eq('practitioner_id', data.practitionerId)
-            .eq('date', appointmentDate)
-            .not('status', 'in', '(cancelled,rejected,completed,cancelled_unpaid)')
-        );
-
-        if (patientCheckError) throw patientCheckError;
-
-        if (patientExistingAppts && patientExistingAppts.length > 0) {
-          const existing = patientExistingAppts[0];
-          const formattedDate = formatDateWithDateFns(existing.date);
-          throw new Error(
-            `Vous avez déjà un rendez-vous prévu avec ${existing.practitioner_name} le ${formattedDate} à ${existing.time}.\n\n` +
-            `Veuillez choisir une autre date ou annuler le rendez-vous existant.`
-          );
-        }
-
-        // ✅ CORRECTION P1 #6: Vérifier aussi les conflits d'horaires du praticien
-        const { data: practitionerConflicts, error: practitionerCheckError } = await withTimeout(
-          supabase
-            .from('appointments')
-            .select('date, time, patient_name')
-            .eq('practitioner_id', data.practitionerId)
-            .eq('date', appointmentDate)
-            .eq('time', data.time)
-            .not('status', 'in', '(cancelled,rejected,completed,cancelled_unpaid)')
-        );
-
-        if (practitionerCheckError) throw practitionerCheckError;
-
-        if (practitionerConflicts && practitionerConflicts.length > 0) {
-          throw new Error(
-            `Le praticien a déjà un rendez-vous prévu à ${data.time} le ${formatDateWithDateFns(appointmentDate)}.\n\n` +
-            `Veuillez choisir un autre créneau horaire.`
-          );
-        }
-
-        // ✅ CORRECTION P2 #4: Vérifier que le praticien existe toujours
-        const { data: practitionerExists, error: practitionerExistsError } = await withTimeout(
-          supabase
-            .from('practitioners')
-            .select('id, name, can_accept_missions, kyc_status')
-            .eq('id', data.practitionerId)
-            .single()
-        );
-
-        if (practitionerExistsError || !practitionerExists) {
-          throw new Error('Le praticien sélectionné n\'existe plus. Veuillez en choisir un autre.');
-        }
-
-        if (!practitionerExists.can_accept_missions || practitionerExists.kyc_status !== 'approved') {
-          throw new Error(`${practitionerExists.name} n'est pas disponible pour accepter des rendez-vous actuellement.`);
-        }
-      }
-      
-      const profile = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', currentUser.data.user.id)
-          .single()
-      );
-
-      const addresses = await withTimeout(
-        supabase
-          .from('addresses')
-          .select('*')
-          .eq('user_id', currentUser.data.user.id)
-          .eq('is_default', true)
-          .maybeSingle()
-      );
-
-      // Utiliser appointmentDate déjà calculé plus haut
-      const formattedDate = appointmentDate;
-
-      const appointment = await insertAppointment({
-        patient_id: patientId,
-        patient_name: profile.data?.full_name || patientName || 'Patient',
-        practitioner_id: data.practitionerId || '',
-        practitioner_name: data.practitionerName || '',
+      // Les règles métier (date passée, praticien validé, anti-doublon, notification du praticien)
+      // sont appliquées par l'API.
+      const row = await api.post<AppointmentRow>('/appointments', {
+        practitionerId: data.practitionerId,
         specialty: data.specialty,
-        date: formattedDate,
+        date: toLocalDate(data.date),
         time: data.time,
-        reason: data.reason,
-        urgency_level: data.urgencyLevel,
-        status: 'awaiting_practitioner',
-        address: data.addressOverride || addresses.data?.address || 'Adresse à préciser',
         duration: 60,
+        reason: data.reason,
+        address: data.addressOverride || undefined,
+        urgencyLevel: toApiUrgency(data.urgencyLevel),
       });
 
-      // Envoyer une notification au praticien après création du RDV
-      if (data.practitionerId) {
-        try {
-          await supabase.functions.invoke('notify-appointment-request', {
-            body: {
-              appointmentId: appointment.id,
-              practitionerId: data.practitionerId,
-              patientName: profile.data?.full_name || patientName || 'Patient',
-              date: formattedDate,
-              time: data.time,
-              reason: data.reason,
-              specialty: data.specialty,
-            }
-          });
-          console.log('✅ Notification envoyée au praticien');
-        } catch (notifError) {
-          console.error('⚠️ Erreur notification praticien (non bloquant):', notifError);
-        }
-      }
-
-      return appointment;
+      return toAppointment(row);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', patientId] });
@@ -355,12 +187,102 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Mutations métier (ex `update` générique de la table appointments)
+// ---------------------------------------------------------------------------
+
+export type AppointmentAction =
+  | { action: 'respond'; body: { action: 'accept' | 'reject'; paymentMethod?: 'mtn' | 'moov'; reason?: string } }
+  | { action: 'practitioner-status'; body: { status: Exclude<PractitionerTrackingStatus, 'assigned'>; latitude?: number; longitude?: number } }
+  | { action: 'complete'; body?: { notes?: string } }
+  | { action: 'confirm' }
+  | { action: 'cancel'; body?: { reason?: string } }
+  /** Aucune modification : relit le rendez-vous et rafraîchit les listes. */
+  | { action: 'refresh' };
+
+/**
+ * Signature de compatibilité (ex `TablesUpdate<'appointments'>`) : les colonnes sont mappées vers la
+ * route métier correspondante (`status` / `practitioner_status` / `notes` / `patient_confirmed_at`).
+ */
+export interface LegacyAppointmentUpdate {
+  status?: string;
+  practitioner_status?: string;
+  notes?: string | null;
+  internal_notes?: string | null;
+  patient_confirmed_at?: string | null;
+  practitioner_latitude?: number | null;
+  practitioner_longitude?: number | null;
+  [column: string]: unknown;
+}
+
+export type AppointmentMutationInput = ({ id: string } & AppointmentAction) | { id: string; data: LegacyAppointmentUpdate };
+
+function legacyToAction(data: LegacyAppointmentUpdate): AppointmentAction {
+  if (data.practitioner_status && data.practitioner_status !== 'assigned') {
+    return {
+      action: 'practitioner-status',
+      body: {
+        status: data.practitioner_status as Exclude<PractitionerTrackingStatus, 'assigned'>,
+        latitude: data.practitioner_latitude ?? undefined,
+        longitude: data.practitioner_longitude ?? undefined,
+      },
+    };
+  }
+  const notes = data.notes ?? data.internal_notes ?? undefined;
+  switch (data.status) {
+    case 'cancelled':
+      return { action: 'cancel', body: { reason: notes ?? undefined } };
+    case 'awaiting_confirmation':
+      return { action: 'complete', body: { notes: notes ?? undefined } };
+    case 'completed':
+      // Le patient confirme (patient_confirmed_at) ; sinon le praticien clôture la consultation.
+      return data.patient_confirmed_at ? { action: 'confirm' } : { action: 'complete', body: { notes: notes ?? undefined } };
+    case 'pending_payment':
+      return { action: 'respond', body: { action: 'accept' } };
+    case 'rejected':
+      return { action: 'respond', body: { action: 'reject', reason: notes ?? undefined } };
+    case 'in-progress':
+      return { action: 'practitioner-status', body: { status: 'in_progress' } };
+    default:
+      return { action: 'refresh' };
+  }
+}
+
+async function runAppointmentAction(id: string, input: AppointmentAction, fromLegacy: boolean): Promise<Appointment> {
+  const path = `/appointments/${id}`;
+  try {
+    switch (input.action) {
+      case 'respond':
+        await api.post(`${path}/respond`, input.body);
+        break;
+      case 'practitioner-status':
+        return toAppointment(await api.patch<AppointmentRow>(`${path}/practitioner-status`, input.body));
+      case 'complete':
+        return toAppointment(await api.post<AppointmentRow>(`${path}/complete`, input.body ?? {}));
+      case 'confirm':
+        return toAppointment(await api.post<AppointmentRow>(`${path}/confirm`));
+      case 'cancel':
+        return toAppointment(await api.post<AppointmentRow>(`${path}/cancel`, input.body ?? {}));
+      case 'refresh':
+        break;
+    }
+  } catch (error) {
+    // Signature de compatibilité : le statut a souvent déjà été appliqué par l'API (ex réponse du
+    // praticien) ; un conflit signifie simplement que la ligne est à jour côté serveur.
+    if (!(fromLegacy && isApiError(error, 409))) throw error;
+  }
+  return toAppointment(await api.get<AppointmentRow>(path));
+}
+
 export function useMutateAppointment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: TablesUpdate<'appointments'> }) =>
-      updateAppointment(id, data),
+    mutationFn: (input: AppointmentMutationInput) => {
+      if ('data' in input) return runAppointmentAction(input.id, legacyToAction(input.data), true);
+      const { id, ...action } = input;
+      return runAppointmentAction(id, action, false);
+    },
     onSuccess: (appointment) => {
       queryClient.invalidateQueries({ queryKey: ['appointments', 'patient', appointment.patientId] });
       queryClient.invalidateQueries({ queryKey: ['appointments', 'practitioner', appointment.practitionerId] });

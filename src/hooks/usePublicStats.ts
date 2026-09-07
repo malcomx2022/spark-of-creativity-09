@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
 interface PublicStats {
   practitioners_count: number;
@@ -8,23 +8,24 @@ interface PublicStats {
   coaches_count: number;
 }
 
-async function fetchPublicStats(): Promise<PublicStats> {
-  const { data, error } = await supabase.rpc('get_public_stats');
+const DEFAULT_STATS: PublicStats = {
+  practitioners_count: 0,
+  patients_count: 0,
+  appointments_completed: 0,
+  coaches_count: 0,
+};
 
-  if (error) {
+async function fetchPublicStats(): Promise<PublicStats> {
+  try {
+    const data = await api.get<Partial<PublicStats>>('/stats/public', { auth: false });
+    return { ...DEFAULT_STATS, ...data };
+  } catch (error) {
     if (import.meta.env.DEV) {
       console.error('Erreur chargement statistiques publiques:', error);
     }
     // Return default values on error
-    return {
-      practitioners_count: 0,
-      patients_count: 0,
-      appointments_completed: 0,
-      coaches_count: 0,
-    };
+    return DEFAULT_STATS;
   }
-
-  return data as unknown as PublicStats;
 }
 
 export function usePublicStats() {

@@ -48,7 +48,9 @@ export class ReviewsService {
       const rows = await trx.selectFrom('reviews').selectAll().where('patient_id', '=', userId).orderBy('created_at', 'desc').limit(50).execute();
       const ids = [...new Set(rows.map((r) => r.practitioner_id))];
       const practitioners = ids.length ? await trx.selectFrom('practitioners').select(['id', 'name', 'specialty']).where('id', 'in', ids).execute() : [];
-      return rows.map((r) => ({ ...r, practitioner: practitioners.find((p) => p.id === r.practitioner_id) ?? null }));
+      const aptIds = [...new Set(rows.map((r) => r.appointment_id))];
+      const appointments = aptIds.length ? await trx.selectFrom('appointments').select(['id', 'specialty', 'date', 'practitioner_name']).where('id', 'in', aptIds).execute() : [];
+      return rows.map((r) => ({ ...r, practitioner: practitioners.find((p) => p.id === r.practitioner_id) ?? null, appointment: appointments.find((a) => a.id === r.appointment_id) ?? null }));
     });
   }
 
