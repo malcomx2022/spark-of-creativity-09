@@ -4,8 +4,9 @@ Back-end qui remplace Supabase Auth, PostgREST et les Edge Functions. Chemin cri
 `docs/migration-postgresql/03-RETRO-INGENIERIE.md` §8 : étape 1 **authentification, profil,
 rôles**, étape 2 **praticiens, fichiers, KYC**, étape 3 **rendez-vous, paiements FedaPay,
 webhook, jobs planifiés**, étape 4 **messagerie, notifications, temps réel Socket.IO,
-push Web** et étape 5 **séances de groupe, finance (reversements, remboursements,
-réconciliation), administration** livrées.
+push Web**, étape 5 **séances de groupe, finance (reversements, remboursements,
+réconciliation), administration** et étape 6 **support, litiges, dossier médical, avis,
+moyens de paiement, statistiques** livrées.
 
 ## Ce qui est implémenté
 
@@ -61,6 +62,20 @@ réconciliation), administration** livrées.
 | `GET /api/admin/otp/attempts`, `…/stats`, `…/blocked`, `POST …/reset`, `DELETE …/attempts/:id` | `OTPManagementSection` |
 | `GET/PUT /api/admin/system-config[/:key]`, `GET/POST /api/admin/consent-versions`, `POST …/:id/activate|deactivate`, `GET /api/consents/:type/active` | `ComplianceSection`, `ApiManagementSection` |
 | `GET /api/admin/operations/appointments`, `GET …/reviews`, `POST …/reviews/:id/moderate`, `GET /api/admin/api/usage` | `OperationsSection` (rendez-vous du jour, modération des avis) |
+| `GET/POST /api/support/tickets`, `GET …/:id`, `POST …/:id/close` | `SupportSection` (tickets de l'utilisateur, `support_tickets`) |
+| `GET /api/faqs[?audience&category]` | `FAQSection` (FAQ publiées, filtrées par audience) |
+| `GET /api/admin/support/tickets[/stats]`, `PATCH …/:id`, `GET/POST /api/admin/support/faqs`, `PATCH/DELETE …/:id` | `SupportManagementSection`, `FAQManagementSection` (statut / réponse / priorité / assignation, versions de FAQ, audit) |
+| `POST /api/disputes`, `GET /api/disputes[/:id]`, `GET/POST …/:id/messages` | `DisputeDialog`, `useDisputes` (parties du rendez-vous, sujet par défaut, SLA 24 / 48 / 72 h) |
+| `GET /api/admin/disputes[?status&priority&overdue]`, `PATCH …/:id` | `DisputesSection` (enquête, résolution, clôture, journal d'audit `Dispute <status>`) |
+| `GET/PUT /api/medical/profile`, `GET …/profile/doctors`, `GET /api/medical/patients/:id/record` | `MedicalSection`, `useMedicalProfile`, dossier consulté par le praticien pendant le rendez-vous (policy RLS d'origine) |
+| `/api/medical/emergency-contacts`, `/api/addresses` | `EmergencyContactsSection`, `AddressesSection` (une seule adresse par défaut) |
+| `GET /api/care-notes`, `…/mine`, `…/appointment/:id`, `POST`, `PATCH …/:id`, `POST …/:id/share` | `CareNotesSection`, `usePatientCareNotes` (SOAP, journal `care_notes_sharing_log`, notification + message au patient) |
+| `GET /api/consultation-reports`, `…/mine`, `…/appointment/:id`, `POST`, `GET/PATCH …/:id`, `GET …/:id/access-log` | `ConsultationReportFormDialog`, `CompleteConsultationForm` (clôture atomique du rendez-vous), `PatientConsultationReports` (lecture journalisée) |
+| `POST /api/triage`, `GET /api/triage/history`, `DELETE …/:id` | `TriageForm` + `src/types/triage.ts` (score calculé côté serveur, enregistré si connecté) |
+| `GET/POST /api/medical/consents`, `GET /api/medical/export` | `ConsentSection`, export RGPD de `SupportSection` (version acceptée mémorisée) |
+| `POST /api/reviews`, `GET …/mine`, `GET …/practitioner/me`, `GET /api/practitioners/:id/reviews` | `ReviewDialog`, `usePractitionerReviews`, `useReviewStats` (un avis par consultation terminée, `practitioners.rating` recalculée) |
+| `GET/POST /api/payment-methods`, `POST …/:id/default`, `GET …/:id/phone`, `DELETE …/:id` | `SavedPaymentMethods` + Edge Function `secure-phone` (AES-256-GCM côté serveur) |
+| `GET /api/stats/practitioner[?month]`, `GET /api/stats/patient`, `GET /api/stats/coach` | calculs `useMemo` de `PractitionerDashboard`, `PatientDashboard`, `CoachDashboard` |
 | `GET /api/health`, `GET /api/docs` | — |
 
 Autorisation : `JwtAuthGuard` (Bearer ou cookie) et `@AdminOnly('finance', …)` qui
@@ -149,7 +164,41 @@ version Supabase, compensé alors par `repair-balances`).
 - Correctif de schéma `db/native/130_fixes_heritage.sql` : colonne `updated_at` manquante sur
   `practitioner_payouts` (son trigger faisait échouer toute mise à jour).
 
+## Support, litiges, dossier médical et statistiques (étape 6)
+
+- **Support** : tickets `ouvert → en_cours → resolu → ferme` (l'utilisateur peut fermer le sien),
+  rendez-vous rattaché vérifié, rôles `support` / `ops` / `super_admin` notifiés à la création et
+  l'auteur à chaque réponse ; FAQ versionnées (le numéro de version s'incrémente à chaque
+  modification de contenu), publiées ou non, filtrées par audience ; actions d'audit
+  `update_ticket_status`, `create_faq`, `update_faq`, `publish_faq`, `unpublish_faq`, `delete_faq`.
+- **Litiges** : ouverts par une partie du rendez-vous (sujet par défaut « Problème avec la
+  consultation - <praticien> »), échéance SLA 24 h (urgent) / 48 h (haute) / 72 h ; job
+  `disputes.sla` (horaire) qui passe en priorité haute les litiges en retard et alerte les admins ;
+  fil de messages raiser ↔ admin ; `investigating` assigne l'admin, `resolved` exige une résolution.
+- **Dossier médical** : profil (taux de complétion, médecin traitant = praticien approuvé ou saisie
+  libre), contacts d'urgence, adresses ; le praticien ne consulte le dossier d'un patient que
+  pendant un rendez-vous confirmé / en cours (contacts d'urgence uniquement en cours) et si le
+  patient a activé le partage. Notes de soins SOAP une par rendez-vous, partage tracé
+  (`care_notes_sharing_log`, le trigger hérité ne couvrait que les mises à jour) et notifié.
+  Comptes rendus : vocabulaire canonique `domicile | teleconsultation | suivi` et
+  `leger | modere | urgent` (les valeurs de `CompleteConsultationForm` sont converties), un par
+  rendez-vous, option `completeAppointment` qui clôture la consultation dans la même transaction,
+  chaque lecture journalisée dans `consultation_reports_access_log`.
+- **Triage** : barème de `src/types/triage.ts` recalculé côté serveur (le score envoyé par le
+  navigateur n'est plus pris en compte), historique et suppression par l'utilisateur.
+- **Avis** : uniquement par le patient d'une consultation terminée, un par rendez-vous,
+  `practitioners.rating` recalculée (avis masqués exclus, y compris après modération admin —
+  l'origine ne recalculait jamais la note).
+- **Moyens de paiement** : numéro chiffré AES-256-GCM côté serveur (`PHONE_ENCRYPTION_KEY`,
+  obligatoire en production ; dérivée du secret JWT sinon), masqué en lecture, révélé seulement au
+  propriétaire, un seul défaut par utilisateur.
+- **Consentements** : la version active de `consent_versions` est mémorisée dans
+  `consents.accepted_version` (colonne ajoutée par `130_fixes_heritage.sql`, avec les index
+  manquants sur `disputes`, `reviews`, `care_notes`, `consultation_reports`, `faqs`).
+- **Statistiques** : compteurs des tableaux de bord calculés en SQL (praticien : par statut, mois
+  filtré, minutes réelles `consultation_started_at → consultation_ended_at` ; coach : revenus nets
+  au taux `1 - commission` lu dans `system_config`, 63 % par défaut).
+
 ## Prochaines étapes (ordre du chemin critique)
 
-6. Support (tickets, FAQ), litiges, notes de soins / comptes rendus, statistiques
 7. Recodage du front sur l'API (remplacement de `@supabase/supabase-js`)

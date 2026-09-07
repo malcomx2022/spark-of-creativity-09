@@ -55,7 +55,11 @@ confirmation, annulation), finance (soldes recalculés, reversements individuels
 avec FedaPay, webhooks de transfert, remboursements, libération des fonds, réconciliation,
 rejeu des webhooks, rappels de paiement) et administration (rôles, utilisateurs, statistiques,
 journal d'audit, activité de recherche, OTP, configuration, consentements, modération des
-avis). Tests e2e sur base réelle (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
+avis). Étape 6 livrée : support (tickets, FAQ versionnées), litiges avec SLA et fil de
+messages, dossier médical (profil, contacts d'urgence, adresses, notes de soins SOAP, comptes
+rendus avec lecture journalisée, triage calculé côté serveur, consentements versionnés, export
+RGPD), avis avec note recalculée, moyens de paiement chiffrés côté serveur et statistiques des
+tableaux de bord. Tests e2e sur base réelle (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
 ## Ordre de lecture recommandé
 

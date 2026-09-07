@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { sql, type Transaction } from 'kysely';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
+import { ReviewsService } from '../reviews/reviews.service';
 import type { AdminRole } from '../common/decorators/roles.decorator';
 import type { DB } from '../database/types';
 import type { AuditQuery, CreateAdminDto, CreateConsentVersionDto, DeleteUserDto, LogSearchActivityDto, ModerateReviewDto, OtpAttemptsQuery, SearchActivityQuery, SystemConfigDto, TodayAppointmentsQuery, UsersQuery } from './admin.dto';
@@ -25,7 +26,7 @@ function tempPassword(): string {
  */
 @Injectable()
 export class AdminService {
-  constructor(private readonly database: DatabaseService, private readonly audit: AuditService) {}
+  constructor(private readonly database: DatabaseService, private readonly audit: AuditService, private readonly reviewsService: ReviewsService) {}
 
   // ---------------------------------------------------------------------------
   // Statistiques
@@ -499,6 +500,8 @@ export class AdminService {
     return this.database.runAs({ role: 'service_role', userId: adminId }, async (trx) => {
       const row = await trx.updateTable('reviews').set({ is_hidden: dto.isHidden, moderation_reason: dto.reason ?? null, moderated_by: adminId, moderated_at: new Date() }).where('id', '=', id).returningAll().executeTakeFirst();
       if (!row) throw new NotFoundException('Avis introuvable');
+      // Un avis masqué ne compte plus dans la note publique du praticien.
+      await this.reviewsService.recomputeRating(trx, row.practitioner_id);
       await this.audit.log(trx, { adminId, action: dto.isHidden ? 'hide_review' : 'show_review', entityType: 'review', entityId: id, ip, details: { reason: dto.reason ?? null } });
       return row;
     });
