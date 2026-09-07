@@ -12,6 +12,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | [03-RETRO-INGENIERIE.md](03-RETRO-INGENIERIE.md) | Cartographie de tout ce qui dépend de Supabase et sa cible native (auth, RLS, functions, realtime, storage, front) |
 | [04-PLAN-EXECUTION-VPS.md](04-PLAN-EXECUTION-VPS.md) | Plan phasé jusqu'à la mise en production sur VPS, bascule, rollback, exploitation |
 | [05-POINT-FONCTIONNEL.md](05-POINT-FONCTIONNEL.md) | Point d'alignement après l'étape 7 : ce qui est cohérent, les écarts restants (données, CI/CD, fichiers, rétention, infra) et les lots proposés avant la bascule |
+| [06-INVENTAIRE-SUPABASE.md](06-INVENTAIRE-SUPABASE.md) | Inventaire réel des deux projets Supabase après réactivation (volumétrie, comptes, praticiens, fichiers, configuration, écart de schéma) et commandes d'export restantes |
 
 ## Outillage livré (testé)
 

@@ -7,6 +7,11 @@ fichiers, configuration et secrets. Outils : `scripts/supabase/export-supabase.s
 
 ## 1. Avant tout : réactiver le projet (état au 02/09/2026 : *paused*)
 
+> **Mise à jour du 07/09/2026** : les deux projets ont été réactivés (`ACTIVE_HEALTHY`) et
+> inventoriés, voir [06-INVENTAIRE-SUPABASE.md](06-INVENTAIRE-SUPABASE.md). `jucqnqatncjcjlnhprsq`
+> (DOMICARESLIFE) porte les données ; `mwkggpztzpykhggktyir` est vide. Ils se remettent en pause
+> après 7 jours d'inactivité.
+
 1. Dashboard Supabase → projet **DOMICARESLIFE** (`jucqnqatncjcjlnhprsq`) → *Restore project*.
    La restauration prend quelques minutes. Si le bouton est absent, ouvrir un ticket support
    Supabase avec le ref du projet : les données d'un projet en pause sont conservées un temps
