@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import { auth, type AuthSession, type AuthUser } from "@/lib/api";
 import { registerPractitioner, toPractitionerRegisterPayload } from "@/lib/practitioner-registration";
-import type { CreatePractitionerResponse } from "@/types/edge-function-responses";
+import type { CreatePractitionerResponse } from "@/types/api-responses";
 import { uploadUserDocument } from "@/lib/file-upload";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from "@/lib/auth-navigation";

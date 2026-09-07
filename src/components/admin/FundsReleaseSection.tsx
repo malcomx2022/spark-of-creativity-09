@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, errorMessage } from '@/lib/api';
-import type { ReleaseHeldFundsResponse } from '@/types/edge-function-responses';
+import type { ReleaseHeldFundsResponse } from '@/types/api-responses';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

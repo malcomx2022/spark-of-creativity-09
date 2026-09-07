@@ -35,3 +35,6 @@ supabase/.temp/
 export/
 deploy/vps/.env
 deploy/vps/backups/
+
+# Fichiers temporaires
+tmp/

@@ -35,7 +35,7 @@ moyens de paiement, statistiques** livrées.
 | `POST /api/payments`, `GET /api/payments[/:id]`, `POST /api/payments/:id/cancel`, `POST /api/payments/:id/sync`, `GET /api/payments/config` | Edge Functions `create-payment`, `cancel-pending-payment`, `sync-payment-status`, `get-fedapay-config` |
 | `POST /api/webhooks/fedapay` | Edge Function `payment-webhook` (HMAC-SHA256, idempotence `webhook_events`, ledger, notifications) |
 | `POST /api/admin/payments/simulate-webhook`, `POST /api/admin/payments/:id/sync` | Edge Function `simulate-webhook` (client factice) |
-| `GET /api/admin/jobs`, `POST /api/admin/jobs/:name/run` | Edge Functions `schedule-consultation-tasks`, `auto-sync-pending-payments`, `cleanup-stuck-payments` (exécutées par le worker toutes les 5 / 10 / 15 min) |
+| `GET /api/admin/jobs`, `POST /api/admin/jobs/:name/run` | Edge Functions `schedule-consultation-tasks`, `auto-sync-pending-payments`, `cleanup-stuck-payments` (exécutées par le worker toutes les 5 / 10 / 15 min) ; `maintenance.cleanup` quotidien : purges `cleanup_old_*`, `repair_missing_profiles()`, comptes orphelins comptés et supprimés seulement avec `deleteOrphans: true` |
 | `GET /api/conversations`, `GET /api/conversations/unread-count` | `useConversations` (rendez-vous confirmés/terminés, dernier message, non-lus) |
 | `GET/POST /api/conversations/:appointmentId/messages`, `POST …/read` | `useMessages` (table `messages`, pièces jointes via `POST /api/files/upload-url` dossier `message-attachments`, notification push au destinataire) |
 | `GET /api/notifications[?unreadOnly]`, `GET …/unread-count`, `POST …/:id/read`, `POST …/read-all`, `DELETE …/:id` | `useNotifications` |

@@ -38,9 +38,9 @@ quitter Supabase, et lister précisément ce qui reste à faire, par lot, avant 
   différents), ré-abonnement aux notifications push (nouvelle paire VAPID), enregistrement de la
   nouvelle URL de webhook FedaPay `https://<domaine>/api/webhooks/fedapay`.
 
-### 2.2 CI/CD hérité contradictoire (bloquant pour `main`)
+### 2.2 CI/CD hérité contradictoire — **traité (lot A)**
 
-Cinq workflows déploient encore l'ancienne pile et se déclenchent sur `main` :
+Cinq workflows déployaient encore l'ancienne pile et se déclenchaient sur `main` :
 
 | Workflow | Problème |
 |---|---|
@@ -49,12 +49,13 @@ Cinq workflows déploient encore l'ancienne pile et se déclenchent sur `main` :
 | `supabase-deploy.yml` | Déploie les Edge Functions sur Supabase à chaque push sur `main` |
 | `.github/workflows/README.md` | Décrit des secrets Supabase (`DEV_ANON_KEY`…) |
 
-À remplacer par deux workflows : `web-ci.yml` (lint, tests, build du front sur `src/**`) et
-`deploy-vps.yml` (build des images `deploy/vps`, `docker compose up -d` sur le VPS, health
-check `GET /api/health`). Le dossier `migration/` (plan « Supabase self-hosted » de 2025) est
-obsolète et contredit `docs/migration-postgresql` : à supprimer.
+Ils sont supprimés et remplacés par `web-ci.yml` (lint informatif, typecheck, tests, build du
+front) et `deploy-vps.yml` (manuel jusqu'à la mise en service du VPS : `git reset --hard`,
+`docker compose build` / `up -d` de `deploy/vps`, contrôle `GET /api/health`). Le dossier
+`migration/` (plan « Supabase self-hosted » de 2025) est supprimé ; `.github/workflows/README.md`
+décrit les secrets réellement nécessaires (SSH et domaine seulement).
 
-### 2.3 Fichiers suivis par git à nettoyer
+### 2.3 Fichiers suivis par git — **nettoyés (lot A)**
 
 | Fichier | Constat | Action |
 |---|---|---|
@@ -64,24 +65,24 @@ obsolète et contredit `docs/migration-postgresql` : à supprimer.
 | `supabase/config.toml` | Configuration CLI Supabase | Supprimer (le dossier `supabase/migrations` et `supabase/functions` restent en référence) |
 | `bun.lockb` | Verrou Bun périmé, le projet utilise npm (`package-lock.json`) | Supprimer |
 | `tmp/` | 1 fichier suivi | Supprimer et ignorer |
-| `README.md` (racine) | Gabarit Lovable | Réécrire : architecture, démarrage local (`api/`, front, base), liens vers `docs/migration-postgresql` |
+| `README.md` (racine) | Gabarit Lovable | Réécrit : architecture, démarrage local, vérifications, documentation |
+| `.env.local.example` | `VITE_FEDAPAY_*` (la clé publique vient de `GET /api/payments/config`) | Supprimé |
 
-### 2.4 Rétention des données (parité, mais à décider)
+### 2.4 Rétention des données — **job ajouté (lot B)**
 
 Six fonctions SQL de purge existent et n'étaient **déjà pas planifiées** chez Supabase (aucun
 `pg_cron` versionné) : `cleanup_old_otp_rate_limits`, `cleanup_old_file_access_logs`,
 `cleanup_old_payment_attempts`, `cleanup_old_search_activity_logs`, `cleanup_orphan_accounts`,
 `repair_missing_profiles`. Seule `cleanup_old_otp_attempts` est déclenchée par trigger.
-Recommandation : un job `maintenance.cleanup` quotidien dans le worker (même mécanisme que
-`funds.release`), avec `cleanup_orphan_accounts` en mode compte-rendu seulement dans un premier
-temps.
+Le job `maintenance.cleanup` (quotidien, worker) exécute les quatre purges et
+`repair_missing_profiles()`, compte les comptes orphelins et ne les supprime qu'avec l'option
+`deleteOrphans: true` (`POST /api/admin/jobs/maintenance.cleanup/run`). Test e2e ajouté.
 
 ### 2.5 Infrastructure
 
-- **Redis** est déclaré dans `docker-compose.yml` (`REDIS_URL` passé à l'API et au worker) mais
-  l'API ne le lit pas (absent de `config.schema.ts`) : à retirer du compose, ou à garder documenté
-  comme réservé (adaptateur Socket.IO multi-instances, files BullMQ) si l'on prévoit plusieurs
-  répliques de l'API. Sur un VPS unique, le retirer.
+- **Redis** — **retiré du compose (lot B)** : l'API ne le lisait pas. À réintroduire comme
+  adaptateur Socket.IO seulement si l'API est déployée en plusieurs réplicas (noté dans
+  `04-PLAN-EXECUTION-VPS.md` §5).
 - Console MinIO exposée en option dans le `Caddyfile` : à protéger ou à ne pas publier.
 
 ### 2.6 Edge Functions sans équivalent (choix assumés)
@@ -98,14 +99,14 @@ temps.
 
 | Écran | Simplification | Suite possible |
 |---|---|---|
-| `SupportSection` (admin) | 100 derniers tickets, filtres statut / priorité côté client | Passer `status` / `priority` à `GET /api/admin/support/tickets` et utiliser `…/tickets/stats` |
+| `SupportSection` (admin) | 100 derniers tickets | **Fait (lot B)** : filtres `status` / `priority` envoyés à l'API, compteurs via `…/tickets/stats` |
 | `SearchActivitySection` | 200 dernières entrées (2 pages de 100), recherche session / praticien côté client ; statistiques calculées par l'API sur toute la période | Ajouter `search` côté API si le volume grandit |
 | `OTPManagementSection` | Export CSV limité à la page courante (50) | Export serveur si besoin |
 | `PaymentFlowsDashboard` | Reversements actifs et transactions FedaPay filtrés côté client sur les 100 derniers | Filtres multi-statuts côté API |
 | `PaymentsSection` (patient) | 200 derniers paiements, tri / pagination côté client | Pagination serveur |
 | `useMessages` | Pas de route « tous mes messages » ni « marquer un message » : agrégation des conversations, `POST …/read` marque toute la conversation | Routes dédiées si un écran l'exige |
 | `PractitionerMap` | Les praticiens sans coordonnées ont `latitude = longitude = 0` (marqueur hors carte) ; la page de recherche les exclut déjà du calcul de distance | Filtrer aussi les marqueurs |
-| `src/types/edge-function-responses.ts` | Nom hérité, encore utilisé par 4 fichiers | Renommer en `api-responses.ts` |
+| `src/types/api-responses.ts` | Ex `edge-function-responses.ts` | **Fait (lot B)** : renommé, interfaces inutilisées retirées |
 
 ### 2.8 Qualité
 
@@ -113,18 +114,17 @@ temps.
   `any` préexistants dans les écrans hérités.
 - API : 77 tests e2e mais pas de test de charge ni de test du worker en conditions réelles
   (FedaPay factice uniquement en CI ; le mode `live` n'est validable qu'en pré-production).
-- 70 documents dans `docs/` et 18 `REVUE_*.md` à la racine datent de l'ère Supabase / Lovable :
-  à archiver dans `docs/archive/` pour que `docs/migration-postgresql` et `api/README.md` restent
-  la seule référence.
+- Front : workflow `web-ci.yml` ajouté (lot A).
+- 71 documents de `docs/` et 18 `REVUE_*.md` de l'ère Supabase / Lovable sont archivés dans
+  `docs/archive/` (lot A) ; `docs/migration-postgresql` et `api/README.md` restent la référence.
 
 ## 3. Lots proposés
 
 | Lot | Contenu | Risque | Durée indicative |
 |---|---|---|---|
-| **A — Dépôt** | §2.2 (workflows `web-ci` / `deploy-vps`, suppression `migration/` et des workflows Supabase), §2.3 (fichiers), README racine, archivage §2.8 | faible (git) | ½ journée |
-| **B — API et infra** | Job `maintenance.cleanup` (§2.4), Redis retiré ou documenté (§2.5), `edge-function-responses.ts` renommé, filtres serveur de §2.7 jugés utiles | faible | ½ à 1 journée |
+| **A — Dépôt** | **Livré** : §2.2, §2.3, README racine, archivage §2.8 | — | — |
+| **B — API et infra** | **Livré** : job `maintenance.cleanup` (§2.4), Redis retiré (§2.5), types renommés et filtres serveur des tickets (§2.7) | — | — |
 | **C — Données** | Réactivation Supabase, export réel, répétition de l'import sur le VPS (`04-PLAN…` §3), contrôle des comptages, reprise des secrets (§2.1), ré-upload des fichiers vers MinIO | moyen (dépend de Supabase) | 1 journée + délai de réactivation |
 | **D — Bascule** | Checklist `04-PLAN…` §4 : gel des écritures, import définitif, DNS, webhook FedaPay live, communication utilisateurs, surveillance J+1, plan de retour arrière | élevé (production) | 1 journée |
 
-Ordre recommandé : C (export) dès maintenant en parallèle de A, puis B, puis répétition
-générale (A + B + C sur le VPS), puis D.
+Ordre recommandé : C (export réel) dès maintenant, puis répétition générale sur le VPS, puis D.

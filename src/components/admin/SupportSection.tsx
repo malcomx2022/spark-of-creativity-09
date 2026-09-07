@@ -82,10 +82,12 @@ export function SupportSection() {
   }
 
   const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useQuery<TicketWithUser[]>({
-    queryKey: ['admin-support-tickets'],
+    queryKey: ['admin-support-tickets', statusFilter, priorityFilter],
     queryFn: async () => {
       // Tickets avec le profil du demandeur aplati (GET /admin/support/tickets)
-      const res = await api.get<{ data: Array<Omit<TicketWithUser, 'user'> & { user_full_name: string | null; user_phone: string | null }> }>('/admin/support/tickets', { query: { limit: 100 } });
+      const res = await api.get<{ data: Array<Omit<TicketWithUser, 'user'> & { user_full_name: string | null; user_phone: string | null }> }>('/admin/support/tickets', {
+        query: { limit: 100, ...(statusFilter !== 'all' ? { status: statusFilter } : {}), ...(priorityFilter !== 'all' ? { priority: priorityFilter } : {}) },
+      });
       return res.data.map(({ user_full_name, user_phone, ...ticket }) => ({
         ...ticket,
         user: { id: ticket.user_id, full_name: user_full_name ?? undefined, phone: user_phone ?? undefined },
@@ -97,17 +99,18 @@ export function SupportSection() {
   useEffect(() => {
     return onTableChange('support_tickets', () => {
       queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-support-stats'] });
     });
   }, [queryClient]);
 
-  // Filtrage des tickets
-  const filteredTickets = useMemo(() => {
-    return tickets.filter(ticket => {
-      const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-      const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
-      return matchesStatus && matchesPriority;
-    });
-  }, [tickets, statusFilter, priorityFilter]);
+  // Filtrage effectué par l'API (statut, priorité)
+  const filteredTickets = tickets;
+
+  // Compteurs globaux, indépendants des filtres et de la limite (GET /admin/support/tickets/stats)
+  const { data: ticketStats } = useQuery({
+    queryKey: ['admin-support-stats'],
+    queryFn: () => api.get<{ open: number; in_progress: number; resolved: number; closed: number; faqs_total: number; faqs_published: number }>('/admin/support/tickets/stats'),
+  });
 
   const { data: faqs = [], isLoading: faqsLoading, refetch: refetchFaqs } = useQuery({
     queryKey: ['admin-faqs'],
@@ -123,6 +126,7 @@ export function SupportSection() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-support-stats'] });
       toast({ title: 'Ticket mis à jour' });
       setSelectedTicket(null);
       setNewStatus('');
@@ -219,11 +223,11 @@ export function SupportSection() {
   };
 
   const stats = useMemo(() => ({
-    openTickets: tickets.filter(t => t.status === 'ouvert').length,
-    inProgressTickets: tickets.filter(t => t.status === 'en_cours').length,
+    openTickets: ticketStats?.open ?? 0,
+    inProgressTickets: ticketStats?.in_progress ?? 0,
     totalFaqs: faqs.length,
     publishedFaqs: faqs.filter(f => f.is_published).length,
-  }), [tickets, faqs]);
+  }), [ticketStats, faqs]);
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {

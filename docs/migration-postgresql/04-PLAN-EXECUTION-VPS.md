@@ -7,7 +7,7 @@ Internet ──► Caddy (443, TLS auto) ──┬── /            → web (n
                                      ├── /api/*       → api (NestJS, port 3000)
                                      └── /socket.io/* → api (WebSocket)
                     worker (cron BullMQ + relais LISTEN/NOTIFY → Socket.IO)
-                    postgres:16 (db/native/schema.native.sql)   redis:7   minio (ou Wasabi)
+                    postgres:16 (db/native/schema.native.sql)   minio (ou Wasabi)
                     backup (pg_dump quotidien → ./backups → rclone hors site)
 ```
 
@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/<org>/<repo>/main/deploy/vps/instal
 # puis en tant que deploy
 git clone <repo> ~/domicares && cd ~/domicares/deploy/vps
 cp .env.example .env && nano .env            # secrets de la doc 02 §6
-docker compose up -d postgres redis minio    # la base se crée avec 010_roles + schema.native.sql
+docker compose up -d postgres minio    # la base se crée avec 010_roles + schema.native.sql
 docker compose exec postgres psql -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD '<DOMICARES_APP_PASSWORD>'"
 ```
 
@@ -103,7 +103,7 @@ FedaPay sur `…/functions/v1/payment-webhook`, retirer la maintenance. Aucune d
 | Migrations de schéma | Prisma/Drizzle migrate ou fichiers SQL versionnés appliqués par `domicares_migrator` avant `up -d api` |
 | Supervision | `docker compose logs`, Uptime Kuma (sondes `/api/health`, `/`), Loki/Grafana ou Netdata ; alertes sur webhooks FedaPay en échec |
 | Sécurité | UFW (22/80/443), fail2ban, SSH par clé, Postgres non exposé, secrets hors git, rotation des clés API, HSTS |
-| Scalabilité | séparer ensuite `postgres` sur un VPS dédié (ou base managée), passer l'API en 2 réplicas derrière Caddy, Redis adapter Socket.IO déjà prévu |
+| Scalabilité | séparer ensuite `postgres` sur un VPS dédié (ou base managée), passer l'API en 2 réplicas derrière Caddy, ajouter alors Redis comme adaptateur Socket.IO |
 
 ## 6. Coûts (ordre de grandeur mensuel)
 

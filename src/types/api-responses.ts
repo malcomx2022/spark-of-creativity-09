@@ -1,24 +1,7 @@
 /**
- * Types pour les réponses des edge functions
+ * Réponses de l'API utilisées par le front en dehors des hooks (ex `edge-function-responses.ts`).
+ * Les lignes de tables sont typées localement dans chaque hook ou composant.
  */
-
-export interface FindPractitionerResponse {
-  success: boolean;
-  practitioner?: {
-    id: string;
-    name: string;
-    specialty: string;
-    distance: number;
-  };
-  message?: string;
-}
-
-export interface AdminManagementResponse {
-  success?: boolean;
-  error?: string;
-  tempPassword?: string;
-  newPassword?: string;
-}
 
 export interface ReleaseHeldFundsResponse {
   success: boolean;
@@ -26,21 +9,10 @@ export interface ReleaseHeldFundsResponse {
     total: number;
     released: number;
     failed: number;
-    errors: any[];
+    errors: Array<{ payment_id?: string; error?: string }>;
   };
   released_count?: number;
   message?: string;
-}
-
-export interface MoMoWalletResponse {
-  wallets: Array<{
-    id: string;
-    user_id: string;
-    provider: string;
-    phone_number: string;
-    balance: number;
-    created_at: string;
-  }>;
 }
 
 export interface CreateTestAccountsResponse {
