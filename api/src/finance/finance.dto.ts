@@ -29,7 +29,10 @@ export type PaymentInfoDto = z.infer<typeof paymentInfoSchema>;
 export const adminPaymentsQuerySchema = z.object({
   status: z.string().max(30).optional(),
   payoutStatus: z.enum(['pending', 'held', 'ready', 'paid', 'failed']).optional(),
-  ...page,
+  /** Borne inférieure de création (ISO 8601), ex métriques des dernières 24 h. */
+  from: z.string().datetime().optional(),
+  page: page.page,
+  limit: z.coerce.number().int().min(1).max(1000).default(20),
 });
 export type AdminPaymentsQuery = z.infer<typeof adminPaymentsQuerySchema>;
 

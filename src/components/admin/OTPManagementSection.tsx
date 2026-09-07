@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertCircle, CheckCircle, Phone, Trash2, RefreshCw, Search, Download, Clock, XCircle, MessageSquare, PhoneCall, Activity, TrendingUp, Filter } from 'lucide-react';
 import { useOTPAttempts, useBlockedNumbers, useResetOTPAttempts, useDeleteOTPAttempt } from '@/hooks/useOTPManagement';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import {
   Table,
   TableBody,
@@ -19,7 +19,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 // Labels français pour les statuts
 const STATUS_LABELS: Record<string, string> = {
@@ -37,9 +36,6 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 export function OTPManagementSection() {
-  const { admin } = useAdminAuth();
-  const { data: attempts = [], isLoading: attemptsLoading, refetch: refetchAttempts } = useOTPAttempts();
-  const { data: blockedNumbers = [], isLoading: blockedLoading, refetch: refetchBlocked } = useBlockedNumbers();
   const resetAttempts = useResetOTPAttempts();
   const deleteAttempt = useDeleteOTPAttempt();
 
@@ -52,48 +48,31 @@ export function OTPManagementSection() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  // Statistiques globales
+  // Filtrage et pagination effectués par l'API (GET /admin/otp/attempts)
+  const { data: attemptsPage, isLoading: attemptsLoading, refetch: refetchAttempts } = useOTPAttempts({
+    phone: searchPhone || undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    channel: channelFilter !== 'all' ? channelFilter : undefined,
+    from: dateFrom || undefined,
+    to: dateTo || undefined,
+    page: page - 1,
+    limit,
+  });
+  const { data: blockedNumbers = [], isLoading: blockedLoading, refetch: refetchBlocked } = useBlockedNumbers();
+
+  // Statistiques globales (GET /admin/otp/stats)
   const { data: stats } = useQuery({
     queryKey: ['otp-stats'],
-    queryFn: async () => {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-      const { data: allAttempts } = await supabase
-        .from('otp_attempts')
-        .select('status, created_at, channel');
-
-      if (!allAttempts) return { total: 0, today: 0, week: 0, successRate: 0, byChannel: {} };
-
-      const total = allAttempts.length;
-      const todayCount = allAttempts.filter(a => a.created_at >= today).length;
-      const weekCount = allAttempts.filter(a => a.created_at >= weekAgo).length;
-      const delivered = allAttempts.filter(a => a.status === 'delivered').length;
-      const successRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
-
-      const byChannel: Record<string, number> = {};
-      allAttempts.forEach(a => {
-        byChannel[a.channel] = (byChannel[a.channel] || 0) + 1;
-      });
-
-      return { total, today: todayCount, week: weekCount, successRate, byChannel };
-    },
+    queryFn: () => api.get<{ total: number; today: number; week: number; successRate: number; byChannel: Record<string, number> }>('/admin/otp/stats'),
   });
 
-  // Filtrage des tentatives
-  const filteredAttempts = attempts.filter(attempt => {
-    if (searchPhone && !attempt.phone_number.includes(searchPhone)) return false;
-    if (statusFilter !== 'all' && attempt.status !== statusFilter) return false;
-    if (channelFilter !== 'all' && attempt.channel !== channelFilter) return false;
-    if (dateFrom && attempt.created_at < dateFrom) return false;
-    if (dateTo && attempt.created_at > dateTo + 'T23:59:59') return false;
-    return true;
-  });
+  // Tentatives de la page courante (déjà filtrées par l'API)
+  const filteredAttempts = attemptsPage?.data ?? [];
+  const totalCount = attemptsPage?.count ?? 0;
 
   // Pagination
-  const totalPages = Math.ceil(filteredAttempts.length / limit);
-  const paginatedAttempts = filteredAttempts.slice((page - 1) * limit, page * limit);
+  const totalPages = Math.ceil(totalCount / limit);
+  const paginatedAttempts = filteredAttempts;
 
   const hasActiveFilters = searchPhone || statusFilter !== 'all' || channelFilter !== 'all' || dateFrom || dateTo;
 
@@ -106,25 +85,9 @@ export function OTPManagementSection() {
     setPage(1);
   };
 
-  // Audit log helper
-  const logAuditAction = async (action: string, entityType: string, entityId: string, details?: any) => {
-    if (!admin?.id) return;
-    try {
-      await supabase.from('admin_audit_logs').insert({
-        admin_id: admin.id,
-        action,
-        entity_type: entityType,
-        entity_id: entityId,
-        details,
-      });
-    } catch (error) {
-      console.error('Audit log error:', error);
-    }
-  };
-
   // Export CSV
   const handleExport = () => {
-    const escapeCSV = (val: any) => {
+    const escapeCSV = (val: unknown) => {
       if (val === null || val === undefined) return '';
       const str = String(val);
       if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -153,16 +116,13 @@ export function OTPManagementSection() {
     URL.revokeObjectURL(url);
   };
 
-  // Wrapper pour reset avec audit
+  // Le journal d'audit est alimenté par l'API pour ces deux actions.
   const handleReset = async (phoneNumber: string) => {
     await resetAttempts.mutateAsync(phoneNumber);
-    await logAuditAction('reset_otp_attempts', 'otp', phoneNumber, { phone_number: phoneNumber });
   };
 
-  // Wrapper pour delete avec audit
-  const handleDelete = async (attemptId: string, phoneNumber: string) => {
+  const handleDelete = async (attemptId: string) => {
     await deleteAttempt.mutateAsync(attemptId);
-    await logAuditAction('delete_otp_attempt', 'otp', attemptId, { phone_number: phoneNumber });
   };
 
   const getStatusBadge = (status: string) => {
@@ -382,7 +342,7 @@ export function OTPManagementSection() {
                 <div>
                   <CardTitle>Historique des tentatives OTP</CardTitle>
                   <CardDescription>
-                    {filteredAttempts.length} tentatives {hasActiveFilters && '(filtré)'}
+                    {totalCount} tentatives {hasActiveFilters && '(filtré)'}
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -529,7 +489,7 @@ export function OTPManagementSection() {
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Annuler</AlertDialogCancel>
                                     <AlertDialogAction
-                                      onClick={() => handleDelete(attempt.id, attempt.phone_number)}
+                                      onClick={() => handleDelete(attempt.id)}
                                     >
                                       Supprimer
                                     </AlertDialogAction>
@@ -549,7 +509,7 @@ export function OTPManagementSection() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-4">
                   <p className="text-sm text-muted-foreground">
-                    {(page - 1) * limit + 1}-{Math.min(page * limit, filteredAttempts.length)} sur {filteredAttempts.length}
+                    {(page - 1) * limit + 1}-{Math.min(page * limit, totalCount)} sur {totalCount}
                   </p>
                   <div className="flex gap-2">
                     <Button

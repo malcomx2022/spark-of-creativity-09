@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useMemo, useState } from 'react';
+import { API_BASE_URL } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Copy, ExternalLink, CheckCircle2 } from 'lucide-react';
@@ -7,23 +7,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export function WebhookConfig() {
-  const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchWebhookUrl();
+  // Point d'entrée du webhook côté API NestJS (ex get-webhook-url).
+  const webhookUrl = useMemo(() => {
+    const base = /^https?:\/\//.test(API_BASE_URL) ? API_BASE_URL : `${window.location.origin}${API_BASE_URL}`;
+    return `${base}/webhooks/fedapay`;
   }, []);
-
-  const fetchWebhookUrl = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('get-webhook-url');
-      if (error) throw error;
-      setWebhookUrl(data.webhookUrl);
-    } catch (error) {
-      console.error('Error fetching webhook URL:', error);
-    }
-  };
 
   const copyToClipboard = async () => {
     try {

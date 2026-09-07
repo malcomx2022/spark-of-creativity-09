@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { api, errorMessage } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +11,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { RefreshCcw } from "lucide-react";
 
+/** Ligne de GET /admin/finance/payments (jointures patient et rendez-vous aplaties). */
+interface RefundablePayment {
+  id: string;
+  amount: number;
+  status: string;
+  created_at: string;
+  patient_id: string | null;
+  patient_name: string | null;
+  patient_phone: string | null;
+  appointment_practitioner_name: string | null;
+  appointment_specialty: string | null;
+}
+
+/** Ligne de GET /admin/finance/refunds. */
+interface PaymentRefund {
+  id: string;
+  payment_id: string;
+  refund_amount: number;
+  refund_reason: string | null;
+  status: string;
+  created_at: string;
+  processed_at: string | null;
+  patient_name: string | null;
+}
+
 export function RefundsSection() {
-  const [selectedPayment, setSelectedPayment] = useState<any>(null);
+  const [selectedPayment, setSelectedPayment] = useState<RefundablePayment | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const queryClient = useQueryClient();
@@ -22,19 +46,13 @@ export function RefundsSection() {
   const { data: payments, isLoading } = useQuery({
     queryKey: ['refundable-payments'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          *,
-          patient:profiles!payments_patient_id_fkey(id, full_name, phone),
-          appointment:appointments!payments_appointment_id_fkey(id, practitioner_name, specialty, date)
-        `)
-        .in('status', ['paid', 'partially_refunded'])
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return data;
+      const [paid, partial] = await Promise.all([
+        api.get<{ data: RefundablePayment[] }>('/admin/finance/payments', { query: { status: 'paid', limit: 50 } }),
+        api.get<{ data: RefundablePayment[] }>('/admin/finance/payments', { query: { status: 'partially_refunded', limit: 50 } }),
+      ]);
+      return [...paid.data, ...partial.data]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 50);
     }
   });
 
@@ -42,20 +60,8 @@ export function RefundsSection() {
   const { data: refunds } = useQuery({
     queryKey: ['payment-refunds'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payment_refunds')
-        .select(`
-          *,
-          payment:payments!payment_refunds_payment_id_fkey(
-            id, amount, patient_id,
-            patient:profiles!payments_patient_id_fkey(full_name)
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-      return data;
+      const res = await api.get<{ data: PaymentRefund[] }>('/admin/finance/refunds', { query: { limit: 20 } });
+      return res.data;
     }
   });
 
@@ -76,33 +82,12 @@ export function RefundsSection() {
         }
       }
 
-      const { data, error } = await invokeEdgeFunctionWithRetry('process-refund', {
-        body: {
-          paymentId: selectedPayment.id,
-          refundAmount: parsedAmount,
-          reason: refundReason
-        }
-      });
-
-      if (error) throw error;
-
-      // Add audit log
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: 'Refund processed',
-          entity_type: 'payment',
-          entity_id: selectedPayment.id,
-          details: {
-            amount: parsedAmount || selectedPayment.amount,
-            reason: refundReason,
-            patient_id: selectedPayment.patient_id,
-          },
-        });
-      }
-
-      return data;
+      // Remboursement FedaPay, écritures comptables et journal d'audit sont gérés par l'API.
+      return api.post('/admin/finance/refunds', {
+        paymentId: selectedPayment.id,
+        ...(parsedAmount !== null ? { refundAmount: parsedAmount } : {}),
+        reason: refundReason,
+      }, { timeoutMs: 60_000 });
     },
     onSuccess: () => {
       toast.success('Remboursement traité avec succès');
@@ -112,8 +97,8 @@ export function RefundsSection() {
       queryClient.invalidateQueries({ queryKey: ['refundable-payments'] });
       queryClient.invalidateQueries({ queryKey: ['payment-refunds'] });
     },
-    onError: (error: Error) => {
-      toast.error('Erreur: ' + error.message);
+    onError: (error: unknown) => {
+      toast.error('Erreur: ' + errorMessage(error, 'remboursement impossible'));
     }
   });
 
@@ -149,24 +134,24 @@ export function RefundsSection() {
                   <TableCell colSpan={6} className="text-center">Chargement...</TableCell>
                 </TableRow>
               ) : payments && payments.length > 0 ? (
-                payments.map((payment: any) => (
+                payments.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell>
                       {new Date(payment.created_at).toLocaleDateString('fr-FR')}
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{payment.patient?.full_name || 'Patient inconnu'}</p>
-                        {payment.patient?.phone && (
-                          <p className="text-xs text-muted-foreground">{payment.patient.phone}</p>
+                        <p className="font-medium">{payment.patient_name || 'Patient inconnu'}</p>
+                        {payment.patient_phone && (
+                          <p className="text-xs text-muted-foreground">{payment.patient_phone}</p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p>{payment.appointment?.practitioner_name || 'N/A'}</p>
-                        {payment.appointment?.specialty && (
-                          <p className="text-xs text-muted-foreground">{payment.appointment.specialty}</p>
+                        <p>{payment.appointment_practitioner_name || 'N/A'}</p>
+                        {payment.appointment_specialty && (
+                          <p className="text-xs text-muted-foreground">{payment.appointment_specialty}</p>
                         )}
                       </div>
                     </TableCell>
@@ -262,13 +247,13 @@ export function RefundsSection() {
             </TableHeader>
             <TableBody>
               {refunds && refunds.length > 0 ? (
-                refunds.map((refund: any) => (
+                refunds.map((refund) => (
                   <TableRow key={refund.id}>
                     <TableCell>
                       {new Date(refund.created_at).toLocaleDateString('fr-FR')}
                     </TableCell>
                     <TableCell>
-                      {refund.payment?.patient?.full_name || `Patient #${refund.payment_id.substring(0, 8)}`}
+                      {refund.patient_name || `Patient #${refund.payment_id.substring(0, 8)}`}
                     </TableCell>
                     <TableCell className="font-semibold">
                       {refund.refund_amount.toLocaleString()} XOF

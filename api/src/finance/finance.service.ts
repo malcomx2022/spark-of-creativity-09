@@ -155,6 +155,7 @@ export class FinanceService implements OnModuleInit {
       let base = trx.selectFrom('payments');
       if (q.status) base = base.where('payments.status', '=', q.status as never);
       if (q.payoutStatus) base = base.where('payments.payout_status', '=', q.payoutStatus);
+      if (q.from) base = base.where('payments.created_at', '>=', new Date(q.from));
       const count = await base.select((eb) => eb.fn.countAll<string>().as('n')).executeTakeFirstOrThrow();
       const rows = await base
         .leftJoin('profiles', 'profiles.id', 'payments.patient_id')

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,19 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, XCircle, Ban, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+
+interface PendingPayment {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  fedapay_transaction_id: string | null;
+  created_at: string;
+  appointment_id: string | null;
+}
+
+/** Correspondance action de test → statut de transaction FedaPay simulé. */
+const SIMULATED_STATUS = { approve: 'approved', decline: 'declined', cancel: 'canceled' } as const;
 
 export function SandboxPaymentTester() {
   const [paymentId, setPaymentId] = useState('');
@@ -20,15 +33,13 @@ export function SandboxPaymentTester() {
   const { data: pendingPayments, refetch } = useQuery({
     queryKey: ['pending-payments-sandbox'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payments')
-        .select('id, amount, currency, status, fedapay_transaction_id, created_at, appointment_id')
-        .in('status', ['initiated', 'pending'])
-        .order('created_at', { ascending: false })
-        .limit(10);
-      
-      if (error) throw error;
-      return data;
+      const [initiated, pending] = await Promise.all([
+        api.get<{ data: PendingPayment[] }>('/admin/finance/payments', { query: { status: 'initiated', limit: 10 } }),
+        api.get<{ data: PendingPayment[] }>('/admin/finance/payments', { query: { status: 'pending', limit: 10 } }),
+      ]);
+      return [...initiated.data, ...pending.data]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 10);
     }
   });
 
@@ -42,13 +53,23 @@ export function SandboxPaymentTester() {
       return;
     }
 
+    const payment = pendingPayments?.find((p) => p.id === paymentId);
+    if (!payment?.fedapay_transaction_id) {
+      toast({
+        title: 'Erreur',
+        description: 'Ce paiement n\'a pas de transaction FedaPay à simuler',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('simulate-webhook', {
-        body: { paymentId, action }
+      // Disponible uniquement avec le client FedaPay factice (FEDAPAY_PROVIDER=fake) : 403 sinon.
+      await api.post('/admin/payments/simulate-webhook', {
+        transactionId: payment.fedapay_transaction_id,
+        status: SIMULATED_STATUS[action],
       });
-
-      if (error) throw error;
 
       toast({
         title: 'Webhook simulé avec succès',
@@ -57,14 +78,14 @@ export function SandboxPaymentTester() {
 
       refetch();
       setPaymentId('');
-    } catch (error: any) {
+    } catch (error) {
       // P3: Wrap console.error with DEV check
       if (import.meta.env.DEV) {
         console.error('Error simulating webhook:', error);
       }
       toast({
         title: 'Erreur',
-        description: error.message || 'Impossible de simuler le webhook',
+        description: errorMessage(error, 'Impossible de simuler le webhook'),
         variant: 'destructive',
       });
     } finally {
@@ -146,7 +167,7 @@ export function SandboxPaymentTester() {
 
           <div className="space-y-2">
             <Label>Action à simuler</Label>
-            <Select value={action} onValueChange={(v) => setAction(v as any)}>
+            <Select value={action} onValueChange={(v) => setAction(v as 'approve' | 'decline' | 'cancel')}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

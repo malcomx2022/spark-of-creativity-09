@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 
@@ -10,12 +10,10 @@ export function PaymentMetrics() {
       // Métriques pour les dernières 24h
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       
-      const { data: payments, error } = await supabase
-        .from('payments')
-        .select('status, amount, created_at')
-        .gte('created_at', oneDayAgo);
-
-      if (error) throw error;
+      const { data: payments } = await api.get<{ data: Array<{ status: string; amount: number; created_at: string }> }>(
+        '/admin/finance/payments',
+        { query: { from: oneDayAgo, limit: 1000 } },
+      );
 
       const total = payments.length;
       const paid = payments.filter(p => p.status === 'paid').length;
