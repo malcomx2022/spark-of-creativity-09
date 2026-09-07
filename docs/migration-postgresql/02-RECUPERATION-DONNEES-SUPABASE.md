@@ -7,6 +7,11 @@ fichiers, configuration et secrets. Outils : `scripts/supabase/export-supabase.s
 
 ## 1. Avant tout : réactiver le projet (état au 02/09/2026 : *paused*)
 
+> **Mise à jour du 07/09/2026** : les deux projets ont été réactivés (`ACTIVE_HEALTHY`) et
+> inventoriés, voir [06-INVENTAIRE-SUPABASE.md](06-INVENTAIRE-SUPABASE.md). `jucqnqatncjcjlnhprsq`
+> (DOMICARESLIFE) porte les données ; `mwkggpztzpykhggktyir` est vide. Ils se remettent en pause
+> après 7 jours d'inactivité.
+
 1. Dashboard Supabase → projet **DOMICARESLIFE** (`jucqnqatncjcjlnhprsq`) → *Restore project*.
    La restauration prend quelques minutes. Si le bouton est absent, ouvrir un ticket support
    Supabase avec le ref du projet : les données d'un projet en pause sont conservées un temps
@@ -31,7 +36,9 @@ fichiers, configuration et secrets. Outils : `scripts/supabase/export-supabase.s
 
 Installer un client de **même version majeure** que le serveur (PostgreSQL 17) :
 `apt install postgresql-client-17` (ou `brew install postgresql@17`). Un `pg_dump` 16 refuse un
-serveur 17.
+serveur 17, et l'archive custom produite par `pg_dump` 17 n'est lisible que par un `pg_restore` 17,
+y compris pour l'importer dans le PostgreSQL 16 du VPS (`import-native.sh` le vérifie et accepte
+`PGBIN=/usr/lib/postgresql/17/bin`).
 
 ## 3. Geler les écritures (pour l'export final uniquement)
 
@@ -68,6 +75,15 @@ Le dossier `export/` est ignoré par git (données de santé et personnelles) : 
 (`age`/`gpg`) sur un support hors ligne + une copie hors site.
 
 ## 5. Vérifier l'export
+
+Contrôle automatique (fichiers, archives lisibles, comptages comparés à l'inventaire du
+07/09/2026, fichiers Storage, empreintes, tables vs schéma natif) :
+
+```bash
+PGBIN=/usr/lib/postgresql/17/bin scripts/supabase/check-export.sh export/<h>
+```
+
+Contrôles manuels équivalents :
 
 ```bash
 pg_restore -l export/<h>/data_public.dump | grep -c "TABLE DATA"     # ≈ 55 tables

@@ -2,7 +2,7 @@
 # =============================================================================
 # import-native.sh — Importe un export Supabase dans un PostgreSQL 16 natif
 #
-# Usage : PGHOST=... PGPORT=5432 PGUSER=postgres PGPASSWORD=... \
+# Usage : PGHOST=... PGPORT=5432 PGUSER=postgres PGPASSWORD=... [PGBIN=/usr/lib/postgresql/17/bin] \
 #         scripts/db/import-native.sh export/<horodatage> [nom_base]
 #
 # Étapes :
@@ -20,8 +20,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 EXPORT="${1:?dossier export requis}"
 DB="${2:-domicares}"
+# Binaires client : PGBIN=/usr/lib/postgresql/17/bin si le pg_dump source était en 17
+# (une archive custom pg_dump 17 n'est lisible que par pg_restore >= 17, même vers un serveur 16).
+if [[ -n "${PGBIN:-}" ]]; then export PATH="$PGBIN:$PATH"; fi
 PSQL="psql -X -v ON_ERROR_STOP=1 -q"
 SNAPSHOT="20260126121712_remote_schema.sql"
+
+echo "▶ 0. Contrôle de l'export et des clients"
+for f in data_public.dump data_auth.dump rowcounts.csv; do
+  [[ -f "$EXPORT/$f" ]] || { echo "✖ $EXPORT/$f manquant (export incomplet ?)"; exit 1; }
+done
+if ! pg_restore --list "$EXPORT/data_public.dump" >/dev/null 2>"$EXPORT/.pg_restore_check.log"; then
+  echo "✖ pg_restore $(pg_restore --version | awk '{print $3}') ne peut pas lire $EXPORT/data_public.dump :"
+  sed 's/^/    /' "$EXPORT/.pg_restore_check.log"
+  echo "  → installer postgresql-client-17 et relancer avec PGBIN=/usr/lib/postgresql/17/bin"
+  exit 1
+fi
+rm -f "$EXPORT/.pg_restore_check.log"
+echo "  client : $(pg_restore --version) ; archive : $(pg_restore --list "$EXPORT/data_public.dump" | grep -c 'TABLE DATA') tables avec données"
 
 echo "▶ 1. Base $DB + rôles"
 $PSQL -d postgres -c "CREATE DATABASE $DB" 2>/dev/null || echo "  (base existante)"
