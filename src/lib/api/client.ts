@@ -18,13 +18,16 @@ export class ApiError extends Error {
   readonly status: number;
   readonly details?: unknown;
   readonly code?: string;
+  /** Corps JSON complet renvoyé par l'API (ex. `{ paymentId, retryAfter }` sur un 409 de paiement). */
+  readonly body?: unknown;
 
-  constructor(status: number, message: string, details?: unknown, code?: string) {
+  constructor(status: number, message: string, details?: unknown, code?: string, body?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.details = details;
     this.code = code;
+    this.body = body;
   }
 
   /** Liste lisible des erreurs de validation renvoyées par ZodValidationPipe. */
@@ -82,7 +85,7 @@ async function parseBody(res: Response): Promise<unknown> {
 function toApiError(res: Response, body: unknown): ApiError {
   const b = (body ?? {}) as { message?: string | string[]; error?: string; details?: unknown; code?: string; statusCode?: number };
   const message = Array.isArray(b.message) ? b.message.join(', ') : b.message || b.error || res.statusText || `Erreur ${res.status}`;
-  return new ApiError(res.status, message, b.details, b.code);
+  return new ApiError(res.status, message, b.details, b.code, body);
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

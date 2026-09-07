@@ -1,12 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, auth, errorMessage } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 
 interface RegisterSessionParams {
   sessionId: string;
+  /** Montant indicatif : l'API applique le prix de la séance. */
   amount: number;
   paymentMethod: string;
   phoneNumber: string;
@@ -15,95 +13,58 @@ interface RegisterSessionParams {
 interface RegisterSessionResponse {
   success: boolean;
   participantId?: string;
+  paymentId?: string;
   transactionId?: string;
+  token?: string;
   paymentUrl?: string;
+  amount?: number;
   error?: string;
 }
 
+/**
+ * Inscription à une séance de groupe (ex Edge Function register-group-session) :
+ * `POST /api/group-sessions/:id/register` réserve la place (anti-doublon et places restantes
+ * vérifiés côté serveur) et crée le paiement FedaPay.
+ */
 export function useGroupSessionRegistration() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const register = useMutation({
     mutationFn: async (params: RegisterSessionParams): Promise<RegisterSessionResponse> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
+      if (!auth.getUser()) {
         throw new Error('Vous devez être connecté pour vous inscrire');
       }
 
-      // ✅ VALIDATION ANTI-DOUBLON : Vérifier si le patient est déjà inscrit à cette séance
-      const { data: existingParticipation, error: checkError } = await withTimeout(
-        supabase
-          .from('group_session_participants')
-          .select('payment_status, session:group_sessions(session_name, scheduled_date, start_time)')
-          .eq('session_id', params.sessionId)
-          .eq('patient_id', user.id)
-          .neq('payment_status', 'cancelled')
-          .maybeSingle()
-      );
+      const data = await api.post<RegisterSessionResponse>(`/group-sessions/${params.sessionId}/register`, {
+        paymentMethod: params.paymentMethod,
+        phoneNumber: params.phoneNumber,
+      });
 
-      if (checkError) throw checkError;
-
-      if (existingParticipation) {
-        const session = existingParticipation.session as any;
-        const formattedDate = format(new Date(session.scheduled_date), 'EEEE d MMMM yyyy', { locale: fr });
-        
-        let message = '';
-        if (existingParticipation.payment_status === 'pending') {
-          message = `Vous avez déjà une inscription en cours de paiement pour la séance "${session.session_name}" du ${formattedDate} à ${session.start_time}.\n\n` +
-                   `Veuillez finaliser votre paiement ou annuler cette inscription avant d'en créer une nouvelle.`;
-        } else if (existingParticipation.payment_status === 'paid' || existingParticipation.payment_status === 'confirmed') {
-          message = `Vous êtes déjà inscrit(e) à la séance "${session.session_name}" du ${formattedDate} à ${session.start_time}.\n\n` +
-                   `Vous ne pouvez pas vous inscrire deux fois à la même séance.`;
-        } else {
-          message = `Vous avez déjà une inscription à cette séance (statut: ${existingParticipation.payment_status}).\n\n` +
-                   `Veuillez contacter le support si vous pensez qu'il s'agit d'une erreur.`;
-        }
-        
-        throw new Error(message);
-      }
-
-      const { data, error } = await withTimeout(
-        supabase.functions.invoke(
-          'register-group-session',
-          {
-            body: {
-              sessionId: params.sessionId,
-              patientId: user.id,
-              amount: params.amount,
-              paymentMethod: params.paymentMethod,
-              phoneNumber: params.phoneNumber,
-            }
-          }
-        )
-      );
-
-      if (error) throw error;
       if (!data.success) throw new Error(data.error || 'Erreur lors de l\'inscription');
 
       // ✅ Retourner les données au lieu de rediriger
       return {
         success: true,
         participantId: data.participantId,
+        paymentId: data.paymentId,
         transactionId: data.transactionId,
+        token: data.token,
         paymentUrl: data.paymentUrl,
+        amount: data.amount,
       };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['patient-group-sessions'] });
-      
+
       // ✅ Plus de redirection automatique - géré par PaymentDialog
       console.log('✅ Inscription créée avec succès:', data);
     },
-    onError: (error: any) => {
-      const isTimeoutError = error instanceof NetworkTimeoutError;
+    onError: (error: unknown) => {
       toast({
         title: "Erreur",
-        description: isTimeoutError 
-          ? error.message 
-          : (error.message || "Impossible de s'inscrire à la séance"),
+        description: errorMessage(error, "Impossible de s'inscrire à la séance"),
         variant: "destructive"
       });
     }

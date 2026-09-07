@@ -3,29 +3,38 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 import { PaymentMetrics } from './PaymentMetrics';
 import { RecentPaymentsTable } from './RecentPaymentsTable';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+
+interface ReconciliationResult {
+  report_id: string;
+  summary: { total_db_payments: number; matched_count: number; anomalies_count: number };
+}
 
 export function PaymentsMonitoring() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isReconciling, setIsReconciling] = useState(false);
 
   const handleReconcile = async () => {
     setIsReconciling(true);
     try {
-      const { data, error } = await supabase.functions.invoke('reconcile-payments');
-      
-      if (error) throw error;
+      // Réconciliation FedaPay ↔ base sur les 7 derniers jours (ex reconcile-payments).
+      const data = await api.post<ReconciliationResult>('/admin/finance/reconciliation', {}, { timeoutMs: 120_000 });
 
       toast({
-        title: 'Réconciliation lancée',
-        description: `${data.reconciled} paiement(s) corrigé(s) sur ${data.total_checked} vérifiés`,
+        title: 'Réconciliation terminée',
+        description: `${data.summary.anomalies_count} anomalie(s) détectée(s) sur ${data.summary.total_db_payments} paiement(s) vérifié(s)`,
       });
-    } catch (error: any) {
+      queryClient.invalidateQueries({ queryKey: ['recent-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-reports'] });
+    } catch (error) {
       toast({
         title: 'Erreur',
-        description: error.message,
+        description: errorMessage(error, 'Impossible de lancer la réconciliation'),
         variant: 'destructive'
       });
     } finally {

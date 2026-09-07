@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,18 +7,22 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ExternalLink } from 'lucide-react';
 
+interface RecentPayment {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_method: string | null;
+  created_at: string;
+  fedapay_payment_url: string | null;
+}
+
 export function RecentPaymentsTable() {
   const { data: payments } = useQuery({
     queryKey: ['recent-payments'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payments')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-      return data;
+      const res = await api.get<{ data: RecentPayment[] }>('/admin/finance/payments', { query: { limit: 20 } });
+      return res.data;
     },
     refetchInterval: 10000 // Refresh toutes les 10s
   });
@@ -31,7 +35,7 @@ export function RecentPaymentsTable() {
     canceled: 'bg-gray-500'
   };
 
-  const getRowColor = (payment: any) => {
+  const getRowColor = (payment: RecentPayment) => {
     const age = Date.now() - new Date(payment.created_at).getTime();
     const tenMinutes = 10 * 60 * 1000;
     

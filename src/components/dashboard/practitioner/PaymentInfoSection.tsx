@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -202,17 +202,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
   const { data: paymentInfos, isLoading, refetch } = useQuery({
     queryKey: ["practitioner-payment-info", practitionerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("practitioner_payment_info")
-        .select("*")
-        .eq("practitioner_id", practitionerId);
-
-      if (error) {
-        console.error("Erreur récupération payment info", error);
-        throw error;
-      }
-
-      return (data || []) as PractitionerPaymentInfo[];
+      return api.get<PractitionerPaymentInfo[]>('/finance/me/payment-info');
     },
     enabled: !!practitionerId,
   });
@@ -321,34 +311,15 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
 
   const mutation = useMutation({
     mutationFn: async (payload: { verify: boolean }) => {
-      const sanitizedPhone =
-        selectedMethod === "bank"
-          ? null
-          : normalizePhoneNumber(formContext.data.phoneNumber, PHONE_NORMALIZATION_OPTIONS);
-      const sanitizedAccount = selectedMethod === "bank" ? sanitizeAccountNumber(formContext.data.bankAccountNumber) : null;
-
-      const updatePayload = {
-        practitioner_id: practitionerId,
-        payment_method: selectedMethod,
-        account_holder_name: formContext.data.accountHolderName.trim(),
-        phone_number: selectedMethod === "bank" ? null : sanitizedPhone,
-        bank_name: selectedMethod === "bank" ? formContext.data.bankName.trim() || null : null,
-        bank_account_number: selectedMethod === "bank" ? sanitizedAccount : null,
-        is_verified: payload.verify,
-      };
-
-      const { data, error } = await supabase
-        .from("practitioner_payment_info")
-        .upsert(updatePayload, { onConflict: "practitioner_id,payment_method" })
-        .select()
-        .single();
-
-      if (error) {
-        if (import.meta.env.DEV) {
-          console.error("Erreur mise à jour payment info", error);
-        }
-        throw error;
-      }
+      // Normalisation, validation et upsert (practitioner_id, payment_method) faits par l'API
+      const data = await api.put<PractitionerPaymentInfo>('/finance/me/payment-info', {
+        paymentMethod: selectedMethod,
+        accountHolderName: formContext.data.accountHolderName.trim(),
+        phoneNumber: selectedMethod === "bank" ? undefined : formContext.data.phoneNumber,
+        bankName: selectedMethod === "bank" ? formContext.data.bankName.trim() || undefined : undefined,
+        bankAccountNumber: selectedMethod === "bank" ? formContext.data.bankAccountNumber : undefined,
+        verify: payload.verify,
+      });
 
       return data as PractitionerPaymentInfo;
     },

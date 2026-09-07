@@ -281,6 +281,7 @@ export class AdminService {
       if (q.entityType) base = base.where('entity_type', '=', q.entityType);
       if (q.action) base = base.where('action', '=', q.action);
       if (q.adminId) base = base.where('admin_id', '=', q.adminId);
+      if (q.entityId) base = base.where('entity_id', '=', q.entityId);
       if (q.from) base = base.where('created_at', '>=', new Date(`${q.from}T00:00:00`));
       if (q.to) base = base.where('created_at', '<=', new Date(`${q.to}T23:59:59`));
       if (q.search && q.search.length >= 3) {

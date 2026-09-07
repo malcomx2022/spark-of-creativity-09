@@ -21,15 +21,15 @@ moyens de paiement, statistiques** livrées.
 | `POST /api/auth/otp/send`, `otp/verify` | Edge Functions `send-otp`, `verify-otp` (Twilio Verify, `check_otp_rate_limit()`, `otp_attempts`) |
 | `GET/PATCH /api/profile` | `supabase.from('profiles')` sur son propre profil |
 | `POST /api/practitioners/register` | Edge Function `create-practitioner-account` (profil + documents KYC en base64 + praticien `pending` + notification des admins, atomique avec compensation des uploads) |
-| `GET /api/practitioners`, `GET /api/practitioners/:id` | `get_public_practitioners()`, `practitioners_public_view`, `usePractitioners` |
+| `GET /api/practitioners`, `GET /api/practitioners/:id` | `get_public_practitioners()`, `practitioners_public_view`, `usePractitioners` ; pour un utilisateur connecté (`OptionalJwtAuthGuard`), coordonnées arrondies à 3 décimales (≈ 100 m) pour la carte de `PractitionerSearch`, jamais l'adresse exacte |
 | `GET /api/practitioners/available` | Edge Function `find-available-practitioner` (filtres métier, haversine, créneaux du jour, exceptions) |
 | `GET/PATCH /api/practitioners/me` | accès direct à `practitioners` (espace praticien) |
 | `/api/practitioners/me/availability`, `/exceptions`, `/rates` (+ lectures publiques `/:id/…`) | `useAvailability`, `usePractitionerRates` |
 | `POST /api/files/upload-url` + `POST /api/files` | nouveau flux navigateur → S3 (URL pré-signée PUT) |
 | `POST /api/files/upload` | Edge Function `upload-to-wasabi` (contrat base64 conservé) |
 | `GET /api/files/url?filePath=` | Edge Function `get-presigned-url` (mêmes règles d'accès, journal `file_access_logs`) |
-| `GET /api/admin/kyc/queue`, `POST /api/admin/kyc/:id/decision` | `KYCQueue.tsx` + `approve_practitioner_kyc()` + Edge Function `send-kyc-status-notification` (e-mail, SMS, notification in-app) |
-| `POST /api/appointments`, `GET /api/appointments[?status=active]`, `GET /api/appointments/:id` | `useAppointments` + Edge Function `notify-appointment-request` |
+| `GET /api/admin/kyc/queue`, `POST /api/admin/kyc/:id/decision` | `KYCQueue.tsx` + `approve_practitioner_kyc()` + Edge Function `send-kyc-status-notification` (e-mail, SMS, notification in-app) ; décision journalisée `KYC <statut>` dans `admin_audit_logs` (historique de `KYCQueue`) |
+| `POST /api/appointments`, `GET /api/appointments[?status=active]`, `GET /api/appointments/:id` | `useAppointments` + Edge Function `notify-appointment-request` ; sans `practitionerId` (mode « Enregistrer quand même » de `NewAppointmentDialog`), affectation du praticien validé le plus proche (type ou spécialité, rayon 100 km, créneau si possible) à partir de `latitude`/`longitude` ou de l'adresse par défaut, administrateurs prévenus en cas d'affectation hors créneau, 404 sans candidat |
 | `POST /api/appointments/:id/respond` (accept / reject) | Edge Function `handle-appointment-response` (montant, demande de paiement, réassignation au praticien le plus proche) |
 | `PATCH /api/appointments/:id/practitioner-status`, `POST …/complete`, `POST …/confirm`, `POST …/cancel` | `PractitionerStatusControl`, `CompleteConsultationForm`, `ConsultationConfirmation` |
 | `POST /api/payments`, `GET /api/payments[/:id]`, `POST /api/payments/:id/cancel`, `POST /api/payments/:id/sync`, `GET /api/payments/config` | Edge Functions `create-payment`, `cancel-pending-payment`, `sync-payment-status`, `get-fedapay-config` |
@@ -47,19 +47,22 @@ moyens de paiement, statistiques** livrées.
 | `POST /api/group-sessions`, `PATCH …/:id`, `POST …/:id/confirm`, `…/cancel`, `…/complete` | `CreateGroupSessionDialog`, `EditGroupSessionDialog`, `useGroupSessions.confirm/cancel` (+ notifications des participants, annulation des paiements ouverts) |
 | `POST /api/group-sessions/:id/register`, `POST …/registrations/:id/retry-payment`, `DELETE …/registrations/:id` | Edge Functions `register-group-session`, `retry-group-session-payment` (patient et montant déduits du serveur) |
 | `GET /api/finance/me/balance`, `…/payouts`, `GET/PUT …/payment-info` | `PayoutsSection`, `CoachPayoutsSection`, `PaymentInfoSection` |
-| `GET /api/admin/finance/stats`, `…/payments`, `…/balances`, `…/payment-events` | `FinanceSection`, `PaymentFlowsDashboard`, `PaymentEventsSection` (vue `admin_finance_stats` + `held_amount`, `total_commission`) |
+| `GET /api/admin/finance/stats`, `…/payments`, `…/balances`, `…/payment-events` | `FinanceSection`, `PaymentFlowsDashboard`, `PaymentEventsSection` (vue `admin_finance_stats` + `held_amount`, `total_commission`) ; `…/payments` accepte `from` (ISO 8601) et `limit` jusqu'à 1000 (`PaymentMetrics`, dernières 24 h) |
 | `POST /api/admin/finance/payouts`, `GET …/payouts[/:id]` | Edge Function `create-payout` |
 | `POST /api/admin/finance/payout-batches`, `POST …/:id/process`, `GET …[/:id]` | Edge Functions `create-payout-batch`, `process-payout-batch` (`PayoutsManagementSection`) |
 | `POST /api/admin/finance/refunds`, `GET …/refunds` | Edge Function `process-refund` (`RefundsSection`) |
 | `GET /api/admin/finance/held-funds`, `POST …/held-funds/release`, `POST …/balances/repair` | Edge Functions `release-held-funds`, `repair-balances` (`FundsReleaseSection`) |
 | `POST/GET /api/admin/finance/reconciliation[/:id]` | Edge Function `reconcile-fedapay` (`ReconciliationSection`) |
-| `GET /api/admin/finance/webhook-events`, `POST …/:id/retry` | `WebhooksSection` + Edge Function `retry-failed-webhooks` |
+| `GET /api/admin/finance/webhook-events`, `POST …/:id/retry` | `WebhooksSection` + Edge Function `retry-failed-webhooks` (filtres `status`, `eventType`, `from`, `to` ; `stats` et `eventTypes` dans la réponse ; `limit` jusqu'à 5000 pour l'export CSV) |
 | `GET /api/admin/stats`, `GET /api/admin/me/roles`, `GET /api/stats/public` | `useAdminStats`, `useAdminRole`, `usePublicStats` |
 | `GET/POST /api/admin/admins`, `POST …/:id/reset-password`, `DELETE …/:id` | Edge Function `admin-management` (`AdminManagement.tsx`, super_admin) |
 | `GET /api/admin/users/patients[/:id]`, `GET …/practitioners[/:id]`, `DELETE /api/admin/users/:id`, `POST …/cleanup-non-test` | `UsersManagementSection`, `PatientDetailsDialog`, `PractitionerDetailsDialog`, Edge Functions `delete-single-user`, `cleanup-non-test-accounts` |
-| `GET /api/admin/audit-logs[/filters]` | `AuditLogs.tsx` (IP partiellement masquées) |
+| `GET /api/admin/audit-logs[/filters]` | `AuditLogs.tsx` (IP partiellement masquées ; filtres `entityType`, `action`, `adminId`, `entityId`, `from`, `to`, `search` ≥ 3 caractères, `limit` jusqu'à 5000) |
 | `POST /api/search-activity`, `GET /api/admin/search-activity` | `useSearchActivityLog`, `SearchActivitySection` |
 | `GET /api/admin/otp/attempts`, `…/stats`, `…/blocked`, `POST …/reset`, `DELETE …/attempts/:id` | `OTPManagementSection` |
+| `GET /api/config/public` | Edge Function `get-mapbox-token` + lecture anonyme de `system_config` (`features` de la page d'accueil) |
+| `GET /api/payments/attempts?appointmentId=` | lecture directe de `payment_attempts` (`usePaymentAttempts`, `PaymentAttemptsHistory`) |
+| `PUT /api/practitioners/me/documents` | mises à jour directes de `practitioners` + notifications insérées par `DocumentsSection` (dossier remis en attente, admins notifiés) |
 | `GET/PUT /api/admin/system-config[/:key]`, `GET/POST /api/admin/consent-versions`, `POST …/:id/activate|deactivate`, `GET /api/consents/:type/active` | `ComplianceSection`, `ApiManagementSection` |
 | `GET /api/admin/operations/appointments`, `GET …/reviews`, `POST …/reviews/:id/moderate`, `GET /api/admin/api/usage` | `OperationsSection` (rendez-vous du jour, modération des avis) |
 | `GET/POST /api/support/tickets`, `GET …/:id`, `POST …/:id/close` | `SupportSection` (tickets de l'utilisateur, `support_tickets`) |
@@ -201,12 +204,21 @@ version Supabase, compensé alors par `repair-balances`).
 
 ## Front (étape 7)
 
-Le client web appelle l'API via `src/lib/api/` (voir `docs/migration-postgresql/README.md`) :
-`VITE_API_URL` (défaut `/api`), `VITE_WS_URL` (Socket.IO, défaut même origine). En développement,
-`vite.config.ts` proxyfie `/api` et `/socket.io` vers `VITE_DEV_API_TARGET`
-(`http://localhost:3000`) pour que les cookies httpOnly restent sur la même origine.
+Le client web n'utilise plus `@supabase/supabase-js` : tous les hooks et écrans (patient,
+praticien, coach, paiements, administration) appellent l'API via `src/lib/api/` (voir
+`docs/migration-postgresql/README.md`) : `VITE_API_URL` (défaut `/api`), `VITE_WS_URL` (Socket.IO,
+défaut même origine). En développement, `vite.config.ts` proxyfie `/api` et `/socket.io` vers
+`VITE_DEV_API_TARGET` (`http://localhost:3000`) pour que les cookies httpOnly restent sur la même
+origine. Le dossier `supabase/` (migrations et Edge Functions d'origine) est conservé comme
+référence de la rétro-ingénierie ; `.env.production.save` (clés de l'ancien projet Supabase) n'est
+plus lu par l'application.
 
 ## Prochaines étapes (ordre du chemin critique)
 
-7. Recodage du front sur l'API : 7a socle + authentification + profil (livré), 7b hooks et
-   écrans patient / praticien / coach, 7c écrans admin et retrait de `@supabase/supabase-js`
+7. Recodage du front sur l'API : livré (7a socle + authentification + profil, 7b hooks et écrans
+   patient / praticien / coach / paiements, 7c écrans admin et retrait de `@supabase/supabase-js`).
+
+Compléments relevés pendant le recodage, livrés : `POST /api/appointments` sans `practitionerId`
+(affectation automatique du praticien le plus proche, logique partagée avec la réassignation au
+refus) et coordonnées arrondies des praticiens dans `GET /api/practitioners` pour les utilisateurs
+connectés.

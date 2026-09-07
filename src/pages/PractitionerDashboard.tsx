@@ -24,8 +24,7 @@ import { useAuthUser } from '@/hooks/useAuthUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { api, errorMessage, isApiError } from '@/lib/api';
 import { getKYCMessage, calculateMonthlyTotalMinutes } from '@/lib/practitionerHelpers';
 import Header from '@/components/Header';
 
@@ -65,14 +64,12 @@ export default function PractitionerDashboard() {
     queryKey: ["practitioner", practitionerUserId],
     queryFn: async () => {
       if (!practitionerUserId) return null;
-      const { data, error } = await supabase
-        .from("practitioners")
-        .select("*")
-        .eq("user_id", practitionerUserId)
-        .single();
-
-      if (error) throw error;
-      return data;
+      try {
+        return await api.get<{ id: string; name: string; kyc_status?: string | null; kyc_comment?: string | null; can_accept_missions?: boolean | null; practitioner_type?: string | null; [key: string]: unknown }>('/practitioners/me');
+      } catch (error) {
+        if (isApiError(error, 404)) return null;
+        throw error;
+      }
     },
     enabled: !!practitionerUserId,
   });
@@ -107,38 +104,21 @@ export default function PractitionerDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
-        body: { appointmentId, action: 'accept' }
-      });
-
-      if (error) {
-        const errorMessage = error.message || '';
-
-        // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
-        if (errorMessage.includes('déjà été traité')) {
+      // Ex Edge Function handle-appointment-response : l'API passe le rendez-vous en pending_payment et notifie le patient
+      try {
+        await api.post(`/appointments/${appointmentId}/respond`, { action: 'accept' });
+      } catch (error) {
+        if (isApiError(error, 409)) {
           toast({
             title: 'Rendez-vous déjà traité',
             description: 'Ce rendez-vous a déjà été accepté ou refusé.',
           });
-          // ✅ CORRECTION P1-7: Invalider quand même pour rafraîchir l'état
-          mutateAppointment.mutate({ id: appointmentId, data: {} });
+          mutateAppointment.mutate({ id: appointmentId, action: 'refresh' });
           return;
         }
-
         throw error;
       }
-
-      // ✅ CORRECTION P1-7: Vérifier le succès de l'edge function avant mise à jour locale
-      const response = data as { success?: boolean; error?: string } | null;
-      if (!response?.success) {
-        throw new Error(response?.error || 'La requête a échoué côté serveur');
-      }
-
-      // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
-      await mutateAppointment.mutateAsync({
-        id: appointmentId,
-        data: { status: 'pending_payment' } // Le vrai statut après acceptation est pending_payment
-      });
+      await mutateAppointment.mutateAsync({ id: appointmentId, action: 'refresh' });
 
       toast({
         title: 'Rendez-vous accepté',
@@ -150,7 +130,7 @@ export default function PractitionerDashboard() {
       }
       toast({
         title: 'Erreur',
-        description: error?.message || 'Impossible d\'accepter le rendez-vous.',
+        description: errorMessage(error, 'Impossible d\'accepter le rendez-vous.'),
         variant: 'destructive'
       });
     } finally {
@@ -173,44 +153,28 @@ export default function PractitionerDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { data, error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
-        body: { appointmentId, action: 'reject' }
-      });
-
-      if (error) {
-        const errorMessage = error.message || '';
-
-        // Si le rendez-vous a déjà été traité, afficher un message informatif au lieu d'une erreur
-        if (errorMessage.includes('déjà été traité')) {
+      // L'API cherche un praticien de remplacement et notifie le patient
+      let response: { success?: boolean; status?: string; reassignedTo?: { id: string; name: string } | null } | null = null;
+      try {
+        response = await api.post(`/appointments/${appointmentId}/respond`, { action: 'reject' });
+      } catch (error) {
+        if (isApiError(error, 409)) {
           toast({
             title: 'Rendez-vous déjà traité',
             description: 'Ce rendez-vous a déjà été accepté ou refusé.',
           });
-          // ✅ CORRECTION P1-7: Invalider quand même pour rafraîchir l'état
-          mutateAppointment.mutate({ id: appointmentId, data: {} });
+          mutateAppointment.mutate({ id: appointmentId, action: 'refresh' });
           return;
         }
-
         throw error;
       }
-
-      // ✅ CORRECTION P1-7: Vérifier le succès de l'edge function avant mise à jour locale
-      const response = data as { success?: boolean; error?: string; practitioner?: { name: string } } | null;
-      if (!response?.success) {
-        throw new Error(response?.error || 'La requête a échoué côté serveur');
-      }
-
-      // ✅ Invalider la query pour rafraîchir la liste des rendez-vous
       // Le statut peut être 'rejected' ou 'awaiting_practitioner' si réassigné
-      await mutateAppointment.mutateAsync({
-        id: appointmentId,
-        data: {} // Laisser le serveur définir le statut final
-      });
+      await mutateAppointment.mutateAsync({ id: appointmentId, action: 'refresh' });
 
       toast({
         title: 'Rendez-vous refusé',
-        description: response?.practitioner
-          ? `Le rendez-vous a été réassigné à ${response.practitioner.name}.`
+        description: response?.reassignedTo
+          ? `Le rendez-vous a été réassigné à ${response.reassignedTo.name}.`
           : 'Aucun praticien alternatif n\'a été trouvé. Le patient a été notifié.'
       });
     } catch (error: any) {
@@ -219,7 +183,7 @@ export default function PractitionerDashboard() {
       }
       toast({
         title: 'Erreur',
-        description: error?.message || 'Impossible de refuser le rendez-vous.',
+        description: errorMessage(error, 'Impossible de refuser le rendez-vous.'),
         variant: 'destructive'
       });
     } finally {
@@ -239,39 +203,8 @@ export default function PractitionerDashboard() {
     }
 
     try {
-      // Si on annule le rendez-vous, annuler aussi le paiement en attente
-      if (status === 'cancelled') {
-        console.log('Vérification et annulation du paiement en attente pour:', id);
-        
-        // Appeler l'edge function pour annuler le paiement
-        const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-          body: { appointmentId: id }
-        });
-
-        if (cancelError) {
-          // Log l'erreur mais ne pas bloquer l'annulation du rendez-vous
-          console.warn('Erreur lors de l\'annulation du paiement:', cancelError);
-        } else {
-          console.log('Paiement en attente annulé avec succès');
-        }
-      }
-
-      // Mettre à jour le statut du rendez-vous avec timestamp de fin si complété
-      const updateData: Record<string, unknown> = {
-        status,
-        practitioner_id: practitionerId,
-        practitioner_name: practitionerName,
-      };
-
-      // Enregistrer le timestamp de fin de consultation
-      if (status === 'completed') {
-        updateData.consultation_ended_at = new Date().toISOString();
-      }
-
-      await mutateAppointment.mutateAsync({
-        id,
-        data: updateData
-      });
+      // `cancel` annule aussi le paiement en attente côté API ; `complete` enregistre la fin de consultation
+      await mutateAppointment.mutateAsync(status === 'cancelled' ? { id, action: 'cancel' } : { id, action: 'complete' });
 
       const messages = {
         completed: {

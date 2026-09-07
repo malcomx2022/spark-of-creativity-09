@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { withTimeout } from '@/lib/network-timeout';
+import { api } from '@/lib/api';
 
 export interface PaymentAttempt {
   id: string;
@@ -11,7 +10,7 @@ export interface PaymentAttempt {
   status: 'pending' | 'success' | 'failed' | 'timeout';
   error_type: string | null;
   error_message: string | null;
-  error_details: Record<string, any> | null;
+  error_details: Record<string, unknown> | null;
   payment_method: string;
   amount: number;
   retry_after: string | null;
@@ -24,21 +23,7 @@ export function usePaymentAttempts(appointmentId?: string) {
     queryKey: ['payment-attempts', appointmentId],
     queryFn: async () => {
       if (!appointmentId) return [];
-      
-      const { data, error } = await withTimeout(
-        supabase
-          .from('payment_attempts')
-          .select('*')
-          .eq('appointment_id', appointmentId)
-          .order('created_at', { ascending: false })
-      );
-
-      if (error) {
-        console.error('Error fetching payment attempts:', error);
-        throw error;
-      }
-
-      return data as PaymentAttempt[];
+      return api.get<PaymentAttempt[]>('/payments/attempts', { query: { appointmentId } });
     },
     enabled: !!appointmentId,
   });

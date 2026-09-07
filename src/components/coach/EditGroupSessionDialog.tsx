@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { api, errorMessage } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { GroupSessionForm, GroupSessionFormData } from "./GroupSessionForm";
 import { sessionFormSchema, sanitizeSessionFormData, MIN_SESSION_PRICE } from "@/lib/session-validation";
@@ -111,25 +111,18 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
         return;
       }
 
-      const { error } = await withTimeout(
-        supabase
-          .from("group_sessions")
-          .update({
-            session_name: validationResult.data.session_name,
-            session_type: validationResult.data.session_type,
-            max_participants: validationResult.data.max_participants,
-            min_participants: validationResult.data.min_participants,
-            scheduled_date: validationResult.data.scheduled_date,
-            start_time: validationResult.data.start_time,
-            end_time: validationResult.data.end_time,
-            price_per_person: validationResult.data.price_per_person,
-            location: validationResult.data.location,
-            description: validationResult.data.description || null,
-          })
-          .eq('id', session.id)
-      );
-
-      if (error) throw error;
+      await api.patch(`/group-sessions/${session.id}`, {
+        sessionName: validationResult.data.session_name,
+        sessionType: validationResult.data.session_type,
+        maxParticipants: validationResult.data.max_participants,
+        minParticipants: validationResult.data.min_participants,
+        scheduledDate: validationResult.data.scheduled_date,
+        startTime: validationResult.data.start_time,
+        endTime: validationResult.data.end_time,
+        pricePerPerson: validationResult.data.price_per_person,
+        location: validationResult.data.location,
+        description: validationResult.data.description || null,
+      });
 
       toast({
         title: "Séance modifiée !",

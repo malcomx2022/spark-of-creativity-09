@@ -148,14 +148,20 @@ export class PractitionersService {
   // ---------------------------------------------------------------------------
   // Lecture publique (ex get_public_practitioners / practitioners_public_view / usePractitioners)
   // ---------------------------------------------------------------------------
-  async listPublic(q: ListPractitionersQuery) {
-    return this.database.runAs({ role: 'anon' }, (trx) => {
-      let query = trx.selectFrom('practitioners').select(PUBLIC_COLUMNS).where('kyc_status', '=', 'approved');
+  /**
+   * Liste publique. Pour un utilisateur connecté (`includeCoordinates`), les coordonnées sont renvoyées
+   * arrondies à 3 décimales (≈ 100 m) pour la carte de recherche ; jamais l'adresse exacte.
+   */
+  async listPublic(q: ListPractitionersQuery, opts: { includeCoordinates?: boolean } = {}) {
+    return this.database.runAs({ role: 'anon' }, async (trx) => {
+      let query = trx.selectFrom('practitioners').select([...PUBLIC_COLUMNS, 'latitude', 'longitude']).where('kyc_status', '=', 'approved');
       query = q.onlineOnly
         ? query.where('available', '=', true).where('can_accept_missions', '=', true).where('is_online', '=', true)
         : query.where((eb) => eb.or([eb('available', '=', true), eb('can_accept_missions', '=', true)]));
       if (q.type) query = query.where('practitioner_type', '=', q.type);
-      return query.orderBy('rating', 'desc').limit(q.limit).execute();
+      const rows = await query.orderBy('rating', 'desc').limit(q.limit).execute();
+      const round = (v: string | null) => (v === null ? null : Math.round(Number(v) * 1000) / 1000);
+      return rows.map(({ latitude, longitude, ...pub }) => (opts.includeCoordinates ? { ...pub, latitude: round(latitude), longitude: round(longitude) } : pub));
     });
   }
 
@@ -240,6 +246,7 @@ export class PractitionersService {
       ...(dto.certifications !== undefined ? { certifications: dto.certifications } : {}),
       ...(dto.sessionTypes !== undefined ? { session_types: dto.sessionTypes } : {}),
       ...(dto.image !== undefined ? { image: dto.image } : {}),
+      ...(dto.licenseNumber !== undefined ? { license_number: dto.licenseNumber } : {}),
       ...(dto.available !== undefined ? { available: dto.available } : {}),
       ...(dto.isOnline !== undefined ? { is_online: dto.isOnline } : {}),
       updated_at: new Date(),

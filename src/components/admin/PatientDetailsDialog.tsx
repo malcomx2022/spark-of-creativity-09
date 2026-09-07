@@ -4,13 +4,35 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { usePatientProfileData } from '@/hooks/usePatientProfileData';
+import type { Address, EmergencyContact, Profile } from '@/types/profile';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { User, Phone, MapPin, Heart, Calendar, Stethoscope, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
-import { getFunctionAuthHeaders } from '@/lib/function-auth';
+
+/** Réponse de GET /admin/users/patients/:id : profil du patient, contacts, adresses, dossier médical, derniers rendez-vous. */
+interface AdminPatientDetails extends Profile {
+  email: string | null;
+  emergency_contacts: EmergencyContact[];
+  addresses: Address[];
+  medical_profile: {
+    blood_type: string | null;
+    allergies: string | null;
+    chronic_diseases: string | null;
+    current_medications: string | null;
+    additional_notes: string | null;
+  } | null;
+  appointments: {
+    id: string;
+    specialty: string;
+    status: string;
+    practitioner_name: string | null;
+    date: string;
+    time: string;
+    reason: string | null;
+  }[];
+}
 
 interface PatientDetailsDialogProps {
   patientId: string | null;
@@ -20,7 +42,6 @@ interface PatientDetailsDialogProps {
 export function PatientDetailsDialog({ patientId, onOpenChange }: PatientDetailsDialogProps) {
   const [confirmText, setConfirmText] = useState('');
   const queryClient = useQueryClient();
-  const { data: patientData, isLoading: profileLoading } = usePatientProfileData(patientId || undefined);
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -28,13 +49,8 @@ export function PatientDetailsDialog({ patientId, onOpenChange }: PatientDetails
         throw new Error("Aucun patient sélectionné");
       }
 
-      const headers = await getFunctionAuthHeaders();
-      const { data, error } = await supabase.functions.invoke('delete-single-user', {
-        body: { userId: patientId, userType: 'patient' },
-        headers,
-      });
-      if (error) throw error;
-      return data;
+      // Suppression définitive (super_admin / ops), journalisée côté API
+      return api.delete(`/admin/users/${patientId}`, { userType: 'patient', confirm: 'SUPPRIMER' });
     },
     onSuccess: () => {
       toast({
@@ -45,50 +61,28 @@ export function PatientDetailsDialog({ patientId, onOpenChange }: PatientDetails
       setConfirmText('');
       onOpenChange(false);
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error, 'Impossible de supprimer le patient'),
         variant: "destructive",
       });
     },
   });
-  
-  const { data: medicalProfile, isLoading: medicalLoading } = useQuery({
-    queryKey: ['patient-medical-profile', patientId],
-    queryFn: async () => {
-      if (!patientId) return null;
-      const { data, error } = await supabase
-        .from('medical_profiles')
-        .select('*')
-        .eq('user_id', patientId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
+
+  // Fiche complète du patient vue par l'admin (GET /admin/users/patients/:id)
+  const { data: adminPatient, isLoading: detailsLoading } = useQuery({
+    queryKey: ['admin-patient-details', patientId],
+    queryFn: () => api.get<AdminPatientDetails>(`/admin/users/patients/${patientId}`),
     enabled: !!patientId,
   });
+  const medicalProfile = adminPatient?.medical_profile ?? null;
+  const appointments = adminPatient?.appointments ?? [];
 
-  const { data: appointments, isLoading: appointmentsLoading } = useQuery({
-    queryKey: ['patient-appointments', patientId],
-    queryFn: async () => {
-      if (!patientId) return [];
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('patient_id', patientId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!patientId,
-  });
-
-  const isLoading = profileLoading || medicalLoading || appointmentsLoading;
-  const profile = patientData?.profile;
-  const contacts = patientData?.contacts || [];
-  const addresses = patientData?.addresses || [];
+  const isLoading = detailsLoading;
+  const profile = adminPatient ?? null;
+  const contacts = adminPatient?.emergency_contacts || [];
+  const addresses = adminPatient?.addresses || [];
 
   return (
     <Dialog open={!!patientId} onOpenChange={onOpenChange}>

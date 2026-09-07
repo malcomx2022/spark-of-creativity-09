@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +41,36 @@ const payoutStatusLabels: Record<string, string> = {
   pending_manual: 'Manuel',
 };
 
+/** Lignes de GET /admin/finance/payments (patient et rendez-vous aplatis). */
+interface AdminPayment {
+  id: string;
+  patient_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_method: string | null;
+  created_at: string;
+  patient_name: string | null;
+  patient_phone: string | null;
+  appointment_practitioner_name: string | null;
+  appointment_specialty: string | null;
+}
+
+/** Lignes de GET /admin/finance/payouts (praticien aplati). */
+interface AdminPayout {
+  id: string;
+  practitioner_id: string;
+  amount: number;
+  currency: string | null;
+  status: string | null;
+  payment_method: string;
+  period_start: string;
+  period_end: string;
+  processed_at: string | null;
+  practitioner_name: string | null;
+  practitioner_phone: string | null;
+}
+
 export function FinanceSection() {
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [payoutsPage, setPayoutsPage] = useState(1);
@@ -60,14 +90,8 @@ export function FinanceSection() {
   const { data: stats } = useQuery<FinanceStats>({
     queryKey: ['admin-finance-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('admin_finance_stats')
-        .select('*')
-        .maybeSingle();
-      
-      if (error) throw error;
-      // P2 #18: Type-safe handling with explicit null checks
-      const statsData = data as FinanceStats | null;
+      // Ex vue admin_finance_stats : GET /admin/finance/stats
+      const statsData = await api.get<Partial<FinanceStats>>('/admin/finance/stats');
       return {
         total_revenue: statsData?.total_revenue ?? 0,
         pending_payments: statsData?.pending_payments ?? 0,
@@ -82,41 +106,20 @@ export function FinanceSection() {
   const { data: paymentsData, isLoading: paymentsLoading, refetch: refetchPayments } = useQuery({
     queryKey: ['admin-payments', paymentsPage, paymentStatusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from('payments')
-        .select(`
-          *,
-          patient:profiles!payments_patient_id_fkey(id, full_name, phone),
-          appointment:appointments!payments_appointment_id_fkey(id, practitioner_name, specialty, date)
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      // Apply status filter
-      if (paymentStatusFilter !== 'all') {
-        query = query.eq('status', paymentStatusFilter);
-      }
-
-      const { data, error, count } = await query.range((paymentsPage - 1) * limit, paymentsPage * limit - 1);
-
-      if (error) throw error;
-      return { payments: data || [], total: count || 0 };
+      const res = await api.get<{ data: AdminPayment[]; count: number }>('/admin/finance/payments', {
+        query: { page: paymentsPage - 1, limit, ...(paymentStatusFilter !== 'all' ? { status: paymentStatusFilter } : {}) },
+      });
+      return { payments: res.data, total: res.count };
     },
   });
 
   const { data: payoutsData, isLoading: payoutsLoading, refetch: refetchPayouts } = useQuery({
     queryKey: ['admin-payouts', payoutsPage],
     queryFn: async () => {
-      const { data, error, count } = await supabase
-        .from('practitioner_payouts')
-        .select(`
-          *,
-          practitioner:practitioners!practitioner_payouts_practitioner_id_fkey(id, name, phone)
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range((payoutsPage - 1) * limit, payoutsPage * limit - 1);
-
-      if (error) throw error;
-      return { payouts: data || [], total: count || 0 };
+      const res = await api.get<{ data: AdminPayout[]; count: number }>('/admin/finance/payouts', {
+        query: { page: payoutsPage - 1, limit },
+      });
+      return { payouts: res.data, total: res.count };
     },
   });
 
@@ -126,7 +129,7 @@ export function FinanceSection() {
   const payoutsTotal = payoutsData?.total || 0;
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       completed: 'default',
       paid: 'default',
       pending: 'secondary',
@@ -366,24 +369,24 @@ export function FinanceSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments.map((payment: any) => (
+                    {payments.map((payment) => (
                       <TableRow key={payment.id}>
                         <TableCell className="whitespace-nowrap">
                           {new Date(payment.created_at).toLocaleDateString('fr-FR')}
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{payment.patient?.full_name || 'Patient inconnu'}</p>
-                            {payment.patient?.phone && (
-                              <p className="text-xs text-muted-foreground">{payment.patient.phone}</p>
+                            <p className="font-medium">{payment.patient_name || 'Patient inconnu'}</p>
+                            {payment.patient_phone && (
+                              <p className="text-xs text-muted-foreground">{payment.patient_phone}</p>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p>{payment.appointment?.practitioner_name || 'N/A'}</p>
-                            {payment.appointment?.specialty && (
-                              <p className="text-xs text-muted-foreground">{payment.appointment.specialty}</p>
+                            <p>{payment.appointment_practitioner_name || 'N/A'}</p>
+                            {payment.appointment_specialty && (
+                              <p className="text-xs text-muted-foreground">{payment.appointment_specialty}</p>
                             )}
                           </div>
                         </TableCell>
@@ -468,7 +471,7 @@ export function FinanceSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payouts.map((payout: any) => (
+                    {payouts.map((payout) => (
                       <TableRow key={payout.id}>
                         <TableCell className="whitespace-nowrap">
                           {new Date(payout.period_start).toLocaleDateString('fr-FR')} - {' '}
@@ -476,9 +479,9 @@ export function FinanceSection() {
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{payout.practitioner?.name || 'Praticien inconnu'}</p>
-                            {payout.practitioner?.phone && (
-                              <p className="text-xs text-muted-foreground">{payout.practitioner.phone}</p>
+                            <p className="font-medium">{payout.practitioner_name || 'Praticien inconnu'}</p>
+                            {payout.practitioner_phone && (
+                              <p className="text-xs text-muted-foreground">{payout.practitioner_phone}</p>
                             )}
                           </div>
                         </TableCell>

@@ -712,7 +712,7 @@ export default function PractitionerSignup() {
       const { data: createResult, error: createError, details: resultDetails } = edgeFunctionResult;
 
       // Note: When edge function returns 4xx, error is set but data may still contain the response body
-      // The edge-function-retry now extracts the detailed error from data.error
+      // L'API renvoie le détail de l'erreur dans le corps de la réponse (ApiError.details)
       const hasError = createError || (createResult && !createResult.success);
 
       if (hasError) {

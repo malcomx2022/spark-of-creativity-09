@@ -693,12 +693,15 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
               onClick={async () => {
                 // Créer une demande sans praticien assigné (mode manuel)
                 try {
+                  // L'API affecte le praticien validé le plus proche (même hors créneau) et prévient l'équipe.
                   const fallbackPayload = {
                     specialty: data.specialty,
                     date: data.date.toISOString(),
                     time: data.time,
                     reason: data.reason,
                     urgencyLevel: data.urgencyLevel,
+                    latitude: position.latitude,
+                    longitude: position.longitude,
                     fallbackMode: true,
                   };
 
@@ -707,7 +710,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
                   if (createdAppointment?.id) {
                     showToast({
                       title: '✅ Demande enregistrée',
-                      description: 'Votre demande a été enregistrée. Notre équipe vous contactera sous 30 minutes pour trouver un praticien disponible.',
+                      description: 'Votre demande a été transmise au praticien validé le plus proche. Vous serez notifié dès sa réponse ; notre équipe suit la demande.',
                       duration: 6000,
                     });
                     handleOpenChange(false);

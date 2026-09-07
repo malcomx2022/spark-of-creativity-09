@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage, onTableChange } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -31,9 +31,20 @@ const FAQ_CATEGORIES = [
   'Technique',
 ];
 
+/** Ligne de GET /admin/support/faqs. */
+interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+  category: string | null;
+  target_audience: string | null;
+  is_published: boolean | null;
+  created_at: string;
+}
+
 export function SupportSection() {
   const queryClient = useQueryClient();
-  const [selectedTicket, setSelectedTicket] = useState<any>(null);
+  const [selectedTicket, setSelectedTicket] = useState<TicketWithUser | null>(null);
   const [newStatus, setNewStatus] = useState<string>('');
   const [ticketResponse, setTicketResponse] = useState<string>('');
   // Filtres pour tickets
@@ -41,8 +52,8 @@ export function SupportSection() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   // États pour la gestion des FAQs
   const [showFaqDialog, setShowFaqDialog] = useState(false);
-  const [editingFaq, setEditingFaq] = useState<any>(null);
-  const [faqToDelete, setFaqToDelete] = useState<any>(null);
+  const [editingFaq, setEditingFaq] = useState<Faq | null>(null);
+  const [faqToDelete, setFaqToDelete] = useState<Faq | null>(null);
   const [faqForm, setFaqForm] = useState({
     question: '',
     answer: '',
@@ -73,47 +84,20 @@ export function SupportSection() {
   const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useQuery<TicketWithUser[]>({
     queryKey: ['admin-support-tickets'],
     queryFn: async () => {
-      // Fetch tickets
-      const { data: ticketsData, error: ticketsError } = await supabase
-        .from('support_tickets')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (ticketsError) throw ticketsError;
-      
-      // Fetch profiles for these tickets
-      const userIds = [...new Set((ticketsData || []).map(t => t.user_id))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, phone')
-        .in('id', userIds);
-      
-      const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
-      
-      // Merge tickets with user profiles
-      return (ticketsData || []).map(ticket => ({
+      // Tickets avec le profil du demandeur aplati (GET /admin/support/tickets)
+      const res = await api.get<{ data: Array<Omit<TicketWithUser, 'user'> & { user_full_name: string | null; user_phone: string | null }> }>('/admin/support/tickets', { query: { limit: 100 } });
+      return res.data.map(({ user_full_name, user_phone, ...ticket }) => ({
         ...ticket,
-        user: profilesMap.get(ticket.user_id),
-      })) as TicketWithUser[];
+        user: { id: ticket.user_id, full_name: user_full_name ?? undefined, phone: user_phone ?? undefined },
+      }));
     },
   });
 
   // Realtime subscription pour les tickets
   useEffect(() => {
-    const channel = supabase
-      .channel('admin-support-realtime')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'support_tickets',
-      }, () => {
-        queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return onTableChange('support_tickets', () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
+    });
   }, [queryClient]);
 
   // Filtrage des tickets
@@ -128,44 +112,14 @@ export function SupportSection() {
   const { data: faqs = [], isLoading: faqsLoading, refetch: refetchFaqs } = useQuery({
     queryKey: ['admin-faqs'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('faqs')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      return api.get<Faq[]>('/admin/support/faqs');
     },
   });
 
   const updateTicketMutation = useMutation({
     mutationFn: async ({ id, status, response }: { id: string; status: 'ouvert' | 'en_cours' | 'resolu' | 'ferme'; response?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const updateData: any = { status };
-      if (response) {
-        updateData.admin_response = response;
-        updateData.responded_at = new Date().toISOString();
-        updateData.responded_by = user?.id;
-      }
-
-      const { error } = await supabase
-        .from('support_tickets')
-        .update(updateData)
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: 'update_ticket_status',
-          entity_type: 'support_ticket',
-          entity_id: id,
-          details: { status, has_response: !!response },
-        });
-      }
+      // Statut, réponse et journal d'audit gérés par l'API
+      await api.patch(`/admin/support/tickets/${id}`, { status, ...(response ? { response } : {}) });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
@@ -174,34 +128,15 @@ export function SupportSection() {
       setNewStatus('');
       setTicketResponse('');
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
   // Mutations pour les FAQs
   const createFaqMutation = useMutation({
     mutationFn: async (faq: typeof faqForm) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('faqs')
-        .insert({
-          ...faq,
-          created_by: user?.id,
-          is_published: false,
-        });
-
-      if (error) throw error;
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: 'create_faq',
-          entity_type: 'faq',
-          details: { question: faq.question, category: faq.category },
-        });
-      }
+      await api.post('/admin/support/faqs', { question: faq.question, answer: faq.answer, category: faq.category, targetAudience: faq.target_audience });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-faqs'] });
@@ -209,35 +144,20 @@ export function SupportSection() {
       setShowFaqDialog(false);
       resetFaqForm();
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
   const updateFaqMutation = useMutation({
     mutationFn: async ({ id, ...faq }: { id: string } & Partial<typeof faqForm> & { is_published?: boolean }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('faqs')
-        .update({
-          ...faq,
-          updated_by: user?.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: faq.is_published !== undefined ? (faq.is_published ? 'publish_faq' : 'unpublish_faq') : 'update_faq',
-          entity_type: 'faq',
-          entity_id: id,
-          details: faq,
-        });
-      }
+      await api.patch(`/admin/support/faqs/${id}`, {
+        ...(faq.question !== undefined ? { question: faq.question } : {}),
+        ...(faq.answer !== undefined ? { answer: faq.answer } : {}),
+        ...(faq.category !== undefined ? { category: faq.category } : {}),
+        ...(faq.target_audience !== undefined ? { targetAudience: faq.target_audience } : {}),
+        ...(faq.is_published !== undefined ? { isPublished: faq.is_published } : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-faqs'] });
@@ -246,38 +166,22 @@ export function SupportSection() {
       setEditingFaq(null);
       resetFaqForm();
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
   const deleteFaqMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('faqs')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: 'delete_faq',
-          entity_type: 'faq',
-          entity_id: id,
-        });
-      }
+      await api.delete(`/admin/support/faqs/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-faqs'] });
       toast({ title: 'FAQ supprimée' });
       setFaqToDelete(null);
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
@@ -290,7 +194,7 @@ export function SupportSection() {
     });
   };
 
-  const openEditFaq = (faq: any) => {
+  const openEditFaq = (faq: Faq) => {
     setEditingFaq(faq);
     setFaqForm({
       question: faq.question,

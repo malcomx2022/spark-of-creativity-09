@@ -7,7 +7,7 @@ import { DollarSign, Download, TrendingUp, Wallet, Clock, FileText, Calendar, Us
 import { useEffect, useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api, onTableChange } from "@/lib/api";
 import { format, subMonths, startOfMonth } from "date-fns";
 import { fr } from "date-fns/locale";
 import jsPDF from "jspdf";
@@ -28,6 +28,24 @@ type PractitionerBalance = {
   balance_on_hold: number;
   currency: string;
   last_payout_at: string | null;
+};
+
+type PractitionerPayoutRow = {
+  id: string;
+  practitioner_id: string;
+  amount: number;
+  currency: string | null;
+  status: string | null;
+  payment_method?: string | null;
+  description?: string | null;
+  period_start?: string | null;
+  period_end?: string | null;
+  fedapay_transfer_id?: string | null;
+  failure_reason?: string | null;
+  processed_at?: string | null;
+  sent_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
 };
 
 type PaymentWithAppointment = {
@@ -74,14 +92,8 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
   const { data: balance, isLoading: balanceLoading } = useQuery({
     queryKey: ["coach-balance", coachId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("practitioner_balances")
-        .select("*")
-        .eq("practitioner_id", coachId)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as PractitionerBalance | null;
+      // Solde recalculé par l'API (GET /finance/me/balance)
+      return api.get<PractitionerBalance>('/finance/me/balance');
     },
   });
 
@@ -89,30 +101,21 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
   useEffect(() => {
     if (!coachId) return;
 
-    const channel = supabase
-      .channel('coach-balance-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'practitioner_balances',
-          filter: `practitioner_id=eq.${coachId}`,
-        },
-        (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['coach-balance', coachId] });
-          
-          if (payload.eventType === 'UPDATE') {
-            const newBalance = payload.new as PractitionerBalance;
-            setBalanceUpdate(`Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`);
-          }
-        }
-      )
-      .subscribe();
+    // Temps réel : solde, reversements, paiements et séances du coach
+    const off = onTableChange(['practitioner_balances', 'practitioner_payouts', 'payments', 'group_sessions', 'group_session_participants'], (event) => {
+      queryClient.invalidateQueries({ queryKey: ['coach-balance', coachId] });
+      queryClient.invalidateQueries({ queryKey: ['coach-appointment-payments', coachId] });
+      queryClient.invalidateQueries({ queryKey: ['coach-group-payments', coachId] });
+      queryClient.invalidateQueries({ queryKey: ['coach-payouts', coachId] });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      if (event.table === 'practitioner_balances' && event.op === 'UPDATE') {
+        api.get<PractitionerBalance>('/finance/me/balance')
+          .then((newBalance) => setBalanceUpdate(`Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`))
+          .catch(() => undefined);
+      }
+    });
+
+    return off;
   }, [coachId, queryClient]);
 
   useEffect(() => {
@@ -136,45 +139,11 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
   const { data: appointmentPayments = [], isLoading: paymentsLoading } = useQuery({
     queryKey: ["coach-appointment-payments", coachId, dateFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("payments")
-        .select(`
-          id,
-          amount,
-          commission_amount,
-          fees_amount,
-          net_amount,
-          status,
-          payout_status,
-          created_at,
-          appointment_id,
-          patient_id,
-          currency,
-          payer_name
-        `)
-        .eq("status", "paid")
-        .order("created_at", { ascending: false });
-      
-      if (dateFilter) {
-        query = query.gte("created_at", dateFilter);
-      }
-      
-      const { data: allPayments, error: paymentsError } = await query;
-      if (paymentsError) throw paymentsError;
-
-      if (!allPayments || allPayments.length === 0) return [];
-
-      const appointmentIds = allPayments.map(p => p.appointment_id);
-      const { data: coachAppointments, error: appointmentsError } = await supabase
-        .from("appointments")
-        .select("id")
-        .eq("practitioner_id", coachId)
-        .in("id", appointmentIds);
-
-      if (appointmentsError) throw appointmentsError;
-
-      const validAppointmentIds = new Set(coachAppointments?.map(a => a.id) || []);
-      return allPayments.filter(p => validAppointmentIds.has(p.appointment_id)) as PaymentWithAppointment[];
+      // GET /payments : paiements des rendez-vous du coach (les séances de groupe sont traitées ci-dessous)
+      const rows = await api.get<(PaymentWithAppointment & { appointment_practitioner_id?: string | null })[]>('/payments', { query: { status: 'paid', limit: 200 } });
+      return rows
+        .filter((p) => p.appointment_practitioner_id === coachId && !p.appointment_id?.startsWith('group_session_'))
+        .filter((p) => !dateFilter || p.created_at >= dateFilter);
     },
   });
 
@@ -182,35 +151,20 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
   const { data: groupSessionPayments = [], isLoading: sessionsLoading } = useQuery({
     queryKey: ["coach-group-payments", coachId, dateFilter],
     queryFn: async () => {
-      // Get all payments for group sessions belonging to this coach
-      const { data: sessions, error: sessionsError } = await supabase
-        .from("group_sessions")
-        .select("id, session_name, price_per_person, scheduled_date")
-        .eq("coach_id", coachId);
-      
-      if (sessionsError) throw sessionsError;
+      // Séances du coach (GET /group-sessions/coach) puis paiements associés (GET /payments)
+      const sessionsPage = await api.get<{ data: { id: string; session_name: string; price_per_person: number; scheduled_date: string }[]; count: number }>('/group-sessions/coach', { query: { limit: 100 } });
+      const sessions = sessionsPage.data;
       if (!sessions || sessions.length === 0) return [];
 
-      // Get payments for these group sessions
       const sessionIds = sessions.map(s => s.id);
-      const { data: payments, error: paymentsError } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("status", "paid")
-        .order("created_at", { ascending: false });
-      
-      if (paymentsError) throw paymentsError;
+      const payments = await api.get<{ id: string; appointment_id: string; patient_id: string; status: string; created_at: string; amount: number; commission_amount: number | null; net_amount: number | null; payout_status: string | null }[]>('/payments', { query: { status: 'paid', limit: 200 } });
 
       // Filter payments that are for group sessions of this coach
-      const groupPayments = (payments || []).filter(p => {
+      const groupPayments = payments.filter(p => {
         if (!p.appointment_id?.startsWith('group_session_')) return false;
-        // Extract session_id from appointment_id format: group_session_{session_id}_{participant_id}
-        const parts = p.appointment_id.split('_');
-        if (parts.length >= 3) {
-          const sessionId = parts[2]; // session UUID is the third part
-          return sessionIds.some(id => p.appointment_id.includes(id));
-        }
-        return false;
+        if (dateFilter && p.created_at < dateFilter) return false;
+        // appointment_id = group_session_{session_id}_{participant_id}
+        return sessionIds.some(id => p.appointment_id.includes(id));
       });
 
       // Map payments with session info
@@ -241,19 +195,8 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
   const { data: payouts = [], isLoading: payoutsLoading } = useQuery({
     queryKey: ["coach-payouts", coachId, dateFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("practitioner_payouts")
-        .select("*")
-        .eq("practitioner_id", coachId)
-        .order("created_at", { ascending: false });
-      
-      if (dateFilter) {
-        query = query.gte("created_at", dateFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      const rows = await api.get<PractitionerPayoutRow[]>('/finance/me/payouts', { query: { page: 0, limit: 100 } });
+      return rows.filter((p) => !dateFilter || p.created_at >= dateFilter);
     },
   });
 

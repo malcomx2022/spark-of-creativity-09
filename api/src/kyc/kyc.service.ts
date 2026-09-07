@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { sql } from 'kysely';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
@@ -18,13 +19,14 @@ export class KycService {
     private readonly sms: SmsService,
     private readonly inApp: InAppNotificationsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly audit: AuditService,
   ) {}
 
   queue(adminId: string, q: KycQueueQuery) {
     return this.database.runAs({ role: 'authenticated', userId: adminId }, (trx) => {
       let query = trx
         .selectFrom('practitioners')
-        .select(['id', 'user_id', 'name', 'phone', 'specialty', 'practitioner_type', 'kyc_status', 'kyc_comment', 'kyc_reviewed_at', 'kyc_validated_at', 'id_document_url', 'license_document_url', 'insurance_document_url', 'image', 'created_at'])
+        .selectAll() // KYCQueue.tsx affiche aussi expirations, diplômes, zone et types de séance
         .orderBy('created_at', 'asc')
         .limit(q.limit);
       if (q.status === 'pending') query = query.where('kyc_status', 'in', ['pending', 'incomplete']);
@@ -52,6 +54,8 @@ export class KycService {
           .where('id', '=', practitionerId)
           .execute();
       }
+      // Historique KYC de KYCQueue.tsx : action « KYC <statut> » sur l'entité practitioner.
+      await this.audit.log(trx, { adminId, action: `KYC ${dto.status}`, entityType: 'practitioner', entityId: practitionerId, details: { status: dto.status, comment: dto.comment ?? null, previous_status: current.kyc_status } });
       const user = await trx.selectFrom('users').select(['email', 'phone']).where('id', '=', current.user_id).executeTakeFirst();
       const messages = this.buildMessages(dto.status, dto.comment, current.practitioner_type === 'coach_sportif');
       await this.inApp.notifyUser(trx, current.user_id, { title: messages.title, message: messages.inApp, type: 'kyc', link: messages.dashboardPath });

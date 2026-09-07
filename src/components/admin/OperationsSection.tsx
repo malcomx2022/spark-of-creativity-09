@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage, onTableChange } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -43,99 +43,106 @@ const renderStars = (rating: number) => {
   ));
 };
 
+/** Ligne de GET /admin/operations/appointments. */
+interface TodayAppointment {
+  id: string;
+  time: string;
+  patient_name: string | null;
+  practitioner_name: string | null;
+  specialty: string;
+  status: string;
+  address: string | null;
+}
+
+/** Avis de GET /admin/operations/reviews (patient reconstitué depuis patient_name). */
+interface AdminReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  is_hidden: boolean | null;
+  moderated_at: string | null;
+  created_at: string;
+  patient: { full_name: string | null } | null;
+  practitioner: { id: string; name: string; specialty: string | null } | null;
+}
+
+/** Ligne de GET /admin/disputes (déclarant et rendez-vous aplatis). */
+interface AdminDisputeRow {
+  id: string;
+  subject: string;
+  description: string;
+  status: string;
+  priority: string;
+  resolution: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  raised_by_name: string | null;
+  raised_by_phone: string | null;
+  appointment_date: string | null;
+  appointment_time: string | null;
+  appointment_specialty: string | null;
+  patient_name: string | null;
+  practitioner_name: string | null;
+}
+
+interface AdminDispute extends AdminDisputeRow {
+  raised_by_profile: { full_name: string | null; phone: string | null };
+  appointment: { date: string; time: string; specialty: string; patient_name: string | null; practitioner_name: string | null } | null;
+}
+
 export function OperationsSection() {
   const queryClient = useQueryClient();
-  const [selectedReview, setSelectedReview] = useState<any>(null);
+  const [selectedReview, setSelectedReview] = useState<AdminReview | null>(null);
   const [reviewsPage, setReviewsPage] = useState(1);
   const [disputesPage, setDisputesPage] = useState(1);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>('all');
   const [resolutionComment, setResolutionComment] = useState('');
-  const [selectedDispute, setSelectedDispute] = useState<any>(null);
+  const [selectedDispute, setSelectedDispute] = useState<AdminDispute | null>(null);
   const reviewsLimit = 20;
   const disputesLimit = 20;
 
   const { data: appointments = [], isLoading: appointmentsLoading, refetch: refetchAppointments } = useQuery({
     queryKey: ['admin-appointments-today', appointmentStatusFilter],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      let query = supabase
-        .from('appointments')
-        .select('*')
-        .eq('date', today)
-        .order('time', { ascending: true });
-
-      // Apply status filter
-      if (appointmentStatusFilter !== 'all') {
-        query = query.eq('status', appointmentStatusFilter);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      return data || [];
+      // Rendez-vous du jour (GET /admin/operations/appointments)
+      return api.get<TodayAppointment[]>('/admin/operations/appointments', { query: appointmentStatusFilter !== 'all' ? { status: appointmentStatusFilter } : {} });
     },
   });
 
   // Realtime subscription for appointments
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-
-    const channel = supabase
-      .channel('admin-appointments-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'appointments',
-          filter: `date=eq.${today}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['admin-appointments-today'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return onTableChange('appointments', () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-appointments-today'] });
+    });
   }, [queryClient]);
 
   const { data: reviewsData, isLoading: reviewsLoading } = useQuery({
     queryKey: ['admin-reviews', reviewsPage],
     queryFn: async () => {
-      const { data, error, count } = await supabase
-        .from('reviews')
-        .select(`
-          *,
-          practitioner:practitioners!reviews_practitioner_id_fkey(id, name, specialty),
-          patient:profiles!reviews_patient_id_fkey(id, full_name)
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range((reviewsPage - 1) * reviewsLimit, reviewsPage * reviewsLimit - 1);
-
-      if (error) throw error;
-      return { reviews: data || [], total: count || 0 };
+      const res = await api.get<{ data: Array<Omit<AdminReview, 'patient'> & { patient_name: string | null }>; count: number }>('/admin/operations/reviews', {
+        query: { page: reviewsPage - 1, limit: reviewsLimit },
+      });
+      return {
+        reviews: res.data.map(({ patient_name, ...review }): AdminReview => ({ ...review, patient: patient_name ? { full_name: patient_name } : null })),
+        total: res.count,
+      };
     },
   });
 
   const { data: disputesData, isLoading: disputesLoading } = useQuery({
     queryKey: ['admin-disputes', disputesPage],
     queryFn: async () => {
-      const { data, error, count } = await supabase
-        .from('disputes')
-        .select(`
-          *,
-          raised_by_profile:profiles!disputes_raised_by_fkey(id, full_name, phone),
-          appointment:appointments!disputes_appointment_id_fkey(
-            id, date, time, specialty, patient_name, practitioner_name
-          )
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range((disputesPage - 1) * disputesLimit, disputesPage * disputesLimit - 1);
-
-      if (error) throw error;
-      return { disputes: data || [], total: count || 0 };
+      const res = await api.get<{ data: AdminDisputeRow[]; count: number }>('/admin/disputes', { query: { page: disputesPage - 1, limit: disputesLimit } });
+      return {
+        disputes: res.data.map((d): AdminDispute => ({
+          ...d,
+          raised_by_profile: { full_name: d.raised_by_name, phone: d.raised_by_phone },
+          appointment: d.appointment_date
+            ? { date: d.appointment_date, time: d.appointment_time ?? '', specialty: d.appointment_specialty ?? '', patient_name: d.patient_name, practitioner_name: d.practitioner_name }
+            : null,
+        })),
+        total: res.count,
+      };
     },
   });
 
@@ -144,69 +151,32 @@ export function OperationsSection() {
 
   const updateReviewMutation = useMutation({
     mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      const { error } = await supabase
-        .from('reviews')
-        .update({
-          is_hidden: isHidden,
-          moderated_by: user?.id,
-          moderated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
+      // Modération (POST /admin/operations/reviews/:id/moderate) : note du praticien recalculée, audit côté API
+      await api.post(`/admin/operations/reviews/${id}/moderate`, { isHidden });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
       toast({ title: 'Avis modéré' });
       setSelectedReview(null);
     },
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Modération impossible'), variant: 'destructive' });
+    },
   });
 
   const updateDisputeMutation = useMutation({
     mutationFn: async ({ id, status, resolution }: { id: string; status: string; resolution?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const updateData: any = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Add resolution and resolved_at if status is resolved or closed
-      if ((status === 'resolved' || status === 'closed') && resolution) {
-        updateData.resolution = resolution;
-        updateData.resolved_at = new Date().toISOString();
-      }
-
-      // Assign to current admin if investigating
-      if (status === 'investigating' && user) {
-        updateData.assigned_to = user.id;
-      }
-
-      const { error } = await supabase
-        .from('disputes')
-        .update(updateData)
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Add audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: `Dispute ${status}`,
-          entity_type: 'dispute',
-          entity_id: id,
-          details: { status, resolution },
-        });
-      }
+      // Prise en charge, résolution, notification du déclarant et audit gérés par l'API (PATCH /admin/disputes/:id)
+      await api.patch(`/admin/disputes/${id}`, { status, ...(resolution ? { resolution } : {}) });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-disputes'] });
       toast({ title: 'Litige mis à jour' });
       setResolutionComment('');
       setSelectedDispute(null);
+    },
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Mise à jour du litige impossible'), variant: 'destructive' });
     },
   });
 
@@ -359,7 +329,7 @@ export function OperationsSection() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {reviews.map((review: any) => (
+                  {reviews.map((review) => (
                     <div key={review.id} className="p-4 border rounded-lg">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
@@ -475,7 +445,7 @@ export function OperationsSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {disputes.map((dispute: any) => (
+                    {disputes.map((dispute) => (
                       <TableRow key={dispute.id}>
                         <TableCell className="whitespace-nowrap">
                           {new Date(dispute.created_at).toLocaleDateString('fr-FR')}

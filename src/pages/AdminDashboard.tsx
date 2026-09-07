@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
@@ -80,7 +80,7 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     // Nettoyer complètement la session
-    await supabase.auth.signOut();
+    await auth.signOut();
     localStorage.clear();
     sessionStorage.clear();
     window.location.href = "/";

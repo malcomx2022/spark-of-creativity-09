@@ -7,7 +7,7 @@ import { MIN_SESSION_PRICE, MAX_SESSION_PRICE, MAX_PARTICIPANTS, MIN_PARTICIPANT
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api, isApiError } from "@/lib/api";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { cn } from "@/lib/utils";
 
@@ -39,14 +39,12 @@ export function GroupSessionForm({ formData, onChange, fieldErrors = {} }: Group
     queryFn: async () => {
       if (!user?.id) return null;
       
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('practitioner_type')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (error) throw error;
-      return data;
+      try {
+        return await api.get<{ practitioner_type: string | null }>('/practitioners/me');
+      } catch (error) {
+        if (isApiError(error, 404)) return null;
+        throw error;
+      }
     },
     enabled: !!user?.id
   });

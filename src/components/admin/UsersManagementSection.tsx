@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,28 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { PatientDetailsDialog } from './PatientDetailsDialog';
 import { PractitionerDetailsDialog } from './PractitionerDetailsDialog';
 
+/** Lignes de GET /admin/users/patients et /admin/users/practitioners. */
+interface AdminPatientRow {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  created_at: string;
+  email: string | null;
+}
+
+interface AdminPractitionerRow {
+  id: string;
+  name: string;
+  specialty: string;
+  phone: string | null;
+  kyc_status: string | null;
+  can_accept_missions: boolean | null;
+  rating: number | null;
+  created_at: string;
+}
+
 export function UsersManagementSection() {
   const [searchInput, setSearchInput] = useState('');
   const searchTerm = useDebouncedValue(searchInput, 300);
@@ -27,9 +49,8 @@ export function UsersManagementSection() {
 
   const cleanupMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('cleanup-non-test-accounts');
-      if (error) throw error;
-      return data;
+      // Supprime tous les comptes hors @test.com (super_admin), journalisé côté API
+      return api.post<{ message: string }>('/admin/users/cleanup-non-test', { confirm: 'SUPPRIMER' }, { timeoutMs: 120_000 });
     },
     onSuccess: (data) => {
       toast({
@@ -39,10 +60,10 @@ export function UsersManagementSection() {
       queryClient.invalidateQueries({ queryKey: ['admin-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-practitioners'] });
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error, 'Nettoyage impossible'),
         variant: "destructive",
       });
     },
@@ -51,41 +72,11 @@ export function UsersManagementSection() {
   const { data: profilesData, isLoading: profilesLoading } = useQuery({
     queryKey: ['admin-profiles', profilesPage, searchTerm],
     queryFn: async () => {
-      // Récupérer les IDs des utilisateurs avec un rôle admin
-      const { data: adminRoles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id');
-
-      if (rolesError) throw rolesError;
-      const adminUserIds = adminRoles?.map(r => r.user_id) || [];
-
-      // Récupérer les IDs des utilisateurs qui sont praticiens
-      const { data: practitioners, error: practitionersError } = await supabase
-        .from('practitioners')
-        .select('user_id');
-
-      if (practitionersError) throw practitionersError;
-      const practitionerUserIds = practitioners?.map(p => p.user_id) || [];
-
-      // Combiner les IDs à exclure (admins + praticiens)
-      const excludedUserIds = [...adminUserIds, ...practitionerUserIds];
-
-      // Requête paginée avec filtrage
-      let query = supabase
-        .from('profiles')
-        .select('*', { count: 'exact' })
-        .not('id', 'in', `(${excludedUserIds.join(',') || 'null'})`)
-        .order('created_at', { ascending: false })
-        .range(profilesPage * pageSize, (profilesPage + 1) * pageSize - 1);
-
-      if (searchTerm) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error, count } = await query;
-      if (error) throw error;
-      
-      return { profiles: data || [], total: count || 0 };
+      // Patients = profils sans rôle admin ni fiche praticien (règle appliquée par l'API)
+      const res = await api.get<{ data: AdminPatientRow[]; count: number }>('/admin/users/patients', {
+        query: { page: profilesPage, limit: pageSize, ...(searchTerm ? { search: searchTerm } : {}) },
+      });
+      return { profiles: res.data, total: res.count };
     },
   });
 
@@ -96,20 +87,10 @@ export function UsersManagementSection() {
   const { data: practitionersData, isLoading: practitionersLoading } = useQuery({
     queryKey: ['admin-practitioners', practitionersPage, searchTerm],
     queryFn: async () => {
-      let query = supabase
-        .from('practitioners')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(practitionersPage * pageSize, (practitionersPage + 1) * pageSize - 1);
-
-      if (searchTerm) {
-        query = query.or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,specialty.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error, count } = await query;
-      if (error) throw error;
-      
-      return { practitioners: data || [], total: count || 0 };
+      const res = await api.get<{ data: AdminPractitionerRow[]; count: number }>('/admin/users/practitioners', {
+        query: { page: practitionersPage, limit: pageSize, ...(searchTerm ? { search: searchTerm } : {}) },
+      });
+      return { practitioners: res.data, total: res.count };
     },
   });
 

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   AvailabilityDto, availabilitySchema, AvailabilityUpdateDto, availabilityUpdateSchema, AvailableQuery, availableQuerySchema,
@@ -18,9 +19,10 @@ export class PractitionersController {
 
   // --- Public ---
   @Get()
-  @ApiOperation({ summary: 'Liste publique des praticiens validés (ex get_public_practitioners)' })
-  list(@Query(new ZodValidationPipe(listPractitionersQuerySchema)) q: ListPractitionersQuery) {
-    return this.practitioners.listPublic(q);
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Liste publique des praticiens validés (ex get_public_practitioners) ; coordonnées arrondies pour un utilisateur connecté' })
+  list(@CurrentUser() user: AuthenticatedUser | undefined, @Query(new ZodValidationPipe(listPractitionersQuerySchema)) q: ListPractitionersQuery) {
+    return this.practitioners.listPublic(q, { includeCoordinates: !!user });
   }
 
   @Get('available')

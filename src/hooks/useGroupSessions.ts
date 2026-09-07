@@ -1,86 +1,73 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage, onTableChange } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
-import { format } from 'date-fns';
 
+export interface GroupSessionRow {
+  id: string;
+  coach_id: string;
+  session_name: string;
+  session_type: string;
+  description?: string | null;
+  max_participants: number;
+  min_participants: number;
+  current_participants: number | null;
+  scheduled_date: string;
+  start_time: string;
+  end_time: string;
+  price_per_person: number;
+  location: string;
+  status: 'planifiee' | 'confirmee' | 'annulee' | 'terminee' | null;
+  created_at: string;
+  updated_at?: string;
+  coach?: { id: string; name: string; image?: string | null; specialty?: string | null } | null;
+  participants_paid?: number;
+  participants_pending?: number;
+}
+
+interface SessionsPage {
+  data: GroupSessionRow[];
+  count: number;
+}
+
+/**
+ * Séances de groupe à venir (catalogue public, filtrable par coach) : `GET /api/group-sessions`.
+ * L'API ne renvoie que les séances planifiées / confirmées dont la date n'est pas passée.
+ */
 export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Date d'aujourd'hui pour filtrer les séances passées
-  const today = format(new Date(), 'yyyy-MM-dd');
-
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['group-sessions', coachId, page],
-    queryFn: async () => {
-      // Check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        // Permettre aux visiteurs de voir les séances publiques (futures uniquement)
-        const { data, error, count } = await supabase
-          .from('group_sessions')
-          .select('*', { count: 'exact' })
-          .in('status', ['confirmee', 'planifiee'])
-          .gte('scheduled_date', today) // ✅ Filtrer les séances passées
-          .order('scheduled_date', { ascending: true })
-          .range(page * pageSize, (page + 1) * pageSize - 1);
-
-        if (error) throw error;
-        return { data: data || [], count: count || 0 };
-      }
-
-      let query = supabase
-        .from('group_sessions')
-        .select('*', { count: 'exact' })
-        .in('status', ['confirmee', 'planifiee'])
-        .gte('scheduled_date', today) // ✅ Filtrer les séances passées
-        .order('scheduled_date', { ascending: true })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-
-      if (coachId) {
-        query = query.eq('coach_id', coachId);
-      }
-
-      const { data, error, count } = await withTimeout(Promise.resolve(query));
-      
-      if (error) throw error;
-      return { data: data || [], count: count || 0 };
-    },
+    queryFn: () => api.get<SessionsPage>('/group-sessions', { query: { coachId, page, limit: pageSize }, auth: false }),
     enabled: true
   });
 
   const cancelSession = useMutation({
     mutationFn: async (sessionId: string) => {
-      const { error } = await supabase
-        .from('group_sessions')
-        .update({ status: 'annulee' })
-        .eq('id', sessionId);
-
-      if (error) throw error;
+      await api.post(`/group-sessions/${sessionId}/cancel`, {});
     },
     onMutate: async (sessionId) => {
       await queryClient.cancelQueries({ queryKey: ['group-sessions'] });
 
-      const previousSessions = queryClient.getQueryData(['group-sessions', coachId, page]);
+      const previousSessions = queryClient.getQueryData<SessionsPage>(['group-sessions', coachId, page]);
 
-      queryClient.setQueryData(['group-sessions', coachId, page], (old: any) => {
+      queryClient.setQueryData<SessionsPage | undefined>(['group-sessions', coachId, page], (old) => {
         if (!old?.data) return old;
         return {
           ...old,
-          data: old.data.filter((s: any) => s.id !== sessionId)
+          data: old.data.filter((s) => s.id !== sessionId)
         };
       });
 
       return { previousSessions };
     },
-    onError: (err: any, sessionId, context) => {
+    onError: (err: unknown, sessionId, context) => {
       queryClient.setQueryData(['group-sessions', coachId, page], context?.previousSessions);
       toast({
         title: "Erreur",
-        description: err.message,
+        description: errorMessage(err),
         variant: "destructive"
       });
     },
@@ -95,35 +82,30 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
 
   const confirmSession = useMutation({
     mutationFn: async (sessionId: string) => {
-      const { error } = await supabase
-        .from('group_sessions')
-        .update({ status: 'confirmee' })
-        .eq('id', sessionId);
-
-      if (error) throw error;
+      await api.post(`/group-sessions/${sessionId}/confirm`, {});
     },
     onMutate: async (sessionId) => {
       await queryClient.cancelQueries({ queryKey: ['group-sessions'] });
 
-      const previousSessions = queryClient.getQueryData(['group-sessions', coachId, page]);
+      const previousSessions = queryClient.getQueryData<SessionsPage>(['group-sessions', coachId, page]);
 
-      queryClient.setQueryData(['group-sessions', coachId, page], (old: any) => {
+      queryClient.setQueryData<SessionsPage | undefined>(['group-sessions', coachId, page], (old) => {
         if (!old?.data) return old;
         return {
           ...old,
-          data: old.data.map((s: any) =>
-            s.id === sessionId ? { ...s, status: 'confirmee' } : s
+          data: old.data.map((s) =>
+            s.id === sessionId ? { ...s, status: 'confirmee' as const } : s
           )
         };
       });
 
       return { previousSessions };
     },
-    onError: (err: any, sessionId, context) => {
+    onError: (err: unknown, sessionId, context) => {
       queryClient.setQueryData(['group-sessions', coachId, page], context?.previousSessions);
       toast({
         title: "Erreur",
-        description: err.message,
+        description: errorMessage(err),
         variant: "destructive"
       });
     },
@@ -136,48 +118,11 @@ export function useGroupSessions(coachId?: string, page = 0, pageSize = 50) {
     },
   });
 
-  // ✅ Bug #8 FIX: Souscription temps réel pour les mises à jour de séances et participants
+  // Temps réel : séances et inscriptions (current_participants) via la passerelle Socket.IO de l'API
   useEffect(() => {
-    // Écouter les changements sur group_sessions
-    const sessionsChannel = supabase
-      .channel('group-sessions-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'group_sessions',
-          ...(coachId ? { filter: `coach_id=eq.${coachId}` } : {})
-        },
-        (payload) => {
-          console.log('🔄 Realtime update for group sessions:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
-        }
-      )
-      .subscribe();
-
-    // Écouter les changements sur les participants (inscriptions)
-    const participantsChannel = supabase
-      .channel('group-session-participants-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'group_session_participants'
-        },
-        (payload) => {
-          console.log('🔄 Realtime update for participants:', payload.eventType);
-          // Rafraîchir les séances car current_participants a pu changer
-          queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(sessionsChannel);
-      supabase.removeChannel(participantsChannel);
-    };
+    return onTableChange(['group_sessions', 'group_session_participants'], () => {
+      queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
+    });
   }, [coachId, queryClient]);
 
   return {

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api, errorMessage, onTableChange } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -20,9 +20,34 @@ import { toast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { getSignedFileUrl } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Tables } from "@/integrations/supabase/types";
-import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import { withTimeout } from "@/lib/network-timeout";
+
+/** Ligne de GET /admin/kyc/queue (colonnes de practitioners utilisées par la file et l'historique). */
+interface KycPractitioner {
+  id: string;
+  user_id: string;
+  name: string;
+  phone: string | null;
+  specialty: string | null;
+  practitioner_type: string | null;
+  kyc_status: string | null;
+  kyc_comment: string | null;
+  kyc_reviewed_at: string | null;
+  kyc_validated_at: string | null;
+  created_at: string | null;
+  id_document_url: string | null;
+  id_document_expiry: string | null;
+  license_document_url: string | null;
+  license_expiry: string | null;
+  license_number: string | null;
+  insurance_document_url: string | null;
+  insurance_expiry: string | null;
+  diplomas: string[] | null;
+  certifications: string[] | null;
+  session_types: string[] | null;
+  intervention_zone: string | null;
+  intervention_radius: number | null;
+  image: string | null;
+}
 
 interface DocumentUrls {
   id_document_url: string | null;
@@ -41,7 +66,7 @@ interface KYCHistoryEntry {
 
 export function KYCQueue() {
   const queryClient = useQueryClient();
-  const [selectedPractitioner, setSelectedPractitioner] = useState<any>(null);
+  const [selectedPractitioner, setSelectedPractitioner] = useState<KycPractitioner | null>(null);
   const [comment, setComment] = useState("");
   const [documentUrls, setDocumentUrls] = useState<Record<string, DocumentUrls>>({});
   const [loadingUrls, setLoadingUrls] = useState<Record<string, boolean>>({});
@@ -60,260 +85,93 @@ export function KYCQueue() {
     queryFn: async () => {
       if (!historyPractitionerId) return [] as KYCHistoryEntry[];
 
-      const { data, error } = await withTimeout(
-        supabase
-          .from('admin_audit_logs')
-          .select('id, created_at, action, admin_id, details')
-          .eq('entity_type', 'practitioner')
-          .eq('entity_id', historyPractitionerId)
-          .ilike('action', 'KYC%')
-          .order('created_at', { ascending: false })
-      );
-
-      if (error) throw error;
-
-      const adminIds = Array.from(new Set((data || []).map((log) => log.admin_id).filter(Boolean)));
-      let adminMap: Record<string, string | null> = {};
-
-      if (adminIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await withTimeout(
-          supabase
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', adminIds as string[])
-        );
-
-        if (profilesError) {
-          if (import.meta.env.DEV) {
-            console.error('Error loading admin profiles:', profilesError);
-          }
-        } else {
-          adminMap = (profilesData || []).reduce<Record<string, string | null>>((acc, profile) => {
-            acc[profile.id] = profile.full_name;
-            return acc;
-          }, {});
-        }
-      }
-
-      return (data || []).map<KYCHistoryEntry>((entry) => ({
-        ...entry,
-        admin_name: entry.admin_id ? adminMap[entry.admin_id] ?? null : null,
-        details:
-          entry.details && typeof entry.details === 'object' && !Array.isArray(entry.details)
-            ? (entry.details as { comment?: string })
-            : null,
-      }));
+      // Journal d'audit du praticien (GET /admin/audit-logs), actions « KYC … » uniquement
+      const res = await api.get<{ data: Array<{ id: string; created_at: string; action: string; admin_id: string | null; admin_name: string | null; details: unknown }> }>('/admin/audit-logs', {
+        query: { entityType: 'practitioner', entityId: historyPractitionerId, limit: 100 },
+      });
+      return res.data
+        .filter((entry) => entry.action.toLowerCase().startsWith('kyc'))
+        .map<KYCHistoryEntry>((entry) => ({
+          id: entry.id,
+          created_at: entry.created_at,
+          action: entry.action,
+          admin_id: entry.admin_id,
+          admin_name: entry.admin_name,
+          details:
+            entry.details && typeof entry.details === 'object' && !Array.isArray(entry.details)
+              ? (entry.details as { comment?: string })
+              : null,
+        }));
     },
   });
 
   const {
     data: kycHistoryPractitioners = [],
     isLoading: isKycHistoryPractitionersLoading,
-  } = useQuery<Tables<'practitioners'>[]>({
+  } = useQuery<KycPractitioner[]>({
     queryKey: ['kyc-history-list'],
     queryFn: async () => {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .select(
-            'id, name, phone, specialty, kyc_status, kyc_comment, kyc_reviewed_at, kyc_validated_at, created_at'
-          )
-          .order('kyc_reviewed_at', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-      );
-
-      if (error) throw error;
-      return (data || []) as Tables<'practitioners'>[];
+      // Tous les dossiers, derniers examinés en premier (GET /admin/kyc/queue?status=all)
+      const rows = await api.get<KycPractitioner[]>('/admin/kyc/queue', { query: { status: 'all', limit: 200 } });
+      const ts = (value: string | null) => (value ? new Date(value).getTime() : 0);
+      return [...rows].sort((a, b) => ts(b.kyc_reviewed_at) - ts(a.kyc_reviewed_at) || ts(b.created_at) - ts(a.created_at));
     },
   });
 
   const {
     data: practitioners = [],
     isLoading,
-  } = useQuery<Tables<'practitioners'>[]>({
+  } = useQuery<KycPractitioner[]>({
     queryKey: ['kyc-queue'],
-    queryFn: async () => {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .select('*')
-          .in('kyc_status', ['pending', 'incomplete'])
-          .order('created_at', { ascending: true })
-      );
-
-      if (error) throw error;
-      return (data || []) as Tables<'practitioners'>[];
-    },
+    // Dossiers en attente ou incomplets (GET /admin/kyc/queue?status=pending)
+    queryFn: () => api.get<KycPractitioner[]>('/admin/kyc/queue', { query: { status: 'pending', limit: 200 } }),
   });
 
   useEffect(() => {
-    const handleChange = (
-      payload: RealtimePostgresChangesPayload<Tables<'practitioners'>>
-    ) => {
-      try {
-        const relevantStatuses = ['pending', 'incomplete'];
-        const newStatus = (payload.new as Tables<'practitioners'> | null)?.kyc_status ?? '';
-        const oldStatus = (payload.old as Tables<'practitioners'> | null)?.kyc_status ?? '';
-
-        const shouldInvalidate =
-          (payload.eventType === 'INSERT' && relevantStatuses.includes(newStatus)) ||
-          (payload.eventType === 'UPDATE' && (relevantStatuses.includes(newStatus) || relevantStatuses.includes(oldStatus))) ||
-          (payload.eventType === 'DELETE' && relevantStatuses.includes(oldStatus));
-
-        if (shouldInvalidate) {
-          queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
-          queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
-        }
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error('Realtime subscription error:', error);
-        }
-      }
-    };
-
-    const channel = supabase
-      .channel('kyc-queue-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'practitioners' }, handleChange)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    // Temps réel : tout changement de fiche praticien rafraîchit la file et l'historique
+    return onTableChange('practitioners', () => {
+      queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
+    });
   }, [queryClient]);
 
   const updateKYCMutation = useMutation({
+    // Décision KYC (POST /admin/kyc/:id/decision) : verrou optimiste, notifications e-mail / SMS / in-app et audit côté API
     mutationFn: async ({ id, status, comment, expectedCurrentStatus }: { id: string; status: string; comment?: string; expectedCurrentStatus?: string }) => {
-      if (import.meta.env.DEV) {
-        console.log('[KYC Update] Starting mutation:', { id, status, comment, expectedCurrentStatus });
-      }
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        throw new Error('Utilisateur non authentifié');
-      }
-
-      // Protection contre les race conditions: vérifier l'état actuel avant mise à jour
-      if (expectedCurrentStatus) {
-        const { data: currentPractitioner, error: fetchError } = await withTimeout(
-          supabase
-            .from('practitioners')
-            .select('kyc_status, kyc_reviewed_at')
-            .eq('id', id)
-            .single()
-        );
-
-        if (fetchError) {
-          throw new Error('Impossible de vérifier l\'état actuel du dossier');
-        }
-
-        if (currentPractitioner.kyc_status !== expectedCurrentStatus) {
-          throw new Error(
-            `Le statut KYC a été modifié par un autre administrateur (statut actuel: ${currentPractitioner.kyc_status}). Veuillez rafraîchir la page.`
-          );
-        }
-      }
-
-      if (import.meta.env.DEV) {
-        console.log('[KYC Update] Updating practitioner in database...');
-      }
-      const { error } = await withTimeout(
-        supabase
-          .from('practitioners')
-          .update({
-            kyc_status: status,
-            kyc_comment: comment,
-            kyc_reviewed_by: user.id,
-            kyc_reviewed_at: new Date().toISOString(),
-            can_accept_missions: status === 'approved',
-            ...(status === 'approved' ? { kyc_validated_at: new Date().toISOString() } : {}),
-          })
-          .eq('id', id)
-      );
-
-      if (error) {
-        if (import.meta.env.DEV) {
-          console.error('[KYC Update] Database update error:', error);
-        }
-        throw error;
-      }
-
-      if (import.meta.env.DEV) {
-        console.log('[KYC Update] Inserting audit log...');
-      }
-      const { error: auditError } = await withTimeout(
-        supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: `KYC ${status}`,
-          entity_type: 'practitioner',
-          entity_id: id,
-          details: { comment },
-        })
-      );
-
-      if (auditError) {
-        if (import.meta.env.DEV) {
-          console.error('[KYC Update] Audit log error:', auditError);
-        }
-        // Ne pas bloquer si le log d'audit échoue
-      }
-
-      if (import.meta.env.DEV) {
-        console.log('[KYC Update] Mutation completed successfully');
-      }
+      return api.post<{ success: boolean; emailSent: boolean; smsSent: boolean }>(`/admin/kyc/${id}/decision`, {
+        status,
+        ...(comment ? { comment } : {}),
+        ...(expectedCurrentStatus ? { expectedCurrentStatus } : {}),
+      });
     },
-    onSuccess: async (_, variables) => {
-      if (import.meta.env.DEV) {
-        console.log('[KYC Update] onSuccess triggered');
-      }
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['kyc-queue'] });
       queryClient.invalidateQueries({ queryKey: ['kyc-history-list'] });
-      
-      // Envoyer la notification appropriée selon le statut
-      try {
-        if (import.meta.env.DEV) {
-          console.log('[KYC Update] Sending notification...');
-        }
-        await supabase.functions.invoke('send-kyc-status-notification', {
-          body: {
-            practitionerId: variables.id,
-            status: variables.status,
-            comment: variables.comment
-          }
-        });
-        
-        const statusMessages = {
-          approved: "Le praticien a été notifié de l'activation de son compte",
-          rejected: "Le praticien a été notifié du refus de son dossier",
-          incomplete: "Le praticien a été notifié des éléments manquants"
-        };
-        
-        toast({ 
-          title: "Statut KYC mis à jour", 
-          description: statusMessages[variables.status as keyof typeof statusMessages] || "Statut mis à jour"
-        });
-      } catch (notifError) {
-        if (import.meta.env.DEV) {
-          console.error('[KYC Update] Error sending notification:', notifError);
-        }
-        toast({ 
-          title: "Statut KYC mis à jour", 
-          description: "Statut modifié (erreur d'envoi de notification)" 
-        });
-      }
-      
+      queryClient.invalidateQueries({ queryKey: ['kyc-history', variables.id] });
+
+      const statusMessages = {
+        approved: "Le praticien a été notifié de l'activation de son compte",
+        rejected: "Le praticien a été notifié du refus de son dossier",
+        incomplete: "Le praticien a été notifié des éléments manquants"
+      };
+      toast({
+        title: "Statut KYC mis à jour",
+        description: statusMessages[variables.status as keyof typeof statusMessages] || "Statut mis à jour"
+      });
+
       setSelectedPractitioner(null);
       setComment("");
       setApproveDialogOpen(false);
       setIncompleteDialogOpen(false);
       setRejectDialogOpen(false);
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       if (import.meta.env.DEV) {
         console.error('[KYC Update] Mutation error:', error);
       }
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de mettre à jour le statut KYC",
+        description: errorMessage(error, "Impossible de mettre à jour le statut KYC"),
         variant: "destructive"
       });
     }

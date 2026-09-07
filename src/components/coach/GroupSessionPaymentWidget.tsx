@@ -9,8 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Calendar, Clock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { api, auth, errorMessage, isApiError } from '@/lib/api';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
@@ -120,39 +119,27 @@ export function GroupSessionPaymentWidget({
   useEffect(() => {
     const checkSessionAndRegistration = async () => {
       if (!open) return;
-      
+
       setIsCheckingRegistration(true);
-      
+
       try {
-        const { data: { session: authSession } } = await supabase.auth.getSession();
-        if (!authSession) {
+        if (!auth.getSession()) {
           setIsCheckingRegistration(false);
           return;
         }
 
-        // ✅ CORRECTION P2 #12: Récupérer les infos actuelles de la séance
-        const { data: currentSession, error: sessionError } = await supabase
-          .from('group_sessions')
-          .select(`
-            id,
-            session_name,
-            scheduled_date,
-            start_time,
-            status,
-            max_participants,
-            current_participants,
-            price_per_person,
-            coach:practitioners!inner(
-              id,
-              kyc_status,
-              kyc_validated_at
-            )
-          `)
-          .eq('id', session.id)
-          .single();
-
-        if (sessionError || !currentSession) {
-          console.error('Erreur récupération séance:', sessionError);
+        // ✅ CORRECTION P2 #12: informations actuelles de la séance (places, coach vérifié, inscription existante)
+        let currentSession: {
+          id: string; session_name: string; scheduled_date: string; start_time: string; status: string | null;
+          max_participants: number; current_participants: number | null; price_per_person: number;
+          coach: { id: string; verified?: boolean } | null;
+          spots_remaining?: number;
+          my_registration?: { id: string; payment_status: string | null; joined_at: string } | null;
+        };
+        try {
+          currentSession = await api.get(`/group-sessions/${session.id}`);
+        } catch (error) {
+          console.error('Erreur récupération séance:', error);
           toast({
             title: 'Erreur',
             description: 'Impossible de récupérer les informations de la séance',
@@ -183,9 +170,8 @@ export function GroupSessionPaymentWidget({
           return;
         }
 
-        // ✅ CORRECTION P0 #1: Vérifier le KYC du coach
-        const coach = Array.isArray(currentSession.coach) ? currentSession.coach[0] : currentSession.coach;
-        if (!coach || coach.kyc_status !== 'approved' || !coach.kyc_validated_at) {
+        // ✅ CORRECTION P0 #1: Vérifier le KYC du coach (champ `verified` calculé par l'API)
+        if (!currentSession.coach || !currentSession.coach.verified) {
           toast({
             title: 'Inscription non disponible',
             description: 'Le coach n\'est pas encore vérifié. Veuillez réessayer plus tard.',
@@ -196,7 +182,7 @@ export function GroupSessionPaymentWidget({
         }
 
         // ✅ CORRECTION P2 #12: Vérifier les places AVANT affichage formulaire
-        const availableSpots = (currentSession.max_participants || 0) - (currentSession.current_participants || 0);
+        const availableSpots = currentSession.spots_remaining ?? ((currentSession.max_participants || 0) - (currentSession.current_participants || 0));
         if (availableSpots <= 0) {
           setPaymentStatus('session_full');
           setIsCheckingRegistration(false);
@@ -204,21 +190,11 @@ export function GroupSessionPaymentWidget({
         }
 
         // Vérifier si le patient est déjà inscrit à cette séance
-        const { data: existingParticipant, error } = await supabase
-          .from('group_session_participants')
-          .select('id, payment_status, joined_at')
-          .eq('session_id', session.id)
-          .eq('patient_id', authSession.user.id)
-          .maybeSingle();
-
-        if (error) {
-          console.error('Erreur vérification inscription:', error);
-        }
-
+        const existingParticipant = currentSession.my_registration ?? null;
         if (existingParticipant) {
           console.log('🔍 Inscription existante trouvée:', existingParticipant);
           setExistingRegistration(existingParticipant);
-          
+
           if (existingParticipant.payment_status === 'paid' || existingParticipant.payment_status === 'confirmed') {
             setPaymentStatus('already_registered');
           } else if (existingParticipant.payment_status === 'pending') {
@@ -240,8 +216,7 @@ export function GroupSessionPaymentWidget({
   useEffect(() => {
     const loadFedaPayConfig = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
-        if (error) throw error;
+        const data = await api.get<{ publicKey: string | null; environment: string; provider?: string }>('/payments/config', { auth: false });
         setFedapayConfig(data);
 
         // ✅ Bug #1 FIX: NE PAS pré-remplir le numéro de test
@@ -266,21 +241,17 @@ export function GroupSessionPaymentWidget({
   // Load user profile data to pre-fill form
   useEffect(() => {
     const loadUserProfile = async () => {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
-      if (authSession) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, phone')
-          .eq('id', authSession.user.id)
-          .single();
-        
+      const currentUser = auth.getUser();
+      if (currentUser) {
+        const profile = await api.get<{ full_name?: string | null; phone?: string | null }>('/profile').catch(() => null);
+
         if (profile) {
           if (profile.full_name) setPayerName(profile.full_name);
           if (profile.phone) setPhoneNumber(profile.phone);
         }
-        
-        if (authSession.user.email) {
-          setPayerEmail(authSession.user.email);
+
+        if (currentUser.email) {
+          setPayerEmail(currentUser.email);
         }
       }
     };
@@ -349,9 +320,7 @@ export function GroupSessionPaymentWidget({
     setPaymentStatus('pending');
 
     try {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
-
-      if (!authSession) {
+      if (!auth.getSession()) {
         throw new Error('Vous devez être connecté pour effectuer un paiement');
       }
 
@@ -361,72 +330,30 @@ export function GroupSessionPaymentWidget({
         paymentMethod
       });
 
-      // Appeler register-group-session pour créer l'inscription ET le paiement
-      const { data: result, error } = await invokeEdgeFunctionWithRetry(
-        'register-group-session',
-        {
-          body: {
-            sessionId: session.id,
-            patientId: authSession.user.id,
-            amount: session.price_per_person,
-            paymentMethod,
-            phoneNumber: sanitizedPhoneNumber,
-            payerName: payerName.trim(),
-            payerEmail: payerEmail.trim() || undefined,
-          },
-        },
-        3,
-        (attempt) => {
-          toast({
-            title: `Tentative ${attempt + 1}...`,
-            description: 'Nouvelle tentative de connexion au service de paiement.',
-            duration: 2000,
-          });
-        }
-      );
-
-      // Gérer les erreurs
-      if (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Erreur lors de l\'inscription';
-        console.error('Registration/payment error:', errorMessage);
-        
-        // Parse l'erreur pour récupérer les détails
-        let errorDetails: any = null;
-        
-        try {
-          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
-          if (jsonMatch) {
-            errorDetails = JSON.parse(jsonMatch[0]);
-          }
-          
-          if (!errorDetails) {
-            try {
-              errorDetails = JSON.parse(errorMessage);
-            } catch (e) {
-              // Pas JSON valide
-            }
-          }
-        } catch (parseError) {
-          console.error('Could not parse error details:', parseError);
-        }
-        
-        // Si c'est une erreur de doublon
-        const isDuplicateError = errorMessage.includes('déjà inscrit') || errorMessage.includes('already registered');
-        
-        if (isDuplicateError) {
+      // POST /group-sessions/:id/register : inscription ET paiement FedaPay (ex register-group-session)
+      let result: { success: boolean; participantId?: string; transactionId?: string | number; paymentUrl?: string; token?: string; amount?: number };
+      try {
+        result = await api.post(`/group-sessions/${session.id}/register`, {
+          paymentMethod,
+          phoneNumber: sanitizedPhoneNumber,
+          payerName: payerName.trim(),
+          payerEmail: payerEmail.trim() || undefined,
+        });
+      } catch (error) {
+        // Inscription déjà existante (409) : message explicite
+        if (isApiError(error, 409)) {
           setIsProcessing(false);
           setPaymentStatus('error');
-          
+
           toast({
             title: 'Inscription existante',
-            description: errorDetails?.error || 'Vous êtes déjà inscrit à cette séance.',
+            description: errorMessage(error, 'Vous êtes déjà inscrit à cette séance.'),
             variant: 'destructive',
             duration: 10000,
           });
           return;
         }
-        
-        throw new Error(errorMessage);
+        throw new Error(errorMessage(error, 'Erreur lors de l\'inscription'));
       }
 
       // Vérifier que nous avons reçu le transactionId
@@ -434,12 +361,12 @@ export function GroupSessionPaymentWidget({
         throw new Error('ID de transaction non reçu du serveur. Veuillez réessayer.');
       }
 
-      const txId = parseInt(String((result as any).transactionId));
+      const txId = parseInt(String(result.transactionId));
       setTransactionId(txId);
 
       console.log('Registration and payment transaction created successfully:', {
         transactionId: txId,
-        participantId: (result as any).participantId,
+        participantId: result.participantId,
         environment: fedapayConfig.environment,
         amount: session.price_per_person
       });

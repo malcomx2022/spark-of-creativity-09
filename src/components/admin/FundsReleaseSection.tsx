@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { api, errorMessage } from '@/lib/api';
 import type { ReleaseHeldFundsResponse } from '@/types/edge-function-responses';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,45 +8,32 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Play, RefreshCw, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { withTimeout } from '@/lib/network-timeout';
+
+/** Ligne de GET /admin/finance/held-funds (praticien du rendez-vous aplati). */
+interface HeldPayment {
+  id: string;
+  amount: number;
+  net_amount: number | null;
+  hold_until: string | null;
+  created_at: string;
+  appointment_id: string | null;
+  practitioner_id: string | null;
+  practitioner_name: string | null;
+}
 
 export function FundsReleaseSection() {
-  const [lastRunResult, setLastRunResult] = useState<any>(null);
+  const [lastRunResult, setLastRunResult] = useState<ReleaseHeldFundsResponse | null>(null);
 
   const { data: heldPayments = [], isLoading, refetch } = useQuery({
     queryKey: ['held-payments'],
     queryFn: async () => {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('payments')
-          .select(`
-            id,
-            amount,
-            net_amount,
-            hold_until,
-            created_at,
-            appointment_id,
-            appointments(practitioner_id, practitioner_name)
-          `)
-          .eq('payout_status', 'held')
-          .eq('status', 'paid')
-          .order('hold_until', { ascending: true })
-      );
-
-      if (error) throw error;
-      return data || [];
+      const res = await api.get<{ data: HeldPayment[] }>('/admin/finance/held-funds');
+      return res.data;
     },
   });
 
   const releaseMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await invokeEdgeFunctionWithRetry<ReleaseHeldFundsResponse>('release-held-funds', {
-        body: { manual_trigger: true },
-      });
-
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: () => api.post<ReleaseHeldFundsResponse>('/admin/finance/held-funds/release', undefined, { timeoutMs: 120_000 }),
     onSuccess: (data) => {
       setLastRunResult(data);
       toast.success(
@@ -55,12 +41,12 @@ export function FundsReleaseSection() {
       );
       refetch();
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       // P3: Wrap console.error with DEV check
       if (import.meta.env.DEV) {
         console.error('Error releasing funds:', error);
       }
-      toast.error('Erreur lors du release des fonds');
+      toast.error(errorMessage(error, 'Erreur lors du release des fonds'));
     },
   });
 
@@ -202,7 +188,7 @@ export function FundsReleaseSection() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {heldPayments.map((payment: any) => {
+                  {heldPayments.map((payment) => {
                     const holdUntil = payment.hold_until ? new Date(payment.hold_until) : null;
                     const isReady = holdUntil && holdUntil <= now;
                     const timeRemaining = holdUntil
@@ -217,7 +203,7 @@ export function FundsReleaseSection() {
                         <TableCell className="font-mono text-xs">
                           {payment.id.slice(0, 8)}...
                         </TableCell>
-                        <TableCell>{payment.appointments?.practitioner_name || 'N/A'}</TableCell>
+                        <TableCell>{payment.practitioner_name || 'N/A'}</TableCell>
                         <TableCell className="font-medium">
                           {(payment.net_amount || payment.amount).toLocaleString()} XOF
                         </TableCell>
@@ -261,7 +247,7 @@ export function FundsReleaseSection() {
               <h4 className="font-semibold text-destructive mb-2">Erreurs du dernier release:</h4>
               <div className="space-y-2">
                 {/* P3: Use payment_id as key */}
-                {lastRunResult.results.errors.map((error: any, index: number) => (
+                {lastRunResult.results.errors.map((error: { payment_id?: string; error?: string }, index: number) => (
                   <div key={error.payment_id || `error-${index}`} className="text-sm">
                     <span className="font-mono">{error.payment_id?.slice(0, 8)}...</span>:{' '}
                     <span className="text-destructive">{error.error}</span>

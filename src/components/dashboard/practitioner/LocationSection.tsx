@@ -11,7 +11,7 @@ import {
   Radius, Building2, HelpCircle, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AddressSearchInput } from '@/components/AddressSearchInput';
@@ -206,17 +206,11 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('practitioners')
-        .update({
-          address: formData.address,
-          latitude: formData.latitude,
-          longitude: formData.longitude,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', practitionerId);
-
-      if (error) throw error;
+      await api.patch('/practitioners/me', {
+        address: formData.address,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+      });
 
       toast({
         title: 'Localisation mise à jour',

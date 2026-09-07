@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,28 @@ const STATUS_LABELS: Record<string, string> = {
   permanently_failed: 'Échec définitif',
 };
 
-const STATUS_ICONS: Record<string, any> = {
+/** Ligne de webhook_events renvoyée par GET /admin/finance/webhook-events. */
+interface WebhookEvent {
+  id: string;
+  event_id: string;
+  event_type: string;
+  payload: unknown;
+  processing_status: string | null;
+  retry_count: number | null;
+  last_retry_at: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  processed_at: string | null;
+}
+
+interface WebhookEventsPage {
+  data: WebhookEvent[];
+  count: number;
+  stats: { total: number; processed: number; pending: number; failed: number; permanently_failed: number };
+  eventTypes: string[];
+}
+
+const STATUS_ICONS: Record<string, typeof Clock> = {
   success: CheckCircle,
   pending: Clock,
   processing: RefreshCw,
@@ -55,114 +76,56 @@ export function WebhooksSection() {
   const [dateTo, setDateTo] = useState<string>('');
 
   // Dialog pour voir le payload
-  const [viewingWebhook, setViewingWebhook] = useState<any>(null);
+  const [viewingWebhook, setViewingWebhook] = useState<WebhookEvent | null>(null);
+
+  // Filtres envoyés à l'API (liste et export)
+  const webhookQuery = (pageIndex: number, pageLimit: number) => {
+    const q: Record<string, string | number> = { page: pageIndex, limit: pageLimit };
+    if (statusFilter !== 'all') q.status = statusFilter;
+    if (eventTypeFilter !== 'all') q.eventType = eventTypeFilter;
+    if (dateFrom) q.from = dateFrom;
+    if (dateTo) q.to = dateTo;
+    return q;
+  };
 
   const { data: webhooksData, isLoading, refetch } = useQuery({
     queryKey: ['admin-webhooks', page, statusFilter, eventTypeFilter, dateFrom, dateTo],
     queryFn: async () => {
-      let query = supabase
-        .from('webhook_events')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      if (statusFilter !== 'all') {
-        query = query.eq('processing_status', statusFilter);
-      }
-
-      if (eventTypeFilter !== 'all') {
-        query = query.eq('event_type', eventTypeFilter);
-      }
-
-      if (dateFrom) {
-        query = query.gte('created_at', `${dateFrom}T00:00:00`);
-      }
-
-      if (dateTo) {
-        query = query.lte('created_at', `${dateTo}T23:59:59`);
-      }
-
-      const { data, error, count } = await query
-        .range((page - 1) * limit, page * limit - 1);
-
-      if (error) throw error;
-      return { data: data || [], total: count || 0 };
+      const res = await api.get<WebhookEventsPage>('/admin/finance/webhook-events', { query: webhookQuery(page - 1, limit) });
+      return { data: res.data, total: res.count, stats: res.stats, eventTypes: res.eventTypes };
     },
     refetchInterval: autoRefresh ? 5000 : false,
   });
 
-  // Récupérer les types d'événements distincts
-  const { data: eventTypes = [] } = useQuery({
-    queryKey: ['webhook-event-types'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('webhook_events')
-        .select('event_type')
-        .limit(500);
-
-      if (error) throw error;
-      return [...new Set(data?.map(w => w.event_type) || [])].sort();
-    },
-  });
+  // Types d'événements distincts (renvoyés avec la liste)
+  const eventTypes = webhooksData?.eventTypes ?? [];
 
   const webhooks = webhooksData?.data || [];
   const totalCount = webhooksData?.total || 0;
   const totalPages = Math.ceil(totalCount / limit);
 
-  // Statistiques globales (indépendantes des filtres)
-  const { data: globalStats } = useQuery({
-    queryKey: ['webhook-global-stats'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('webhook_events')
-        .select('processing_status');
-
-      if (error) throw error;
-
-      return {
-        total: data?.length || 0,
-        processed: data?.filter(w => w.processing_status === 'success').length || 0,
-        pending: data?.filter(w => w.processing_status === 'pending' || w.processing_status === 'processing').length || 0,
-        failed: data?.filter(w => w.processing_status === 'failed').length || 0,
-        permanentlyFailed: data?.filter(w => w.processing_status === 'permanently_failed').length || 0,
-      };
-    },
-  });
-
-  const stats = globalStats || { total: 0, processed: 0, pending: 0, failed: 0, permanentlyFailed: 0 };
+  // Statistiques globales (indépendantes des filtres, calculées par l'API)
+  const globalStats = webhooksData?.stats;
+  const stats = globalStats
+    ? { total: globalStats.total, processed: globalStats.processed, pending: globalStats.pending, failed: globalStats.failed, permanentlyFailed: globalStats.permanently_failed }
+    : { total: 0, processed: 0, pending: 0, failed: 0, permanentlyFailed: 0 };
 
   // Mutation pour retry un webhook
   const retryWebhookMutation = useMutation({
     mutationFn: async (webhookId: string) => {
-      const { error } = await supabase
-        .from('webhook_events')
-        .update({
-          processing_status: 'pending',
-          retry_count: 0,
-          error_message: null,
-          last_retry_at: null,
-        })
-        .eq('id', webhookId);
-
-      if (error) throw error;
-
-      // Log audit
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: 'retry_webhook',
-          entity_type: 'webhook_event',
-          entity_id: webhookId,
-        });
+      // L'API rejoue immédiatement l'événement et journalise l'action
+      return api.post<{ eventId: string; status: 'success' | 'failed'; error?: string }>(`/admin/finance/webhook-events/${webhookId}/retry`, undefined, { timeoutMs: 60_000 });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-webhooks'] });
+      if (result.status === 'success') {
+        toast({ title: 'Webhook rejoué avec succès' });
+      } else {
+        toast({ title: 'Rejeu du webhook échoué', description: result.error, variant: 'destructive' });
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-webhooks'] });
-      queryClient.invalidateQueries({ queryKey: ['webhook-global-stats'] });
-      toast({ title: 'Webhook remis en file d\'attente' });
-    },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Impossible de rejouer le webhook'), variant: 'destructive' });
     },
   });
 
@@ -192,19 +155,7 @@ export function WebhooksSection() {
   const handleExport = async () => {
     try {
       // Récupérer tous les webhooks avec les filtres actuels (max 5000)
-      let query = supabase
-        .from('webhook_events')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (statusFilter !== 'all') query = query.eq('processing_status', statusFilter);
-      if (eventTypeFilter !== 'all') query = query.eq('event_type', eventTypeFilter);
-      if (dateFrom) query = query.gte('created_at', `${dateFrom}T00:00:00`);
-      if (dateTo) query = query.lte('created_at', `${dateTo}T23:59:59`);
-
-      const { data, error } = await query.limit(5000);
-
-      if (error) throw error;
+      const { data } = await api.get<WebhookEventsPage>('/admin/finance/webhook-events', { query: webhookQuery(0, 5000) });
 
       const escapeCSV = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
 

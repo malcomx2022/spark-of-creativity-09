@@ -1,27 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Download, RefreshCw } from 'lucide-react';
 
+interface PaymentEvent {
+  id: string;
+  payment_id: string;
+  event_type: string;
+  event_data: unknown;
+  created_at: string | null;
+}
+
 export function PaymentEventsSection() {
   const { data: events = [], isLoading, refetch } = useQuery({
     queryKey: ['admin-payment-events'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payment_events')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => api.get<PaymentEvent[]>('/admin/finance/payment-events', { query: { limit: 100 } }),
   });
 
-  const getEventStatus = (eventData: any) => {
+  const getEventStatus = (eventData: unknown) => {
     try {
       const data = typeof eventData === 'string' ? JSON.parse(eventData) : eventData;
       return data?.new_status || data?.status || 'unknown';
@@ -38,7 +37,7 @@ export function PaymentEventsSection() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       initiated: 'secondary',
       pending: 'secondary',
       paid: 'default',

@@ -19,6 +19,9 @@ export interface PublicPractitionerRow {
   certifications: string[] | null;
   session_types: string[] | null;
   image: string | null;
+  /** Coordonnées arrondies (≈ 100 m), présentes uniquement pour un utilisateur connecté. */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 function mapPractitioner(row: PublicPractitionerRow): PractitionerLocation {
@@ -26,10 +29,11 @@ function mapPractitioner(row: PublicPractitionerRow): PractitionerLocation {
     id: row.id,
     name: row.name,
     specialty: row.specialty ?? 'Spécialité non renseignée',
-    // L'API n'expose ni l'adresse ni les coordonnées GPS exactes ni le téléphone des praticiens.
+    // L'API n'expose ni l'adresse exacte ni le téléphone ; les coordonnées (arrondies) ne sont
+    // renvoyées qu'aux utilisateurs connectés, 0 sinon (ignoré par la carte et le calcul de distance).
     address: row.intervention_zone ?? row.communes_served?.[0] ?? 'Zone non précisée',
-    latitude: 0,
-    longitude: 0,
+    latitude: row.latitude ?? 0,
+    longitude: row.longitude ?? 0,
     available: row.available ?? false,
     rating: row.rating ?? 0,
     phone: '',

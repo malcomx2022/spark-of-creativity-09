@@ -26,6 +26,8 @@ export const auditQuerySchema = z.object({
   entityType: z.string().max(60).optional(),
   action: z.string().max(80).optional(),
   adminId: z.string().uuid().optional(),
+  /** Historique d'une entité précise (ex KYC d'un praticien). */
+  entityId: z.string().max(255).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   search: z.string().trim().max(100).optional(),

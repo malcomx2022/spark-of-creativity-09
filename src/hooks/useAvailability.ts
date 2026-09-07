@@ -1,28 +1,55 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
-import { withTimeout } from '@/lib/network-timeout';
 
-export type PractitionerAvailability = Tables<'practitioner_availability'>;
-export type PractitionerException = Tables<'practitioner_exceptions'>;
+export interface PractitionerAvailability {
+  id: string;
+  practitioner_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_active: boolean | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PractitionerException {
+  id: string;
+  practitioner_id: string;
+  date: string;
+  reason: string | null;
+  is_available: boolean | null;
+  created_at: string;
+}
+
+/** Corps d'ajout d'un créneau (colonnes snake_case, comme l'ancien TablesInsert). */
+export interface PractitionerAvailabilityInsert {
+  practitioner_id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_active?: boolean | null;
+}
+
+export interface PractitionerAvailabilityUpdate {
+  start_time?: string;
+  end_time?: string;
+  is_active?: boolean | null;
+}
+
+export interface PractitionerExceptionInsert {
+  practitioner_id?: string;
+  date: string;
+  reason?: string | null;
+  is_available?: boolean | null;
+}
 
 export function usePractitionerAvailability(practitionerId?: string) {
   return useQuery<PractitionerAvailability[]>({
     queryKey: ['availability', practitionerId],
     queryFn: async () => {
       if (!practitionerId) return [];
-      
-      const { data, error } = await withTimeout(
-        supabase
-          .from('practitioner_availability')
-          .select('*')
-          .eq('practitioner_id', practitionerId)
-          .order('day_of_week', { ascending: true })
-      );
-
-      if (error) throw error;
-      return data || [];
+      return api.get<PractitionerAvailability[]>(`/practitioners/${practitionerId}/availability`);
     },
     enabled: !!practitionerId,
   });
@@ -33,53 +60,22 @@ export function useCreateAvailability() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: TablesInsert<'practitioner_availability'>) => {
-      // 1. Vérifier les chevauchements avec les créneaux existants
-      const { data: existingSlots, error: fetchError } = await withTimeout(
-        supabase
-          .from('practitioner_availability')
-          .select('*')
-          .eq('practitioner_id', data.practitioner_id)
-          .eq('day_of_week', data.day_of_week)
-      );
-
-      if (fetchError) throw fetchError;
-
-      // 2. Détecter les chevauchements
-      const hasOverlap = existingSlots?.some(slot => {
-        const slotStart = slot.start_time;
-        const slotEnd = slot.end_time;
-        const newStart = data.start_time;
-        const newEnd = data.end_time;
-
-        // Cas de chevauchement:
-        return (
-          (newStart >= slotStart && newStart < slotEnd) ||
-          (newEnd > slotStart && newEnd <= slotEnd) ||
-          (newStart <= slotStart && newEnd >= slotEnd)
-        );
+    // Le chevauchement avec un créneau existant est contrôlé par l'API (409).
+    mutationFn: async (data: PractitionerAvailabilityInsert) => {
+      return api.post<PractitionerAvailability>('/practitioners/me/availability', {
+        dayOfWeek: data.day_of_week,
+        startTime: data.start_time,
+        endTime: data.end_time,
+        ...(data.is_active != null ? { isActive: data.is_active } : {}),
       });
-
-      if (hasOverlap) {
-        throw new Error('Ce créneau chevauche un créneau existant. Veuillez choisir un autre horaire.');
-      }
-
-      // 3. Insérer le nouveau créneau si pas de chevauchement
-      const { error } = await withTimeout(
-        supabase
-          .from('practitioner_availability')
-          .insert(data)
-      );
-
-      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['availability'] });
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       toast({
         title: 'Erreur',
-        description: error.message || 'Impossible d\'ajouter le créneau.',
+        description: errorMessage(error, "Impossible d'ajouter le créneau."),
         variant: 'destructive',
       });
     },
@@ -90,15 +86,12 @@ export function useUpdateAvailability() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: TablesUpdate<'practitioner_availability'> }) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('practitioner_availability')
-          .update(data)
-          .eq('id', id)
-      );
-
-      if (error) throw error;
+    mutationFn: async ({ id, data }: { id: string; data: PractitionerAvailabilityUpdate }) => {
+      return api.patch<PractitionerAvailability>(`/practitioners/me/availability/${id}`, {
+        ...(data.start_time !== undefined ? { startTime: data.start_time } : {}),
+        ...(data.end_time !== undefined ? { endTime: data.end_time } : {}),
+        ...(data.is_active != null ? { isActive: data.is_active } : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['availability'] });
@@ -111,14 +104,7 @@ export function useDeleteAvailability() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('practitioner_availability')
-          .delete()
-          .eq('id', id)
-      );
-
-      if (error) throw error;
+      await api.delete(`/practitioners/me/availability/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['availability'] });
@@ -131,17 +117,7 @@ export function usePractitionerExceptions(practitionerId?: string) {
     queryKey: ['exceptions', practitionerId],
     queryFn: async () => {
       if (!practitionerId) return [];
-      
-      const { data, error } = await withTimeout(
-        supabase
-          .from('practitioner_exceptions')
-          .select('*')
-          .eq('practitioner_id', practitionerId)
-          .order('date', { ascending: true })
-      );
-
-      if (error) throw error;
-      return data || [];
+      return api.get<PractitionerException[]>(`/practitioners/${practitionerId}/exceptions`);
     },
     enabled: !!practitionerId,
   });
@@ -151,14 +127,12 @@ export function useCreateException() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: TablesInsert<'practitioner_exceptions'>) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('practitioner_exceptions')
-          .insert(data)
-      );
-
-      if (error) throw error;
+    mutationFn: async (data: PractitionerExceptionInsert) => {
+      return api.post<PractitionerException>('/practitioners/me/exceptions', {
+        date: data.date,
+        ...(data.reason ? { reason: data.reason } : {}),
+        isAvailable: data.is_available ?? false,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exceptions'] });
@@ -171,14 +145,7 @@ export function useDeleteException() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('practitioner_exceptions')
-          .delete()
-          .eq('id', id)
-      );
-
-      if (error) throw error;
+      await api.delete(`/practitioners/me/exceptions/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exceptions'] });

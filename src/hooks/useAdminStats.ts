@@ -1,20 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { withTimeout } from '@/lib/network-timeout';
+import { api } from '@/lib/api';
+
+/** Ex vue admin_dashboard_stats : GET /admin/stats (compteurs en snake_case). */
+interface AdminDashboardStats {
+  patients_count: number;
+  practitioners_count: number;
+  practitioners_pending_kyc: number;
+  appointments_count: number;
+  appointments_today: number;
+  total_revenue: number;
+  upcoming_group_sessions: number;
+  open_tickets: number;
+}
 
 export function useAdminStats() {
   return useQuery({
     queryKey: ['admin-stats'],
     queryFn: async () => {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('admin_dashboard_stats')
-          .select('*')
-          .single()
-      );
-
-      if (error) throw error;
-
+      const data = await api.get<Partial<AdminDashboardStats>>('/admin/stats');
       return {
         patientsCount: data?.patients_count || 0,
         practitionersCount: data?.practitioners_count || 0,

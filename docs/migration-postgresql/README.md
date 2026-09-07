@@ -69,8 +69,12 @@ refresh token, `session.ts` session locale et événements d'authentification, `
 hook `useAuthUser` (ex `useSupabaseUser`), rôle résolu par `GET /api/auth/me`
 (`userRoleResolver.ts`), routes protégées, pages de connexion / inscription / OTP / mot de passe /
 confirmation d'e-mail, profil (adresses, contacts d'urgence, profil médical, avatar), onboarding
-patient et notifications push. Étapes suivantes : 7b hooks et écrans patient / praticien / coach,
-7c écrans admin puis retrait de `@supabase/supabase-js`.
+patient et notifications push. Étapes 7b et 7c livrées : hooks et écrans patient / praticien /
+coach / paiements puis écrans admin recodés sur l'API, `src/integrations/supabase`,
+`edge-function-retry.ts` et `@supabase/supabase-js` retirés (le dossier `supabase/` reste la
+référence historique des migrations et Edge Functions ; les règles métier dupliquées côté client,
+comme l'anti-chevauchement des créneaux ou les insertions manuelles dans `admin_audit_logs`, sont
+désormais portées par l'API).
 
 ## Ordre de lecture recommandé
 

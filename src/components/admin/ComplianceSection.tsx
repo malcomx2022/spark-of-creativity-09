@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,26 @@ const CONSENT_TYPE_LABELS: Record<ConsentType, string> = {
   marketing: 'Marketing',
 };
 
+/** Ligne de GET /admin/consent-versions. */
+interface ConsentVersion {
+  id: string;
+  consent_type: string;
+  version: string;
+  content: string;
+  is_active: boolean | null;
+  effective_date: string | null;
+  created_at: string;
+}
+
+/** Ligne de GET /admin/system-config. */
+interface SystemConfigRow {
+  id: string;
+  key: string;
+  value: unknown;
+  description: string | null;
+  updated_at: string | null;
+}
+
 export function ComplianceSection() {
   const queryClient = useQueryClient();
   const [newConsentForm, setNewConsentForm] = useState({
@@ -41,9 +61,9 @@ export function ComplianceSection() {
   const [consentTypeFilter, setConsentTypeFilter] = useState<string>('all');
 
   // Dialogs
-  const [viewingConsent, setViewingConsent] = useState<any>(null);
-  const [consentToActivate, setConsentToActivate] = useState<any>(null);
-  const [editingConfig, setEditingConfig] = useState<any>(null);
+  const [viewingConsent, setViewingConsent] = useState<ConsentVersion | null>(null);
+  const [consentToActivate, setConsentToActivate] = useState<ConsentVersion | null>(null);
+  const [editingConfig, setEditingConfig] = useState<SystemConfigRow | null>(null);
   const [configValue, setConfigValue] = useState<string>('');
   const [showCreateConsentDialog, setShowCreateConsentDialog] = useState(false);
 
@@ -51,58 +71,25 @@ export function ComplianceSection() {
   const { data: consentStats } = useQuery({
     queryKey: ['admin-consent-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('consents')
-        .select('consent_type, is_accepted');
-
-      if (error) throw error;
-
-      const stats: Record<string, { total: number; accepted: number }> = {};
-      (data || []).forEach((consent: { consent_type: string; is_accepted: boolean | null }) => {
-        if (!stats[consent.consent_type]) {
-          stats[consent.consent_type] = { total: 0, accepted: 0 };
-        }
-        stats[consent.consent_type].total++;
-        if (consent.is_accepted) {
-          stats[consent.consent_type].accepted++;
-        }
-      });
-
-      return stats;
+      // Agrégats par type de consentement (GET /admin/consents/stats)
+      return api.get<Record<string, { total: number; accepted: number; acceptanceRate: number }>>('/admin/consents/stats');
     },
   });
 
   const { data: consentsData, isLoading: consentsLoading, refetch: refetchConsents } = useQuery({
     queryKey: ['admin-consent-versions', consentsPage, consentTypeFilter],
     queryFn: async () => {
-      let query = supabase
-        .from('consent_versions')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      if (consentTypeFilter !== 'all') {
-        query = query.eq('consent_type', consentTypeFilter as 'cgu' | 'charte' | 'partage_donnees' | 'marketing');
-      }
-
-      const { data, error, count } = await query
-        .range((consentsPage - 1) * consentsLimit, consentsPage * consentsLimit - 1);
-
-      if (error) throw error;
-      return { data: data || [], total: count || 0 };
+      // Liste complète côté API, pagination côté client
+      const rows = await api.get<ConsentVersion[]>('/admin/consent-versions', { query: consentTypeFilter !== 'all' ? { type: consentTypeFilter } : {} });
+      return { data: rows.slice((consentsPage - 1) * consentsLimit, consentsPage * consentsLimit), total: rows.length };
     },
   });
 
   const { data: configData, isLoading: configLoading, refetch: refetchConfig } = useQuery({
     queryKey: ['admin-system-config', configPage],
     queryFn: async () => {
-      const { data, error, count } = await supabase
-        .from('system_config')
-        .select('*', { count: 'exact' })
-        .order('key', { ascending: true })
-        .range((configPage - 1) * configLimit, configPage * configLimit - 1);
-
-      if (error) throw error;
-      return { data: data || [], total: count || 0 };
+      const rows = await api.get<SystemConfigRow[]>('/admin/system-config');
+      return { data: rows.slice((configPage - 1) * configLimit, configPage * configLimit), total: rows.length };
     },
   });
 
@@ -113,33 +100,11 @@ export function ComplianceSection() {
 
   const createConsentMutation = useMutation({
     mutationFn: async (data: typeof newConsentForm) => {
-      const { data: { user } } = await supabase.auth.getUser();
-
       if (!data.version.trim() || !data.content.trim()) {
         throw new Error('Version et contenu sont requis');
       }
 
-      const { error } = await supabase
-        .from('consent_versions')
-        .insert({
-          consent_type: data.consent_type,
-          version: data.version,
-          content: data.content,
-          is_active: false,
-          created_by: user?.id,
-        });
-
-      if (error) throw error;
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: 'create_consent_version',
-          entity_type: 'consent_version',
-          details: { consent_type: data.consent_type, version: data.version },
-        });
-      }
+      await api.post('/admin/consent-versions', { consentType: data.consent_type, version: data.version, content: data.content });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-consent-versions'] });
@@ -147,101 +112,30 @@ export function ComplianceSection() {
       setNewConsentForm({ consent_type: 'cgu', version: '', content: '' });
       setShowCreateConsentDialog(false);
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
   const activateConsentMutation = useMutation({
-    mutationFn: async ({ id, consent_type, activate }: { id: string; consent_type: string; activate: boolean }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (activate) {
-        // Désactiver toutes les autres versions du même type
-        await supabase
-          .from('consent_versions')
-          .update({ is_active: false })
-          .eq('consent_type', consent_type as 'cgu' | 'charte' | 'partage_donnees' | 'marketing');
-      }
-
-      // Activer/désactiver la version sélectionnée
-      const { error } = await supabase
-        .from('consent_versions')
-        .update({
-          is_active: activate,
-          effective_date: activate ? new Date().toISOString() : null,
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: activate ? 'activate_consent_version' : 'deactivate_consent_version',
-          entity_type: 'consent_version',
-          entity_id: id,
-          details: { consent_type },
-        });
-      }
+    mutationFn: async ({ id, activate }: { id: string; consent_type: string; activate: boolean }) => {
+      // L'API désactive les autres versions du même type lors d'une activation et journalise l'action
+      await api.post(`/admin/consent-versions/${id}/${activate ? 'activate' : 'deactivate'}`);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-consent-versions'] });
       toast({ title: variables.activate ? 'Version activée' : 'Version désactivée' });
       setConsentToActivate(null);
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
   const updateConfigMutation = useMutation({
-    mutationFn: async ({ key, value, description }: { key: string; value: any; description?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Chercher si la config existe
-      const { data: existing } = await supabase
-        .from('system_config')
-        .select('id')
-        .eq('key', key)
-        .single();
-
-      if (existing) {
-        // Update existant
-        const { error } = await supabase
-          .from('system_config')
-          .update({
-            value,
-            updated_by: user?.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('key', key);
-
-        if (error) throw error;
-      } else {
-        // Insert nouveau
-        const { error } = await supabase
-          .from('system_config')
-          .insert({
-            key,
-            value,
-            description,
-            updated_by: user?.id,
-          });
-
-        if (error) throw error;
-      }
-
-      // Audit log
-      if (user) {
-        await supabase.from('admin_audit_logs').insert({
-          admin_id: user.id,
-          action: existing ? 'update_system_config' : 'create_system_config',
-          entity_type: 'system_config',
-          details: { key, value },
-        });
-      }
+    mutationFn: async ({ key, value, description }: { key: string; value: unknown; description?: string }) => {
+      // Création ou mise à jour (PUT /admin/system-config/:key), journalisée côté API
+      await api.put(`/admin/system-config/${encodeURIComponent(key)}`, { value, ...(description ? { description } : {}) });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-system-config'] });
@@ -249,8 +143,8 @@ export function ComplianceSection() {
       setEditingConfig(null);
       setConfigValue('');
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Erreur', description: errorMessage(error, 'Opération impossible'), variant: 'destructive' });
     },
   });
 
@@ -258,7 +152,7 @@ export function ComplianceSection() {
     return CONSENT_TYPE_LABELS[type as ConsentType] || type;
   };
 
-  const openEditConfig = (config: any) => {
+  const openEditConfig = (config: SystemConfigRow) => {
     setEditingConfig(config);
     setConfigValue(JSON.stringify(config.value, null, 2));
   };

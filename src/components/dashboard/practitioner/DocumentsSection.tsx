@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -262,27 +262,22 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
         userId: practitionerData.user_id,
       });
 
-      // Map document type to database column
-      const columnMap: Record<string, string> = {
-        'id_document_url': 'id_document_url',
-        'license_document_url': 'license_document_url',
-        'insurance_document_url': 'insurance_document_url',
-        'image': 'image',
+      // Champ de l'API correspondant au type de document
+      const fieldMap: Record<string, string> = {
+        'id_document_url': 'idDocumentUrl',
+        'license_document_url': 'licenseDocumentUrl',
+        'insurance_document_url': 'insuranceDocumentUrl',
       };
 
-      const column = columnMap[documentType];
-      if (!column) {
-        throw new Error("Type de document invalide");
-      }
-
-      // Update practitioner record
-      const { error: updateError } = await supabase
-        .from('practitioners')
-        .update({ [column]: result.path })
-        .eq('id', practitionerData.id);
-
-      if (updateError) {
-        throw updateError;
+      if (documentType === 'image') {
+        await api.patch('/practitioners/me', { image: result.path });
+      } else {
+        const field = fieldMap[documentType];
+        if (!field) {
+          throw new Error("Type de document invalide");
+        }
+        // L'API remet le dossier KYC en attente et notifie les administrateurs
+        await api.put('/practitioners/me/documents', { [field]: result.path });
       }
 
       // Update local state with new signed URL
@@ -320,39 +315,16 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
     setIsSubmitting(true);
 
     try {
-      // Update KYC status back to pending
-      const { error } = await supabase
-        .from('practitioners')
-        .update({
-          kyc_status: 'pending',
-          kyc_comment: null, // Clear previous comment
-        })
-        .eq('id', practitionerData.id);
-
-      if (error) throw error;
-
-      // Notify admins about resubmission
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Get admin users
-        const { data: adminUsers } = await supabase
-          .from('user_roles')
-          .select('user_id')
-          .in('role', ['super_admin', 'ops', 'finance', 'compliance', 'support', 'analyst']);
-
-        if (adminUsers && adminUsers.length > 0) {
-          const uniqueAdminIds = Array.from(new Set(adminUsers.map(a => a.user_id)));
-          await supabase.from('notifications').insert(
-            uniqueAdminIds.map(adminId => ({
-              user_id: adminId,
-              title: 'Dossier KYC re-soumis',
-              message: `Le praticien ${practitionerData.name} a complété son dossier et l'a re-soumis pour validation.`,
-              type: 'kyc_pending',
-              link: '/admin?tab=kyc',
-            }))
-          );
-        }
+      // Re-soumission : l'API repasse le dossier en `pending` (commentaire effacé) et notifie les admins
+      const docs = {
+        ...(practitionerData.id_document_url ? { idDocumentUrl: practitionerData.id_document_url } : {}),
+        ...(practitionerData.license_document_url ? { licenseDocumentUrl: practitionerData.license_document_url } : {}),
+        ...(practitionerData.insurance_document_url ? { insuranceDocumentUrl: practitionerData.insurance_document_url } : {}),
+      };
+      if (Object.keys(docs).length === 0) {
+        throw new Error("Ajoutez au moins un document avant de soumettre votre dossier.");
       }
+      await api.put('/practitioners/me/documents', docs);
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['practitioner'] });

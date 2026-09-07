@@ -66,7 +66,7 @@ describe('Appointments & payments (e2e)', () => {
     await db.db.insertInto('user_roles').values({ user_id: userIds['admin'], role: 'finance' }).execute();
     const reg = await app.inject({
       method: 'POST', url: '/api/practitioners/register', headers: auth('practitioner'),
-      payload: { profile: { fullName: 'Doc Pay', phone: practitionerPhone }, practitioner: { name: 'Doc Pay', phone: practitionerPhone, specialty: 'Généraliste', practitionerType: 'medecin', latitude: 6.37, longitude: 2.39 }, documents: { idDocument: pdf, licenseDocument: pdf } },
+      payload: { profile: { fullName: 'Doc Pay', phone: practitionerPhone }, practitioner: { name: 'Doc Pay', phone: practitionerPhone, specialty: `Généraliste ${tag}`, practitionerType: 'medecin', latitude: 6.37, longitude: 2.39 }, documents: { idDocument: pdf, licenseDocument: pdf } },
     });
     practitionerId = reg.json().practitioner.id;
     await db.db.insertInto('user_roles').values({ user_id: userIds['admin'], role: 'compliance' }).execute();
@@ -88,6 +88,7 @@ describe('Appointments & payments (e2e)', () => {
       await sql`delete from public.file_access_logs where user_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.files where user_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.practitioners where user_id = any(${ids}::uuid[])`.execute(trx);
+      await sql`delete from public.admin_audit_logs where admin_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.users where id = any(${ids}::uuid[])`.execute(trx);
     });
     await app.close();
@@ -189,6 +190,21 @@ describe('Appointments & payments (e2e)', () => {
     const confirmed = await app.inject({ method: 'POST', url: `/api/appointments/${appointmentId}/confirm`, headers: auth('patient') });
     expect(confirmed.json().status).toBe('completed');
     expect(confirmed.json().patient_confirmed_at).not.toBeNull();
+  });
+
+  it('demande sans praticien : affectation du praticien validé le plus proche (type ou spécialité), 400 sans position, 404 sans candidat', async () => {
+    await app.inject({ method: 'PATCH', url: '/api/practitioners/me', headers: auth('practitioner'), payload: { available: true } });
+    const none = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { specialty: 'kinesitherapeute', date: futureDate(12), time: '10:00', reason: 'Sans praticien', latitude: 6.37, longitude: 2.39 } });
+    expect(none.statusCode).toBe(404);
+    const noPoint = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('other'), payload: { specialty: 'medecin', date: futureDate(12), time: '10:00', reason: 'Sans position' } });
+    expect(noPoint.statusCode).toBe(400);
+    // Spécialité propre à cette exécution : le praticien affecté est bien celui de la suite (la base locale peut contenir d'autres médecins).
+    const bySpecialty = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { specialty: `Généraliste ${tag}`, date: futureDate(12), time: '10:00', reason: 'Sans praticien', latitude: 6.37, longitude: 2.39 } });
+    expect(bySpecialty.statusCode).toBe(201);
+    expect(bySpecialty.json()).toMatchObject({ status: 'awaiting_practitioner', practitioner_name: 'Doc Pay', practitioner_id: practitionerId });
+    // Sans créneau déclaré, l'affectation est « hors créneau » : les administrateurs sont prévenus.
+    const adminNotif = await db.db.selectFrom('notifications').select('title').where('user_id', '=', userIds['admin']).where('title', '=', 'Demande affectée hors créneau').executeTakeFirst();
+    expect(adminNotif).toBeDefined();
   });
 
   it('annulation d’un paiement en attente, nouvelle tentative, puis job de nettoyage', async () => {
