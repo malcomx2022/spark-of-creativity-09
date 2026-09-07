@@ -229,7 +229,7 @@ export interface AppointmentsTable {
   updated_at: GeneratedTimestamp;
 }
 
-export type PaymentStatus = 'initiated' | 'pending' | 'authorized' | 'paid' | 'failed' | 'canceled' | 'refunded' | 'chargeback';
+export type PaymentStatus = 'initiated' | 'pending' | 'authorized' | 'paid' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded' | 'chargeback';
 export type PayoutStatus = 'pending' | 'held' | 'ready' | 'paid' | 'failed';
 
 export interface PaymentsTable {
@@ -576,6 +576,61 @@ export interface ReviewsTable {
   moderated_at: Timestamp | null;
 }
 
+export type ConsentType = 'cgu' | 'charte' | 'partage_donnees' | 'marketing';
+
+export interface ConsentsTable {
+  id: Generated<string>;
+  user_id: string;
+  consent_type: ConsentType;
+  is_accepted: Generated<boolean | null>;
+  accepted_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface ConsentVersionsTable {
+  id: Generated<string>;
+  consent_type: ConsentType;
+  version: string;
+  content: string;
+  is_active: Generated<boolean | null>;
+  effective_date: Timestamp | null;
+  created_by: string | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface OtpRateLimitsTable {
+  phone_number: string;
+  attempts: Generated<number | null>;
+  first_attempt_at: GeneratedTimestamp;
+  blocked_until: Timestamp | null;
+}
+
+export interface EmergencyContactsTable {
+  id: Generated<string>;
+  user_id: string;
+  name: string;
+  phone: string;
+  relationship: string | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface MedicalProfilesTable {
+  id: Generated<string>;
+  user_id: string;
+  blood_type: Generated<string | null>;
+  allergies: string | null;
+  chronic_diseases: string | null;
+  current_medications: string | null;
+  additional_notes: string | null;
+  share_with_practitioner: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+  primary_doctor_id: string | null;
+  primary_doctor_name: string | null;
+  primary_doctor_email: string | null;
+  primary_doctor_phone: string | null;
+}
+
 export interface OtpAttemptsTable {
   id: Generated<string>;
   phone_number: string;
@@ -628,6 +683,11 @@ export interface DB {
   admin_audit_logs: AdminAuditLogsTable;
   search_activity_logs: SearchActivityLogsTable;
   reviews: ReviewsTable;
+  consents: ConsentsTable;
+  consent_versions: ConsentVersionsTable;
+  otp_rate_limits: OtpRateLimitsTable;
+  emergency_contacts: EmergencyContactsTable;
+  medical_profiles: MedicalProfilesTable;
 }
 
 export type User = Selectable<UsersTable>;
