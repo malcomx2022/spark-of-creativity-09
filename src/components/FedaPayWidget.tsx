@@ -9,8 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { api, auth, errorMessage as apiErrorMessage, isApiError } from '@/lib/api';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
@@ -100,8 +99,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   useEffect(() => {
     const loadFedaPayConfig = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
-        if (error) throw error;
+        const data = await api.get<{ publicKey: string | null; environment: string; provider?: string }>('/payments/config', { auth: false });
         setFedapayConfig(data);
         
         // ✅ CORRECTION P2 #7: NE PAS pré-remplir le numéro de test
@@ -128,22 +126,18 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
   // Load user profile data to pre-fill form
   useEffect(() => {
     const loadUserProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, phone')
-          .eq('id', session.user.id)
-          .single();
-        
+      const currentUser = auth.getUser();
+      if (currentUser) {
+        const profile = await api.get<{ full_name?: string | null; phone?: string | null }>('/profile').catch(() => null);
+
         if (profile) {
           if (profile.full_name) setPayerName(profile.full_name);
           if (profile.phone) setPhoneNumber(profile.phone);
         }
-        
-        // L'email vient de la session auth
-        if (session.user.email) {
-          setPayerEmail(session.user.email);
+
+        // L'email vient du compte
+        if (currentUser.email) {
+          setPayerEmail(currentUser.email);
         }
       }
     };
@@ -219,95 +213,34 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     setPaymentStatus('pending');
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
+      if (!auth.getSession()) {
         throw new Error('Vous devez être connecté pour effectuer un paiement');
       }
 
       console.log('Creating payment transaction...');
 
-      // Create payment transaction via edge function
-      const paymentBody: any = {
-        appointmentId,
-        amount,
-        paymentMethod,
-        phoneNumber: sanitizedPhoneNumber,
-        payerName: payerName.trim(),
-      };
-
-      // Only include email if it's not empty
-      if (payerEmail && payerEmail.trim()) {
-        paymentBody.payerEmail = payerEmail.trim();
-      }
-
-      const { data: result, error } = await invokeEdgeFunctionWithRetry(
-        'create-payment',
-        {
-          body: paymentBody,
-        },
-        3,
-        (attempt) => {
-          toast({
-            title: `Tentative ${attempt + 1}...`,
-            description: 'Nouvelle tentative de connexion au service de paiement.',
-            duration: 2000,
-          });
-        }
-      );
-
-      // Gérer les erreurs
-      if (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la création du paiement';
-        console.error('Payment creation error:', errorMessage);
-        console.log('Full error object:', JSON.stringify(error, null, 2));
-        
-        // Parse l'erreur pour récupérer les détails du paiement en cours (409)
-        let errorDetails: any = null;
-        
-        try {
-          // Essayer plusieurs patterns de parsing
-          // Pattern 1: JSON direct dans le message
-          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
-          if (jsonMatch) {
-            errorDetails = JSON.parse(jsonMatch[0]);
-            console.log('Parsed error details (pattern 1):', errorDetails);
-          }
-          
-          // Pattern 2: Après "Error, "
-          if (!errorDetails && errorMessage.includes('Error, {')) {
-            const afterError = errorMessage.substring(errorMessage.indexOf('Error, {') + 7);
-            const jsonEnd = afterError.indexOf('}') + 1;
-            if (jsonEnd > 0) {
-              errorDetails = JSON.parse(afterError.substring(0, jsonEnd));
-              console.log('Parsed error details (pattern 2):', errorDetails);
-            }
-          }
-          
-          // Pattern 3: Parse tout le message comme JSON
-          if (!errorDetails) {
-            try {
-              errorDetails = JSON.parse(errorMessage);
-              console.log('Parsed error details (pattern 3):', errorDetails);
-            } catch (e) {
-              // Pas JSON valide
-            }
-          }
-        } catch (parseError) {
-          console.error('Could not parse error details:', parseError);
-        }
-        
-        // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
-        const is409Error = errorDetails && (errorDetails.paymentId || errorDetails.existingPaymentStatus);
-        
-        if (is409Error) {
+      // POST /payments (ex Edge Function create-payment) : transaction FedaPay + enregistrement du paiement
+      let result: { transactionId?: string | number; paymentId?: string; paymentUrl?: string; token?: string } | null = null;
+      try {
+        result = await api.post('/payments', {
+          appointmentId,
+          amount,
+          paymentMethod,
+          phoneNumber: sanitizedPhoneNumber,
+          payerName: payerName.trim(),
+          ...(payerEmail && payerEmail.trim() ? { payerEmail: payerEmail.trim() } : {}),
+        }, { timeoutMs: 60_000 });
+      } catch (error) {
+        // 409 : un paiement est déjà en attente pour ce rendez-vous → proposer son annulation
+        if (isApiError(error, 409)) {
+          const body = (error.body ?? {}) as { paymentId?: string; message?: string; error?: string };
           console.log('409 error detected, showing cancel button');
           setIsProcessing(false);
           setPaymentStatus('error');
-          
+
           toast({
             title: '⏳ Paiement déjà en cours',
-            description: errorDetails.error || 'Un paiement est déjà en attente pour ce rendez-vous.',
+            description: error.message || 'Un paiement est déjà en attente pour ce rendez-vous.',
             variant: 'destructive',
             duration: 10000,
             action: (
@@ -316,20 +249,18 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                 size="sm"
                 onClick={async () => {
                   try {
-                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-                      body: { appointmentId }
-                    });
-                    
-                    if (cancelError) throw cancelError;
-                    
+                    const pendingId = body.paymentId ?? (await api.get<{ id: string; status: string }[]>('/payments', { query: { appointmentId } })).find((p) => ['initiated', 'pending'].includes(p.status))?.id;
+                    if (!pendingId) throw new Error('Paiement en attente introuvable');
+                    await api.post(`/payments/${pendingId}/cancel`, {});
+
                     toast({
                       title: '✅ Paiement annulé',
                       description: 'Vous pouvez maintenant créer un nouveau paiement.',
                     });
-                    
+
                     // Réinitialiser le formulaire
                     resetState();
-                    
+
                     // Rafraîchir la page après 1 seconde
                     setTimeout(() => window.location.reload(), 1000);
                   } catch (e) {
@@ -348,9 +279,9 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
           });
           return;
         }
-        
+
         // Autre erreur
-        throw new Error(errorMessage);
+        throw new Error(apiErrorMessage(error, 'Erreur lors de la création du paiement'));
       }
 
       // Vérifier que nous avons reçu le transactionId
@@ -534,18 +465,11 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
                     
                     // Forcer la synchronisation du statut avec FedaPay
                     console.log('Syncing payment status with FedaPay...');
-                    const { data: payments } = await supabase
-                      .from('payments')
-                      .select('id')
-                      .eq('appointment_id', appointmentId)
-                      .in('status', ['initiated', 'pending'])
-                      .order('created_at', { ascending: false })
-                      .limit(1);
-                    
-                    if (payments && payments.length > 0) {
-                      await supabase.functions.invoke('sync-payment-status', {
-                        body: { paymentId: payments[0].id }
-                      });
+                    const payments = (await api.get<{ id: string; status: string }[]>('/payments', { query: { appointmentId } }))
+                      .filter((p) => ['initiated', 'pending'].includes(p.status));
+
+                    if (payments.length > 0) {
+                      await api.post(`/payments/${payments[0].id}/sync`, {}).catch((e) => console.warn('sync-payment-status:', e));
                     }
                     
                     // Attendre encore un peu

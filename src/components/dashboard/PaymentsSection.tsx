@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CreditCard, Download, Edit, ShieldCheck, ExternalLink, Clock, Trash2, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Filter, Search, ArrowUpDown, Wallet, AlertCircle, Loader2, Copy, Check } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import type { Payment } from '@/types/payment';
 import { useState, useMemo } from 'react';
@@ -99,32 +99,18 @@ export function PaymentsSection() {
     queryFn: async () => {
       if (!user?.id) return { data: [], count: 0 };
 
-      let query = supabase
-        .from('payments')
-        .select('*', { count: 'exact' })
-        .eq('patient_id', user.id);
-
-      // Filtre par statut
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'success') {
-          query = query.in('status', ['paid', 'authorized']);
-        } else if (statusFilter === 'pending') {
-          query = query.in('status', ['initiated', 'pending']);
-        } else if (statusFilter === 'failed') {
-          query = query.in('status', ['failed', 'canceled', 'declined']);
-        }
-      }
-
-      // Tri
-      query = query.order('created_at', { ascending: sortOrder === 'asc' });
-
-      // Pagination
-      query = query.range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-      return { data: data || [], count: count || 0 };
+      // GET /payments : paiements de l'utilisateur (filtre, tri et pagination côté client)
+      const rows = await api.get<Payment[]>('/payments', { query: { limit: 200 } });
+      const statusSets: Record<string, string[]> = {
+        success: ['paid', 'authorized'],
+        pending: ['initiated', 'pending'],
+        failed: ['failed', 'canceled', 'declined'],
+      };
+      const filtered = rows
+        .filter((p) => p.patient_id === user.id)
+        .filter((p) => statusFilter === 'all' || (statusSets[statusFilter] ?? []).includes(p.status))
+        .sort((a, b) => (sortOrder === 'asc' ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at)));
+      return { data: filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize), count: filtered.length };
     },
     enabled: !!user?.id,
   });
@@ -257,15 +243,8 @@ export function PaymentsSection() {
         return;
       }
 
-      // Récupérer tous les paiements (max 1000)
-      const { data: allPayments, error } = await supabase
-        .from('payments')
-        .select('*')
-        .eq('patient_id', user?.id)
-        .order('created_at', { ascending: false })
-        .limit(1000);
-
-      if (error) throw error;
+      // Récupérer les paiements (au plus 200, limite de l'API)
+      const allPayments = (await api.get<Payment[]>('/payments', { query: { limit: 200 } })).filter((p) => p.patient_id === user?.id);
 
       if (!allPayments || allPayments.length === 0) {
         toast({
@@ -277,10 +256,10 @@ export function PaymentsSection() {
       }
 
       // Avertissement si limite atteinte
-      if (allPayments.length === 1000) {
+      if (allPayments.length === 200) {
         toast({
           title: 'Export limité',
-          description: 'Export limité aux 1000 paiements les plus récents',
+          description: 'Export limité aux 200 paiements les plus récents',
         });
       }
 

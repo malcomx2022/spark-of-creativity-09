@@ -11,8 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Clock, ShieldCheck, ExternalLink, ReceiptText, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { api, auth, errorMessage as apiErrorMessage, isApiError } from '@/lib/api';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import {
@@ -154,8 +153,7 @@ export function PaymentDialog({
   useEffect(() => {
     const loadFedaPayConfig = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
-        if (error) throw error;
+        const data = await api.get<{ publicKey: string | null; environment: string; provider?: string }>('/payments/config', { auth: false });
         setFedapayConfig(data);
         
         // ✅ CORRECTION: Ne plus pré-remplir de numéro de test en sandbox
@@ -194,16 +192,10 @@ export function PaymentDialog({
   // Charger le profil utilisateur pour pré-remplir les informations
   useEffect(() => {
     const loadUserProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('full_name, phone')
-          .eq('id', user.id)
-          .single()
-      );
+      const profile = await api.get<{ full_name?: string | null; phone?: string | null }>('/profile').catch(() => null);
 
       if (profile) {
         if (profile.full_name && !payerName) {
@@ -235,7 +227,7 @@ export function PaymentDialog({
       console.log(`Vérification d'un paiement existant pour ${context}:`, contextId);
 
       // ✅ CORRECTION P0-4: Récupérer l'utilisateur courant pour vérification d'autorisation
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const currentUser = auth.getUser();
       if (!currentUser) {
         console.error('❌ Utilisateur non authentifié');
         toast({
@@ -247,78 +239,37 @@ export function PaymentDialog({
         return;
       }
 
-      // Pour les rendez-vous, on vérifie via appointment_id
-      // Pour les séances de groupe, on vérifie via group_session_participants
-      let existingPayment = null;
+      // Pour les rendez-vous, on vérifie via GET /payments?appointmentId= (propriété vérifiée par l'API)
+      // Pour les séances de groupe, on vérifie l'inscription via GET /group-sessions/:id
+      let existingPayment: { id: string; fedapay_payment_url: string | null; fedapay_transaction_id: string | null; status: string; created_at: string; patient_id: string } | null = null;
 
       if (context === 'appointment') {
-        // ✅ CORRECTION P0-4: Vérifier que le rendez-vous appartient au patient actuel
-        const { data: appointment, error: apptError } = await withTimeout(
-          supabase
-            .from('appointments')
-            .select('id, patient_id')
-            .eq('id', contextId)
-            .single()
-        );
-
-        if (apptError || !appointment) {
-          console.error('❌ Rendez-vous non trouvé:', apptError);
+        // ✅ CORRECTION P0-4: le rendez-vous doit appartenir au patient (403/404 renvoyés par l'API)
+        try {
+          const appointment = await api.get<{ id: string; patient_id: string }>(`/appointments/${contextId}`);
+          if (appointment.patient_id !== currentUser.id) {
+            throw Object.assign(new Error('forbidden'), { status: 403 });
+          }
+        } catch (error) {
+          const forbidden = isApiError(error, 403) || (error as { status?: number })?.status === 403;
+          console.error(forbidden ? '❌ Tentative non autorisée' : '❌ Rendez-vous non trouvé:', error);
           toast({
-            title: 'Rendez-vous introuvable',
-            description: 'Ce rendez-vous n\'existe pas ou a été supprimé.',
+            title: forbidden ? 'Non autorisé' : 'Rendez-vous introuvable',
+            description: forbidden ? 'Vous n\'êtes pas autorisé à effectuer ce paiement.' : 'Ce rendez-vous n\'existe pas ou a été supprimé.',
             variant: 'destructive',
           });
           onOpenChange?.(false);
           return;
         }
 
-        // ✅ CORRECTION P0-4: Vérification d'autorisation - le patient doit être le propriétaire
-        if (appointment.patient_id !== currentUser.id) {
-          console.error('❌ Tentative non autorisée - patient_id mismatch:', {
-            appointmentPatientId: appointment.patient_id,
-            currentUserId: currentUser.id
-          });
-          toast({
-            title: 'Non autorisé',
-            description: 'Vous n\'êtes pas autorisé à effectuer ce paiement.',
-            variant: 'destructive',
-          });
-          onOpenChange?.(false);
-          return;
-        }
-
-        const { data } = await withTimeout(
-          supabase
-            .from('payments')
-            .select('id, fedapay_payment_url, fedapay_transaction_id, status, created_at, patient_id')
-            .eq('appointment_id', contextId)
-            .in('status', ['initiated', 'pending'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-        );
-
-        // ✅ CORRECTION P0-4: Vérifier aussi que le paiement appartient au bon patient
-        if (data && data.patient_id && data.patient_id !== currentUser.id) {
-          console.error('❌ Paiement appartient à un autre patient');
-          existingPayment = null; // Ignorer ce paiement
-        } else {
-          existingPayment = data;
-        }
+        const payments = await api.get<NonNullable<typeof existingPayment>[]>('/payments', { query: { appointmentId: contextId } }).catch(() => []);
+        existingPayment = payments
+          .filter((p) => ['initiated', 'pending'].includes(p.status) && p.patient_id === currentUser.id)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
       } else {
-        // Pour les séances de groupe, vérifier via participants
-        const { data: participant } = await withTimeout(
-          supabase
-            .from('group_session_participants')
-            .select('id, payment_status')
-            .eq('session_id', contextId)
-            .eq('patient_id', (await supabase.auth.getUser()).data.user?.id || '')
-            .eq('payment_status', 'pending')
-            .maybeSingle()
-        );
-        
-        if (participant) {
-          // Chercher le paiement associé via les events
+        // Pour les séances de groupe, vérifier l'inscription en attente
+        const detail = await api.get<{ my_registration?: { id: string; payment_status: string | null } | null }>(`/group-sessions/${contextId}`).catch(() => null);
+        if (detail?.my_registration?.payment_status === 'pending') {
           console.log('Participant en attente trouvé, séance déjà réservée');
           existingPayment = null; // Laisser continuer le flow normal
         }
@@ -338,27 +289,8 @@ export function PaymentDialog({
 
           // ✅ CORRECTION P1 #4: Nettoyer le paiement ET remettre le RDV en état cohérent
           try {
-            const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-              body: { appointmentId }
-            });
-
-            if (cancelError) {
-              console.error('Error canceling expired payment:', cancelError);
-              // Fallback: suppression simple + remise à jour du RDV
-              await supabase.from('payments').delete().eq('id', existingPayment.id);
-              
-              // ✅ CORRECTION P1 #4: Remettre le RDV en statut cohérent
-              if (context === 'appointment' && appointmentId) {
-                await supabase
-                  .from('appointments')
-                  .update({ 
-                    status: 'awaiting_practitioner',
-                    payment_expires_at: null 
-                  })
-                  .eq('id', appointmentId)
-                  .eq('status', 'pending_payment'); // Seulement si en pending_payment
-              }
-            }
+            // POST /payments/:id/cancel remet aussi le rendez-vous en attente de praticien
+            await api.post(`/payments/${existingPayment.id}/cancel`, {});
 
             toast({
               title: 'Paiement expiré',
@@ -486,15 +418,7 @@ export function PaymentDialog({
           console.log('⚠️ Paiement incomplet détecté, annulation...');
 
           try {
-            const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-              body: { appointmentId }
-            });
-
-            if (cancelError) {
-              console.error('Error canceling incomplete payment:', cancelError);
-              // Fallback: suppression simple
-              await supabase.from('payments').delete().eq('id', existingPayment.id);
-            }
+            await api.post(`/payments/${existingPayment.id}/cancel`, {});
 
             toast({
               title: 'Paiement incomplet',
@@ -536,22 +460,9 @@ export function PaymentDialog({
     errorDetails?: Record<string, any>
   ) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      await supabase.from('payment_attempts').insert({
-        appointment_id: context === 'appointment' ? contextId : null,
-        user_id: session.user.id,
-        attempt_number: attemptNumber + 1,
-        status,
-        error_type: errorType || null,
-        error_message: errorMessage || null,
-        error_details: errorDetails || null,
-        payment_method: paymentMethod,
-        amount,
-        payment_id: paymentId || null,
-      });
-
+      // Les tentatives sont journalisées côté API (payment_attempts) lors de POST /payments ;
+      // on ne conserve ici que le compteur local pour l'affichage.
+      void status; void errorMessage; void errorType; void errorDetails;
       setAttemptNumber(prev => prev + 1);
     } catch (error) {
       console.error('Error recording payment attempt:', error);
@@ -741,113 +652,45 @@ export function PaymentDialog({
     await recordPaymentAttempt('pending');
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
+      if (!auth.getSession()) {
         throw new Error('Vous devez être connecté pour effectuer un paiement');
       }
 
       console.log('Initiating payment:', { contextId, context, amount, paymentMethod });
 
-      // ✅ Appeler l'edge function appropriée selon le contexte
-      let edgeFunctionName: string;
-      let edgeFunctionBody: any;
-
-      if (context === 'appointment') {
-        edgeFunctionName = 'create-payment';
-        edgeFunctionBody = {
-          appointmentId: contextId,
-          amount,
-          paymentMethod,
-          phoneNumber: sanitizedPhoneNumber,
-          payerName: payerName.trim(),
-          payerEmail: payerEmail.trim() || undefined,
-        };
-      } else {
-        edgeFunctionName = 'register-group-session';
-        edgeFunctionBody = {
-          sessionId: contextId,
-          patientId: session.user.id,
-          amount,
-          paymentMethod,
-          phoneNumber: sanitizedPhoneNumber,
-        };
-      }
-
-      // Appel avec retry et notification à chaque tentative
-      const { data: result, error } = await invokeEdgeFunctionWithRetry(
-        edgeFunctionName,
-        { body: edgeFunctionBody },
-        3, // 3 tentatives max
-        (attempt, retryError) => {
-          // Toast d'information lors des retries
-          toast({
-            title: `Tentative ${attempt + 1}...`,
-            description: 'Nouvelle tentative de connexion au service de paiement.',
-            duration: 2000,
-          });
-          
-          // Enregistrer la tentative échouée
-          recordPaymentAttempt('failed', retryError.message, 'network_error', {
-            attempt: attempt + 1,
-            error: retryError.message,
-          });
-        }
-      );
-
-      if (error) {
-        console.error('Supabase function error:', error);
-        console.log('Full error object:', JSON.stringify(error, null, 2));
-        await recordPaymentAttempt('failed', error.message, 'api_error', { error: error.message });
+      // ✅ Route de l'API selon le contexte (ex create-payment / register-group-session)
+      let result: unknown;
+      try {
+        result = context === 'appointment'
+          ? await api.post('/payments', {
+              appointmentId: contextId,
+              amount,
+              paymentMethod,
+              phoneNumber: sanitizedPhoneNumber,
+              payerName: payerName.trim(),
+              payerEmail: payerEmail.trim() || undefined,
+            }, { timeoutMs: 60_000 })
+          : await api.post(`/group-sessions/${contextId}/register`, {
+              paymentMethod,
+              phoneNumber: sanitizedPhoneNumber,
+              payerName: payerName.trim() || undefined,
+              payerEmail: payerEmail.trim() || undefined,
+            }, { timeoutMs: 60_000 });
+      } catch (error) {
+        console.error('API payment error:', error);
+        await recordPaymentAttempt('failed', apiErrorMessage(error), 'api_error', { error: apiErrorMessage(error) });
         setIsCreatingPayment(false);
-        
-        // Parse l'erreur pour récupérer les détails du paiement en cours (409)
-        let errorDetails: any = null;
-        const errorMessage = error.message || String(error);
-        
-        try {
-          // Essayer plusieurs patterns de parsing
-          // Pattern 1: JSON direct dans le message
-          const jsonMatch = errorMessage.match(/\{[^}]*"error"[^}]*\}/);
-          if (jsonMatch) {
-            errorDetails = JSON.parse(jsonMatch[0]);
-            console.log('Parsed error details (pattern 1):', errorDetails);
-          }
-          
-          // Pattern 2: Après "Error, "
-          if (!errorDetails && errorMessage.includes('Error, {')) {
-            const afterError = errorMessage.substring(errorMessage.indexOf('Error, {') + 7);
-            const jsonEnd = afterError.indexOf('}') + 1;
-            if (jsonEnd > 0) {
-              errorDetails = JSON.parse(afterError.substring(0, jsonEnd));
-              console.log('Parsed error details (pattern 2):', errorDetails);
-            }
-          }
-          
-          // Pattern 3: Parse tout le message comme JSON
-          if (!errorDetails) {
-            try {
-              errorDetails = JSON.parse(errorMessage);
-              console.log('Parsed error details (pattern 3):', errorDetails);
-            } catch (e) {
-              // Pas JSON valide
-            }
-          }
-        } catch (parseError) {
-          console.error('Could not parse error details:', parseError);
-        }
-        
-        // Si c'est une erreur 409 (paiement en cours), afficher un bouton d'annulation
-        const is409Error = errorDetails && (errorDetails.paymentId || errorDetails.existingPaymentStatus);
-        
-        if (is409Error) {
+
+        // 409 : un paiement est déjà en attente → proposer son annulation
+        if (isApiError(error, 409)) {
+          const body = (error.body ?? {}) as { paymentId?: string };
           console.log('409 error detected, showing cancel button');
           setIsProcessing(false);
           setPaymentStatus('error');
-          
+
           toast({
             title: 'Paiement en cours',
-            description: errorDetails.error || 'Un paiement est déjà en attente',
+            description: error.message || 'Un paiement est déjà en attente',
             variant: 'destructive',
             duration: 10000,
             action: (
@@ -856,11 +699,11 @@ export function PaymentDialog({
                 size="sm"
                 onClick={async () => {
                   try {
-                    const { error: cancelError } = await supabase.functions.invoke('cancel-pending-payment', {
-                      body: { appointmentId }
-                    });
-                    
-                    if (cancelError) throw cancelError;
+                    const pendingId = body.paymentId ?? (context === 'appointment'
+                      ? (await api.get<{ id: string; status: string }[]>('/payments', { query: { appointmentId: contextId } })).find((p) => ['initiated', 'pending'].includes(p.status))?.id
+                      : undefined);
+                    if (!pendingId) throw new Error('Paiement en attente introuvable');
+                    await api.post(`/payments/${pendingId}/cancel`, {});
                     
                     toast({
                       title: 'Paiement annulé',
@@ -886,8 +729,8 @@ export function PaymentDialog({
           });
           return;
         }
-        
-        throw error;
+
+        throw new Error(apiErrorMessage(error, 'Erreur lors de la création du paiement'));
       }
 
       console.log('Payment response received:', result);
@@ -1178,11 +1021,13 @@ export function PaymentDialog({
         }
 
         // Query payment status from database
-        const { data: payment, error } = await supabase
-          .from('payments')
-          .select('status')
-          .eq('id', paymentId)
-          .single();
+        let payment: { status: string } | null = null;
+        let error: unknown = null;
+        try {
+          payment = await api.get<{ status: string }>(`/payments/${paymentId}`);
+        } catch (e) {
+          error = e;
+        }
 
         if (error) {
           console.error('Error polling payment:', error);
