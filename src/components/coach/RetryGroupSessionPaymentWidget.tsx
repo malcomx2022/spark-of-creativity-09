@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Calendar, Clock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api, auth } from '@/lib/api';
 import { useRetryGroupSessionPayment } from '@/hooks/useRetryGroupSessionPayment';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
@@ -58,8 +58,7 @@ export function RetryGroupSessionPaymentWidget({
   useEffect(() => {
     const loadFedaPayConfig = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('get-fedapay-config');
-        if (error) throw error;
+        const data = await api.get<{ publicKey: string | null; environment: string; provider?: string }>('/payments/config', { auth: false });
         setFedapayConfig(data);
 
         // ✅ Bug #1 FIX: NE PAS pré-remplir le numéro de test - même en sandbox
@@ -87,14 +86,9 @@ export function RetryGroupSessionPaymentWidget({
   // Load user profile data
   useEffect(() => {
     const loadUserProfile = async () => {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
-      if (authSession) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, phone')
-          .eq('id', authSession.user.id)
-          .single();
-        
+      if (auth.getUser()) {
+        const profile = await api.get<{ full_name?: string | null; phone?: string | null }>('/profile').catch(() => null);
+
         if (profile) {
           if (profile.full_name) setPayerName(profile.full_name);
           if (profile.phone) setPhoneNumber(profile.phone);

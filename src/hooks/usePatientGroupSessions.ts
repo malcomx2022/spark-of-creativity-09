@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
-import { withTimeout } from '@/lib/network-timeout';
+import { api, onTableChange } from '@/lib/api';
 
 export interface PatientGroupSession {
   id: string;
@@ -32,98 +31,25 @@ export interface PatientGroupSession {
   };
 }
 
+/** Inscriptions du patient connecté avec séance et coach : `GET /api/group-sessions/mine`. */
 export function usePatientGroupSessions(patientId?: string, page = 0, pageSize = 20) {
   const query = useQuery({
     queryKey: ['patient-group-sessions', patientId, page],
     queryFn: async () => {
-      if (!patientId) return { data: [], count: 0 };
-
-      const { data, error, count } = await withTimeout(
-        supabase
-          .from('group_session_participants')
-          .select(`
-            id,
-            session_id,
-            patient_id,
-            joined_at,
-            payment_status,
-            session:group_sessions!inner(
-              id,
-              session_name,
-              session_type,
-              max_participants,
-              min_participants,
-              current_participants,
-              scheduled_date,
-              start_time,
-              end_time,
-              price_per_person,
-              location,
-              status,
-              description,
-              coach:practitioners!inner(
-                id,
-                name,
-                image,
-                specialty
-              )
-            )
-          `, { count: 'exact' })
-          .eq('patient_id', patientId)
-          .order('joined_at', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-      );
-
-      if (error) {
-        console.error('Error fetching patient group sessions:', error);
-        throw error;
-      }
-
-      // Transformer les données pour avoir une structure plus propre
-      const transformedData = data.map(item => ({
-        id: item.id,
-        session_id: item.session_id,
-        patient_id: item.patient_id,
-        joined_at: item.joined_at,
-        payment_status: item.payment_status,
-        session: {
-          ...(Array.isArray(item.session) ? item.session[0] : item.session),
-          coach: Array.isArray(item.session) 
-            ? (Array.isArray(item.session[0]?.coach) ? item.session[0].coach[0] : item.session[0]?.coach)
-            : (Array.isArray(item.session?.coach) ? item.session.coach[0] : item.session?.coach)
-        }
-      })) as PatientGroupSession[];
-
-      return { data: transformedData, count: count || 0 };
+      if (!patientId) return { data: [] as PatientGroupSession[], count: 0 };
+      return api.get<{ data: PatientGroupSession[]; count: number }>('/group-sessions/mine', { query: { page, limit: pageSize } });
     },
     enabled: !!patientId
   });
 
-  // Écouter les mises à jour en temps réel
+  // Écouter les mises à jour en temps réel (inscriptions, paiements, séances)
+  const refetch = query.refetch;
   useEffect(() => {
     if (!patientId) return;
-
-    const channel = supabase
-      .channel('patient-group-sessions-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'group_session_participants',
-          filter: `patient_id=eq.${patientId}`
-        },
-        (payload) => {
-          console.log('Realtime update for group sessions:', payload);
-          query.refetch();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [patientId]);
+    return onTableChange(['group_session_participants', 'group_sessions', 'payments'], () => {
+      void refetch();
+    });
+  }, [patientId, refetch]);
 
   return query;
 }

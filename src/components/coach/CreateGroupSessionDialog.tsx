@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { api, errorMessage } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { GroupSessionForm, GroupSessionFormData } from "./GroupSessionForm";
 import { sessionFormSchema, sanitizeSessionFormData, MIN_SESSION_PRICE } from "@/lib/session-validation";
@@ -79,56 +79,20 @@ export function CreateGroupSessionDialog({ coachId }: CreateGroupSessionDialogPr
         return;
       }
 
-      // Check for duplicate sessions (same date, time, location)
-      const { data: existingSessions, error: checkError } = await withTimeout(
-        supabase
-          .from("group_sessions")
-          .select("id, session_name")
-          .eq("coach_id", coachId)
-          .eq("scheduled_date", validationResult.data.scheduled_date)
-          .eq("start_time", validationResult.data.start_time)
-          .neq("status", "annulee")
-      );
-
-      if (checkError) throw checkError;
-
-      if (existingSessions && existingSessions.length > 0) {
-        toast({
-          title: "Séance en conflit",
-          description: `Vous avez déjà une séance "${existingSessions[0].session_name}" prévue à cette date et heure.`,
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Insert the session
-      const { error } = await withTimeout(
-        supabase
-          .from("group_sessions")
-          .insert({
-            coach_id: coachId,
-            session_name: validationResult.data.session_name,
-            session_type: validationResult.data.session_type,
-            max_participants: validationResult.data.max_participants,
-            min_participants: validationResult.data.min_participants,
-            scheduled_date: validationResult.data.scheduled_date,
-            start_time: validationResult.data.start_time,
-            end_time: validationResult.data.end_time,
-            price_per_person: validationResult.data.price_per_person,
-            location: validationResult.data.location,
-            description: validationResult.data.description || null,
-            status: 'planifiee'
-          })
-      );
-
-      if (error) {
-        // Handle specific Supabase errors
-        if (error.message.includes('coach_sportif')) {
-          throw new Error("Seuls les coachs sportifs peuvent créer des séances de groupe");
-        }
-        throw error;
-      }
+      // Conflit de créneau, type de praticien et bornes de prix vérifiés par l'API (409 / 403 / 400)
+      void coachId;
+      await api.post('/group-sessions', {
+        sessionName: validationResult.data.session_name,
+        sessionType: validationResult.data.session_type,
+        maxParticipants: validationResult.data.max_participants,
+        minParticipants: validationResult.data.min_participants,
+        scheduledDate: validationResult.data.scheduled_date,
+        startTime: validationResult.data.start_time,
+        endTime: validationResult.data.end_time,
+        pricePerPerson: validationResult.data.price_per_person,
+        location: validationResult.data.location,
+        description: validationResult.data.description || null,
+      });
 
       toast({
         title: "Séance créée !",

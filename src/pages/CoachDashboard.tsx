@@ -26,12 +26,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api, errorMessage, isApiError } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useGroupSessions } from "@/hooks/useGroupSessions";
 import { usePractitionerAppointments, useMutateAppointment } from "@/hooks/useAppointments";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
 import { COACH_REVENUE_RATE } from "@/lib/session-validation";
 
 // Lazy load tabs
@@ -59,15 +58,13 @@ export default function CoachDashboard() {
     queryFn: async () => {
       if (!user?.id) return null;
 
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('practitioner_type', 'coach_sportif')
-        .single();
-
-      if (error) throw error;
-      return data;
+      try {
+        const me = await api.get<{ id: string; name: string; practitioner_type: string | null; kyc_status?: string | null; can_accept_missions?: boolean | null; [key: string]: unknown }>('/practitioners/me');
+        return me.practitioner_type === 'coach_sportif' ? me : null;
+      } catch (error) {
+        if (isApiError(error, 404)) return null;
+        throw error;
+      }
     },
     enabled: !!user?.id,
   });
@@ -160,12 +157,11 @@ export default function CoachDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { error, data } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
-        body: { appointmentId, action: 'accept' }
-      });
-
-      if (error) {
-        if (error.message?.includes('déjà été traité')) {
+      // POST /appointments/:id/respond : passage en pending_payment et notification du patient
+      try {
+        await api.post(`/appointments/${appointmentId}/respond`, { action: 'accept' });
+      } catch (error) {
+        if (isApiError(error, 409)) {
           toast({
             title: 'Rendez-vous déjà traité',
             description: 'Ce rendez-vous a déjà été accepté ou refusé.',
@@ -189,7 +185,7 @@ export default function CoachDashboard() {
       }
       toast({
         title: 'Erreur',
-        description: 'Impossible d\'accepter le rendez-vous.',
+        description: errorMessage(error, 'Impossible d\'accepter le rendez-vous.'),
         variant: 'destructive'
       });
     } finally {
@@ -202,12 +198,11 @@ export default function CoachDashboard() {
     
     setProcessingAppointment(appointmentId);
     try {
-      const { error } = await invokeEdgeFunctionWithRetry('handle-appointment-response', {
-        body: { appointmentId, action: 'reject' }
-      });
-
-      if (error) {
-        if (error.message?.includes('déjà été traité')) {
+      // L'API cherche un remplaçant et notifie le patient ; on relit ensuite le rendez-vous
+      try {
+        await api.post(`/appointments/${appointmentId}/respond`, { action: 'reject' });
+      } catch (error) {
+        if (isApiError(error, 409)) {
           toast({
             title: 'Rendez-vous déjà traité',
             description: 'Ce rendez-vous a déjà été accepté ou refusé.',
@@ -217,10 +212,7 @@ export default function CoachDashboard() {
         throw error;
       }
 
-      await mutateAppointment.mutateAsync({
-        id: appointmentId,
-        data: { status: 'rejected' }
-      });
+      await mutateAppointment.mutateAsync({ id: appointmentId, action: 'refresh' });
 
       toast({
         title: 'Rendez-vous refusé',
@@ -232,7 +224,7 @@ export default function CoachDashboard() {
       }
       toast({
         title: 'Erreur',
-        description: 'Impossible de refuser le rendez-vous.',
+        description: errorMessage(error, 'Impossible de refuser le rendez-vous.'),
         variant: 'destructive'
       });
     } finally {

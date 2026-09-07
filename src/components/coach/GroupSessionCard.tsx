@@ -6,7 +6,7 @@ import { Calendar, Clock, MapPin, Users, Loader2, CheckCircle, Copy, Check } fro
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { RegisterSessionDialog } from "./RegisterSessionDialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api, auth } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
 
@@ -68,64 +68,34 @@ export function GroupSessionCard({ session, onEdit, onCancel, onConfirm, isCoach
     }
   };
 
-  // ✅ Bug #3 FIX: Récupérer les statistiques de participants pour le coach
+  // ✅ Statistiques de participants (coach) et inscription de l'utilisateur : GET /group-sessions/:id
   useEffect(() => {
-    const fetchParticipantStats = async () => {
-      if (!isCoachView) return;
-
-      try {
-        const { data: participants } = await supabase
-          .from('group_session_participants')
-          .select('payment_status')
-          .eq('session_id', session.id)
-          .in('payment_status', ['paid', 'confirmed', 'pending']);
-
-        if (participants) {
-          const paid = participants.filter(p => p.payment_status === 'paid' || p.payment_status === 'confirmed').length;
-          const pending = participants.filter(p => p.payment_status === 'pending').length;
-          setParticipantStats({ paid, pending });
-        }
-      } catch (error) {
-        console.error('Erreur récupération stats participants:', error);
-      }
-    };
-
-    fetchParticipantStats();
-  }, [session.id, isCoachView, session.current_participants]);
-
-  // ✅ Vérifier si l'utilisateur est déjà inscrit à cette séance
-  useEffect(() => {
-    const checkRegistration = async () => {
-      if (isCoachView) {
+    let cancelled = false;
+    const load = async () => {
+      if (!isCoachView && !auth.getSession()) {
         setIsCheckingRegistration(false);
         return;
       }
-
       try {
-        const { data: { session: authSession } } = await supabase.auth.getSession();
-        if (!authSession) {
-          setIsCheckingRegistration(false);
-          return;
+        const detail = await api.get<{ participants_paid?: number; participants_pending?: number; my_registration?: { id: string; payment_status: string | null } | null }>(`/group-sessions/${session.id}`);
+        if (cancelled) return;
+        if (isCoachView) {
+          setParticipantStats({ paid: detail.participants_paid ?? 0, pending: detail.participants_pending ?? 0 });
+        } else {
+          const status = detail.my_registration?.payment_status;
+          setIsAlreadyRegistered(!!detail.my_registration && ['paid', 'confirmed', 'pending'].includes(status ?? ''));
         }
-
-        const { data: existingParticipant } = await supabase
-          .from('group_session_participants')
-          .select('id, payment_status')
-          .eq('session_id', session.id)
-          .eq('patient_id', authSession.user.id)
-          .in('payment_status', ['paid', 'confirmed', 'pending'])
-          .maybeSingle();
-
-        setIsAlreadyRegistered(!!existingParticipant);
       } catch (error) {
-        console.error('Erreur vérification inscription:', error);
+        console.error('Erreur récupération de la séance:', error);
       } finally {
-        setIsCheckingRegistration(false);
+        if (!cancelled) setIsCheckingRegistration(false);
       }
     };
-
-    checkRegistration();
-  }, [session.id, isCoachView]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [session.id, isCoachView, session.current_participants]);
   
   const statusColors = {
     planifiee: "bg-blue-500",
