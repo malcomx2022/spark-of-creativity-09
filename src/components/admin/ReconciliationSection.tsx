@@ -5,14 +5,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { api, errorMessage } from "@/lib/api";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, Calendar, Download, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { formatAmount } from "@/lib/payment-config";
-import { withTimeout } from "@/lib/network-timeout";
 
 interface Anomaly {
   type: 'missing_in_db' | 'missing_in_fedapay' | 'amount_mismatch' | 'status_mismatch';
@@ -55,16 +53,11 @@ export default function ReconciliationSection() {
   const { data: reports, isLoading } = useQuery({
     queryKey: ["reconciliation-reports"],
     queryFn: async () => {
-      const { data, error } = await withTimeout(
-        supabase
-          .from("reconciliation_reports")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(20)
+      const data = await api.get<Array<Omit<ReconciliationReport, 'anomalies' | 'recommendations'> & { anomalies: unknown; recommendations: unknown }>>(
+        '/admin/finance/reconciliation',
+        { query: { limit: 20 } },
       );
-      
-      if (error) throw error;
-      return (data || []).map(report => ({
+      return data.map(report => ({
         ...report,
         anomalies: (report.anomalies as unknown as Anomaly[]) || [],
         recommendations: (report.recommendations as unknown as string[]) || [],
@@ -75,15 +68,8 @@ export default function ReconciliationSection() {
   // Run reconciliation mutation
   const reconcileMutation = useMutation({
     mutationFn: async ({ period_start, period_end }: { period_start?: string; period_end?: string }) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-
-      const response = await invokeEdgeFunctionWithRetry('reconcile-fedapay', {
-        body: { period_start, period_end },
-      });
-
-      if (response.error) throw response.error;
-      return response.data;
+      // Réconciliation FedaPay ↔ base (ex reconcile-fedapay), rapport persisté par l'API
+      return api.post('/admin/finance/reconciliation', { periodStart: period_start, periodEnd: period_end }, { timeoutMs: 120_000 });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reconciliation-reports"] });
@@ -92,10 +78,10 @@ export default function ReconciliationSection() {
         description: "Le rapport de réconciliation a été généré avec succès.",
       });
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error, 'Réconciliation impossible'),
         variant: "destructive",
       });
     },

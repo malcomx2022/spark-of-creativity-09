@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Loader2, Search, Eye, Phone, Calendar, MapPin, Filter, RefreshCw, User, UserX, Download, TrendingUp, Info, Monitor } from 'lucide-react';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface SearchActivityLog {
@@ -24,6 +24,25 @@ interface SearchActivityLog {
   user_agent: string | null;
   created_at: string;
 }
+
+/** Statistiques de GET /admin/search-activity (calculées sur toute la période). */
+interface SearchActivityStats {
+  total: number;
+  authenticated: number;
+  anonymous: number;
+  appointmentClicks: number;
+  contactClicks: number;
+  viewDetails: number;
+  conversionRate: number;
+}
+
+interface SearchActivityPage {
+  data: SearchActivityLog[];
+  count: number;
+  stats: SearchActivityStats;
+}
+
+const EMPTY_STATS: SearchActivityStats = { total: 0, authenticated: 0, anonymous: 0, appointmentClicks: 0, contactClicks: 0, viewDetails: 0, conversionRate: 0 };
 
 const actionTypeLabels: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   view_search_page: { label: 'Vue page', icon: <Eye className="h-3 w-3" />, color: 'bg-gray-100 text-gray-800' },
@@ -47,40 +66,27 @@ export default function SearchActivitySection() {
   const [viewingLog, setViewingLog] = useState<SearchActivityLog | null>(null);
   const limit = 50;
 
-  const { data: logs, isLoading, refetch, isRefetching } = useQuery({
+  const { data: activity, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['search-activity-logs', filterActionType, filterUserType, dateRange],
     queryFn: async () => {
-      let query = (supabase as any)
-        .from('search_activity_logs')
-        .select('*')
-        .gte('created_at', subDays(new Date(), parseInt(dateRange)).toISOString())
-        .order('created_at', { ascending: false })
-        .limit(200);
-
-      if (filterActionType !== 'all') {
-        query = query.eq('action_type', filterActionType);
-      }
-
-      if (filterUserType === 'authenticated') {
-        query = query.not('user_id', 'is', null);
-      } else if (filterUserType === 'anonymous') {
-        query = query.is('user_id', null);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as SearchActivityLog[];
+      // 200 dernières entrées de la période (2 pages de 100, maximum de l'API) ; statistiques sur toute la période
+      const query = {
+        days: parseInt(dateRange),
+        limit: 100,
+        ...(filterActionType !== 'all' ? { actionType: filterActionType } : {}),
+        ...(filterUserType !== 'all' ? { userType: filterUserType } : {}),
+      };
+      const first = await api.get<SearchActivityPage>('/admin/search-activity', { query: { ...query, page: 0 } });
+      const logs = first.count > 100
+        ? [...first.data, ...(await api.get<SearchActivityPage>('/admin/search-activity', { query: { ...query, page: 1 } })).data]
+        : first.data;
+      return { logs, stats: first.stats };
     },
   });
+  const logs = activity?.logs;
 
   // Stats
-  const stats = {
-    total: logs?.length || 0,
-    authenticated: logs?.filter(l => l.user_id).length || 0,
-    anonymous: logs?.filter(l => !l.user_id).length || 0,
-    appointmentClicks: logs?.filter(l => l.action_type === 'click_appointment').length || 0,
-    contactClicks: logs?.filter(l => l.action_type === 'click_contact').length || 0,
-  };
+  const stats = activity?.stats ?? EMPTY_STATS;
 
   const filteredLogs = logs?.filter(log => {
     if (searchSession && !log.session_id.toLowerCase().includes(searchSession.toLowerCase())) {
@@ -99,15 +105,12 @@ export default function SearchActivitySection() {
   const totalPages = Math.ceil(filteredLogs.length / limit);
   const paginatedLogs = filteredLogs.slice((page - 1) * limit, page * limit);
 
-  // Taux de conversion
-  const viewDetails = logs?.filter(l => l.action_type === 'view_practitioner_details').length || 0;
-  const conversionRate = viewDetails > 0
-    ? Math.round((stats.appointmentClicks / viewDetails) * 100)
-    : 0;
+  // Taux de conversion (clics RDV / vues de détails), calculé par l'API
+  const conversionRate = stats.conversionRate;
 
   // Export CSV
   const handleExport = () => {
-    const escapeCSV = (val: any) => {
+    const escapeCSV = (val: unknown) => {
       if (val === null || val === undefined) return '';
       const str = String(val);
       if (str.includes(',') || str.includes('"') || str.includes('\n')) {

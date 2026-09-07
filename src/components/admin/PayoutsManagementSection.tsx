@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
+import { api, errorMessage } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,11 +24,39 @@ interface BatchDetails {
     id: string;
     amount: number;
     status: string;
-    practitioners: {
-      name: string;
-      phone: string;
-    };
+    practitioner_name: string | null;
+    practitioner_phone: string | null;
   }>;
+}
+
+/** Ligne de GET /admin/finance/balances (praticien aplati). */
+interface PractitionerBalanceRow {
+  practitioner_id: string;
+  balance_available: number;
+  balance_pending: number;
+  balance_on_hold: number;
+  currency: string;
+  last_payout_at: string | null;
+  name: string;
+  phone: string | null;
+}
+
+interface PayoutBatch {
+  id: string;
+  status: string;
+  total_amount: number;
+  practitioners_count: number;
+  payment_method: string;
+  created_at: string;
+  processed_at: string | null;
+}
+
+interface ProcessingResults {
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  failed: Array<{ practitionerId: string; name: string; error: string }>;
+  skipped: Array<{ practitionerId: string; name: string; reason: string }>;
 }
 
 export function PayoutsManagementSection() {
@@ -37,20 +64,15 @@ export function PayoutsManagementSection() {
   const [paymentMethod, setPaymentMethod] = useState<string>("momo");
   const [selectedBatch, setSelectedBatch] = useState<BatchDetails | null>(null);
   const [showBatchDetails, setShowBatchDetails] = useState(false);
-  const [processingResult, setProcessingResult] = useState<any>(null);
+  const [processingResult, setProcessingResult] = useState<ProcessingResults | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch practitioner balances
   const { data: balances, isLoading, refetch: refetchBalances } = useQuery({
     queryKey: ['practitioner-balances'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioner_balances')
-        .select('*, practitioners!inner(id, name, phone)')
-        .order('balance_available', { ascending: false });
-      
-      if (error) throw error;
-      return data?.filter(b => b.practitioners) || [];
+      const rows = await api.get<PractitionerBalanceRow[]>('/admin/finance/balances');
+      return [...rows].sort((a, b) => b.balance_available - a.balance_available);
     }
   });
 
@@ -58,29 +80,18 @@ export function PayoutsManagementSection() {
   const { data: batches, refetch: refetchBatches } = useQuery({
     queryKey: ['payout-batches'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payout_batches')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
-      if (error) throw error;
-      return data;
+      const res = await api.get<{ data: PayoutBatch[] }>('/admin/finance/payout-batches', { query: { limit: 20 } });
+      return res.data;
     }
   });
 
   // Create payout batch mutation
   const createBatchMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('create-payout-batch', {
-        body: {
-          practitionerIds: selectedPractitioners,
-          paymentMethod
-        }
+      return api.post<{ batchId: string; totalAmount: number; practitionersCount: number }>('/admin/finance/payout-batches', {
+        practitionerIds: selectedPractitioners,
+        paymentMethod,
       });
-
-      if (error) throw error;
-      return data as { batchId: string; totalAmount: number; practitionersCount: number };
     },
     onSuccess: (data) => {
       toast.success(`Lot créé: ${data.practitionersCount} praticiens, ${data.totalAmount.toLocaleString()} XOF`);
@@ -88,28 +99,16 @@ export function PayoutsManagementSection() {
       queryClient.invalidateQueries({ queryKey: ['payout-batches'] });
       queryClient.invalidateQueries({ queryKey: ['practitioner-balances'] });
     },
-    onError: (error: Error) => {
-      toast.error('Erreur: ' + error.message);
+    onError: (error: unknown) => {
+      toast.error('Erreur: ' + errorMessage(error, 'création du lot impossible'));
     }
   });
-
-  interface ProcessingResults {
-    successCount: number;
-    failedCount: number;
-    skippedCount: number;
-    failed: Array<{ practitionerId: string; name: string; error: string }>;
-    skipped: Array<{ practitionerId: string; name: string; reason: string }>;
-  }
 
   // Process batch mutation
   const processBatchMutation = useMutation({
     mutationFn: async (batchId: string) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry('process-payout-batch', {
-        body: { batchId }
-      });
-
-      if (error) throw error;
-      return data as { success: boolean; batchId: string; status: string; results: ProcessingResults };
+      // Un transfert FedaPay par reversement : délai étendu
+      return api.post<{ success: boolean; batchId: string; status: string; results: ProcessingResults }>(`/admin/finance/payout-batches/${batchId}/process`, undefined, { timeoutMs: 180_000 });
     },
     onSuccess: (data) => {
       setProcessingResult(data.results);
@@ -117,32 +116,15 @@ export function PayoutsManagementSection() {
       refetchBatches();
       refetchBalances();
     },
-    onError: (error: Error) => {
-      toast.error('Erreur de traitement: ' + error.message);
+    onError: (error: unknown) => {
+      toast.error('Erreur de traitement: ' + errorMessage(error, 'traitement du lot impossible'));
     }
   });
 
   // Fetch batch details
   const fetchBatchDetails = async (batchId: string) => {
-    const { data: batch, error: batchError } = await supabase
-      .from('payout_batches')
-      .select('*')
-      .eq('id', batchId)
-      .single();
-
-    if (batchError) throw batchError;
-
-    const { data: payouts, error: payoutsError } = await supabase
-      .from('practitioner_payouts')
-      .select('*, practitioners!inner(name, phone)')
-      .eq('batch_id', batchId);
-
-    if (payoutsError) throw payoutsError;
-
-    setSelectedBatch({
-      ...batch,
-      payouts: payouts || []
-    });
+    const batch = await api.get<BatchDetails>(`/admin/finance/payout-batches/${batchId}`);
+    setSelectedBatch(batch);
     setShowBatchDetails(true);
     setProcessingResult(null);
   };
@@ -303,8 +285,8 @@ export function PayoutsManagementSection() {
                         disabled={balance.balance_available === 0}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">{balance.practitioners?.name || 'N/A'}</TableCell>
-                    <TableCell>{balance.practitioners?.phone || 'Non renseigné'}</TableCell>
+                    <TableCell className="font-medium">{balance.name || 'N/A'}</TableCell>
+                    <TableCell>{balance.phone || 'Non renseigné'}</TableCell>
                     <TableCell className="text-right font-semibold text-green-600">
                       {balance.balance_available.toLocaleString()} XOF
                     </TableCell>
@@ -463,7 +445,7 @@ export function PayoutsManagementSection() {
                       <div className="mt-2 text-sm">
                         <p className="font-medium">Ignorés:</p>
                         <ul className="list-disc list-inside">
-                          {processingResult.skipped.map((s: any, i: number) => (
+                          {processingResult.skipped.map((s, i) => (
                             <li key={i}>{s.name}: {s.reason}</li>
                           ))}
                         </ul>
@@ -486,8 +468,8 @@ export function PayoutsManagementSection() {
                 <TableBody>
                   {selectedBatch.payouts?.map((payout) => (
                     <TableRow key={payout.id}>
-                      <TableCell className="font-medium">{payout.practitioners?.name || 'N/A'}</TableCell>
-                      <TableCell>{payout.practitioners?.phone || 'Non renseigné'}</TableCell>
+                      <TableCell className="font-medium">{payout.practitioner_name || 'N/A'}</TableCell>
+                      <TableCell>{payout.practitioner_phone || 'Non renseigné'}</TableCell>
                       <TableCell className="text-right font-semibold">
                         {payout.amount.toLocaleString()} XOF
                       </TableCell>

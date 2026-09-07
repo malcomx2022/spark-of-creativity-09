@@ -68,6 +68,8 @@ describe('Practitioners, files, KYC (e2e)', () => {
       await sql`delete from public.file_access_logs where user_id = any(${ids}::uuid[]) or file_id in (select id from public.files where user_id = any(${ids}::uuid[]))`.execute(trx);
       await sql`delete from public.files where user_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.practitioners where user_id = any(${ids}::uuid[])`.execute(trx);
+      // La décision KYC journalise l'action de l'admin (FK admin_audit_logs.admin_id → users).
+      await sql`delete from public.admin_audit_logs where admin_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.users where email in (${practitionerEmail}, ${coachEmail}, ${adminEmail}, ${patientEmail})`.execute(trx);
     });
     await app.close();

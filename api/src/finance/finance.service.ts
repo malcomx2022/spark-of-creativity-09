@@ -668,10 +668,13 @@ export class FinanceService implements OnModuleInit {
       let base = trx.selectFrom('webhook_events');
       if (q.status) base = base.where('processing_status', '=', q.status);
       if (q.eventType) base = base.where('event_type', '=', q.eventType);
+      if (q.from) base = base.where('created_at', '>=', new Date(`${q.from}T00:00:00`));
+      if (q.to) base = base.where('created_at', '<=', new Date(`${q.to}T23:59:59`));
       const count = await base.select((eb) => eb.fn.countAll<string>().as('n')).executeTakeFirstOrThrow();
       const data = await base.selectAll().orderBy('created_at', 'desc').offset(q.page * q.limit).limit(q.limit).execute();
+      const types = await trx.selectFrom('webhook_events').select('event_type').distinct().orderBy('event_type').execute();
       const stats = await sql<Record<string, number>>`select count(*)::int as total, count(*) filter (where processing_status = 'success')::int as processed, count(*) filter (where processing_status in ('pending', 'processing'))::int as pending, count(*) filter (where processing_status = 'failed')::int as failed, count(*) filter (where processing_status = 'permanently_failed')::int as permanently_failed from public.webhook_events`.execute(trx);
-      return { data, count: Number(count.n), stats: stats.rows[0] };
+      return { data, count: Number(count.n), stats: stats.rows[0], eventTypes: types.map((t) => t.event_type) };
     });
   }
 

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,27 @@ import { FileText, Search, RefreshCw, Download, Calendar, User, Activity, Shield
 import { useState, useMemo } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { toast } from "@/hooks/use-toast";
+
+/** Ligne de GET /admin/audit-logs (nom de l'admin joint, IP partiellement masquée côté API). */
+interface AuditLog {
+  id: string;
+  admin_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  details: unknown;
+  ip_address: string | null;
+  created_at: string;
+  admin_name: string | null;
+}
+
+/** Réponse de GET /admin/audit-logs/filters. */
+interface AuditFilters {
+  entityTypes: string[];
+  actions: string[];
+  admins: { id: string; full_name: string | null }[];
+  stats: { today: number; week: number; total: number; activeAdmins: number };
+}
 
 // Labels français pour les actions
 const ACTION_LABELS: Record<string, string> = {
@@ -73,155 +94,38 @@ export function AuditLogs() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  // Récupérer les types d'entités pour le filtre
-  const { data: entityTypesData } = useQuery({
-    queryKey: ['audit-entity-types'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('admin_audit_logs')
-        .select('entity_type')
-        .limit(1000);
-
-      if (error) throw error;
-      return [...new Set(data?.map(l => l.entity_type) || [])].sort();
-    },
+  // Valeurs des filtres et statistiques (GET /admin/audit-logs/filters)
+  const { data: filtersData } = useQuery({
+    queryKey: ['audit-filters'],
+    queryFn: () => api.get<AuditFilters>('/admin/audit-logs/filters'),
   });
+  const statsData = filtersData?.stats;
 
-  // Récupérer les actions pour le filtre
-  const { data: actionsData } = useQuery({
-    queryKey: ['audit-actions'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('admin_audit_logs')
-        .select('action')
-        .limit(1000);
-
-      if (error) throw error;
-      return [...new Set(data?.map(l => l.action) || [])].sort();
-    },
-  });
-
-  // Récupérer les admins pour le filtre
-  const { data: adminsData } = useQuery({
-    queryKey: ['audit-admins'],
-    queryFn: async () => {
-      const { data: logs, error: logsError } = await supabase
-        .from('admin_audit_logs')
-        .select('admin_id')
-        .limit(1000);
-
-      if (logsError) throw logsError;
-
-      const adminIds = [...new Set(logs?.map(l => l.admin_id) || [])];
-
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', adminIds);
-
-      if (profilesError) throw profilesError;
-      return profiles || [];
-    },
-  });
-
-  // Statistiques
-  const { data: statsData } = useQuery({
-    queryKey: ['audit-stats'],
-    queryFn: async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const weekAgo = new Date(today);
-      weekAgo.setDate(weekAgo.getDate() - 7);
-
-      const [todayResult, weekResult, totalResult] = await Promise.all([
-        supabase
-          .from('admin_audit_logs')
-          .select('id', { count: 'exact', head: true })
-          .gte('created_at', today.toISOString()),
-        supabase
-          .from('admin_audit_logs')
-          .select('id', { count: 'exact', head: true })
-          .gte('created_at', weekAgo.toISOString()),
-        supabase
-          .from('admin_audit_logs')
-          .select('id', { count: 'exact', head: true }),
-      ]);
-
-      return {
-        today: todayResult.count || 0,
-        week: weekResult.count || 0,
-        total: totalResult.count || 0,
-      };
-    },
-  });
+  // Filtres envoyés à l'API (recherche à partir de 3 caractères, comme avant)
+  const auditQuery = (pageIndex: number, pageLimit: number) => {
+    const q: Record<string, string | number> = { page: pageIndex, limit: pageLimit };
+    if (filterEntity !== 'all') q.entityType = filterEntity;
+    if (filterAction !== 'all') q.action = filterAction;
+    if (filterAdmin !== 'all') q.adminId = filterAdmin;
+    if (filterDateFrom) q.from = filterDateFrom;
+    if (filterDateTo) q.to = filterDateTo;
+    if (searchTerm && searchTerm.length >= 3) q.search = searchTerm;
+    return q;
+  };
 
   const { data: logsData, isLoading, refetch } = useQuery({
     queryKey: ['audit-logs', page, filterEntity, filterAction, filterAdmin, filterDateFrom, filterDateTo, searchTerm],
     queryFn: async () => {
-      let query = supabase
-        .from('admin_audit_logs')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      // Filtrage côté serveur
-      if (filterEntity !== 'all') {
-        query = query.eq('entity_type', filterEntity);
-      }
-
-      if (filterAction !== 'all') {
-        query = query.eq('action', filterAction);
-      }
-
-      if (filterAdmin !== 'all') {
-        query = query.eq('admin_id', filterAdmin);
-      }
-
-      if (filterDateFrom) {
-        query = query.gte('created_at', `${filterDateFrom}T00:00:00`);
-      }
-
-      if (filterDateTo) {
-        query = query.lte('created_at', `${filterDateTo}T23:59:59`);
-      }
-
-      // P1 #8: Require minimum search term length to prevent enumeration attacks
-      if (searchTerm && searchTerm.length >= 3) {
-        // Escape special characters to prevent pattern injection
-        const escapedSearch = searchTerm.replace(/[%_\\]/g, '\\$&');
-        query = query.or(`action.ilike.%${escapedSearch}%,entity_id.ilike.%${escapedSearch}%`);
-      }
-
-      const { data: logsData, error: logsError, count } = await query
-        .range((page - 1) * limit, page * limit - 1);
-
-      if (logsError) throw logsError;
-      if (!logsData) return { logs: [], total: 0 };
-
-      // Récupérer les profils séparément
-      const adminIds = [...new Set(logsData.map(l => l.admin_id))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', adminIds);
-
-      if (profilesError) throw profilesError;
-
-      // Combiner les données
-      return {
-        logs: logsData.map(log => ({
-          ...log,
-          profile: profiles?.find(p => p.id === log.admin_id)
-        })),
-        total: count || 0
-      };
+      const res = await api.get<{ data: AuditLog[]; count: number }>('/admin/audit-logs', { query: auditQuery(page - 1, limit) });
+      return { logs: res.data, total: res.count };
     },
   });
 
   const totalPages = Math.ceil((logsData?.total || 0) / limit);
   const logs = logsData?.logs || [];
-  const entityTypes = entityTypesData || [];
-  const actions = actionsData || [];
-  const admins = adminsData || [];
+  const entityTypes = filtersData?.entityTypes || [];
+  const actions = filtersData?.actions || [];
+  const admins = filtersData?.admins || [];
 
   // Reset page when filters change
   const resetFilters = () => {
@@ -237,35 +141,15 @@ export function AuditLogs() {
   // Export to CSV
   const exportToCSV = async () => {
     try {
-      let query = supabase
-        .from('admin_audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (filterEntity !== 'all') query = query.eq('entity_type', filterEntity);
-      if (filterAction !== 'all') query = query.eq('action', filterAction);
-      if (filterAdmin !== 'all') query = query.eq('admin_id', filterAdmin);
-      if (filterDateFrom) query = query.gte('created_at', `${filterDateFrom}T00:00:00`);
-      if (filterDateTo) query = query.lte('created_at', `${filterDateTo}T23:59:59`);
-
-      const { data, error } = await query.limit(5000);
-
-      if (error) throw error;
-
-      // Get admin names
-      const adminIds = [...new Set(data?.map(l => l.admin_id) || [])];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', adminIds);
-
-      const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || []);
+      // Mêmes filtres que la liste, jusqu'à 5000 lignes (limite de l'API)
+      const res = await api.get<{ data: AuditLog[] }>('/admin/audit-logs', { query: auditQuery(0, 5000) });
+      const data = res.data;
 
       // Generate CSV
       const headers = ['Date', 'Admin', 'Action', 'Type Entité', 'ID Entité', 'Détails', 'IP'];
       const rows = (data || []).map(log => [
         new Date(log.created_at).toLocaleString('fr-FR'),
-        profileMap.get(log.admin_id) || 'N/A',
+        log.admin_name || 'N/A',
         getActionLabel(log.action),
         log.entity_type,
         log.entity_id || '',
@@ -469,7 +353,7 @@ export function AuditLogs() {
                           {new Date(log.created_at).toLocaleString('fr-FR')}
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium">{log.profile?.full_name || 'N/A'}</span>
+                          <span className="font-medium">{log.admin_name || 'N/A'}</span>
                         </TableCell>
                         <TableCell>
                           <Badge variant={getActionVariant(log.action)}>

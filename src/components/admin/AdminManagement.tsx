@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { invokeEdgeFunctionWithRetry } from "@/lib/edge-function-retry";
-import type { AdminManagementResponse } from "@/types/edge-function-responses";
+import { api, errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,6 +15,26 @@ import { UserPlus, Shield, KeyRound, UserX, Copy, Check, Filter, RefreshCw, Info
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
 import type { AdminRole } from "@/hooks/useAdminRole";
+
+/** Ligne de GET /admin/admins (rôle joint à l'utilisateur et au profil). */
+interface AdminRow {
+  id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+  email: string | null;
+  full_name: string | null;
+  phone: string | null;
+  last_sign_in_at: string | null;
+}
+
+/** Réponses de POST /admin/admins et POST /admin/admins/:userId/reset-password. */
+interface AdminActionResult {
+  success: boolean;
+  tempPassword?: string;
+  newPassword?: string;
+  message?: string;
+}
 
 const ROLE_LABELS: Record<AdminRole, string> = {
   super_admin: 'Super Admin',
@@ -64,29 +82,7 @@ export function AdminManagement() {
 
   const { data: admins, isLoading, refetch } = useQuery({
     queryKey: ['admins'],
-    queryFn: async () => {
-      const [rolesResult, profilesResult] = await Promise.all([
-        supabase
-          .from('user_roles')
-          .select('id, user_id, role, created_at')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('profiles')
-          .select('id, full_name, phone, email:id')
-      ]);
-
-      if (rolesResult.error) throw rolesResult.error;
-      if (profilesResult.error) throw profilesResult.error;
-
-      const roles = rolesResult.data || [];
-      const profiles = profilesResult.data || [];
-
-      // Combiner les données
-      return roles.map(role => ({
-        ...role,
-        profile: profiles.find(p => p.id === role.user_id)
-      }));
-    },
+    queryFn: () => api.get<AdminRow[]>('/admin/admins'),
   });
 
   // Filtered admins
@@ -96,14 +92,8 @@ export function AdminManagement() {
 
   const createAdminMutation = useMutation({
     mutationFn: async ({ email, role, fullName, phone }: { email: string; role: AdminRole; fullName: string; phone: string }) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
-        body: { action: 'create', email, role, fullName, phone }
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      
-      return data;
+      // Compte existant : ajout du rôle ; sinon création avec mot de passe temporaire
+      return api.post<AdminActionResult>('/admin/admins', { email, role, fullName, ...(phone.trim() ? { phone: phone.trim() } : {}) });
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
@@ -115,11 +105,11 @@ export function AdminManagement() {
       setPhone("");
       toast({ title: "Admin créé avec succès" });
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       // P2 #3: Message d'erreur avec contexte
       toast({
         title: "Erreur lors de la création",
-        description: `Impossible de créer l'administrateur: ${error.message}`,
+        description: `Impossible de créer l'administrateur: ${errorMessage(error, 'erreur inconnue')}`,
         variant: "destructive"
       });
     },
@@ -127,12 +117,8 @@ export function AdminManagement() {
 
   const deleteAdminMutation = useMutation({
     mutationFn: async ({ userId, reason }: { userId: string; reason: string }) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
-        body: { action: 'disable', userId, reason }
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      // Retrait des rôles et révocation des sessions (le compte est conservé)
+      await api.delete(`/admin/admins/${userId}`, { reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admins'] });
@@ -140,11 +126,11 @@ export function AdminManagement() {
       setDisableReason("");
       toast({ title: "Admin désactivé avec succès" });
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       // P2 #3: Message d'erreur avec contexte
       toast({
         title: "Erreur lors de la désactivation",
-        description: `Impossible de désactiver l'administrateur: ${error.message}`,
+        description: `Impossible de désactiver l'administrateur: ${errorMessage(error, 'erreur inconnue')}`,
         variant: "destructive"
       });
     },
@@ -152,24 +138,18 @@ export function AdminManagement() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { data, error } = await invokeEdgeFunctionWithRetry<AdminManagementResponse>('admin-management', {
-        body: { action: 'reset_password', userId }
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      return api.post<AdminActionResult>(`/admin/admins/${userId}/reset-password`);
     },
     onSuccess: (data) => {
       setTempPassword(data?.newPassword || '');
       setShowPasswordDialog(true);
       toast({ title: "Mot de passe réinitialisé" });
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       // P2 #3: Message d'erreur avec contexte
       toast({
         title: "Erreur lors de la réinitialisation",
-        description: `Impossible de réinitialiser le mot de passe: ${error.message}`,
+        description: `Impossible de réinitialiser le mot de passe: ${errorMessage(error, 'erreur inconnue')}`,
         variant: "destructive"
       });
     },
@@ -344,8 +324,8 @@ export function AdminManagement() {
               <TableBody>
                 {filteredAdmins.map((admin) => (
                   <TableRow key={admin.id}>
-                    <TableCell>{admin.profile?.full_name || 'N/A'}</TableCell>
-                    <TableCell>{admin.profile?.phone || 'N/A'}</TableCell>
+                    <TableCell>{admin.full_name || 'N/A'}</TableCell>
+                    <TableCell>{admin.phone || 'N/A'}</TableCell>
                     <TableCell>
                       <TooltipProvider>
                         <Tooltip>
@@ -371,7 +351,7 @@ export function AdminManagement() {
                           size="sm"
                           onClick={() => setAdminToResetPassword({
                             id: admin.user_id,
-                            name: admin.profile?.full_name || 'Administrateur'
+                            name: admin.full_name || 'Administrateur'
                           })}
                           disabled={resetPasswordMutation.isPending}
                         >
@@ -383,7 +363,7 @@ export function AdminManagement() {
                           size="sm"
                           onClick={() => setAdminToDisable({
                             id: admin.user_id,
-                            name: admin.profile?.full_name || 'Administrateur'
+                            name: admin.full_name || 'Administrateur'
                           })}
                           disabled={deleteAdminMutation.isPending}
                         >

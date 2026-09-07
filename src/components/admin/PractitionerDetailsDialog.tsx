@@ -5,14 +5,70 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { 
   User, Phone, MapPin, Calendar, Stethoscope, Star, 
   FileCheck, Shield, Clock, Languages, Award, Briefcase, Trash2 
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/hooks/use-toast';
-import { getFunctionAuthHeaders } from '@/lib/function-auth';
+
+/** Réponse de GET /admin/users/practitioners/:id (fiche, rendez-vous, informations de reversement, solde). */
+interface AdminPractitionerDetails {
+  id: string;
+  user_id: string;
+  name: string;
+  specialty: string | null;
+  practitioner_type: string | null;
+  phone: string | null;
+  email: string | null;
+  rating: number | null;
+  created_at: string | null;
+  kyc_status: string | null;
+  kyc_comment: string | null;
+  kyc_validated_at: string | null;
+  can_accept_missions: boolean | null;
+  available: boolean | null;
+  is_online: boolean | null;
+  address: string | null;
+  intervention_zone: string | null;
+  intervention_radius: number | null;
+  communes_served: string[] | null;
+  years_experience: number | null;
+  license_number: string | null;
+  languages: string[] | null;
+  diplomas: string[] | null;
+  certifications: string[] | null;
+  bio: string | null;
+  id_document_url: string | null;
+  id_document_expiry: string | null;
+  license_document_url: string | null;
+  license_expiry: string | null;
+  insurance_document_url: string | null;
+  insurance_expiry: string | null;
+  appointments: {
+    id: string;
+    patient_name: string | null;
+    status: string;
+    specialty: string;
+    date: string;
+    time: string;
+    reason: string | null;
+  }[];
+  payment_info: {
+    payment_method: string;
+    account_holder_name: string | null;
+    phone_number: string | null;
+    bank_name: string | null;
+    is_verified: boolean | null;
+  }[];
+  balance: {
+    balance_available: number;
+    balance_pending: number;
+    balance_on_hold: number;
+    currency: string;
+  } | null;
+}
 
 interface PractitionerDetailsDialogProps {
   practitionerId: string | null;
@@ -25,13 +81,8 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
 
   const deleteMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const headers = await getFunctionAuthHeaders();
-      const { data, error } = await supabase.functions.invoke('delete-single-user', {
-        body: { userId, userType: 'practitioner' },
-        headers,
-      });
-      if (error) throw error;
-      return data;
+      // Suppression définitive (super_admin / ops), journalisée côté API
+      return api.delete(`/admin/users/${userId}`, { userType: 'practitioner', confirm: 'SUPPRIMER' });
     },
     onSuccess: () => {
       toast({
@@ -42,77 +93,27 @@ export function PractitionerDetailsDialog({ practitionerId, onOpenChange }: Prac
       setConfirmText('');
       onOpenChange(false);
     },
-    onError: (error: Error) => {
+    onError: (error: unknown) => {
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error, 'Impossible de supprimer le praticien'),
         variant: "destructive",
       });
     },
   });
 
-  const { data: practitioner, isLoading: practitionerLoading } = useQuery({
+  // Fiche complète vue par l'admin (GET /admin/users/practitioners/:id)
+  const { data: details, isLoading: detailsLoading } = useQuery({
     queryKey: ['admin-practitioner-details', practitionerId],
-    queryFn: async () => {
-      if (!practitionerId) return null;
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('*')
-        .eq('id', practitionerId)
-        .single();
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => api.get<AdminPractitionerDetails>(`/admin/users/practitioners/${practitionerId}`),
     enabled: !!practitionerId,
   });
+  const practitioner = details ?? null;
+  const appointments = details?.appointments ?? [];
+  const paymentInfo = details?.payment_info?.[0] ?? null;
+  const balance = details?.balance ?? null;
 
-  const { data: appointments, isLoading: appointmentsLoading } = useQuery({
-    queryKey: ['practitioner-appointments', practitionerId],
-    queryFn: async () => {
-      if (!practitionerId) return [];
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!practitionerId,
-  });
-
-  const { data: paymentInfo, isLoading: paymentLoading } = useQuery({
-    queryKey: ['practitioner-payment-info', practitionerId],
-    queryFn: async () => {
-      if (!practitionerId) return null;
-      const { data, error } = await supabase
-        .from('practitioner_payment_info')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!practitionerId,
-  });
-
-  const { data: balance, isLoading: balanceLoading } = useQuery({
-    queryKey: ['practitioner-balance', practitionerId],
-    queryFn: async () => {
-      if (!practitionerId) return null;
-      const { data, error } = await supabase
-        .from('practitioner_balances')
-        .select('*')
-        .eq('practitioner_id', practitionerId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!practitionerId,
-  });
-
-  const isLoading = practitionerLoading || appointmentsLoading || paymentLoading || balanceLoading;
+  const isLoading = detailsLoading;
 
   const getKycBadgeVariant = (status: string | null) => {
     switch (status) {

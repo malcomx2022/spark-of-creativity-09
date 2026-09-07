@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api, onTableChange } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -81,79 +81,37 @@ export function PaymentFlowsDashboard() {
   const { data: balances = [], isLoading: balancesLoading } = useQuery<PractitionerBalance[]>({
     queryKey: ["admin-payment-balances"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("practitioner_balances")
-        .select("practitioner_id, balance_pending, balance_on_hold, balance_available, currency, updated_at")
-        .order("updated_at", { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      const rows = await api.get<PractitionerBalance[]>("/admin/finance/balances");
+      return [...rows].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     },
   });
 
   const { data: payouts = [], isLoading: payoutsLoading } = useQuery<PractitionerPayout[]>({
     queryKey: ["admin-active-payouts"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("practitioner_payouts")
-        .select("id, practitioner_id, amount, currency, status, payment_method, created_at, processed_at")
-        .in("status", ["planned", "queued", "processing", "sent"])
-        .order("created_at", { ascending: false })
-        .limit(25);
-
-      if (error) throw error;
-      return data || [];
+      // Reversements en cours parmi les 100 derniers (l'API ne filtre que sur un statut à la fois)
+      const res = await api.get<{ data: PractitionerPayout[] }>("/admin/finance/payouts", { query: { limit: 100 } });
+      const active = ["planned", "queued", "processing", "sent"];
+      return res.data.filter((p) => active.includes(p.status ?? "")).slice(0, 25);
     },
   });
 
   const { data: fedapayTransactions = [], isLoading: fedapayLoading } = useQuery<Payment[]>({
     queryKey: ["admin-fedapay-transactions"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("payments")
-        .select("id, patient_id, amount, currency, status, payout_status, fedapay_transaction_id, fedapay_payment_url, payment_method, created_at")
-        .not("fedapay_transaction_id", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(30);
-
-      if (error) throw error;
-      return data || [];
+      // Dernières transactions FedaPay parmi les 100 derniers paiements
+      const res = await api.get<{ data: Payment[] }>("/admin/finance/payments", { query: { limit: 100 } });
+      return res.data.filter((p) => p.fedapay_transaction_id).slice(0, 30);
     },
   });
 
   useEffect(() => {
-    const balanceChannel = supabase
-      .channel("admin-payment-flows-balances")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "practitioner_balances" },
-        () => queryClient.invalidateQueries({ queryKey: ["admin-payment-balances"] })
-      )
-      .subscribe();
-
-    const payoutChannel = supabase
-      .channel("admin-payment-flows-payouts")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "practitioner_payouts" },
-        () => queryClient.invalidateQueries({ queryKey: ["admin-active-payouts"] })
-      )
-      .subscribe();
-
-    const paymentsChannel = supabase
-      .channel("admin-payment-flows-payments")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "payments" },
-        () => queryClient.invalidateQueries({ queryKey: ["admin-fedapay-transactions"] })
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(balanceChannel);
-      supabase.removeChannel(payoutChannel);
-      supabase.removeChannel(paymentsChannel);
-    };
+    // Temps réel : l'API diffuse les changements de ces tables aux administrateurs
+    return onTableChange(["practitioner_balances", "practitioner_payouts", "payments"], (event) => {
+      if (event.table === "practitioner_balances") queryClient.invalidateQueries({ queryKey: ["admin-payment-balances"] });
+      else if (event.table === "practitioner_payouts") queryClient.invalidateQueries({ queryKey: ["admin-active-payouts"] });
+      else queryClient.invalidateQueries({ queryKey: ["admin-fedapay-transactions"] });
+    });
   }, [queryClient]);
 
   const balanceTotals = useMemo(() => {

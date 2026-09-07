@@ -70,7 +70,11 @@ export type ReconciliationDto = z.infer<typeof reconciliationSchema>;
 export const webhookEventsQuerySchema = z.object({
   status: z.enum(['pending', 'processing', 'success', 'failed', 'permanently_failed']).optional(),
   eventType: z.string().max(100).optional(),
-  ...page,
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  page: page.page,
+  /** Jusqu'à 5000 pour l'export CSV de WebhooksSection. */
+  limit: z.coerce.number().int().min(1).max(5000).default(20),
 });
 export type WebhookEventsQuery = z.infer<typeof webhookEventsQuerySchema>;
 
