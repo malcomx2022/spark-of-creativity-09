@@ -240,6 +240,7 @@ export class PractitionersService {
       ...(dto.certifications !== undefined ? { certifications: dto.certifications } : {}),
       ...(dto.sessionTypes !== undefined ? { session_types: dto.sessionTypes } : {}),
       ...(dto.image !== undefined ? { image: dto.image } : {}),
+      ...(dto.licenseNumber !== undefined ? { license_number: dto.licenseNumber } : {}),
       ...(dto.available !== undefined ? { available: dto.available } : {}),
       ...(dto.isOnline !== undefined ? { is_online: dto.isOnline } : {}),
       updated_at: new Date(),

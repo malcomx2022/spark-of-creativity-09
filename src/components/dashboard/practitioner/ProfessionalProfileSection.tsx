@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   FileText, Upload, CheckCircle, XCircle, Clock, AlertCircle,
@@ -178,23 +178,23 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
         }
       }
 
-      const { error } = await supabase
-        .from("practitioners")
-        .update({
-          bio: formData.bio,
-          diplomas: formData.diplomas.split(",").map((d) => d.trim()),
-          languages: formData.languages.split(",").map((l) => l.trim()),
-          years_experience: formData.years_experience,
-          intervention_radius: formData.intervention_radius,
-          communes_served: formData.communes_served.split(",").map((c) => c.trim()),
-          license_number: formData.license_number,
-          id_document_url: uploads.idDocument ?? documentState.idDocument,
-          license_document_url: uploads.licenseDocument ?? documentState.licenseDocument,
-          insurance_document_url: uploads.insuranceDocument ?? documentState.insuranceDocument,
-        })
-        .eq("id", practitionerId);
-
-      if (error) throw error;
+      await api.patch('/practitioners/me', {
+        bio: formData.bio,
+        diplomas: formData.diplomas.split(",").map((d) => d.trim()).filter(Boolean),
+        languages: formData.languages.split(",").map((l) => l.trim()).filter(Boolean),
+        yearsExperience: formData.years_experience,
+        interventionRadius: formData.intervention_radius,
+        communesServed: formData.communes_served.split(",").map((c) => c.trim()).filter(Boolean),
+        licenseNumber: formData.license_number || null,
+      });
+      // Nouveaux documents KYC : l'API remet le dossier en attente de validation et notifie les admins
+      if (uploads.idDocument || uploads.licenseDocument || uploads.insuranceDocument) {
+        await api.put('/practitioners/me/documents', {
+          ...(uploads.idDocument ? { idDocumentUrl: uploads.idDocument } : {}),
+          ...(uploads.licenseDocument ? { licenseDocumentUrl: uploads.licenseDocument } : {}),
+          ...(uploads.insuranceDocument ? { insuranceDocumentUrl: uploads.insuranceDocument } : {}),
+        });
+      }
 
       setDocumentState((prev) => ({
         idDocument: uploads.idDocument ?? prev.idDocument,
@@ -368,20 +368,8 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
             userName={practitionerData?.name || ""}
             editable={!isKYCValidated()}
             onImageUploaded={async (path) => {
-              const { error } = await supabase
-                .from('practitioners')
-                .update({ image: path })
-                .eq('id', practitionerId);
-              
-              if (error) throw error;
-              
-              // Synchroniser aussi avec le profil utilisateur
-              if (practitionerData?.user_id) {
-                await supabase
-                  .from('profiles')
-                  .update({ avatar_url: path })
-                  .eq('id', practitionerData.user_id);
-              }
+              // L'API met à jour profiles.avatar_url et synchronise practitioners.image
+              await api.patch('/profile', { avatarUrl: path });
               
               queryClient.invalidateQueries({ queryKey: ["practitioner", practitionerData?.user_id] });
             }}

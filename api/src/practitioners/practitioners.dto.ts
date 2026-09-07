@@ -67,6 +67,7 @@ export const updatePractitionerSchema = z.object({
   certifications: z.array(z.string().trim()).max(20).optional(),
   sessionTypes: z.array(z.string().trim()).max(10).optional(),
   image: z.string().max(1024).nullable().optional(),
+  licenseNumber: z.string().trim().max(100).nullable().optional(),
   available: z.boolean().optional(),
   isOnline: z.boolean().optional(),
 });

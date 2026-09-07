@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { Clock, Trash2, RefreshCw, CalendarDays, TrendingUp, CalendarOff, CalendarCheck } from "lucide-react";
 import { AddAvailabilityDialog } from '@/components/AddAvailabilityDialog';
 import { AddExceptionDialog } from '@/components/AddExceptionDialog';
@@ -142,12 +142,7 @@ export default function AvailabilitySection({ practitionerId, practitionerData }
 
   const handleToggleOnline = async (checked: boolean) => {
     try {
-      const { error } = await supabase
-        .from("practitioners")
-        .update({ is_online: checked })
-        .eq("id", practitionerId);
-
-      if (error) throw error;
+      await api.patch('/practitioners/me', { isOnline: checked });
 
       setIsOnline(checked);
       toast({

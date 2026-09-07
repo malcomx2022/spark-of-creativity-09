@@ -7,7 +7,7 @@ import { DollarSign, Download, TrendingUp, TrendingDown, Wallet, Clock, FileText
 import { useEffect, useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { api, onTableChange } from "@/lib/api";
 import { format, subMonths, startOfMonth, endOfMonth, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import jsPDF from "jspdf";
@@ -29,6 +29,24 @@ type PractitionerBalance = {
   balance_on_hold: number;
   currency: string;
   last_payout_at: string | null;
+};
+
+type PractitionerPayout = {
+  id: string;
+  practitioner_id: string;
+  amount: number;
+  currency: string | null;
+  status: string | null;
+  payment_method?: string | null;
+  description?: string | null;
+  period_start?: string | null;
+  period_end?: string | null;
+  fedapay_transfer_id?: string | null;
+  failure_reason?: string | null;
+  sent_at?: string | null;
+  completed_at?: string | null;
+  processed_at?: string | null;
+  created_at: string;
 };
 
 type PaymentWithAppointment = {
@@ -101,14 +119,8 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   const { data: balance, isLoading: balanceLoading } = useQuery({
     queryKey: ["practitioner-balance", practitionerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("practitioner_balances")
-        .select("*")
-        .eq("practitioner_id", practitionerId)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as PractitionerBalance | null;
+      // Solde recalculé par l'API à chaque lecture (GET /finance/me/balance)
+      return api.get<PractitionerBalance>('/finance/me/balance');
     },
   });
 
@@ -116,30 +128,20 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   useEffect(() => {
     if (!practitionerId) return;
 
-    const channel = supabase
-      .channel('practitioner-balance-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'practitioner_balances',
-          filter: `practitioner_id=eq.${practitionerId}`,
-        },
-        (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['practitioner-balance', practitionerId] });
-          
-          if (payload.eventType === 'UPDATE') {
-            const newBalance = payload.new as PractitionerBalance;
-            setBalanceUpdate(`Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`);
-          }
-        }
-      )
-      .subscribe();
+    // Temps réel : solde, reversements et paiements du praticien (rooms practitioner:<id>)
+    const off = onTableChange(['practitioner_balances', 'practitioner_payouts', 'payments'], (event) => {
+      queryClient.invalidateQueries({ queryKey: ['practitioner-balance', practitionerId] });
+      queryClient.invalidateQueries({ queryKey: ['practitioner-payments', practitionerId] });
+      queryClient.invalidateQueries({ queryKey: ['practitioner-payouts', practitionerId] });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      if (event.table === 'practitioner_balances' && event.op === 'UPDATE') {
+        api.get<PractitionerBalance>('/finance/me/balance')
+          .then((newBalance) => setBalanceUpdate(`Nouveau solde: ${formatAmount(newBalance.balance_available)} XOF`))
+          .catch(() => undefined);
+      }
+    });
+
+    return off;
   }, [practitionerId, queryClient]);
 
   // Toast notification for balance updates
@@ -164,49 +166,14 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   const { data: payments, isLoading: paymentsLoading } = useQuery({
     queryKey: ["practitioner-payments", practitionerId, paymentsLimit, dateFilter],
     queryFn: async () => {
-      // First get payments via appointments that belong to this practitioner
-      let query = supabase
-        .from("payments")
-        .select(`
-          id,
-          amount,
-          commission_amount,
-          fees_amount,
-          gateway_fees_amount,
-          net_amount,
-          status,
-          payout_status,
-          created_at,
-          appointment_id,
-          patient_id,
-          currency,
-          payer_name
-        `)
-        .eq("status", "paid")
-        .order("created_at", { ascending: false })
-        .limit(paymentsLimit);
-      
-      if (dateFilter) {
-        query = query.gte("created_at", dateFilter);
-      }
-      
-      const { data: allPayments, error: paymentsError } = await query;
-      if (paymentsError) throw paymentsError;
-
-      // Filter payments that belong to this practitioner via appointments
-      if (!allPayments || allPayments.length === 0) return [];
-
-      const appointmentIds = allPayments.map(p => p.appointment_id);
-      const { data: practitionerAppointments, error: appointmentsError } = await supabase
-        .from("appointments")
-        .select("id")
-        .eq("practitioner_id", practitionerId)
-        .in("id", appointmentIds);
-
-      if (appointmentsError) throw appointmentsError;
-
-      const validAppointmentIds = new Set(practitionerAppointments?.map(a => a.id) || []);
-      return allPayments.filter(p => validAppointmentIds.has(p.appointment_id)) as PaymentWithAppointment[];
+      // GET /payments renvoie les paiements des rendez-vous du praticien (et des séances de groupe du coach)
+      const rows = await api.get<(PaymentWithAppointment & { appointment_practitioner_id?: string | null })[]>('/payments', {
+        query: { status: 'paid', limit: Math.min(paymentsLimit * 2, 200) },
+      });
+      return rows
+        .filter((p) => p.appointment_practitioner_id === practitionerId)
+        .filter((p) => !dateFilter || p.created_at >= dateFilter)
+        .slice(0, paymentsLimit);
     },
   });
 
@@ -214,20 +181,8 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   const { data: payouts, isLoading: payoutsLoading } = useQuery({
     queryKey: ["practitioner-payouts", practitionerId, payoutsLimit, dateFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("practitioner_payouts")
-        .select("*")
-        .eq("practitioner_id", practitionerId)
-        .order("created_at", { ascending: false })
-        .limit(payoutsLimit);
-      
-      if (dateFilter) {
-        query = query.gte("created_at", dateFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      const rows = await api.get<PractitionerPayout[]>('/finance/me/payouts', { query: { page: 0, limit: Math.min(payoutsLimit, 100) } });
+      return rows.filter((p) => !dateFilter || (p.created_at ?? '') >= dateFilter);
     },
   });
 
