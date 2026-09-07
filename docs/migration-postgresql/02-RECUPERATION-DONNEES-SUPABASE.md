@@ -36,7 +36,9 @@ fichiers, configuration et secrets. Outils : `scripts/supabase/export-supabase.s
 
 Installer un client de **même version majeure** que le serveur (PostgreSQL 17) :
 `apt install postgresql-client-17` (ou `brew install postgresql@17`). Un `pg_dump` 16 refuse un
-serveur 17.
+serveur 17, et l'archive custom produite par `pg_dump` 17 n'est lisible que par un `pg_restore` 17,
+y compris pour l'importer dans le PostgreSQL 16 du VPS (`import-native.sh` le vérifie et accepte
+`PGBIN=/usr/lib/postgresql/17/bin`).
 
 ## 3. Geler les écritures (pour l'export final uniquement)
 

@@ -54,7 +54,7 @@ l'API génère des URLs pré-signées (remplace `get-presigned-url`).
 docker compose stop api worker
 docker compose exec -T postgres psql -U postgres -c "DROP DATABASE IF EXISTS domicares" -c "CREATE DATABASE domicares"
 PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD DROP_RLS=1 \
-  scripts/db/import-native.sh ~/export/<h> domicares
+  PGBIN=/usr/lib/postgresql/17/bin scripts/db/import-native.sh ~/export/<h> domicares   # client 17 installé par install-vps.sh
 # fichiers
 mc mirror ~/export/<h>/storage/documents         local/documents
 mc mirror ~/export/<h>/storage/avatars           local/avatars
