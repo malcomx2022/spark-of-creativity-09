@@ -44,4 +44,8 @@ export interface CreateAppointmentData {
   practitionerId?: string;
   practitionerName?: string;
   addressOverride?: string;
+  /** Sans praticien : position du patient pour l'affectation du praticien le plus proche côté API. */
+  latitude?: number;
+  longitude?: number;
+  fallbackMode?: boolean;
 }

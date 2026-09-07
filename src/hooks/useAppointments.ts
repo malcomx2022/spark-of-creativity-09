@@ -160,16 +160,12 @@ export function useCreateAppointment(patientId?: string, patientName?: string) {
       }
       void patientName; // Le nom du patient est déduit du profil côté API.
 
-      if (!data.practitionerId) {
-        // TODO(api): `POST /appointments` exige un praticien (practitionerId UUID). Le mode « demande sans
-        // praticien » (fallbackMode de NewAppointmentDialog) n'a pas d'équivalent côté API.
-        throw new Error("Aucun praticien n'a pu être associé à cette demande. Veuillez sélectionner un praticien.");
-      }
-
       // Les règles métier (date passée, praticien validé, anti-doublon, notification du praticien)
-      // sont appliquées par l'API.
+      // sont appliquées par l'API. Sans praticien (mode « Enregistrer quand même » de NewAppointmentDialog),
+      // l'API affecte le praticien validé le plus proche de la position transmise ou de l'adresse par défaut.
       const row = await api.post<AppointmentRow>('/appointments', {
-        practitionerId: data.practitionerId,
+        ...(data.practitionerId ? { practitionerId: data.practitionerId } : {}),
+        ...(data.latitude !== undefined && data.longitude !== undefined ? { latitude: data.latitude, longitude: data.longitude } : {}),
         specialty: data.specialty,
         date: toLocalDate(data.date),
         time: data.time,

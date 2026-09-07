@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Transaction } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import type { Appointment, AppointmentUpdate, DB } from '../database/types';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
@@ -45,11 +45,30 @@ export class AppointmentsService {
     }
 
     const created = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
-      const practitioner = await trx.selectFrom('practitioners').select(['id', 'name', 'user_id', 'practitioner_type', 'can_accept_missions', 'kyc_status']).where('id', '=', dto.practitionerId).executeTakeFirst();
-      if (!practitioner) throw new NotFoundException('Praticien introuvable');
-      if (!practitioner.can_accept_missions || practitioner.kyc_status !== 'approved') throw new BadRequestException("Ce praticien n'accepte pas de missions actuellement");
+      const defaultAddress = await trx.selectFrom('addresses').select(['address', 'latitude', 'longitude']).where('user_id', '=', userId).where('is_default', '=', true).executeTakeFirst();
+      let practitioner: { id: string; name: string; user_id: string; practitioner_type: string | null };
+      let assignedOffSlot = false;
+      if (dto.practitionerId) {
+        const chosen = await trx.selectFrom('practitioners').select(['id', 'name', 'user_id', 'practitioner_type', 'can_accept_missions', 'kyc_status']).where('id', '=', dto.practitionerId).executeTakeFirst();
+        if (!chosen) throw new NotFoundException('Praticien introuvable');
+        if (!chosen.can_accept_missions || chosen.kyc_status !== 'approved') throw new BadRequestException("Ce praticien n'accepte pas de missions actuellement");
+        practitioner = chosen;
+      } else {
+        // Demande sans praticien (NewAppointmentDialog, « Enregistrer quand même ») : affectation du praticien validé
+        // le plus proche (type ou spécialité, rayon 100 km), de préférence disponible sur le créneau.
+        const point = dto.latitude !== undefined && dto.longitude !== undefined
+          ? { latitude: dto.latitude, longitude: dto.longitude }
+          : defaultAddress?.latitude && defaultAddress?.longitude
+            ? { latitude: Number(defaultAddress.latitude), longitude: Number(defaultAddress.longitude) }
+            : null;
+        if (!point) throw new BadRequestException('Position inconnue : activez la géolocalisation ou enregistrez une adresse par défaut');
+        const nearest = await this.findNearestPractitioner(trx, { ...point, specialty: dto.specialty, date: dto.date, time: dto.time, allowOffSlot: true });
+        if (!nearest) throw new NotFoundException(`Aucun praticien validé pour « ${dto.specialty} » dans un rayon de 100 km`);
+        practitioner = nearest;
+        assignedOffSlot = !nearest.onSlot;
+      }
       const profile = await trx.selectFrom('profiles').select(['full_name', 'phone']).where('id', '=', userId).executeTakeFirst();
-      const address = dto.address ?? (await trx.selectFrom('addresses').select('address').where('user_id', '=', userId).where('is_default', '=', true).executeTakeFirst())?.address ?? 'Adresse à préciser';
+      const address = dto.address ?? defaultAddress?.address ?? 'Adresse à préciser';
       const appointment = await trx
         .insertInto('appointments')
         .values({
@@ -64,6 +83,10 @@ export class AppointmentsService {
       const title = 'Nouvelle demande de rendez-vous';
       const message = `${appointment.patient_name} demande un rendez-vous le ${this.formatDate(dto.date)} à ${dto.time} (${dto.specialty}). Motif : ${dto.reason}`;
       await this.inApp.notifyUser(trx, practitioner.user_id, { title, message, type: 'appointment', link: practitioner.practitioner_type === 'coach_sportif' ? '/dashboard/coach' : '/dashboard/practitioner' });
+      if (assignedOffSlot) {
+        // Aucun praticien disponible sur le créneau : la demande part quand même au plus proche, les admins suivent.
+        await this.inApp.notifyAdmins(trx, { title: 'Demande affectée hors créneau', message: `${appointment.patient_name} : ${dto.specialty} le ${this.formatDate(dto.date)} à ${dto.time}. Aucun praticien disponible sur ce créneau, demande transmise à ${practitioner.name} (suivi recommandé).`, type: 'appointment', link: '/admin?tab=operations' });
+      }
       const practitionerPhone = (await trx.selectFrom('profiles').select('phone').where('id', '=', practitioner.user_id).executeTakeFirst())?.phone;
       return { appointment, practitionerPhone, patientName: appointment.patient_name };
     });
@@ -159,6 +182,34 @@ export class AppointmentsService {
     }
   }
 
+  /**
+   * Praticien validé le plus proche (rayon 100 km) pour une spécialité ou un type de praticien, disponible sur le
+   * créneau (planning hebdomadaire et exceptions) ; à défaut le plus proche si `allowOffSlot`.
+   */
+  private async findNearestPractitioner(trx: Transaction<DB>, opts: { latitude: number; longitude: number; specialty: string; date: string; time: string; excludeId?: string; allowOffSlot?: boolean }) {
+    let query = trx
+      .selectFrom('practitioners')
+      .select(['id', 'name', 'user_id', 'practitioner_type', 'latitude', 'longitude'])
+      // La spécialité peut aussi être un type de praticien (NewAppointmentDialog envoie le type) : comparaison textuelle, l'enum refuserait une valeur libre.
+      .where((eb) => eb.or([eb('specialty', '=', opts.specialty), eb(sql<string>`practitioner_type::text`, '=', opts.specialty)]))
+      .where('available', '=', true).where('can_accept_missions', '=', true)
+      .where('kyc_status', '=', 'approved').where('kyc_validated_at', 'is not', null)
+      .where('latitude', 'is not', null).where('longitude', 'is not', null);
+    if (opts.excludeId) query = query.where('id', '!=', opts.excludeId);
+    const candidates = await query.execute();
+    const sorted = candidates
+      .map((c) => ({ ...c, distance: haversineKm(opts.latitude, opts.longitude, Number(c.latitude), Number(c.longitude)) }))
+      .filter((c) => c.distance <= 100)
+      .sort((a, b) => a.distance - b.distance);
+    const dayOfWeek = new Date(`${opts.date}T00:00:00Z`).getUTCDay();
+    for (const c of sorted) {
+      const exception = await trx.selectFrom('practitioner_exceptions').select('is_available').where('practitioner_id', '=', c.id).where('date', '=', opts.date).executeTakeFirst();
+      const slot = await trx.selectFrom('practitioner_availability').select('id').where('practitioner_id', '=', c.id).where('day_of_week', '=', dayOfWeek).where('is_active', '=', true).where('start_time', '<=', opts.time).where('end_time', '>', opts.time).executeTakeFirst();
+      if ((exception && exception.is_available) || (!exception && slot)) return { ...c, onSlot: true };
+    }
+    return opts.allowOffSlot && sorted[0] ? { ...sorted[0], onSlot: false } : null;
+  }
+
   private async reject(userId: string, id: string, dto: RespondDto) {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const { appointment, isPractitioner } = await this.load(trx, userId, id);
@@ -168,27 +219,9 @@ export class AppointmentsService {
 
       // Réassignation automatique : praticien validé de même spécialité, le plus proche (rayon 100 km), disponible sur le créneau.
       const address = await trx.selectFrom('addresses').select(['latitude', 'longitude']).where('user_id', '=', appointment.patient_id).where('is_default', '=', true).executeTakeFirst();
-      let replacement: { id: string; name: string; user_id: string; practitioner_type: string | null } | null = null;
-      if (address?.latitude && address?.longitude) {
-        const candidates = await trx
-          .selectFrom('practitioners')
-          .select(['id', 'name', 'user_id', 'practitioner_type', 'latitude', 'longitude'])
-          .where('specialty', '=', appointment.specialty).where('available', '=', true).where('can_accept_missions', '=', true)
-          .where('kyc_status', '=', 'approved').where('kyc_validated_at', 'is not', null)
-          .where('latitude', 'is not', null).where('longitude', 'is not', null)
-          .where('id', '!=', appointment.practitioner_id)
-          .execute();
-        const sorted = candidates
-          .map((c) => ({ ...c, distance: haversineKm(Number(address.latitude), Number(address.longitude), Number(c.latitude), Number(c.longitude)) }))
-          .filter((c) => c.distance <= 100)
-          .sort((a, b) => a.distance - b.distance);
-        const dayOfWeek = new Date(`${appointment.date}T00:00:00Z`).getUTCDay();
-        for (const c of sorted) {
-          const exception = await trx.selectFrom('practitioner_exceptions').select('is_available').where('practitioner_id', '=', c.id).where('date', '=', appointment.date).executeTakeFirst();
-          const slot = await trx.selectFrom('practitioner_availability').select('id').where('practitioner_id', '=', c.id).where('day_of_week', '=', dayOfWeek).where('is_active', '=', true).where('start_time', '<=', appointment.time).where('end_time', '>', appointment.time).executeTakeFirst();
-          if ((exception && exception.is_available) || (!exception && slot)) { replacement = c; break; }
-        }
-      }
+      const replacement = address?.latitude && address?.longitude
+        ? await this.findNearestPractitioner(trx, { latitude: Number(address.latitude), longitude: Number(address.longitude), specialty: appointment.specialty, date: appointment.date, time: appointment.time, excludeId: appointment.practitioner_id })
+        : null;
       if (replacement) {
         const reassigned = await trx.updateTable('appointments').set({ practitioner_id: replacement.id, practitioner_name: replacement.name, status: 'awaiting_practitioner', updated_at: new Date() }).where('id', '=', id).where('status', '=', 'rejected').returning('id').executeTakeFirst();
         if (reassigned) {

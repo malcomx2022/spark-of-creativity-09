@@ -21,7 +21,7 @@ moyens de paiement, statistiques** livrées.
 | `POST /api/auth/otp/send`, `otp/verify` | Edge Functions `send-otp`, `verify-otp` (Twilio Verify, `check_otp_rate_limit()`, `otp_attempts`) |
 | `GET/PATCH /api/profile` | `supabase.from('profiles')` sur son propre profil |
 | `POST /api/practitioners/register` | Edge Function `create-practitioner-account` (profil + documents KYC en base64 + praticien `pending` + notification des admins, atomique avec compensation des uploads) |
-| `GET /api/practitioners`, `GET /api/practitioners/:id` | `get_public_practitioners()`, `practitioners_public_view`, `usePractitioners` |
+| `GET /api/practitioners`, `GET /api/practitioners/:id` | `get_public_practitioners()`, `practitioners_public_view`, `usePractitioners` ; pour un utilisateur connecté (`OptionalJwtAuthGuard`), coordonnées arrondies à 3 décimales (≈ 100 m) pour la carte de `PractitionerSearch`, jamais l'adresse exacte |
 | `GET /api/practitioners/available` | Edge Function `find-available-practitioner` (filtres métier, haversine, créneaux du jour, exceptions) |
 | `GET/PATCH /api/practitioners/me` | accès direct à `practitioners` (espace praticien) |
 | `/api/practitioners/me/availability`, `/exceptions`, `/rates` (+ lectures publiques `/:id/…`) | `useAvailability`, `usePractitionerRates` |
@@ -29,7 +29,7 @@ moyens de paiement, statistiques** livrées.
 | `POST /api/files/upload` | Edge Function `upload-to-wasabi` (contrat base64 conservé) |
 | `GET /api/files/url?filePath=` | Edge Function `get-presigned-url` (mêmes règles d'accès, journal `file_access_logs`) |
 | `GET /api/admin/kyc/queue`, `POST /api/admin/kyc/:id/decision` | `KYCQueue.tsx` + `approve_practitioner_kyc()` + Edge Function `send-kyc-status-notification` (e-mail, SMS, notification in-app) ; décision journalisée `KYC <statut>` dans `admin_audit_logs` (historique de `KYCQueue`) |
-| `POST /api/appointments`, `GET /api/appointments[?status=active]`, `GET /api/appointments/:id` | `useAppointments` + Edge Function `notify-appointment-request` |
+| `POST /api/appointments`, `GET /api/appointments[?status=active]`, `GET /api/appointments/:id` | `useAppointments` + Edge Function `notify-appointment-request` ; sans `practitionerId` (mode « Enregistrer quand même » de `NewAppointmentDialog`), affectation du praticien validé le plus proche (type ou spécialité, rayon 100 km, créneau si possible) à partir de `latitude`/`longitude` ou de l'adresse par défaut, administrateurs prévenus en cas d'affectation hors créneau, 404 sans candidat |
 | `POST /api/appointments/:id/respond` (accept / reject) | Edge Function `handle-appointment-response` (montant, demande de paiement, réassignation au praticien le plus proche) |
 | `PATCH /api/appointments/:id/practitioner-status`, `POST …/complete`, `POST …/confirm`, `POST …/cancel` | `PractitionerStatusControl`, `CompleteConsultationForm`, `ConsultationConfirmation` |
 | `POST /api/payments`, `GET /api/payments[/:id]`, `POST /api/payments/:id/cancel`, `POST /api/payments/:id/sync`, `GET /api/payments/config` | Edge Functions `create-payment`, `cancel-pending-payment`, `sync-payment-status`, `get-fedapay-config` |
@@ -218,9 +218,7 @@ plus lu par l'application.
 7. Recodage du front sur l'API : livré (7a socle + authentification + profil, 7b hooks et écrans
    patient / praticien / coach / paiements, 7c écrans admin et retrait de `@supabase/supabase-js`).
 
-Compléments relevés pendant le recodage, à traiter côté API :
-
-- `POST /api/appointments` sans `practitionerId` (mode « demande sans praticien » de
-  `NewAppointmentDialog`) : affectation du praticien disponible le plus proche côté serveur.
-- Coordonnées GPS arrondies des praticiens dans `GET /api/practitioners` pour la carte de
-  `PractitionerSearch` (utilisateurs connectés uniquement).
+Compléments relevés pendant le recodage, livrés : `POST /api/appointments` sans `practitionerId`
+(affectation automatique du praticien le plus proche, logique partagée avec la réassignation au
+refus) et coordonnées arrondies des praticiens dans `GET /api/practitioners` pour les utilisateurs
+connectés.

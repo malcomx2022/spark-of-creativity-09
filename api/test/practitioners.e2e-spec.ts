@@ -230,6 +230,11 @@ describe('Practitioners, files, KYC (e2e)', () => {
     await app.inject({ method: 'PATCH', url: '/api/practitioners/me', headers: auth('practitioner'), payload: { isOnline: true, available: true } });
     const listed = await app.inject({ method: 'GET', url: '/api/practitioners?type=medecin&onlineOnly=true' });
     expect(listed.json().some((p: { id: string }) => p.id === practitionerId)).toBe(true);
+    // Coordonnées : absentes en anonyme, arrondies à 3 décimales pour un utilisateur connecté.
+    expect(listed.json().find((p: { id: string }) => p.id === practitionerId)).not.toHaveProperty('latitude');
+    const authed = await app.inject({ method: 'GET', url: '/api/practitioners?type=medecin&onlineOnly=true', headers: auth('patient') });
+    const listedForUser = authed.json().find((p: { id: string }) => p.id === practitionerId);
+    expect(listedForUser).toMatchObject({ latitude: 6.37, longitude: 2.391 });
 
     const ok = await app.inject({ method: 'GET', url: '/api/practitioners/available?type=medecin&latitude=6.37&longitude=2.39&date=2030-01-14&time=09:30&radiusKm=10' });
     expect(ok.statusCode).toBe(200);
