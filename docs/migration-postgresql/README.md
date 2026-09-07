@@ -22,6 +22,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | `db/native/100_to_native.sql` | Conversion : `public.users`, tokens, re-pointage des 31 FK, GUC `app.user_id`, suppression `storage`/`auth.users` |
 | `db/native/110_realtime_notify.sql` | Triggers `pg_notify` sur les 10 tables suivies en temps réel par le front |
 | `db/native/120_drop_rls_optional.sql` | Option B : retrait des 155 policies RLS (autorisation côté API) |
+| `db/native/130_fixes_heritage.sql` | Corrections de défauts hérités (colonne `updated_at` de `practitioner_payouts`) |
 | `db/native/schema.native.sql` | **Schéma natif consolidé, généré et validé** (58 tables, 5 vues, 46 fonctions, 24 triggers) |
 | `scripts/db/build-native-schema.sh` | Regénère et valide `schema.native.sql` depuis `supabase/migrations` |
 | `scripts/supabase/export-supabase.sh` | Export complet depuis Supabase (pg_dump public + auth + storage meta + comptages) |
@@ -49,8 +50,12 @@ confirmation automatique, resynchronisation et nettoyage des paiements). Étape 
 messagerie liée aux rendez-vous (pièces jointes S3), notifications in-app avec préférences,
 abonnements push Web (VAPID) et passerelle Socket.IO dans l'API qui relaie `LISTEN
 table_changes` vers les rooms utilisateur / praticien / admin / rendez-vous (remplace Supabase
-Realtime). Tests e2e sur base réelle
-(`.github/workflows/api-ci.yml`). Voir `api/README.md`.
+Realtime). Étape 5 livrée : séances de groupe des coachs (création, inscription avec paiement,
+confirmation, annulation), finance (soldes recalculés, reversements individuels et par lots
+avec FedaPay, webhooks de transfert, remboursements, libération des fonds, réconciliation,
+rejeu des webhooks, rappels de paiement) et administration (rôles, utilisateurs, statistiques,
+journal d'audit, activité de recherche, OTP, configuration, consentements, modération des
+avis). Tests e2e sur base réelle (`.github/workflows/api-ci.yml`). Voir `api/README.md`.
 
 ## Ordre de lecture recommandé
 

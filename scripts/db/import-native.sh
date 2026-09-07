@@ -10,7 +10,7 @@
 #   2. installe le shim Supabase (000) puis rejoue supabase/migrations/* (schéma identique à la prod)
 #   3. restaure les DONNÉES public + auth.users (triggers désactivés)
 #   4. exécute 100_to_native.sql (public.users, FK, GUC, suppression storage/auth.users)
-#   5. exécute 110_realtime_notify.sql ; 120_drop_rls_optional.sql si DROP_RLS=1
+#   5. exécute 110_realtime_notify.sql ; 120_drop_rls_optional.sql si DROP_RLS=1 ; 130_fixes_heritage.sql
 #   6. compare les comptages de lignes avec rowcounts.csv
 #
 # Pour une base VIERGE (sans données Supabase) : psql -f db/native/010_roles.sql
@@ -52,6 +52,7 @@ echo "▶ 4-5. Conversion native"
 $PSQL -d "$DB" -f "$ROOT/db/native/100_to_native.sql"
 $PSQL -d "$DB" -f "$ROOT/db/native/110_realtime_notify.sql"
 if [[ "${DROP_RLS:-0}" == "1" ]]; then $PSQL -d "$DB" -f "$ROOT/db/native/120_drop_rls_optional.sql"; fi
+$PSQL -d "$DB" -f "$ROOT/db/native/130_fixes_heritage.sql"
 $PSQL -d "$DB" -f "$ROOT/db/native/020_grants.sql"
 
 echo "▶ 6. Contrôle des comptages (source Supabase vs cible)"

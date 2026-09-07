@@ -1,0 +1,75 @@
+import { z } from 'zod';
+
+const page = { page: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(100).default(20) };
+
+/** Port de src/schemas/paymentInfoSchema.ts (PaymentInfoSection). */
+export const paymentInfoSchema = z
+  .object({
+    paymentMethod: z.enum(['mtn', 'moov', 'orange', 'bank']),
+    accountHolderName: z.string().trim().min(2, 'Le nom du titulaire est obligatoire').max(120),
+    phoneNumber: z.string().trim().optional(),
+    bankName: z.string().trim().max(120).optional(),
+    bankAccountNumber: z.string().trim().optional(),
+    /** Le praticien confirme ses informations (comportement hérité : is_verified est déclaratif). */
+    verify: z.boolean().default(false),
+  })
+  .superRefine((d, ctx) => {
+    if (d.paymentMethod === 'bank') {
+      if (!d.bankName) ctx.addIssue({ code: 'custom', path: ['bankName'], message: 'Le nom de la banque est obligatoire' });
+      const acc = (d.bankAccountNumber ?? '').replace(/\s+/g, '');
+      if (!acc) ctx.addIssue({ code: 'custom', path: ['bankAccountNumber'], message: 'Le numéro de compte est obligatoire' });
+      else if (!/^[0-9A-Za-z]{8,34}$/.test(acc)) ctx.addIssue({ code: 'custom', path: ['bankAccountNumber'], message: 'Numéro de compte invalide (8 à 34 caractères alphanumériques)' });
+    } else {
+      if (!d.phoneNumber) ctx.addIssue({ code: 'custom', path: ['phoneNumber'], message: 'Le numéro Mobile Money est obligatoire' });
+      else if (!/^\+229(01)?\d{8}$/.test(d.phoneNumber.replace(/[\s-]/g, ''))) ctx.addIssue({ code: 'custom', path: ['phoneNumber'], message: 'Format invalide. Exemple attendu : +22960000000' });
+    }
+  });
+export type PaymentInfoDto = z.infer<typeof paymentInfoSchema>;
+
+export const adminPaymentsQuerySchema = z.object({
+  status: z.string().max(30).optional(),
+  payoutStatus: z.enum(['pending', 'held', 'ready', 'paid', 'failed']).optional(),
+  ...page,
+});
+export type AdminPaymentsQuery = z.infer<typeof adminPaymentsQuerySchema>;
+
+export const payoutsQuerySchema = z.object({ status: z.enum(['planned', 'sent', 'completed', 'failed']).optional(), practitionerId: z.string().uuid().optional(), batchId: z.string().uuid().optional(), ...page });
+export type PayoutsQuery = z.infer<typeof payoutsQuerySchema>;
+
+/** Ex create-payout : reversement individuel immédiat. */
+export const createPayoutSchema = z.object({
+  practitionerId: z.string().uuid('Identifiant praticien invalide'),
+  /** Absent : somme des paiements « prêts » de la période. */
+  amount: z.number().int().positive('Le montant doit être positif').optional(),
+  period: z.object({ start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).optional(),
+  description: z.string().trim().max(300).optional(),
+});
+export type CreatePayoutDto = z.infer<typeof createPayoutSchema>;
+
+/** Ex create-payout-batch. */
+export const createBatchSchema = z.object({
+  practitionerIds: z.array(z.string().uuid()).min(1, 'Sélectionnez au moins un praticien').max(500),
+  paymentMethod: z.enum(['momo', 'bank']),
+});
+export type CreateBatchDto = z.infer<typeof createBatchSchema>;
+
+/** Ex process-refund. */
+export const refundSchema = z.object({
+  paymentId: z.string().uuid(),
+  refundAmount: z.number().int().positive('Le montant du remboursement doit être un nombre positif').optional(),
+  reason: z.string().trim().min(3, 'Le motif est obligatoire').max(500),
+});
+export type RefundDto = z.infer<typeof refundSchema>;
+
+export const reconciliationSchema = z.object({ periodStart: z.string().datetime().optional(), periodEnd: z.string().datetime().optional() });
+export type ReconciliationDto = z.infer<typeof reconciliationSchema>;
+
+export const webhookEventsQuerySchema = z.object({
+  status: z.enum(['pending', 'processing', 'success', 'failed', 'permanently_failed']).optional(),
+  eventType: z.string().max(100).optional(),
+  ...page,
+});
+export type WebhookEventsQuery = z.infer<typeof webhookEventsQuerySchema>;
+
+export const listQuerySchema = z.object(page);
+export type ListQuery = z.infer<typeof listQuerySchema>;

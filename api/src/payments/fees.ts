@@ -68,5 +68,5 @@ export function normalizeStatus(fedaPayStatus: string): PaymentStatus {
   return STATUS_MAP[fedaPayStatus as FedaPayStatus] ?? 'pending';
 }
 
-export const FINAL_STATUSES: PaymentStatus[] = ['paid', 'failed', 'canceled', 'refunded', 'chargeback'];
+export const FINAL_STATUSES: PaymentStatus[] = ['paid', 'failed', 'canceled', 'refunded', 'partially_refunded', 'chargeback'];
 export const OPEN_STATUSES: PaymentStatus[] = ['initiated', 'pending', 'authorized'];

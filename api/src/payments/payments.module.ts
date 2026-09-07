@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
+import { BalancesService } from './balances.service';
 import { FakeFedaPayClient, FEDAPAY_CLIENT, HttpFedaPayClient } from './fedapay.client';
 import { LedgerService } from './ledger.service';
 import { AdminPaymentsController, PaymentsController, WebhooksController } from './payments.controller';
@@ -12,10 +13,11 @@ import { PaymentsService } from './payments.service';
   providers: [
     PaymentsService,
     LedgerService,
+    BalancesService,
     FakeFedaPayClient,
     HttpFedaPayClient,
     { provide: FEDAPAY_CLIENT, inject: [APP_CONFIG, FakeFedaPayClient, HttpFedaPayClient], useFactory: (c: AppConfig, fake: FakeFedaPayClient, http: HttpFedaPayClient) => (c.FEDAPAY_PROVIDER === 'fedapay' ? http : fake) },
   ],
-  exports: [PaymentsService, FEDAPAY_CLIENT, FakeFedaPayClient],
+  exports: [PaymentsService, LedgerService, BalancesService, FEDAPAY_CLIENT, FakeFedaPayClient],
 })
 export class PaymentsModule {}

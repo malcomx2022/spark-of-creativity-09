@@ -3,8 +3,9 @@
 Back-end qui remplace Supabase Auth, PostgREST et les Edge Functions. Chemin critique de
 `docs/migration-postgresql/03-RETRO-INGENIERIE.md` §8 : étape 1 **authentification, profil,
 rôles**, étape 2 **praticiens, fichiers, KYC**, étape 3 **rendez-vous, paiements FedaPay,
-webhook, jobs planifiés** et étape 4 **messagerie, notifications, temps réel Socket.IO,
-push Web** livrées.
+webhook, jobs planifiés**, étape 4 **messagerie, notifications, temps réel Socket.IO,
+push Web** et étape 5 **séances de groupe, finance (reversements, remboursements,
+réconciliation), administration** livrées.
 
 ## Ce qui est implémenté
 
@@ -40,6 +41,26 @@ push Web** livrées.
 | `GET/PUT /api/notifications/preferences` | `notification_preferences` (e-mail, SMS, WhatsApp, push) |
 | `GET /api/push/vapid-public-key`, `POST/DELETE /api/push/subscriptions` | `src/lib/push-notifications.ts` (clé VAPID en dur remplacée) + table `push_subscriptions` |
 | WebSocket Socket.IO `/socket.io` | Supabase Realtime `postgres_changes` (événement `change`) et canal presence `typing` |
+| `GET /api/group-sessions[?coachId]`, `GET /api/group-sessions/:id` | `useGroupSessions`, `CoachSearch` (catalogue public des séances à venir) |
+| `GET /api/group-sessions/mine`, `GET /api/group-sessions/coach`, `GET …/:id/participants` | `usePatientGroupSessions`, tableau de bord coach |
+| `POST /api/group-sessions`, `PATCH …/:id`, `POST …/:id/confirm`, `…/cancel`, `…/complete` | `CreateGroupSessionDialog`, `EditGroupSessionDialog`, `useGroupSessions.confirm/cancel` (+ notifications des participants, annulation des paiements ouverts) |
+| `POST /api/group-sessions/:id/register`, `POST …/registrations/:id/retry-payment`, `DELETE …/registrations/:id` | Edge Functions `register-group-session`, `retry-group-session-payment` (patient et montant déduits du serveur) |
+| `GET /api/finance/me/balance`, `…/payouts`, `GET/PUT …/payment-info` | `PayoutsSection`, `CoachPayoutsSection`, `PaymentInfoSection` |
+| `GET /api/admin/finance/stats`, `…/payments`, `…/balances`, `…/payment-events` | `FinanceSection`, `PaymentFlowsDashboard`, `PaymentEventsSection` (vue `admin_finance_stats` + `held_amount`, `total_commission`) |
+| `POST /api/admin/finance/payouts`, `GET …/payouts[/:id]` | Edge Function `create-payout` |
+| `POST /api/admin/finance/payout-batches`, `POST …/:id/process`, `GET …[/:id]` | Edge Functions `create-payout-batch`, `process-payout-batch` (`PayoutsManagementSection`) |
+| `POST /api/admin/finance/refunds`, `GET …/refunds` | Edge Function `process-refund` (`RefundsSection`) |
+| `GET /api/admin/finance/held-funds`, `POST …/held-funds/release`, `POST …/balances/repair` | Edge Functions `release-held-funds`, `repair-balances` (`FundsReleaseSection`) |
+| `POST/GET /api/admin/finance/reconciliation[/:id]` | Edge Function `reconcile-fedapay` (`ReconciliationSection`) |
+| `GET /api/admin/finance/webhook-events`, `POST …/:id/retry` | `WebhooksSection` + Edge Function `retry-failed-webhooks` |
+| `GET /api/admin/stats`, `GET /api/admin/me/roles`, `GET /api/stats/public` | `useAdminStats`, `useAdminRole`, `usePublicStats` |
+| `GET/POST /api/admin/admins`, `POST …/:id/reset-password`, `DELETE …/:id` | Edge Function `admin-management` (`AdminManagement.tsx`, super_admin) |
+| `GET /api/admin/users/patients[/:id]`, `GET …/practitioners[/:id]`, `DELETE /api/admin/users/:id`, `POST …/cleanup-non-test` | `UsersManagementSection`, `PatientDetailsDialog`, `PractitionerDetailsDialog`, Edge Functions `delete-single-user`, `cleanup-non-test-accounts` |
+| `GET /api/admin/audit-logs[/filters]` | `AuditLogs.tsx` (IP partiellement masquées) |
+| `POST /api/search-activity`, `GET /api/admin/search-activity` | `useSearchActivityLog`, `SearchActivitySection` |
+| `GET /api/admin/otp/attempts`, `…/stats`, `…/blocked`, `POST …/reset`, `DELETE …/attempts/:id` | `OTPManagementSection` |
+| `GET/PUT /api/admin/system-config[/:key]`, `GET/POST /api/admin/consent-versions`, `POST …/:id/activate|deactivate`, `GET /api/consents/:type/active` | `ComplianceSection`, `ApiManagementSection` |
+| `GET /api/admin/operations/appointments`, `GET …/reviews`, `POST …/reviews/:id/moderate`, `GET /api/admin/api/usage` | `OperationsSection` (rendez-vous du jour, modération des avis) |
 | `GET /api/health`, `GET /api/docs` | — |
 
 Autorisation : `JwtAuthGuard` (Bearer ou cookie) et `@AdminOnly('finance', …)` qui
@@ -99,7 +120,36 @@ version Supabase, compensé alors par `repair-balances`).
   (`npx web-push generate-vapid-keys`) ; abonnements expirés (404/410) supprimés
   automatiquement. `PUSH_PROVIDER=console` en développement (interdit en production).
 
+## Séances de groupe, finance et administration (étape 5)
+
+- **Séances de groupe** : le coach (type `coach_sportif`) crée, modifie, confirme (au moins
+  `min_participants` inscrits payés), annule ou clôture ses séances. L'inscription réserve la
+  place (verrou sur la séance, comptage `pending + paid`), crée le paiement FedaPay avec
+  `appointment_id = group_session_{sessionId}_{participantId}` (convention héritée) au prix de la
+  séance, et le webhook « approved » passe l'inscription à `paid`. `current_participants` = inscrits
+  payés, maintenu par l'API (le trigger d'origine n'existait plus dans le schéma final).
+- **Soldes praticien** : toujours recalculés depuis `payments` (`BalancesService`), rendez-vous
+  et séances de groupe confondus. Le trigger hérité `sync_practitioner_balance_from_payments`
+  ignorait les séances de groupe ; l'API recalcule après chaque changement de paiement.
+- **Reversements** : `planned → sent → completed | failed`. Un reversement réserve les paiements
+  « prêts » via `payout_payments` (plus de remise à zéro du solde) ; un échec ou un praticien
+  ignoré libère les fonds. Les webhooks `transfer.*` retrouvent le reversement par
+  `transaction_ids`. Les informations de reversement (`practitioner_payment_info`, méthodes
+  `mtn` / `moov` / `orange` / `bank`) doivent être vérifiées.
+- **Remboursements** : total ou partiel via FedaPay, statut `refunded` / `partially_refunded`,
+  inscription de séance passée à `refunded`, écritures comptables équilibrées, patient notifié.
+- **Jobs ajoutés** : `funds.release` (horaire, ex release-held-funds), `webhooks.retry` (5 min,
+  backoff exponentiel, 5 tentatives), `payments.reminders` (rappel des inscriptions impayées
+  depuis plus de 24 h, un rappel par jour).
+- **Administration** : rôles réservés au `super_admin` pour la gestion des administrateurs
+  (« désactiver » retire les rôles et révoque les sessions au lieu de supprimer le compte) ;
+  suppression d'utilisateur réservée à `super_admin` / `ops`, comptes `@test.com` protégés ;
+  journal `admin_audit_logs` alimenté avec l'adresse IP ; accès finance réservé à
+  `finance` / `ops` / `super_admin` (`is_admin()` acceptait n'importe quel rôle).
+- Correctif de schéma `db/native/130_fixes_heritage.sql` : colonne `updated_at` manquante sur
+  `practitioner_payouts` (son trigger faisait échouer toute mise à jour).
+
 ## Prochaines étapes (ordre du chemin critique)
 
-5. GroupSessions, Finance (payouts, remboursements), Admin
-6. Support, disputes, audit, stats
+6. Support (tickets, FAQ), litiges, notes de soins / comptes rendus, statistiques
+7. Recodage du front sur l'API (remplacement de `@supabase/supabase-js`)

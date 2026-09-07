@@ -29,10 +29,33 @@ export interface FedaPayTransaction {
   reference?: string;
 }
 
+export type FedaPayPayoutStatus = 'pending' | 'started' | 'sent' | 'failed' | 'approved' | 'declined';
+
+export interface CreatePayoutInput {
+  amount: number;
+  currency?: string;
+  /** mtn | moov | bank */
+  mode: string;
+  customer: { firstname: string; lastname: string; email?: string; phoneNumber?: string; country?: string; bankAccount?: { number: string; bank: string; holder: string } };
+  description?: string;
+}
+
+export interface FedaPayPayout {
+  id: string;
+  status: FedaPayPayoutStatus | string;
+  amount?: number;
+}
+
 export interface FedaPayClient {
   createTransaction(input: CreateTransactionInput): Promise<FedaPayTransaction>;
   generateToken(transactionId: string): Promise<{ token: string; url: string }>;
   getTransaction(transactionId: string): Promise<FedaPayTransaction>;
+  /** Transactions créées dans l'intervalle (réconciliation). */
+  listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]>;
+  /** Remboursement total ou partiel d'une transaction approuvée. */
+  refundTransaction(transactionId: string, amount: number): Promise<{ id: string; status: string; amount?: number }>;
+  /** Reversement (payout) vers un praticien — ex create-payout / process-payout-batch. */
+  createPayout(input: CreatePayoutInput): Promise<FedaPayPayout>;
 }
 
 export const FEDAPAY_CLIENT = Symbol('FEDAPAY_CLIENT');
@@ -111,19 +134,80 @@ export class HttpFedaPayClient implements FedaPayClient {
   async getTransaction(transactionId: string): Promise<FedaPayTransaction> {
     return unwrap(await this.request(`/transactions/${transactionId}`));
   }
+
+  /** Pagination complète (reconcile-fedapay s'arrêtait à 100 transactions). */
+  async listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]> {
+    const out: FedaPayTransaction[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const data = await this.request(`/transactions?per_page=100&page=${page}&created_at[gte]=${from.toISOString().slice(0, 10)}&created_at[lte]=${to.toISOString().slice(0, 10)}`);
+      const list = ((data['v1/transactions'] ?? (data.v1 as Record<string, unknown> | undefined)?.transactions ?? data.data ?? data.transactions ?? []) as Record<string, unknown>[]).map((t) => unwrap({ transaction: t }));
+      out.push(...list);
+      if (list.length < 100) break;
+    }
+    return out;
+  }
+
+  async refundTransaction(transactionId: string, amount: number) {
+    const data = await this.request(`/transactions/${transactionId}/refund`, { method: 'POST', body: JSON.stringify({ amount }) });
+    const r = (data['v1/refund'] ?? (data.v1 as Record<string, unknown> | undefined)?.refund ?? data.refund ?? data) as Record<string, unknown>;
+    return { id: String(r.id ?? transactionId), status: String(r.status ?? 'pending'), amount: r.amount as number | undefined };
+  }
+
+  async createPayout(input: CreatePayoutInput): Promise<FedaPayPayout> {
+    const customer: Record<string, unknown> = { firstname: input.customer.firstname, lastname: input.customer.lastname, email: input.customer.email };
+    if (input.customer.bankAccount) customer.bank_account = { number: input.customer.bankAccount.number, bank: input.customer.bankAccount.bank, holder: input.customer.bankAccount.holder };
+    else customer.phone_number = { number: input.customer.phoneNumber, country: input.customer.country ?? 'bj' };
+    const data = await this.request('/payouts', { method: 'POST', body: JSON.stringify({ amount: input.amount, currency: { iso: input.currency ?? 'XOF' }, mode: input.mode, description: input.description, customer }) });
+    const p = (data['v1/payout'] ?? (data.v1 as Record<string, unknown> | undefined)?.payout ?? data.payout ?? data) as Record<string, unknown>;
+    if (p.id === undefined) throw new FedaPayError('Identifiant de reversement absent de la réponse FedaPay', 502, data);
+    return { id: String(p.id), status: String(p.status ?? 'pending'), amount: p.amount as number | undefined };
+  }
 }
 
 /** Client factice pour dev/test : transactions en mémoire dont le statut est pilotable. */
 @Injectable()
 export class FakeFedaPayClient implements FedaPayClient {
-  readonly transactions = new Map<string, FedaPayTransaction & { input: CreateTransactionInput }>();
-  private seq = 1000;
+  readonly transactions = new Map<string, FedaPayTransaction & { input: CreateTransactionInput; createdAt: Date; refunded: number }>();
+  readonly payouts = new Map<string, FedaPayPayout & { input: CreatePayoutInput }>();
+  /** Force l'échec du prochain reversement (tests). */
+  failNextPayout = false;
+  // Identifiants uniques entre exécutions (les tests e2e partagent une base).
+  private seq = Number(String(Date.now()).slice(-9));
 
   async createTransaction(input: CreateTransactionInput): Promise<FedaPayTransaction> {
     const id = String(++this.seq);
-    const t = { id, status: 'pending' as FedaPayStatus, amount: input.amount, input };
+    const t = { id, status: 'pending' as FedaPayStatus, amount: input.amount, input, createdAt: new Date(), refunded: 0 };
     this.transactions.set(id, t);
     return { id, status: t.status, amount: input.amount };
+  }
+
+  async listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]> {
+    return [...this.transactions.values()].filter((t) => t.createdAt >= from && t.createdAt <= to).map((t) => ({ id: t.id, status: t.status, amount: t.amount }));
+  }
+
+  async refundTransaction(transactionId: string, amount: number) {
+    const t = this.transactions.get(transactionId);
+    if (!t) throw new FedaPayError('Transaction inconnue', 404);
+    if (t.status !== 'approved' && t.status !== 'transferred' && t.status !== 'refunded') throw new FedaPayError('Transaction non remboursable', 400);
+    t.refunded += amount;
+    if (t.refunded >= (t.amount ?? 0)) t.status = 'refunded';
+    return { id: `rf_${transactionId}_${t.refunded}`, status: 'approved', amount };
+  }
+
+  async createPayout(input: CreatePayoutInput): Promise<FedaPayPayout> {
+    if (this.failNextPayout) {
+      this.failNextPayout = false;
+      throw new FedaPayError('Reversement refusé (simulation)', 400, { message: 'insufficient_funds' });
+    }
+    const id = `po_${++this.seq}`;
+    const p = { id, status: 'pending', amount: input.amount, input };
+    this.payouts.set(id, p);
+    return { id, status: p.status, amount: input.amount };
+  }
+
+  setPayoutStatus(payoutId: string, status: string): void {
+    const p = this.payouts.get(payoutId);
+    if (p) p.status = status;
   }
 
   async generateToken(transactionId: string): Promise<{ token: string; url: string }> {
