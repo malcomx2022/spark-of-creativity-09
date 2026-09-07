@@ -1,110 +1,70 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api, onTableChange } from '@/lib/api';
 import type { Notification, NotificationPreferences } from '@/types/profile';
 import { toast } from '@/hooks/use-toast';
 import { playNotificationSound } from '@/lib/notification-sound';
-import { withTimeout } from '@/lib/network-timeout';
+
+type NotificationWithFlag = Notification & { isNew?: boolean };
 
 export function useNotifications(userId?: string) {
   const queryClient = useQueryClient();
 
-  // Listen to realtime notifications
+  // Listen to realtime notifications (l'API ne diffuse que celles de l'utilisateur connecté)
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
-      .channel('notifications-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          console.log('New notification received:', payload);
-          
-          // Play notification sound
-          playNotificationSound();
-          
-          // Add the new notification to the cache with animation flag
-          queryClient.setQueryData<Notification[]>(
-            ['notifications', userId],
-            (old) => {
-              if (!old) return [{ ...payload.new, isNew: true } as Notification & { isNew?: boolean }];
-              return [{ ...payload.new, isNew: true } as Notification & { isNew?: boolean }, ...old];
-            }
-          );
+    const queryKey = ['notifications', userId];
 
-          // Show a toast for the new notification
-          const notification = payload.new as Notification;
-          toast({
-            title: notification.title,
-            description: notification.message,
-            duration: 5000,
-          });
+    const off = onTableChange('notifications', async (event) => {
+      if (event.op !== 'INSERT') {
+        // Mise à jour (lecture) ou suppression : rafraîchir la liste
+        queryClient.invalidateQueries({ queryKey });
+        return;
+      }
 
-          // Remove the isNew flag after animation completes
-          setTimeout(() => {
-            queryClient.setQueryData<Notification[]>(
-              ['notifications', userId],
-              (old) => {
-                if (!old) return [];
-                return old.map((n) =>
-                  n.id === notification.id ? { ...n, isNew: false } : n
-                );
-              }
-            );
-          }, 1000);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          console.log('Notification updated:', payload);
-          
-          // Update the notification in the cache
-          queryClient.setQueryData<Notification[]>(
-            ['notifications', userId],
-            (old) => {
-              if (!old) return [];
-              return old.map((n) =>
-                n.id === payload.new.id ? (payload.new as Notification) : n
-              );
-            }
-          );
-        }
-      )
-      .subscribe();
+      // L'événement ne contient pas la ligne : refetch puis détection des nouvelles notifications
+      const previous = queryClient.getQueryData<NotificationWithFlag[]>(queryKey);
+      const knownIds = new Set((previous ?? []).map((n) => n.id));
+      await queryClient.invalidateQueries({ queryKey });
+      const next = queryClient.getQueryData<NotificationWithFlag[]>(queryKey) ?? [];
+      const fresh = previous === undefined ? [] : next.filter((n) => !knownIds.has(n.id));
+      if (fresh.length === 0) return;
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      // Play notification sound
+      playNotificationSound();
+
+      // Flag the new notifications for the entrance animation
+      const freshIds = new Set(fresh.map((n) => n.id));
+      queryClient.setQueryData<NotificationWithFlag[]>(queryKey, (old) =>
+        (old ?? []).map((n) => (freshIds.has(n.id) ? { ...n, isNew: true } : n))
+      );
+
+      // Show a toast for each new notification
+      for (const notification of fresh) {
+        toast({
+          title: notification.title,
+          description: notification.message,
+          duration: 5000,
+        });
+      }
+
+      // Remove the isNew flag after animation completes
+      setTimeout(() => {
+        queryClient.setQueryData<NotificationWithFlag[]>(queryKey, (old) =>
+          (old ?? []).map((n) => (freshIds.has(n.id) ? { ...n, isNew: false } : n))
+        );
+      }, 1000);
+    });
+
+    return off;
   }, [userId, queryClient]);
 
   return useQuery<Notification[]>({
     queryKey: ['notifications', userId],
     queryFn: async () => {
       if (!userId) return [];
-      
-      const { data, error } = await withTimeout(
-        supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50)
-      );
-
-      if (error) throw error;
+      const data = await api.get<Notification[]>('/notifications', { query: { limit: 50 } });
       return data || [];
     },
     enabled: !!userId,
@@ -118,19 +78,11 @@ export function useMarkNotificationAsRead() {
   return useMutation({
     mutationFn: async ({
       notificationId,
-      userId,
     }: {
       notificationId: string;
       userId?: string;
     }) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('notifications')
-          .update({ is_read: true })
-          .eq('id', notificationId)
-      );
-
-      if (error) throw error;
+      await api.post<Notification>(`/notifications/${notificationId}/read`);
     },
     onSuccess: (_data, variables) => {
       if (variables?.userId) {
@@ -146,16 +98,8 @@ export function useMarkAllNotificationsAsRead() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (userId: string) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('notifications')
-          .update({ is_read: true })
-          .eq('user_id', userId)
-          .eq('is_read', false)
-      );
-
-      if (error) throw error;
+    mutationFn: async (_userId: string) => {
+      await api.post<{ updated: number }>('/notifications/read-all');
     },
     onSuccess: (_data, userId) => {
       queryClient.invalidateQueries({ queryKey: ['notifications', userId] });
@@ -185,14 +129,7 @@ export function useDeleteNotification() {
       notificationId: string;
       userId: string;
     }) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('notifications')
-          .delete()
-          .eq('id', notificationId)
-      );
-
-      if (error) throw error;
+      await api.delete<{ deleted: boolean }>(`/notifications/${notificationId}`);
       return userId;
     },
     onSuccess: (userId) => {
@@ -217,18 +154,29 @@ export function useNotificationPreferences(userId?: string) {
     queryKey: ['notification-preferences', userId],
     queryFn: async () => {
       if (!userId) return null;
-      
-      const { data, error } = await withTimeout(
-        supabase
-          .from('notification_preferences')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle()
-      );
-
-      if (error) throw error;
-      return data;
+      // L'API renvoie les valeurs par défaut de la table si aucune ligne n'existe encore.
+      return api.get<NotificationPreferences>('/notifications/preferences');
     },
     enabled: !!userId,
+  });
+}
+
+export interface NotificationPreferencesUpdate {
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
+  whatsappEnabled?: boolean;
+  pushEnabled?: boolean;
+}
+
+export function useUpdateNotificationPreferences() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ data }: { userId?: string; data: NotificationPreferencesUpdate }) => {
+      return api.put<NotificationPreferences>('/notifications/preferences', data);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['notification-preferences', variables.userId] });
+    },
   });
 }

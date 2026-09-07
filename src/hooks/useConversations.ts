@@ -1,8 +1,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, QueryFunctionContext } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
+import { api, onTableChange, subscribeAppointment, emitTyping, onTyping, uploadFile, getSignedFileUrl } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import { withTimeout } from '@/lib/network-timeout';
 
 export interface Conversation {
   appointment_id: string;
@@ -14,6 +13,7 @@ export interface Conversation {
   last_message_at: string;
   unread_count: number;
   appointment_date: string;
+  appointment_time?: string | null;
   appointment_status: string;
 }
 
@@ -30,78 +30,38 @@ export interface Message {
   attachment_size?: number | null;
 }
 
+interface ConversationsPage {
+  conversations: Conversation[];
+  hasMore: boolean;
+}
+
+const PAGE_SIZE = 20; // Charger 20 conversations par page
+
+/** Résout les chemins de stockage des pièces jointes en URL signées (affichage/téléchargement). */
+async function withSignedAttachments(messages: Message[]): Promise<Message[]> {
+  return Promise.all(
+    messages.map(async (m) => {
+      if (!m.attachment_url) return m;
+      try {
+        const url = await getSignedFileUrl(m.attachment_url);
+        return url ? { ...m, attachment_url: url } : m;
+      } catch {
+        return m;
+      }
+    })
+  );
+}
+
 // Get all conversations for a user (with infinite pagination)
 export function useConversations(userId?: string, userType?: 'patient' | 'practitioner') {
   const queryClient = useQueryClient();
-  const pageSize = 20; // Charger 20 conversations par page
 
   const query = useInfiniteQuery({
     queryKey: ['conversations', userId, userType],
     queryFn: async ({ pageParam = 0 }: QueryFunctionContext<readonly [string, string | undefined, string | undefined], number>) => {
-      if (!userId) return { conversations: [], hasMore: false };
-      
-      const { data: appointments, error: aptError } = await withTimeout(
-        supabase
-          .from('appointments')
-          .select(`
-            *,
-            messages (
-              id,
-              content,
-              created_at,
-              sender_id,
-              is_read
-            )
-          `)
-          .or(
-            userType === 'patient' 
-              ? `patient_id.eq.${userId}`
-              : `practitioner_id.eq.${userId}`
-          )
-          .in('status', ['confirmed', 'completed'])
-          .order('created_at', { ascending: false })
-          .range(pageParam * pageSize, (pageParam + 1) * pageSize - 1)
-      );
-
-      if (aptError) throw aptError;
-      if (!appointments || appointments.length === 0) {
-        return { conversations: [], hasMore: false };
-      }
-
-      // Process conversations from appointments
-      const conversations: Conversation[] = appointments.map((apt: any) => {
-        const messages = apt.messages || [];
-        const sortedMessages = messages.sort((a: any, b: any) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        
-        const lastMessage = sortedMessages[0];
-        const unreadCount = messages.filter(
-          (m: any) => !m.is_read && m.sender_id !== userId
-        ).length;
-
-        return {
-          appointment_id: apt.id,
-          patient_id: apt.patient_id,
-          patient_name: apt.patient_name,
-          practitioner_id: apt.practitioner_id,
-          practitioner_name: apt.practitioner_name,
-          last_message: lastMessage?.content || 'Aucun message',
-          last_message_at: lastMessage?.created_at || apt.created_at,
-          unread_count: unreadCount,
-          appointment_date: apt.date,
-          appointment_status: apt.status,
-        };
-      });
-
-      const sortedConversations = conversations.sort((a, b) => 
-        new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
-      );
-
-      // Déterminer s'il y a plus de pages
-      const hasMore = appointments.length === pageSize;
-
-      return { conversations: sortedConversations, hasMore };
+      if (!userId) return { conversations: [], hasMore: false } as ConversationsPage;
+      // L'API déduit l'utilisateur (patient ou praticien) du jeton.
+      return api.get<ConversationsPage>('/conversations', { query: { page: pageParam, limit: PAGE_SIZE } });
     },
     getNextPageParam: (lastPage, allPages) => {
       return lastPage.hasMore ? allPages.length : undefined;
@@ -117,25 +77,12 @@ export function useConversations(userId?: string, userType?: 'patient' | 'practi
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
-      .channel('conversations-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-        },
-        () => {
-          // Invalidate conversations when any message changes
-          queryClient.invalidateQueries({ queryKey: ['conversations', userId, userType] });
-        }
-      )
-      .subscribe();
+    const off = onTableChange('messages', () => {
+      // Invalidate conversations when any message changes
+      queryClient.invalidateQueries({ queryKey: ['conversations', userId, userType] });
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return off;
   }, [userId, userType, queryClient]);
 
   return query;
@@ -149,19 +96,10 @@ export function useConversationMessages(appointmentId?: string, userId?: string)
     queryKey: ['messages', appointmentId],
     queryFn: async () => {
       if (!appointmentId) return [];
-      
-      // ✅ Limiter à 200 derniers messages par conversation
-      const { data, error } = await withTimeout(
-        supabase
-          .from('messages')
-          .select('*')
-          .eq('appointment_id', appointmentId)
-          .order('created_at', { ascending: true })
-          .limit(200)
-      );
 
-      if (error) throw error;
-      return data || [];
+      // ✅ Limiter à 200 derniers messages par conversation (ordre chronologique)
+      const data = await api.get<Message[]>(`/conversations/${appointmentId}/messages`, { query: { limit: 200 } });
+      return withSignedAttachments(data || []);
     },
     enabled: !!appointmentId,
     staleTime: 5000, // ✅ Cache pendant 5 secondes
@@ -171,61 +109,37 @@ export function useConversationMessages(appointmentId?: string, userId?: string)
   useEffect(() => {
     if (!appointmentId) return;
 
-    const channel = supabase
-      .channel(`messages:${appointmentId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `appointment_id=eq.${appointmentId}`,
-        },
-        (payload) => {
-          console.log('New message received:', payload);
-          
-          // Add new message to cache
-          queryClient.setQueryData<Message[]>(
-            ['messages', appointmentId],
-            (old = []) => [...old, payload.new as Message]
-          );
+    const offRoom = subscribeAppointment(appointmentId);
+    const offChanges = onTableChange('messages', async (event) => {
+      if (event.appointment_id && event.appointment_id !== appointmentId) return;
 
-          // Show notification if message is from other user
-          const newMessage = payload.new as Message;
-          if (newMessage.sender_id !== userId) {
-            toast({
-              title: 'Nouveau message',
-              description: 'Vous avez reçu un nouveau message',
-            });
-          }
+      if (event.op === 'INSERT') {
+        // L'événement ne contient pas la ligne : refetch puis détection des nouveaux messages reçus
+        const previous = queryClient.getQueryData<Message[]>(['messages', appointmentId]) ?? [];
+        const knownIds = new Set(previous.map((m) => m.id));
+        await queryClient.invalidateQueries({ queryKey: ['messages', appointmentId] });
+        const next = queryClient.getQueryData<Message[]>(['messages', appointmentId]) ?? [];
+        const received = next.some((m) => !knownIds.has(m.id) && m.sender_id !== userId);
 
-          // Invalidate conversations to update unread count
-          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        // Show notification if message is from other user
+        if (received) {
+          toast({
+            title: 'Nouveau message',
+            description: 'Vous avez reçu un nouveau message',
+          });
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `appointment_id=eq.${appointmentId}`,
-        },
-        (payload) => {
-          // Update message in cache
-          queryClient.setQueryData<Message[]>(
-            ['messages', appointmentId],
-            (old = []) =>
-              old.map((msg) =>
-                msg.id === payload.new.id ? (payload.new as Message) : msg
-              )
-          );
-        }
-      )
-      .subscribe();
+
+        // Invalidate conversations to update unread count
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      } else {
+        // UPDATE (lecture) / DELETE : rafraîchir la conversation
+        queryClient.invalidateQueries({ queryKey: ['messages', appointmentId] });
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      offChanges();
+      offRoom();
     };
   }, [appointmentId, userId, queryClient]);
 
@@ -238,60 +152,33 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: async (data: {
-      sender_id: string;
+      /** Ignoré : l'expéditeur est déduit du jeton par l'API (conservé pour compatibilité). */
+      sender_id?: string;
       content: string;
       appointment_id: string;
       attachment?: File;
     }) => {
-      let attachmentUrl = null;
-      let attachmentType = null;
-      let attachmentName = null;
-      let attachmentSize = null;
+      let attachment: { filePath: string; type?: string; name?: string; size?: number } | undefined;
 
       // Upload attachment if present
       if (data.attachment) {
-        const fileExt = data.attachment.name.split('.').pop();
-        const fileName = `${data.appointment_id}/${Date.now()}.${fileExt}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('message-attachments')
-          .upload(fileName, data.attachment, {
-            cacheControl: '3600',
-            upsert: false,
-          });
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('message-attachments')
-          .getPublicUrl(fileName);
-
-        attachmentUrl = publicUrl;
-        attachmentType = data.attachment.type;
-        attachmentName = data.attachment.name;
-        attachmentSize = data.attachment.size;
+        const uploaded = await uploadFile(data.attachment, { folder: 'message-attachments' });
+        attachment = {
+          filePath: uploaded.path,
+          type: data.attachment.type || undefined,
+          name: data.attachment.name,
+          size: data.attachment.size,
+        };
       }
 
-      const { error } = await withTimeout(
-        supabase
-          .from('messages')
-          .insert({
-            sender_id: data.sender_id,
-            content: data.content,
-            appointment_id: data.appointment_id,
-            is_read: false,
-            attachment_url: attachmentUrl,
-            attachment_type: attachmentType,
-            attachment_name: attachmentName,
-            attachment_size: attachmentSize,
-          })
-      );
-
-      if (error) throw error;
+      return api.post<Message>(`/conversations/${data.appointment_id}/messages`, {
+        content: data.content,
+        ...(attachment ? { attachment } : {}),
+      });
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['messages', variables.appointment_id] 
+      queryClient.invalidateQueries({
+        queryKey: ['messages', variables.appointment_id]
       });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
@@ -305,23 +192,15 @@ export function useMarkMessagesAsRead() {
   return useMutation({
     mutationFn: async (data: {
       appointment_id: string;
-      user_id: string;
+      /** Ignoré : l'utilisateur est déduit du jeton par l'API (conservé pour compatibilité). */
+      user_id?: string;
     }) => {
-      // Mark all unread messages in this conversation as read
-      const { error } = await withTimeout(
-        supabase
-          .from('messages')
-          .update({ is_read: true })
-          .eq('appointment_id', data.appointment_id)
-          .neq('sender_id', data.user_id)
-          .eq('is_read', false)
-      );
-
-      if (error) throw error;
+      // Mark all unread messages from the other party in this conversation as read
+      await api.post<{ updated: number }>(`/conversations/${data.appointment_id}/read`);
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['messages', variables.appointment_id] 
+      queryClient.invalidateQueries({
+        queryKey: ['messages', variables.appointment_id]
       });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
@@ -330,50 +209,37 @@ export function useMarkMessagesAsRead() {
 
 // Typing indicator hook
 export function useTypingIndicator(appointmentId: string, userId: string) {
-  const [typingUsers, setTypingUsers] = useState<any>({});
+  const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!appointmentId || !userId) return;
 
-    const channel = supabase.channel(`typing:${appointmentId}`);
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        setTypingUsers(state);
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        console.log('User started typing:', key, newPresences);
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        console.log('User stopped typing:', key, leftPresences);
-      })
-      .subscribe();
+    const offRoom = subscribeAppointment(appointmentId);
+    const offTyping = onTyping((event) => {
+      if (event.appointmentId !== appointmentId || event.userId === userId) return;
+      setTypingUsers((prev) => {
+        if (event.isTyping) return { ...prev, [event.userId]: true };
+        if (!(event.userId in prev)) return prev;
+        const next = { ...prev };
+        delete next[event.userId];
+        return next;
+      });
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      offTyping();
+      offRoom();
+      setTypingUsers({});
     };
   }, [appointmentId, userId]);
 
-  const setTyping = async (isTyping: boolean) => {
-    const channel = supabase.channel(`typing:${appointmentId}`);
-    
-    await channel.subscribe();
-    
-    if (isTyping) {
-      await channel.track({ user_id: userId });
-    } else {
-      await channel.untrack();
-    }
+  const setTyping = (isTyping: boolean) => {
+    if (!appointmentId) return;
+    emitTyping(appointmentId, isTyping);
   };
 
   // Check if other users (not current user) are typing
-  const isOtherUserTyping = Object.values(typingUsers).some(
-    (presences: any) => {
-      if (!Array.isArray(presences)) return false;
-      return presences.some((presence: any) => presence.user_id !== userId);
-    }
-  );
+  const isOtherUserTyping = Object.keys(typingUsers).some((id) => id !== userId && typingUsers[id]);
 
   return { isOtherUserTyping, setTyping };
 }

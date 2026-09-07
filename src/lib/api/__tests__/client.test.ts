@@ -73,7 +73,7 @@ describe('client API', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(400, { statusCode: 400, message: 'Validation échouée', details: { email: ['Adresse e-mail invalide'] } }));
     const { api, ApiError, errorMessage } = await import('..');
 
-    const error = await api.post('/auth/register', { email: 'x' }, { auth: false }).catch((e) => e);
+    const error = (await api.post('/auth/register', { email: 'x' }, { auth: false }).catch((e: unknown) => e)) as InstanceType<typeof ApiError>;
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error.status).toBe(400);
