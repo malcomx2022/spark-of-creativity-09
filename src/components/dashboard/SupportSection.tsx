@@ -8,18 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   HelpCircle, Shield, Plus, Download, AlertCircle, RefreshCw,
-  Clock, CheckCircle, XCircle, Filter, TicketIcon, AlertTriangle,
-  ArrowUp, ArrowRight, ArrowDown, FileText
+  Clock, CheckCircle, XCircle, Filter, TicketIcon,
+  ArrowUp, ArrowRight, ArrowDown, FileText, MessageSquareReply, BookOpen
 } from 'lucide-react';
-import { useSupportTickets, useCreateSupportTicket } from '@/hooks/useSupportTickets';
+import { useSupportTickets, useCreateSupportTicket, useCloseSupportTicket, useFaqs } from '@/hooks/useSupportTickets';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useState, useMemo } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
+import { api, errorMessage } from '@/lib/api';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -43,6 +43,12 @@ export function SupportSection() {
   const { data: user } = useAuthUser();
   const { data: tickets = [], isLoading, isFetching, refetch } = useSupportTickets(user?.id);
   const createTicket = useCreateSupportTicket();
+  const closeTicket = useCloseSupportTicket();
+
+  // FAQ publiques filtrées selon le type de compte (praticien / coach → praticiens, sinon patients)
+  const userType = typeof user?.metadata?.user_type === 'string' ? user.metadata.user_type : undefined;
+  const faqAudience = userType === 'practitioner' || userType === 'coach' ? 'practitioners' : 'patients';
+  const { data: faqs = [] } = useFaqs(faqAudience);
 
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,10 +84,8 @@ export function SupportSection() {
     setSubmitError(null);
 
     try {
-      await createTicket.mutateAsync({
-        user_id: user.id,
-        ...formData,
-      });
+      // L'utilisateur est déduit du jeton par l'API
+      await createTicket.mutateAsync(formData);
       setFormData({ subject: '', description: '', priority: 'medium' });
       setShowForm(false);
       toast({
@@ -89,15 +93,31 @@ export function SupportSection() {
         description: 'Notre équipe vous répondra dans les plus brefs délais.',
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Impossible de créer le ticket.';
-      setSubmitError(errorMessage);
+      const message = errorMessage(error, 'Impossible de créer le ticket.');
+      setSubmitError(message);
       toast({
         title: 'Erreur',
-        description: errorMessage,
+        description: message,
         variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCloseTicket = async (ticketId: string) => {
+    try {
+      await closeTicket.mutateAsync(ticketId);
+      toast({
+        title: 'Ticket fermé',
+        description: 'Votre ticket a été fermé.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: errorMessage(error, 'Impossible de fermer le ticket.'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -118,38 +138,8 @@ export function SupportSection() {
         description: 'Préparation de vos données...',
       });
 
-      // Export user profile
-      const { data: profile } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-      );
-
-      // Export appointments
-      const { data: appointments } = await withTimeout(
-        supabase
-          .from('appointments')
-          .select('*')
-          .eq('patient_id', user.id)
-      );
-
-      // Export medical profile
-      const { data: medicalProfile } = await withTimeout(
-        supabase
-          .from('medical_profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single()
-      );
-
-      const exportData = {
-        profile,
-        appointments,
-        medicalProfile,
-        exportDate: new Date().toISOString(),
-      };
+      // Export RGPD côté API : compte, profil, rendez-vous, profil médical, contacts, adresses, consentements, triages, avis
+      const exportData = await api.get<Record<string, unknown>>('/medical/export');
 
       const dataStr = JSON.stringify(exportData, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -167,12 +157,9 @@ export function SupportSection() {
         description: 'Vos données ont été téléchargées.',
       });
     } catch (error) {
-      const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         title: 'Erreur',
-        description: isTimeoutError
-          ? error.message
-          : "Impossible d'exporter vos données.",
+        description: errorMessage(error, "Impossible d'exporter vos données."),
         variant: 'destructive',
       });
     }

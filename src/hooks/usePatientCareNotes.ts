@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { withTimeout } from '@/lib/network-timeout';
+import { api } from '@/lib/api';
 
 interface CareNote {
   id: string;
@@ -16,36 +15,39 @@ interface CareNote {
   appointments?: {
     practitioner_name: string;
     date: string;
+    specialty?: string;
   };
 }
 
+/** Ligne renvoyée par GET /care-notes/mine (jointure aplatie avec `appointments`). */
+interface PatientCareNoteRow extends Omit<CareNote, 'appointments'> {
+  practitioner_name?: string | null;
+  appointment_date?: string | null;
+  specialty?: string | null;
+}
+
+/** Notes partagées avec le patient connecté (l'API déduit le patient du jeton ; `patientId` ne sert qu'à activer la requête). */
 export function usePatientCareNotes(patientId?: string, page = 0, pageSize = 20) {
   return useQuery({
     queryKey: ['patient-care-notes', patientId, page],
     queryFn: async () => {
-      if (!patientId) return { data: [], count: 0 };
+      if (!patientId) return { data: [] as CareNote[], count: 0 };
 
-      // ✅ Récupérer uniquement les notes partagées avec le patient
-      const { data, error, count } = await withTimeout(
-        supabase
-          .from('care_notes')
-          .select(`
-            *,
-            appointments!inner (
-              id,
-              patient_id,
-              practitioner_name,
-              date
-            )
-          `, { count: 'exact' })
-          .eq('shared_with_patient', true)  // ⚠️ IMPORTANT : uniquement notes partagées
-          .eq('appointments.patient_id', patientId)
-          .order('created_at', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-      );
+      // ✅ Uniquement les notes partagées avec le patient (filtre appliqué côté API)
+      const { data, count } = await api.get<{ data: PatientCareNoteRow[]; count: number }>('/care-notes/mine', {
+        query: { page, limit: pageSize },
+      });
 
-      if (error) throw error;
-      return { data: (data as CareNote[]) || [], count: count || 0 };
+      const notes: CareNote[] = (data || []).map(({ practitioner_name, appointment_date, specialty, ...note }) => ({
+        ...note,
+        appointments: {
+          practitioner_name: practitioner_name || 'Praticien',
+          date: appointment_date || note.created_at,
+          specialty: specialty || undefined,
+        },
+      }));
+
+      return { data: notes, count: count || 0 };
     },
     enabled: !!patientId,
     staleTime: 30000,

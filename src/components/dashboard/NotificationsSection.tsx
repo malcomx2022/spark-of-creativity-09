@@ -27,11 +27,13 @@ import {
   useNotificationPreferences,
   useMarkNotificationAsRead,
   useMarkAllNotificationsAsRead,
-  useDeleteNotification
+  useDeleteNotification,
+  useUpdateNotificationPreferences,
+  type NotificationPreferencesUpdate,
 } from '@/hooks/useNotifications';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAuthUser } from '@/hooks/useAuthUser';
-import { supabase } from '@/integrations/supabase/client';
+import { errorMessage } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -65,6 +67,7 @@ export function NotificationsSection() {
   const markAsRead = useMarkNotificationAsRead();
   const markAllAsRead = useMarkAllNotificationsAsRead();
   const deleteNotification = useDeleteNotification();
+  const updatePreferences = useUpdateNotificationPreferences();
   const { isSupported, isSubscribed, isLoading: isPushLoading, subscribe, unsubscribe } = usePushNotifications(user?.id);
 
   const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read'>('all');
@@ -131,36 +134,25 @@ export function NotificationsSection() {
       setIsUpdating(prev => ({ ...prev, [key]: true }));
 
       try {
-        const columnMap = {
-          email: 'email_enabled',
-          sms: 'sms_enabled',
-          whatsapp: 'whatsapp_enabled',
-          push: 'push_enabled',
+        const fieldMap: Record<keyof typeof localPrefs, keyof NotificationPreferencesUpdate> = {
+          email: 'emailEnabled',
+          sms: 'smsEnabled',
+          whatsapp: 'whatsappEnabled',
+          push: 'pushEnabled',
         };
 
-        const updateData: any = {
-          user_id: user.id,
-          [columnMap[key]]: value
-        };
-
-        const { error } = await supabase
-          .from('notification_preferences')
-          .upsert(updateData, {
-            onConflict: 'user_id',
-            ignoreDuplicates: false
-          });
-
-        if (error) throw error;
+        // PUT /notifications/preferences (upsert côté API, utilisateur déduit du jeton)
+        await updatePreferences.mutateAsync({ userId: user.id, data: { [fieldMap[key]]: value } });
 
         toast({
           title: 'Préférences mises à jour',
           description: 'Vos préférences de notification ont été enregistrées.'
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error updating preferences:', error);
         toast({
           title: 'Erreur lors de la mise à jour',
-          description: error.message || 'Impossible de mettre à jour vos préférences.',
+          description: errorMessage(error, 'Impossible de mettre à jour vos préférences.'),
           variant: 'destructive'
         });
         // Revert optimistic update
@@ -169,7 +161,7 @@ export function NotificationsSection() {
         setIsUpdating(prev => ({ ...prev, [key]: false }));
       }
     }, 300);
-  }, [user?.id]);
+  }, [user?.id, updatePreferences]);
 
   // Nettoyer les timers au démontage
   useEffect(() => {

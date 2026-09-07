@@ -1,15 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MapPin, MessageSquare, Navigation, Clock, CheckCircle2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { api, onTableChange, subscribeAppointment } from '@/lib/api';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+const ENV_MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+interface PublicConfig {
+  mapboxToken: string | null;
+  features: Record<string, boolean>;
+}
+
+/** Colonnes de suivi de `GET /appointments/:id`. */
+interface TrackedAppointment {
+  practitioner_status?: string | null;
+  practitioner_latitude?: number | null;
+  practitioner_longitude?: number | null;
+}
 
 interface PractitionerTrackingProps {
   appointmentId: string;
@@ -39,6 +52,8 @@ const STATUS_COLORS: Record<TrackingStatus, string> = {
   in_progress: 'bg-primary',
 };
 
+const isTrackingStatus = (value: unknown): value is TrackingStatus => typeof value === 'string' && value in STATUS_LABELS;
+
 export function PractitionerTracking({
   appointmentId,
   practitionerName,
@@ -50,47 +65,59 @@ export function PractitionerTracking({
 }: PractitionerTrackingProps) {
   const [status, setStatus] = useState<TrackingStatus>('assigned');
   const [practitionerLocation, setPractitionerLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [eta, setEta] = useState<string | null>(null);
+  const [eta] = useState<string | null>(null);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [mapContainer, setMapContainer] = useState<HTMLDivElement | null>(null);
 
-  // Écouter les mises à jour en temps réel
+  // Jeton Mapbox : variable d'environnement en priorité, sinon configuration publique de l'API
+  const { data: publicConfig } = useQuery({
+    queryKey: ['public-config'],
+    queryFn: () => api.get<PublicConfig>('/config/public', { auth: false }),
+    enabled: !ENV_MAPBOX_TOKEN,
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+  const mapboxToken = ENV_MAPBOX_TOKEN || publicConfig?.mapboxToken || null;
+
+  // Relire le rendez-vous (statut et position du praticien)
+  const refreshTracking = useCallback(async () => {
+    try {
+      const appointment = await api.get<TrackedAppointment>(`/appointments/${appointmentId}`);
+      if (isTrackingStatus(appointment.practitioner_status)) {
+        setStatus(appointment.practitioner_status);
+      }
+      if (appointment.practitioner_latitude && appointment.practitioner_longitude) {
+        setPractitionerLocation({
+          lat: Number(appointment.practitioner_latitude),
+          lng: Number(appointment.practitioner_longitude),
+        });
+      }
+    } catch (error) {
+      console.error('Erreur chargement du suivi du praticien:', error);
+    }
+  }, [appointmentId]);
+
+  // Écouter les mises à jour en temps réel (room du rendez-vous, puis relecture)
   useEffect(() => {
-    const channel = supabase
-      .channel('appointment-tracking')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'appointments',
-          filter: `id=eq.${appointmentId}`,
-        },
-        (payload) => {
-          const appointment = payload.new as any;
-          if (appointment.practitioner_status) {
-            setStatus(appointment.practitioner_status);
-          }
-          if (appointment.practitioner_latitude && appointment.practitioner_longitude) {
-            setPractitionerLocation({
-              lat: appointment.practitioner_latitude,
-              lng: appointment.practitioner_longitude,
-            });
-          }
-        }
-      )
-      .subscribe();
+    refreshTracking();
+
+    const unsubscribeRoom = subscribeAppointment(appointmentId);
+    const offChanges = onTableChange('appointments', (event) => {
+      if (event.id === appointmentId || event.appointment_id === appointmentId) {
+        refreshTracking();
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      offChanges();
+      unsubscribeRoom();
     };
-  }, [appointmentId]);
+  }, [appointmentId, refreshTracking]);
 
   // Initialiser la carte
   useEffect(() => {
-    if (!mapContainer || !MAPBOX_TOKEN || !patientLat || !patientLng) return;
+    if (!mapContainer || !mapboxToken || !patientLat || !patientLng) return;
 
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    mapboxgl.accessToken = mapboxToken;
 
     const newMap = new mapboxgl.Map({
       container: mapContainer,
@@ -110,7 +137,7 @@ export function PractitionerTracking({
     return () => {
       newMap.remove();
     };
-  }, [mapContainer, patientLat, patientLng, patientAddress]);
+  }, [mapContainer, mapboxToken, patientLat, patientLng, patientAddress]);
 
   // Mettre à jour la position du praticien sur la carte
   useEffect(() => {

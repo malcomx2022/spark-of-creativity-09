@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, errorMessage } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 import { useAuthUser } from '@/hooks/useAuthUser';
+import type { UrgencyLevel } from '@/types/triage';
 import {
   Dialog,
   DialogContent,
@@ -18,10 +20,32 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Progress } from '@/components/ui/progress';
 import {
   AlertCircle, CheckCircle2, Clock, AlertTriangle, RefreshCw,
-  Filter, ArrowUpDown, Activity, TrendingUp, ClipboardList
+  Filter, ArrowUpDown, Activity, TrendingUp, ClipboardList, Trash2
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+
+/** Ligne `triage_results` renvoyée par GET /triage/history. */
+interface TriageResultRow {
+  id: string;
+  user_id: string;
+  score: number;
+  urgency_level: UrgencyLevel | string;
+  message: string;
+  recommendations: string[] | null;
+  answers: Record<string, string | string[]> | null;
+  created_at: string;
+}
+
+interface TriageHistoryResponse {
+  data: TriageResultRow[];
+  stats: {
+    total: number;
+    distribution: Record<string, number>;
+    avgScore: number;
+    maxScore: number;
+  };
+}
 
 const URGENCY_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
   immediate: { label: 'Immédiat', color: 'text-red-500', bgColor: 'bg-red-500' },
@@ -37,26 +61,41 @@ interface TriageHistoryProps {
 
 export function TriageHistory({ open, onOpenChange }: TriageHistoryProps) {
   const { data: user } = useAuthUser();
+  const queryClient = useQueryClient();
 
   const [urgencyFilter, setUrgencyFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'score_desc' | 'score_asc'>('date_desc');
 
-  const { data: triageResults = [], isLoading, isFetching, refetch } = useQuery({
+  const { data: triageResults = [], isLoading, isFetching, refetch } = useQuery<TriageResultRow[]>({
     queryKey: ['triage-history', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
 
-      const { data, error } = await supabase
-        .from('triage_results')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return data || [];
+      // 50 dernières évaluations de l'utilisateur connecté (déduit du jeton)
+      const result = await api.get<TriageHistoryResponse>('/triage/history');
+      return result?.data || [];
     },
     enabled: !!user?.id && open,
+  });
+
+  const deleteTriage = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete<{ deleted: boolean }>(`/triage/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['triage-history', user?.id] });
+      toast({
+        title: 'Évaluation supprimée',
+        description: "L'évaluation a été retirée de votre historique.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Erreur',
+        description: errorMessage(error, "Impossible de supprimer l'évaluation."),
+        variant: 'destructive',
+      });
+    },
   });
 
   // Filtrer et trier les résultats
@@ -353,8 +392,8 @@ export function TriageHistory({ open, onOpenChange }: TriageHistoryProps) {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredResults.map((result: any) => (
-              <Card key={result.id} className="hover:bg-muted/30 transition-colors">
+            {filteredResults.map((result) => (
+              <Card key={result.id} className="hover:bg-muted/30 transition-colors group">
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -387,6 +426,16 @@ export function TriageHistory({ open, onOpenChange }: TriageHistoryProps) {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">Score: {result.score}/25</Badge>
                       {getUrgencyBadge(result.urgency_level)}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => deleteTriage.mutate(result.id)}
+                        disabled={deleteTriage.isPending}
+                        aria-label="Supprimer cette évaluation"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
 
@@ -401,7 +450,7 @@ export function TriageHistory({ open, onOpenChange }: TriageHistoryProps) {
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="max-w-md">
                           <ul className="list-disc list-inside space-y-1">
-                            {result.recommendations.map((rec: string, idx: number) => (
+                            {result.recommendations.map((rec, idx) => (
                               <li key={idx}>{rec}</li>
                             ))}
                           </ul>

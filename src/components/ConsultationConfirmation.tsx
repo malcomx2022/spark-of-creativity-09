@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api, auth, errorMessage } from '@/lib/api';
 
 interface ConsultationConfirmationProps {
   open: boolean;
@@ -35,19 +35,10 @@ export function ConsultationConfirmation({
 
   const handleConfirm = async () => {
     setIsProcessing(true);
-    
-    try {
-      // Mettre à jour le statut du rendez-vous
-      const { error } = await supabase
-        .from('appointments')
-        .update({
-          status: 'completed',
-          patient_confirmed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', appointmentId);
 
-      if (error) throw error;
+    try {
+      // Confirmation par le patient → completed (patient_confirmed_at posé par l'API)
+      await api.post(`/appointments/${appointmentId}/confirm`);
 
       toast({
         title: '✅ Consultation confirmée',
@@ -60,7 +51,7 @@ export function ConsultationConfirmation({
       console.error('Erreur confirmation:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de confirmer la consultation. Réessayez.',
+        description: errorMessage(error, 'Impossible de confirmer la consultation. Réessayez.'),
         variant: 'destructive',
       });
     } finally {
@@ -81,44 +72,15 @@ export function ConsultationConfirmation({
     setIsProcessing(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) throw new Error('Utilisateur non connecté');
+      if (!auth.getUser()) throw new Error('Utilisateur non connecté');
 
-      // Créer un ticket de support / litige
-      const { data: disputeData, error } = await supabase
-        .from('disputes')
-        .insert({
-          raised_by: user.id,
-          appointment_id: appointmentId,
-          subject: `Problème avec la consultation - ${practitionerName}`,
-          description: issueDescription,
-          status: 'open',
-          priority: 'high',
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
-
-      // Notify admins about the new dispute
-      const { data: adminUsers } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .in('role', ['super_admin', 'ops', 'support']);
-
-      if (adminUsers && adminUsers.length > 0) {
-        const uniqueAdminIds = Array.from(new Set(adminUsers.map(a => a.user_id)));
-        await supabase.from('notifications').insert(
-          uniqueAdminIds.map(adminId => ({
-            user_id: adminId,
-            title: 'Nouveau litige signalé',
-            message: `Un patient a signalé un problème avec sa consultation avec ${practitionerName}. Priorité: Haute`,
-            type: 'dispute_created',
-            link: '/admin?tab=operations',
-          }))
-        );
-      }
+      // Créer un litige (l'API notifie les administrateurs)
+      await api.post('/disputes', {
+        appointmentId,
+        subject: `Problème avec la consultation - ${practitionerName}`,
+        description: issueDescription,
+        priority: 'high',
+      });
 
       toast({
         title: '📝 Problème signalé',
@@ -130,7 +92,7 @@ export function ConsultationConfirmation({
       console.error('Erreur signalement:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de signaler le problème. Réessayez.',
+        description: errorMessage(error, 'Impossible de signaler le problème. Réessayez.'),
         variant: 'destructive',
       });
     } finally {

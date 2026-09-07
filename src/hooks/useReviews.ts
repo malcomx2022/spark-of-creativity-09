@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { withTimeout } from '@/lib/network-timeout';
+import { api } from '@/lib/api';
 
 export interface Review {
   id: string;
@@ -19,38 +18,46 @@ export interface Review {
   };
 }
 
+/** Ligne renvoyée par GET /reviews/mine. */
+interface MyReviewRow {
+  id: string;
+  patient_id: string;
+  practitioner_id: string;
+  appointment_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  is_hidden?: boolean | null;
+  practitioner: { id: string; name: string; specialty: string } | null;
+}
+
+/** Avis du patient connecté (l'API déduit le patient du jeton ; `patientId` ne sert qu'à activer la requête). */
 export function usePatientReviews(patientId?: string) {
   return useQuery<Review[]>({
     queryKey: ['reviews', 'patient', patientId],
     queryFn: async () => {
       if (!patientId) return [];
-      
-      // ✅ Limiter à 50 derniers avis avec JOIN practitioners et appointments
-      const { data, error } = await withTimeout(
-        supabase
-          .from('reviews')
-          .select(`
-            *,
-            practitioner:practitioners!reviews_practitioner_id_fkey(name, specialty),
-            appointment:appointments!reviews_appointment_id_fkey(specialty)
-          `)
-          .eq('patient_id', patientId)
-          .order('created_at', { ascending: false })
-          .limit(50)
-      );
 
-      if (error) throw error;
-      
+      // ✅ 50 derniers avis avec le praticien associé
+      const data = await api.get<MyReviewRow[]>('/reviews/mine');
+
       // Transform data to match Review interface
-      return (data || []).map(item => ({
-        ...item,
-        practitioner: item.practitioner ? {
-          name: (item.practitioner as any).name,
-          specialty: (item.practitioner as any).specialty,
-        } : undefined,
-        appointment: item.appointment ? {
-          specialty: (item.appointment as any).specialty,
-        } : undefined,
+      // TODO(api): GET /reviews/mine ne renvoie pas la spécialité du rendez-vous (`appointment.specialty`).
+      return (data || []).map((item) => ({
+        id: item.id,
+        patient_id: item.patient_id,
+        practitioner_id: item.practitioner_id,
+        appointment_id: item.appointment_id,
+        rating: item.rating,
+        comment: item.comment ?? undefined,
+        created_at: item.created_at,
+        practitioner: item.practitioner
+          ? {
+              name: item.practitioner.name,
+              specialty: item.practitioner.specialty,
+            }
+          : undefined,
+        appointment: undefined,
       }));
     },
     enabled: !!patientId,
@@ -63,22 +70,22 @@ export function useCreateReview() {
 
   return useMutation({
     mutationFn: async (data: {
-      patient_id: string;
-      practitioner_id: string;
+      /** Ignoré : le patient et le praticien sont déduits du rendez-vous par l'API (conservés pour compatibilité). */
+      patient_id?: string;
+      practitioner_id?: string;
       appointment_id: string;
       rating: number;
       comment?: string;
     }) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('reviews')
-          .insert(data)
-      );
-
-      if (error) throw error;
+      await api.post<Review & { practitioner_rating: number }>('/reviews', {
+        appointmentId: data.appointment_id,
+        rating: data.rating,
+        comment: data.comment?.trim() ? data.comment : null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['review-stats'] });
     },
   });
 }

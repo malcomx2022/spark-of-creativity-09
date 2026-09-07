@@ -8,11 +8,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
-import { triageQuestions, calculateTriageScore, type TriageResult } from '@/types/triage';
+import { triageQuestions, type TriageResult } from '@/types/triage';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { TriageHistory } from '@/components/TriageHistory';
+import { useQueryClient } from '@tanstack/react-query';
+
+/** Réponse de POST /triage : score calculé côté serveur, enregistré si l'utilisateur est connecté. */
+interface TriageResponse extends TriageResult {
+  id: string | null;
+  maxScore: number;
+  saved: boolean;
+}
 
 const formSchema = z.object({
   consciousness: z.string().min(1, 'Veuillez sélectionner une option'),
@@ -27,6 +35,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 export function TriageForm() {
   const { data: user } = useAuthUser();
+  const queryClient = useQueryClient();
   const [result, setResult] = useState<TriageResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -45,39 +54,38 @@ export function TriageForm() {
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
-    
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const triageResult = calculateTriageScore(data);
-    setResult(triageResult);
 
-    // Sauvegarder dans la base de données
-    if (user?.id) {
-      try {
-        const { error } = await supabase.from('triage_results').insert({
-          user_id: user.id,
-          score: triageResult.score,
-          urgency_level: triageResult.urgencyLevel,
-          message: triageResult.message,
-          recommendations: triageResult.recommendations,
-          answers: data,
-        });
+    try {
+      // Score calculé côté serveur ; enregistré automatiquement si l'utilisateur est connecté
+      const triageResult = await api.post<TriageResponse>('/triage', data);
+      setResult({
+        score: triageResult.score,
+        urgencyLevel: triageResult.urgencyLevel,
+        message: triageResult.message,
+        recommendations: triageResult.recommendations,
+      });
 
-        if (error) {
-          console.error('Erreur lors de la sauvegarde du triage:', error);
+      if (user?.id) {
+        if (triageResult.saved) {
+          queryClient.invalidateQueries({ queryKey: ['triage-history', user.id] });
+        } else {
+          console.error("Le triage n'a pas pu être enregistré dans l'historique");
         }
-      } catch (err) {
-        console.error('Erreur lors de la sauvegarde:', err);
       }
+
+      toast({
+        title: 'Évaluation terminée',
+        description: triageResult.message
+      });
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: errorMessage(error, "Impossible de calculer le niveau d'urgence pour le moment."),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
-
-    toast({
-      title: 'Évaluation terminée',
-      description: triageResult.message
-    });
   };
 
   const getUrgencyIcon = (level: string) => {

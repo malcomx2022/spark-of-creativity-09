@@ -1,19 +1,38 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api, auth } from '@/lib/api';
 import type { PractitionerLocation } from '@/types/practitioner';
 
-function mapPractitioner(row: any, isPublicView: boolean = false): PractitionerLocation {
+/** Colonnes publiques renvoyées par `GET /practitioners` (ex `practitioners_public_view`). */
+export interface PublicPractitionerRow {
+  id: string;
+  name: string;
+  specialty: string | null;
+  practitioner_type: string | null;
+  rating: number | null;
+  available: boolean | null;
+  years_experience: number | null;
+  bio: string | null;
+  languages: string[] | null;
+  communes_served: string[] | null;
+  intervention_zone: string | null;
+  intervention_radius: number | null;
+  certifications: string[] | null;
+  session_types: string[] | null;
+  image: string | null;
+}
+
+function mapPractitioner(row: PublicPractitionerRow): PractitionerLocation {
   return {
     id: row.id,
     name: row.name,
     specialty: row.specialty ?? 'Spécialité non renseignée',
-    // Pour la vue publique, pas d'adresse ni de coordonnées GPS exactes
-    address: isPublicView ? (row.intervention_zone ?? row.communes_served?.[0] ?? 'Zone non précisée') : (row.address ?? 'Adresse à préciser'),
-    latitude: isPublicView ? 0 : (row.latitude ?? 0),
-    longitude: isPublicView ? 0 : (row.longitude ?? 0),
+    // L'API n'expose ni l'adresse ni les coordonnées GPS exactes ni le téléphone des praticiens.
+    address: row.intervention_zone ?? row.communes_served?.[0] ?? 'Zone non précisée',
+    latitude: 0,
+    longitude: 0,
     available: row.available ?? false,
     rating: row.rating ?? 0,
-    phone: isPublicView ? '' : (row.phone ?? ''),
+    phone: '',
     image: row.image ?? undefined,
     practitioner_type: row.practitioner_type ?? undefined,
     // Données supplémentaires de la vue publique
@@ -25,42 +44,19 @@ function mapPractitioner(row: any, isPublicView: boolean = false): PractitionerL
 }
 
 async function fetchPractitioners() {
-  // Check if user is authenticated
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (session) {
-    // Authenticated users can access full practitioner data
-    // ✅ CORRECTION P0-5 & P1-12: Utiliser AND au lieu de OR et vérifier is_online
-    // Un praticien doit être: disponible ET peut accepter des missions ET en ligne ET KYC approuvé
-    const { data, error } = await supabase
-      .from('practitioners')
-      .select('*')
-      .eq('available', true)
-      .eq('can_accept_missions', true)
-      .eq('is_online', true)
-      .eq('kyc_status', 'approved')
-      .order('name', { ascending: true });
+  // ✅ CORRECTION P0-5 & P1-12: pour un utilisateur connecté, uniquement les praticiens
+  // disponibles ET pouvant accepter des missions ET en ligne (KYC approuvé dans les deux cas).
+  const onlineOnly = !!auth.getSession();
 
-    if (error) {
-      if (import.meta.env.DEV) {
-        console.error('Erreur chargement praticiens:', error);
-      }
-      throw error;
+  try {
+    const rows = await api.get<PublicPractitionerRow[]>('/practitioners', { query: { onlineOnly: onlineOnly || undefined, limit: 200 } });
+    return rows.map(mapPractitioner);
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Erreur chargement praticiens:', error);
     }
-
-    return (data ?? []).map(row => mapPractitioner(row, false));
-  } else {
-    // Unauthenticated users use the secure function with limited data (no GPS, phone, address)
-    const { data, error } = await supabase.rpc('get_public_practitioners');
-
-    if (error) {
-      if (import.meta.env.DEV) {
-        console.error('Erreur chargement praticiens publics:', error);
-      }
-      throw new Error('Impossible de charger la liste des praticiens. Veuillez vous connecter pour plus de détails.');
-    }
-
-    return (data ?? []).map(row => mapPractitioner(row, true));
+    if (onlineOnly) throw error;
+    throw new Error('Impossible de charger la liste des praticiens. Veuillez vous connecter pour plus de détails.');
   }
 }
 
