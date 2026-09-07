@@ -631,6 +631,142 @@ export interface MedicalProfilesTable {
   primary_doctor_phone: string | null;
 }
 
+export type TicketStatus = 'ouvert' | 'en_cours' | 'resolu' | 'ferme';
+export type Priority = 'low' | 'medium' | 'high' | 'urgent';
+export type DisputeStatus = 'open' | 'investigating' | 'resolved' | 'closed';
+
+export interface SupportTicketsTable {
+  id: Generated<string>;
+  user_id: string;
+  appointment_id: string | null;
+  subject: string;
+  description: string;
+  status: Generated<TicketStatus | null>;
+  attachments: string[] | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+  assigned_to: string | null;
+  priority: Generated<Priority | null>;
+  tags: string[] | null;
+  resolved_at: Timestamp | null;
+  admin_response: string | null;
+  responded_at: Timestamp | null;
+  responded_by: string | null;
+}
+
+export interface FaqsTable {
+  id: Generated<string>;
+  category: string;
+  question: string;
+  answer: string;
+  target_audience: Generated<'all' | 'patients' | 'practitioners' | null>;
+  is_published: Generated<boolean | null>;
+  version: Generated<number | null>;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface DisputesTable {
+  id: Generated<string>;
+  appointment_id: string | null;
+  raised_by: string;
+  assigned_to: string | null;
+  status: Generated<DisputeStatus | null>;
+  priority: Generated<Priority | null>;
+  subject: string;
+  description: string;
+  resolution: string | null;
+  sla_deadline: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+  resolved_at: Timestamp | null;
+}
+
+export interface DisputeMessagesTable {
+  id: Generated<string>;
+  dispute_id: string;
+  sender_id: string;
+  message: string;
+  attachments: string[] | null;
+  created_at: GeneratedTimestamp;
+}
+
+export interface CareNotesTable {
+  id: Generated<string>;
+  appointment_id: string;
+  practitioner_id: string;
+  subjective: string | null;
+  objective: string | null;
+  assessment: string | null;
+  plan: string | null;
+  attachments: string[] | null;
+  shared_with_patient: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface CareNotesSharingLogTable {
+  id: Generated<string>;
+  care_note_id: string;
+  practitioner_id: string;
+  old_shared_value: boolean | null;
+  new_shared_value: boolean | null;
+  changed_at: GeneratedTimestamp;
+  changed_by: Generated<string | null>;
+}
+
+export interface ConsultationReportsTable {
+  id: Generated<string>;
+  practitioner_id: string;
+  appointment_id: string;
+  consultation_date: GeneratedTimestamp;
+  consultation_type: string;
+  consultation_reason: string | null;
+  clinical_findings: string | null;
+  primary_diagnosis: string | null;
+  treatment_prescription: string | null;
+  follow_up_recommendation: string | null;
+  follow_up_timeframe: string | null;
+  additional_comments: string | null;
+  severity_level: string;
+  share_with_doctor: Generated<boolean | null>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface ConsultationReportsAccessLogTable {
+  id: Generated<string>;
+  report_id: string;
+  accessed_by: string;
+  access_type: string;
+  accessed_at: GeneratedTimestamp;
+}
+
+export interface TriageResultsTable {
+  id: Generated<string>;
+  user_id: string;
+  score: number;
+  urgency_level: string;
+  message: string | null;
+  recommendations: string[] | null;
+  answers: ColumnType<Record<string, unknown> | null, string | null, string | null>;
+  created_at: GeneratedTimestamp;
+}
+
+export interface SavedPaymentMethodsTable {
+  id: Generated<string>;
+  user_id: string;
+  provider: string;
+  phone_number_masked: string;
+  phone_number_encrypted: string;
+  is_default: Generated<boolean | null>;
+  consent_given_at: GeneratedTimestamp;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface OtpAttemptsTable {
   id: Generated<string>;
   phone_number: string;
@@ -688,6 +824,16 @@ export interface DB {
   otp_rate_limits: OtpRateLimitsTable;
   emergency_contacts: EmergencyContactsTable;
   medical_profiles: MedicalProfilesTable;
+  support_tickets: SupportTicketsTable;
+  faqs: FaqsTable;
+  disputes: DisputesTable;
+  dispute_messages: DisputeMessagesTable;
+  care_notes: CareNotesTable;
+  care_notes_sharing_log: CareNotesSharingLogTable;
+  consultation_reports: ConsultationReportsTable;
+  consultation_reports_access_log: ConsultationReportsAccessLogTable;
+  triage_results: TriageResultsTable;
+  saved_payment_methods: SavedPaymentMethodsTable;
 }
 
 export type User = Selectable<UsersTable>;
