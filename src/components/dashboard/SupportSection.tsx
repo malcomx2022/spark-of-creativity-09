@@ -342,7 +342,7 @@ export function SupportSection() {
                 <Label htmlFor="priority">Priorité</Label>
                 <Select
                   value={formData.priority}
-                  onValueChange={(value: any) => setFormData({ ...formData, priority: value })}
+                  onValueChange={(value: 'low' | 'medium' | 'high') => setFormData({ ...formData, priority: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -471,18 +471,41 @@ export function SupportSection() {
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <p className="text-xs text-muted-foreground cursor-help">
-                            Créé {formatTicketDate(ticket.created_at)}
-                          </p>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{formatFullDate(ticket.created_at)}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    {ticket.response && (
+                      <div className="mt-2 mb-2 p-3 rounded-md bg-muted/50 border text-sm">
+                        <div className="flex items-center gap-2 font-medium mb-1">
+                          <MessageSquareReply className="h-4 w-4 text-primary" />
+                          Réponse du support
+                        </div>
+                        <p className="whitespace-pre-wrap text-muted-foreground">{ticket.response}</p>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="text-xs text-muted-foreground cursor-help">
+                              Créé {formatTicketDate(ticket.created_at)}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{formatFullDate(ticket.created_at)}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      {(ticket.status === 'ouvert' || ticket.status === 'en_cours' || ticket.status === 'resolu') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => handleCloseTicket(ticket.id)}
+                          disabled={closeTicket.isPending}
+                        >
+                          <XCircle className="h-3.5 w-3.5 mr-1" />
+                          Fermer le ticket
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -490,6 +513,35 @@ export function SupportSection() {
           )}
         </CardContent>
       </Card>
+
+      {faqs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              Questions fréquentes
+              <Badge variant="secondary">{faqs.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="single" collapsible className="w-full">
+              {faqs.map((faq) => (
+                <AccordionItem key={faq.id} value={faq.id}>
+                  <AccordionTrigger className="text-left">
+                    <span className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-normal">{faq.category}</Badge>
+                      {faq.question}
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">{faq.answer}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

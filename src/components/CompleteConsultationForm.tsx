@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, FileText, Pill, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage } from '@/lib/api';
 
 interface CompleteConsultationFormProps {
   open: boolean;
@@ -23,7 +23,6 @@ export function CompleteConsultationForm({
   open,
   onOpenChange,
   appointmentId,
-  practitionerId,
   patientName,
   onCompleted,
 }: CompleteConsultationFormProps) {
@@ -54,37 +53,23 @@ export function CompleteConsultationForm({
     setIsProcessing(true);
 
     try {
-      // 1. Créer le compte-rendu de consultation
-      const { error: reportError } = await supabase
-        .from('consultation_reports')
-        .insert({
-          appointment_id: appointmentId,
-          practitioner_id: practitionerId,
-          consultation_type: formData.consultationType,
-          consultation_reason: formData.consultationReason,
-          clinical_findings: formData.clinicalFindings,
-          primary_diagnosis: formData.primaryDiagnosis,
-          treatment_prescription: formData.treatmentPrescription,
-          follow_up_recommendation: formData.followUpRecommendation,
-          follow_up_timeframe: formData.followUpTimeframe,
-          additional_comments: formData.additionalComments,
-          severity_level: formData.severityLevel,
-          consultation_date: new Date().toISOString(),
-        });
-
-      if (reportError) throw reportError;
-
-      // 2. Marquer la consultation comme terminée
-      const { error: appointmentError } = await supabase
-        .from('appointments')
-        .update({
-          status: 'awaiting_confirmation', // En attente confirmation patient
-          internal_notes: 'CONSULTATION_TERMINEE',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', appointmentId);
-
-      if (appointmentError) throw appointmentError;
+      // Compte-rendu + clôture de la consultation (rendez-vous → awaiting_confirmation) dans la
+      // même transaction ; le praticien est déduit du jeton et les valeurs du formulaire
+      // (video / urgence, low … critical) sont converties par l'API.
+      await api.post('/consultation-reports', {
+        appointmentId,
+        consultationType: formData.consultationType,
+        severityLevel: formData.severityLevel,
+        consultationReason: formData.consultationReason,
+        clinicalFindings: formData.clinicalFindings,
+        primaryDiagnosis: formData.primaryDiagnosis,
+        treatmentPrescription: formData.treatmentPrescription,
+        followUpRecommendation: formData.followUpRecommendation,
+        followUpTimeframe: formData.followUpTimeframe,
+        additionalComments: formData.additionalComments,
+        consultationDate: new Date().toISOString(),
+        completeAppointment: true,
+      });
 
       toast({
         title: '✅ Consultation terminée',
@@ -110,7 +95,7 @@ export function CompleteConsultationForm({
       console.error('Erreur finalisation consultation:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de finaliser la consultation. Réessayez.',
+        description: errorMessage(error, 'Impossible de finaliser la consultation. Réessayez.'),
         variant: 'destructive',
       });
     } finally {

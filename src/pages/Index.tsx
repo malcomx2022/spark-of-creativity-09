@@ -12,7 +12,7 @@ import UserTypeCard from "@/components/UserTypeCard";
 import heroImage from "@/assets/hero-medical.jpg";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { getDashboardPathForUser } from "@/lib/dashboardNavigation";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import { ROUTES } from "@/lib/routes";
 import { usePublicStats } from "@/hooks/usePublicStats";
@@ -59,20 +59,9 @@ const Index = () => {
   const { data: enabledFeatures } = useQuery<Record<string, boolean>>({
     queryKey: ['enabled-features'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('system_config')
-        .select('key, value')
-        .in('key', [
-          'feature_consultation_247',
-          'feature_geolocation',
-          'feature_mobile_money',
-          'feature_continuous_training'
-        ]);
-
-      return data?.reduce((acc, item) => ({
-        ...acc,
-        [item.key]: item.value === true || item.value === 'true'
-      }), {} as Record<string, boolean>) || {};
+      // Lecture anonyme des fonctionnalités de la page d'accueil (system_config) via l'API
+      const config = await api.get<{ mapboxToken: string | null; features: Record<string, boolean> }>('/config/public', { auth: false });
+      return config.features ?? {};
     },
     staleTime: 30 * 60 * 1000, // 30 min - les features changent rarement
     gcTime: 60 * 60 * 1000, // 1 heure en cache

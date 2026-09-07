@@ -67,7 +67,7 @@ export function NotificationsSection() {
   const markAsRead = useMarkNotificationAsRead();
   const markAllAsRead = useMarkAllNotificationsAsRead();
   const deleteNotification = useDeleteNotification();
-  const updatePreferences = useUpdateNotificationPreferences();
+  const { mutateAsync: savePreferences } = useUpdateNotificationPreferences();
   const { isSupported, isSubscribed, isLoading: isPushLoading, subscribe, unsubscribe } = usePushNotifications(user?.id);
 
   const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read'>('all');
@@ -142,7 +142,7 @@ export function NotificationsSection() {
         };
 
         // PUT /notifications/preferences (upsert côté API, utilisateur déduit du jeton)
-        await updatePreferences.mutateAsync({ userId: user.id, data: { [fieldMap[key]]: value } });
+        await savePreferences({ userId: user.id, data: { [fieldMap[key]]: value } });
 
         toast({
           title: 'Préférences mises à jour',
@@ -161,7 +161,7 @@ export function NotificationsSection() {
         setIsUpdating(prev => ({ ...prev, [key]: false }));
       }
     }, 300);
-  }, [user?.id, updatePreferences]);
+  }, [user?.id, savePreferences]);
 
   // Nettoyer les timers au démontage
   useEffect(() => {
@@ -342,7 +342,7 @@ export function NotificationsSection() {
               <Badge variant="secondary">{filteredNotifications.length}</Badge>
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
+              <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as 'all' | 'unread' | 'read')}>
                 <SelectTrigger className="w-[140px]">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue />
@@ -413,7 +413,7 @@ export function NotificationsSection() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 mt-1">
-                        {getNotificationIcon((notification as any).type)}
+                        {getNotificationIcon(notification.type)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start mb-1">

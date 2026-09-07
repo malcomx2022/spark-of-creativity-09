@@ -16,16 +16,29 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import type { CreateAppointmentData } from '@/types/appointment';
 import { toast } from '@/hooks/use-toast';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
-import type { FindPractitionerResponse } from '@/types/edge-function-responses';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { AddressSearchInput } from './AddressSearchInput';
-import { supabase } from '@/integrations/supabase/client';
+import { api, errorMessage, isApiError } from '@/lib/api';
+import type { PublicPractitionerRow } from '@/hooks/usePractitioners';
 import { useQuery } from '@tanstack/react-query';
 import { getCategoryLabel } from '@/lib/practitioner-categories';
 import { usePractitionerAvailability, usePractitionerExceptions, PractitionerAvailability, PractitionerException } from '@/hooks/useAvailability';
+
+/** Réponse de `GET /practitioners/available` (ex Edge Function find-available-practitioner). */
+interface AvailablePractitionerRow extends PublicPractitionerRow {
+  distanceKm: number;
+  isAvailableAt: boolean;
+  hasException: boolean;
+}
+
+interface AvailablePractitionersResponse {
+  found: boolean;
+  practitioner?: AvailablePractitionerRow | null;
+  practitioners: AvailablePractitionerRow[];
+  message?: string;
+}
 
 // Composant DatePopover séparé pour gérer l'état ouvert/fermé
 interface DatePopoverProps {
@@ -284,18 +297,16 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         }
 
         // ✅ CORRECTION #3: Vérifier que le praticien est disponible et validé KYC
-        const { data: practitionerCheck, error: checkError } = await supabase
-          .from('practitioners')
-          .select('id, available, kyc_status')
-          .eq('id', preselectedPractitioner.id)
-          .single();
-
-        if (checkError || !practitionerCheck) {
-          throw new Error('Praticien introuvable');
-        }
-
-        if (practitionerCheck.kyc_status !== 'approved') {
-          throw new Error('Ce praticien n\'est pas encore validé pour exercer');
+        // (GET /practitioners/:id ne renvoie que les praticiens validés ; l'API refuse aussi la
+        // création si le praticien n'accepte plus de missions)
+        let practitionerCheck: Pick<PublicPractitionerRow, 'id' | 'available'>;
+        try {
+          practitionerCheck = await api.get<PublicPractitionerRow>(`/practitioners/${preselectedPractitioner.id}`);
+        } catch (error) {
+          if (isApiError(error, 404)) {
+            throw new Error('Ce praticien n\'est pas encore validé pour exercer');
+          }
+          throw new Error(errorMessage(error, 'Praticien introuvable'));
         }
 
         if (!practitionerCheck.available) {
@@ -585,23 +596,31 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
         console.log('🔎 Paramètres:', { specialty: data.specialty, date: appointmentDate, time: data.time });
       }
       
-      // Appeler l'edge function avec retry et callback de progression
-      const { data: practitionerData, error: practitionerError } = await invokeEdgeFunctionWithRetry<FindPractitionerResponse>(
-        'find-available-practitioner',
-        {
-          body: {
-            patientLat: position.latitude,
-            patientLon: position.longitude,
-            specialty: data.specialty,
-            appointmentDate: appointmentDate,
-            appointmentTime: data.time,
-            maxRadius: 100,
+      // Appeler l'API (ex Edge Function find-available-practitioner) avec 3 tentatives
+      const findAvailable = () =>
+        api.get<AvailablePractitionersResponse>('/practitioners/available', {
+          query: {
+            type: data.specialty,
+            latitude: position.latitude,
+            longitude: position.longitude,
+            date: appointmentDate,
+            time: data.time,
+            radiusKm: 100,
+            limit: 1,
           },
-        },
-        3, // 3 tentatives max
-        (attempt, error) => {
+        });
+
+      let availableData: AvailablePractitionersResponse | null = null;
+      let lastError: unknown = null;
+      for (let attempt = 1; attempt <= 3 && !availableData; attempt++) {
+        try {
+          availableData = await findAvailable();
+        } catch (error) {
+          lastError = error;
+          // Les erreurs de validation (4xx) ne sont pas réessayées
+          if (isApiError(error) && error.status >= 400 && error.status < 500) break;
           if (import.meta.env.DEV) {
-            console.warn(`⚠️ Tentative ${attempt} échouée:`, error.message);
+            console.warn(`⚠️ Tentative ${attempt} échouée:`, errorMessage(error));
           }
           if (attempt === 1) {
             showToast({
@@ -611,40 +630,46 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
             });
           }
         }
-      );
+      }
 
-      // Validation de la réponse de l'edge function
-      if (practitionerError) {
+      // Validation de la réponse de l'API
+      if (!availableData) {
         if (import.meta.env.DEV) {
-          console.error('❌ Erreur de l\'edge function find-available-practitioner:', practitionerError);
+          console.error('❌ Erreur de la recherche de praticien disponible:', lastError);
         }
-        
-        const errorMessage = practitionerError.message || 'Erreur inconnue';
-        
+
+        const message = errorMessage(lastError, 'Erreur inconnue');
+
         // Gestion des différents types d'erreurs
-        if (errorMessage.includes('timeout') || errorMessage.includes('trop de temps')) {
+        if (message.includes('timeout') || message.includes('trop de temps') || message.includes('Délai')) {
           throw new Error('⏱️ Le serveur met trop de temps à répondre. Vérifiez votre connexion internet et réessayez.');
-        } else if (errorMessage.includes('network') || errorMessage.includes('réseau') || errorMessage.includes('fetch')) {
+        } else if (message.includes('network') || message.includes('réseau') || message.includes('fetch') || message.includes('joindre le serveur')) {
           throw new Error('📡 Erreur réseau lors de la recherche de praticien. Vérifiez votre connexion internet.');
         } else {
-          throw new Error(`❌ Erreur du serveur: ${errorMessage}`);
+          throw new Error(`❌ Erreur du serveur: ${message}`);
         }
       }
 
-      // Validation de la structure de la réponse
-      if (!practitionerData) {
+      if (typeof availableData !== 'object') {
         if (import.meta.env.DEV) {
-          console.error('❌ Réponse invalide: pas de données retournées');
-        }
-        throw new Error('🔧 Le serveur a retourné une réponse invalide. Veuillez contacter le support.');
-      }
-
-      if (typeof practitionerData !== 'object') {
-        if (import.meta.env.DEV) {
-          console.error('❌ Réponse invalide: type incorrect', typeof practitionerData);
+          console.error('❌ Réponse invalide: type incorrect', typeof availableData);
         }
         throw new Error('🔧 Le serveur a retourné des données dans un format invalide.');
       }
+
+      // Même forme que l'ancienne réponse de l'Edge Function
+      const practitionerData = {
+        success: availableData.found,
+        practitioner: availableData.practitioner
+          ? {
+              id: availableData.practitioner.id,
+              name: availableData.practitioner.name,
+              specialty: availableData.practitioner.specialty ?? data.specialty,
+              distance: availableData.practitioner.distanceKm,
+            }
+          : undefined,
+        message: availableData.message,
+      };
 
       // Aucun praticien disponible
       if (!practitionerData.success || !practitionerData.practitioner) {
@@ -841,17 +866,12 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
   const { data: availableCategories = [] } = useQuery({
     queryKey: ['available-categories'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('practitioners')
-        .select('practitioner_type')
-        .eq('available', true)
-        .eq('kyc_status', 'approved');
-
-      if (error) throw error;
+      // Praticiens validés visibles publiquement (GET /practitioners)
+      const data = await api.get<PublicPractitionerRow[]>('/practitioners', { query: { limit: 200 } });
 
       // Extraire les practitioner_type uniques
-      const types = [...new Set(data?.map(p => p.practitioner_type) || [])];
-      return types.filter(t => t && t.trim().length > 0);
+      const types = [...new Set(data.map(p => p.practitioner_type))];
+      return types.filter((t): t is string => !!t && t.trim().length > 0);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

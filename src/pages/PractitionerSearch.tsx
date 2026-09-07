@@ -15,7 +15,7 @@ import { usePractitioners } from '@/hooks/usePractitioners';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useCreateAppointment } from '@/hooks/useAppointments';
 import { NewAppointmentDialog } from '@/components/NewAppointmentDialog';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Star, MessageSquare, Navigation } from 'lucide-react';
 import { useGeolocation } from '@/hooks/useGeolocation';
@@ -117,21 +117,17 @@ export default function PractitionerSearch() {
     );
   }, [logActivity]);
 
-  // Récupérer le token Mapbox via l'edge function - priorité haute avec cache long
+  // Récupérer le token Mapbox via la configuration publique de l'API - priorité haute avec cache long
   const { data: mapboxData, isLoading: isLoadingMapbox } = useQuery({
     queryKey: ['mapbox-token'],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('get-mapbox-token');
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => api.get<{ mapboxToken: string | null; features: Record<string, boolean> }>('/config/public', { auth: false }),
     staleTime: 1000 * 60 * 60 * 24, // Cache 24h car le token ne change pas souvent
     gcTime: 1000 * 60 * 60 * 24, // Garder en cache 24h
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
 
-  const mapboxToken = mapboxData?.token || '';
+  const mapboxToken = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined) || mapboxData?.mapboxToken || '';
 
   const {
     data: practitionersData = [],
