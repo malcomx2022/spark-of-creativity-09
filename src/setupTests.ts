@@ -9,3 +9,8 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   }
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 }
+
+// jsdom n'implémente pas document.elementFromPoint (utilisé par input-otp dans un minuteur)
+if (typeof document !== 'undefined' && typeof document.elementFromPoint !== 'function') {
+  document.elementFromPoint = () => null;
+}

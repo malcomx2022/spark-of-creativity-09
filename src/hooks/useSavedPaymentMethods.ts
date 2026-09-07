@@ -1,94 +1,34 @@
 import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunctionWithRetry } from '@/lib/edge-function-retry';
+import { api, errorMessage } from '@/lib/api';
 import { useAuthUser } from './useAuthUser';
 import { toast } from './use-toast';
-import { withTimeout, NetworkTimeoutError } from '@/lib/network-timeout';
 
+/** Le numéro chiffré n'est jamais renvoyé par l'API : seul le numéro masqué est exposé. */
 export interface SavedPaymentMethod {
   id: string;
-  user_id: string;
   provider: 'mtn' | 'orange' | 'moov';
   phone_number_masked: string;
-  phone_number_encrypted: string;
   is_default: boolean;
   consent_given_at: string;
   created_at: string;
-  updated_at: string;
-}
-
-/**
- * Masque un numéro de téléphone (garde les 4 derniers chiffres)
- */
-function maskPhoneNumber(phone: string): string {
-  if (phone.length <= 4) return phone;
-  return `****${phone.slice(-4)}`;
 }
 
 export function useSavedPaymentMethods() {
   const { data: user } = useAuthUser();
   const queryClient = useQueryClient();
 
-  const encryptPhone = useCallback(async (phone: string): Promise<string> => {
-    const { data, error } = await invokeEdgeFunctionWithRetry<{ encrypted: string }>('secure-phone', {
-      body: {
-        action: 'encrypt',
-        phone,
-      },
-    });
-
-    if (error) {
-      throw new Error(error.message || 'Impossible de chiffrer le numéro.');
-    }
-
-    if (!data?.encrypted) {
-      throw new Error('Réponse de chiffrement invalide.');
-    }
-
-    return data.encrypted;
-  }, []);
-
-  const decryptPhone = useCallback(async (methodId: string): Promise<string> => {
-    const { data, error } = await invokeEdgeFunctionWithRetry<{ phone: string }>('secure-phone', {
-      body: {
-        action: 'decrypt',
-        methodId,
-      },
-    });
-
-    if (error) {
-      throw new Error(error.message || 'Impossible de récupérer le numéro enregistré.');
-    }
-
-    if (!data?.phone) {
-      throw new Error('Réponse de déchiffrement invalide.');
-    }
-
-    return data.phone;
-  }, []);
-
   const { data: paymentMethods = [], isLoading } = useQuery({
     queryKey: ['saved-payment-methods', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-
-      const { data, error } = await withTimeout(
-        supabase
-          .from('saved_payment_methods')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('is_default', { ascending: false })
-          .order('created_at', { ascending: false })
-      );
-
-      if (error) throw error;
-      return (data || []) as SavedPaymentMethod[];
+      return api.get<SavedPaymentMethod[]>('/payment-methods');
     },
     enabled: !!user?.id,
   });
 
   const addPaymentMethod = useMutation({
+    // Chiffrement, masquage, dédoublonnage et gestion du défaut sont faits côté API.
     mutationFn: async ({
       provider,
       phoneNumber,
@@ -99,36 +39,7 @@ export function useSavedPaymentMethods() {
       setAsDefault: boolean;
     }) => {
       if (!user?.id) throw new Error('User not authenticated');
-
-      // Si on définit cette méthode comme par défaut, retirer le flag des autres
-      if (setAsDefault) {
-        await withTimeout(
-          supabase
-            .from('saved_payment_methods')
-            .update({ is_default: false })
-            .eq('user_id', user.id)
-        );
-      }
-
-      const encryptedPhone = await encryptPhone(phoneNumber);
-
-      const { data, error } = await withTimeout(
-        supabase
-          .from('saved_payment_methods')
-          .insert({
-            user_id: user.id,
-            provider,
-            phone_number_masked: maskPhoneNumber(phoneNumber),
-            phone_number_encrypted: encryptedPhone,
-            is_default: setAsDefault,
-            consent_given_at: new Date().toISOString(),
-          })
-          .select()
-          .single()
-      );
-
-      if (error) throw error;
-      return data;
+      return api.post<SavedPaymentMethod>('/payment-methods', { provider, phoneNumber, setAsDefault });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['saved-payment-methods'] });
@@ -137,11 +48,10 @@ export function useSavedPaymentMethods() {
         description: 'Votre numéro a été enregistré avec succès',
       });
     },
-    onError: (error: Error) => {
-      const isTimeoutError = error instanceof NetworkTimeoutError;
+    onError: (error: unknown) => {
       toast({
         title: 'Erreur',
-        description: isTimeoutError ? error.message : error.message,
+        description: errorMessage(error, "Impossible d'enregistrer la méthode de paiement."),
         variant: 'destructive',
       });
     },
@@ -149,14 +59,7 @@ export function useSavedPaymentMethods() {
 
   const deletePaymentMethod = useMutation({
     mutationFn: async (methodId: string) => {
-      const { error } = await withTimeout(
-        supabase
-          .from('saved_payment_methods')
-          .delete()
-          .eq('id', methodId)
-      );
-
-      if (error) throw error;
+      await api.delete(`/payment-methods/${methodId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['saved-payment-methods'] });
@@ -165,11 +68,10 @@ export function useSavedPaymentMethods() {
         description: 'La méthode de paiement a été supprimée',
       });
     },
-    onError: (error: Error) => {
-      const isTimeoutError = error instanceof NetworkTimeoutError;
+    onError: (error: unknown) => {
       toast({
         title: 'Erreur',
-        description: isTimeoutError ? error.message : error.message,
+        description: errorMessage(error, 'Impossible de supprimer la méthode de paiement.'),
         variant: 'destructive',
       });
     },
@@ -178,24 +80,7 @@ export function useSavedPaymentMethods() {
   const setDefaultPaymentMethod = useMutation({
     mutationFn: async (methodId: string) => {
       if (!user?.id) throw new Error('User not authenticated');
-
-      // Retirer le flag par défaut de toutes les méthodes
-      await withTimeout(
-        supabase
-          .from('saved_payment_methods')
-          .update({ is_default: false })
-          .eq('user_id', user.id)
-      );
-
-      // Définir la nouvelle méthode par défaut
-      const { error } = await withTimeout(
-        supabase
-          .from('saved_payment_methods')
-          .update({ is_default: true })
-          .eq('id', methodId)
-      );
-
-      if (error) throw error;
+      await api.post(`/payment-methods/${methodId}/default`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['saved-payment-methods'] });
@@ -203,19 +88,23 @@ export function useSavedPaymentMethods() {
         title: 'Méthode par défaut mise à jour',
       });
     },
-    onError: (error: Error) => {
-      const isTimeoutError = error instanceof NetworkTimeoutError;
+    onError: (error: unknown) => {
       toast({
         title: 'Erreur',
-        description: isTimeoutError ? error.message : error.message,
+        description: errorMessage(error, 'Impossible de définir la méthode par défaut.'),
         variant: 'destructive',
       });
     },
   });
 
+  /** Numéro en clair pour préremplir le paiement (propriétaire uniquement, ex secure-phone decrypt). */
   const getDecryptedPhone = useCallback(async (methodId: string): Promise<string> => {
-    return decryptPhone(methodId);
-  }, [decryptPhone]);
+    const data = await api.get<{ phone: string }>(`/payment-methods/${methodId}/phone`);
+    if (!data?.phone) {
+      throw new Error('Impossible de récupérer le numéro enregistré.');
+    }
+    return data.phone;
+  }, []);
 
   return {
     paymentMethods,

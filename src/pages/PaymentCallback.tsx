@@ -1,10 +1,35 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+
+interface CallbackPayment {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  appointment_id: string | null;
+  fedapay_transaction_id: string | null;
+}
+
+/**
+ * Retrouve le paiement visé par le retour FedaPay : par identifiant, par rendez-vous
+ * (dernier paiement) ou par transaction FedaPay (recherche dans les paiements de l'utilisateur).
+ */
+async function findCallbackPayment(params: { transactionId: string | null; paymentId: string | null; appointmentId: string | null }): Promise<CallbackPayment | null> {
+  if (params.paymentId) {
+    return api.get<CallbackPayment>(`/payments/${params.paymentId}`);
+  }
+  if (params.appointmentId) {
+    const rows = await api.get<CallbackPayment[]>('/payments', { query: { appointmentId: params.appointmentId, limit: 1 } });
+    return rows[0] ?? null;
+  }
+  const rows = await api.get<CallbackPayment[]>('/payments', { query: { limit: 200 } });
+  return rows.find((p) => p.fedapay_transaction_id === params.transactionId) ?? null;
+}
 
 /**
  * Page de callback après un paiement FedaPay
@@ -14,7 +39,7 @@ export default function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [paymentDetails, setPaymentDetails] = useState<any>(null);
+  const [paymentDetails, setPaymentDetails] = useState<CallbackPayment | null>(null);
 
   useEffect(() => {
     const checkPaymentStatus = async () => {
@@ -33,23 +58,15 @@ export default function PaymentCallback() {
         // Attendre quelques secondes pour que le webhook ait le temps de traiter
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Récupérer le statut du paiement depuis la base de données
-        let query = supabase
-          .from('payments')
-          .select('id, status, amount, currency, appointment_id, fedapay_transaction_id');
-
-        if (transactionId) {
-          query = query.eq('fedapay_transaction_id', transactionId);
-        } else if (paymentId) {
-          query = query.eq('id', paymentId);
-        } else if (appointmentId) {
-          query = query.eq('appointment_id', appointmentId).order('created_at', { ascending: false }).limit(1);
+        // Récupérer le statut du paiement depuis l'API
+        let payment: CallbackPayment | null = null;
+        try {
+          payment = await findCallbackPayment({ transactionId, paymentId, appointmentId });
+        } catch (lookupError) {
+          console.error('Payment not found:', lookupError);
         }
 
-        const { data: payment, error: paymentError } = await query.single();
-
-        if (paymentError || !payment) {
-          console.error('Payment not found:', paymentError);
+        if (!payment) {
           throw new Error('Paiement non trouvé');
         }
 
@@ -70,23 +87,18 @@ export default function PaymentCallback() {
             variant: 'destructive',
           });
         } else {
-          // Encore en attente, attendre un peu plus
-          console.log('Payment still processing, waiting more...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          // Réessayer
-          const { data: updatedPayment } = await supabase
-            .from('payments')
-            .select('id, status, amount, currency')
-            .eq('id', payment.id)
-            .single();
-
-          if (updatedPayment) {
-            setPaymentDetails(updatedPayment);
-            setStatus(updatedPayment.status === 'paid' ? 'success' : 'error');
-          } else {
-            setStatus('error');
+          // Encore en attente : demander une resynchronisation avec FedaPay puis relire
+          console.log('Payment still processing, syncing with FedaPay...');
+          try {
+            await api.post(`/payments/${payment.id}/sync`);
+          } catch (syncError) {
+            console.warn('Payment sync failed, retrying after delay:', syncError);
+            await new Promise(resolve => setTimeout(resolve, 3000));
           }
+
+          const updatedPayment = await api.get<CallbackPayment>(`/payments/${payment.id}`);
+          setPaymentDetails(updatedPayment);
+          setStatus(updatedPayment.status === 'paid' ? 'success' : 'error');
         }
       } catch (error) {
         console.error('Error checking payment status:', error);
