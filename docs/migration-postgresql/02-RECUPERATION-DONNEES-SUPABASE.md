@@ -76,6 +76,15 @@ Le dossier `export/` est ignoré par git (données de santé et personnelles) : 
 
 ## 5. Vérifier l'export
 
+Contrôle automatique (fichiers, archives lisibles, comptages comparés à l'inventaire du
+07/09/2026, fichiers Storage, empreintes, tables vs schéma natif) :
+
+```bash
+PGBIN=/usr/lib/postgresql/17/bin scripts/supabase/check-export.sh export/<h>
+```
+
+Contrôles manuels équivalents :
+
 ```bash
 pg_restore -l export/<h>/data_public.dump | grep -c "TABLE DATA"     # ≈ 55 tables
 pg_restore -l export/<h>/data_auth.dump                               # users, identities

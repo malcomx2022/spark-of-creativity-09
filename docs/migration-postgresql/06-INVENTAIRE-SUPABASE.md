@@ -118,9 +118,11 @@ export SUPABASE_SERVICE_ROLE_KEY='<service_role>'
 npm ci && scripts/supabase/export-supabase.sh          # → export/<horodatage>/
 ```
 
-Contrôles attendus sur `rowcounts.csv` : les valeurs de §2.1 (49 profils, 33 praticiens,
-65 notifications…), `auth.users` = 49, 101 objets Storage (97 + 4). Puis répétition de l'import
-natif (`scripts/db/import-native.sh`) et ré-upload des fichiers vers MinIO avec les mêmes clés.
+Contrôle de l'export : `PGBIN=/usr/lib/postgresql/17/bin scripts/supabase/check-export.sh export/<h>`
+(compare `rowcounts.csv` aux valeurs de §2.1, `auth.users` = 49, 101 objets Storage, vérifie les
+archives, les empreintes et les tables). Puis répétition de l'import natif
+(`PGBIN=/usr/lib/postgresql/17/bin scripts/db/import-native.sh`) et ré-upload des fichiers vers
+MinIO avec les mêmes clés.
 
 Secrets à relever dans le dashboard (*Edge Functions → Secrets*, valeurs à reprendre chez les
 fournisseurs, §6 du document 02) : `PHONE_ENCRYPTION_KEY` n'est pas critique ici
