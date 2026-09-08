@@ -34,9 +34,9 @@ $candidates = @(
   "C:\Program Files\pgAdmin 4\runtime",
   "C:\Program Files\pgAdmin 4\v9\runtime",
   "C:\Program Files\pgAdmin 4\v8\runtime"
-) | Where-Object { $_ -and (Test-Path (Join-Path $_ "pg_dump.exe")) }
+) | Where-Object { $_ -and (Test-Path -LiteralPath ([IO.Path]::Combine($_, "pg_dump.exe")) -ErrorAction SilentlyContinue) }
 if (-not $candidates) { throw "pg_dump.exe introuvable : installez PostgreSQL 17 (Command Line Tools) ou définissez PGBIN" }
-$bin = $candidates[0]
+$bin = @($candidates)[0]
 $pgdump = Join-Path $bin "pg_dump.exe"
 $psql = Join-Path $bin "psql.exe"
 $clientVersion = (& $pgdump --version)

@@ -25,7 +25,13 @@ async function api(path, init = {}) {
 }
 
 async function listBuckets() {
-  return (await api("/bucket")).json();
+  try {
+    return await (await api("/bucket")).json();
+  } catch (err) {
+    const hint = /HTTP 40[013]|Unauthorized|AccessDenied/.test(err.message) ? " — clé SUPABASE_SERVICE_ROLE_KEY invalide ou insuffisante (service_role / sb_secret_ attendue)" : "";
+    console.error(`✖ Liste des buckets impossible : ${err.message}${hint}`);
+    process.exit(1);
+  }
 }
 
 async function listRecursive(bucket, prefix = "") {
