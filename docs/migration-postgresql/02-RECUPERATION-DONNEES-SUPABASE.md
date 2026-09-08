@@ -91,7 +91,8 @@ $env:PGBIN = 'C:\Program Files\pgAdmin 4\runtime'          # facultatif, détect
 powershell -ExecutionPolicy Bypass -File scripts\supabase\export-supabase.ps1
 ```
 
-`export-supabase.ps1` produit la même arborescence que le script bash ; le contrôle
+Le script a été validé sous PowerShell 7.4 contre une base de test (détection des binaires, dumps,
+comptages, empreintes, puis `check-export.sh` conforme sur le dossier produit). Il produit la même arborescence que le script bash ; le contrôle
 (`check-export.sh`) et l'import (`import-native.sh`) se lancent ensuite dans **Git Bash** (fourni avec
 Git for Windows) ou WSL, avec `PGBIN='/c/Program Files/pgAdmin 4/runtime'`.
 
