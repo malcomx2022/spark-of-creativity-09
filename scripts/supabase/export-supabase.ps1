@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   export-supabase.ps1 — Récupération complète des données depuis Supabase (équivalent Windows de export-supabase.sh)
