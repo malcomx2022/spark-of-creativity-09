@@ -118,6 +118,9 @@ export SUPABASE_SERVICE_ROLE_KEY='<service_role>'
 scripts/supabase/export-supabase.sh                    # → export/<horodatage>/ (fichiers inclus, sans dépendance npm)
 ```
 
+Sous Windows : `scripts\supabase\export-supabase.ps1` (PowerShell, binaires de pgAdmin 4 ou de
+PostgreSQL 17), voir le document 02 §4.1.
+
 Contrôle de l'export : `PGBIN=/usr/lib/postgresql/17/bin scripts/supabase/check-export.sh export/<h>`
 (compare `rowcounts.csv` aux valeurs de §2.1, `auth.users` = 49, 101 objets Storage, vérifie les
 archives, les empreintes et les tables). Puis répétition de l'import natif

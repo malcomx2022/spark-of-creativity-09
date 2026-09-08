@@ -74,6 +74,27 @@ Résultat dans `export/<horodatage>/` :
 Le dossier `export/` est ignoré par git (données de santé et personnelles) : le stocker chiffré
 (`age`/`gpg`) sur un support hors ligne + une copie hors site.
 
+### 4.1 Depuis Windows (pgAdmin)
+
+pgAdmin 4 embarque `pg_dump.exe`, `pg_restore.exe` et `psql.exe` dans son dossier `runtime`
+(`C:\Program Files\pgAdmin 4\runtime`). Vérifier que la version embarquée est **17** (`pg_dump --version` ;
+pgAdmin 4 v9 embarque 17, v8 embarque 16) ; sinon installer PostgreSQL 17 « Command Line Tools »
+(installeur EDB). Node est nécessaire pour les fichiers Storage (déjà présent pour le front).
+L'accès direct `db.<ref>.supabase.co` est en IPv6 : depuis un poste sans IPv6, utiliser l'URL
+« Session pooler » du tableau de bord (port 5432).
+
+```powershell
+$env:SUPABASE_DB_URL = 'postgresql://postgres.<ref>:<MDP>@aws-0-<region>.pooler.supabase.com:5432/postgres'
+$env:SUPABASE_URL = 'https://<ref>.supabase.co'
+$env:SUPABASE_SERVICE_ROLE_KEY = 'sb_secret_...'          # ou service_role
+$env:PGBIN = 'C:\Program Files\pgAdmin 4\runtime'          # facultatif, détection automatique
+powershell -ExecutionPolicy Bypass -File scripts\supabase\export-supabase.ps1
+```
+
+`export-supabase.ps1` produit la même arborescence que le script bash ; le contrôle
+(`check-export.sh`) et l'import (`import-native.sh`) se lancent ensuite dans **Git Bash** (fourni avec
+Git for Windows) ou WSL, avec `PGBIN='/c/Program Files/pgAdmin 4/runtime'`.
+
 ## 5. Vérifier l'export
 
 Contrôle automatique (fichiers, archives lisibles, comptages comparés à l'inventaire du
