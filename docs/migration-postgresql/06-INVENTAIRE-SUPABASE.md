@@ -105,17 +105,17 @@ Le `diff` colonne par colonne se fait sur `schema_public.sql` produit par l'expo
 
 ## 3. Export : ce qu'il reste à faire
 
-Le connecteur Supabase ne donne ni le mot de passe de la base ni la clé `service_role` : l'export
-`pg_dump` et le téléchargement des fichiers doivent être lancés avec ces accès (dashboard →
-*Project Settings → Database* et *→ API*), depuis un poste ou le VPS, avec un client
-PostgreSQL 17 :
+L'export `pg_dump` doit être lancé depuis un poste ou le VPS avec un client PostgreSQL 17 : le port
+5432 (accès direct comme pooler) n'est pas joignable depuis les environnements limités au HTTPS,
+alors que l'API Storage (HTTPS) l'est. Accès nécessaires : mot de passe de la base (*Project
+Settings → Database*) et clé secrète (*Project Settings → API Keys*, `sb_secret_…` ou `service_role`) :
 
 ```bash
 export PATH=/usr/lib/postgresql/17/bin:$PATH          # pg_dump 17 (serveur 17.6)
 export SUPABASE_DB_URL='postgresql://postgres:<MDP>@db.jucqnqatncjcjlnhprsq.supabase.co:5432/postgres'
 export SUPABASE_URL='https://jucqnqatncjcjlnhprsq.supabase.co'
 export SUPABASE_SERVICE_ROLE_KEY='<service_role>'
-npm ci && scripts/supabase/export-supabase.sh          # → export/<horodatage>/
+scripts/supabase/export-supabase.sh                    # → export/<horodatage>/ (fichiers inclus, sans dépendance npm)
 ```
 
 Contrôle de l'export : `PGBIN=/usr/lib/postgresql/17/bin scripts/supabase/check-export.sh export/<h>`
@@ -127,6 +127,10 @@ MinIO avec les mêmes clés.
 Secrets à relever dans le dashboard (*Edge Functions → Secrets*, valeurs à reprendre chez les
 fournisseurs, §6 du document 02) : `PHONE_ENCRYPTION_KEY` n'est pas critique ici
 (`saved_payment_methods` est vide), mais FedaPay **live**, Twilio, Resend, Mapbox et VAPID le sont.
+
+Validation du 08/09/2026 : `export-storage.mjs` (réécrit sans dépendance) a inventorié les 101 objets
+et téléchargé le bucket public `avatars` depuis le projet réel ; `pg_dump` reste à exécuter sur un
+poste disposant du port 5432.
 
 ## 4. Points d'attention
 

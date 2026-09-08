@@ -55,7 +55,7 @@ Pour l'export de répétition, inutile. Pour la bascule finale :
 export SUPABASE_DB_URL='postgresql://postgres:<MDP>@db.jucqnqatncjcjlnhprsq.supabase.co:5432/postgres'
 export SUPABASE_URL='https://jucqnqatncjcjlnhprsq.supabase.co'
 export SUPABASE_SERVICE_ROLE_KEY='<service_role>'
-npm ci                      # fournit @supabase/supabase-js pour export-storage.mjs
+# export-storage.mjs n'a aucune dépendance (fetch natif, Node ≥ 18) ; clé `service_role` ou `sb_secret_…`
 scripts/supabase/export-supabase.sh
 ```
 
