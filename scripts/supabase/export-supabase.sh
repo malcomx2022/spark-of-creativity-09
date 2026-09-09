@@ -15,7 +15,9 @@
 #   - pg_dump de MÊME version majeure que le serveur Supabase (PG 17 → postgresql-client-17)
 #   - SUPABASE_DB_URL : URL de connexion DIRECTE (pas le pooler en mode transaction) :
 #       postgresql://postgres:<PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres
-#     ou via pooler session : postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#     ou via pooler session (IPv4 ; préfixe aws-0/aws-1 selon le projet, voir Connect) :
+#       postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-1-<region>.pooler.supabase.com:5432/postgres
+#     Liaison instable : ajouter ?connect_timeout=30&keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=3&tcp_user_timeout=60000
 #   - SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY pour les fichiers Storage (optionnel)
 #
 # Le projet doit être ACTIF (un projet "paused" doit être restauré depuis le dashboard
