@@ -7,12 +7,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "start:dev": "tsx watch src/main.ts",
+    "start:dev": "node --watch -r ts-node/register/transpile-only src/main.ts",
     "start:worker": "node dist/worker.js",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
-    "test:e2e": "jest --config jest.e2e.config.cjs --runInBand"
+    "test:e2e": "jest --config jest.e2e.config.cjs --runInBand",
+    "start:worker:dev": "node --watch -r ts-node/register/transpile-only src/worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1124.0",
@@ -46,7 +47,7 @@
     "jest": "^30.0.5",
     "socket.io-client": "^4.8.3",
     "ts-jest": "^29.4.1",
-    "tsx": "^4.20.3",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
 }

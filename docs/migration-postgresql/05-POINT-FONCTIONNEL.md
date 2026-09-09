@@ -124,7 +124,7 @@ Le job `maintenance.cleanup` (quotidien, worker) exécute les quatre purges et
 |---|---|---|---|
 | **A — Dépôt** | **Livré** : §2.2, §2.3, README racine, archivage §2.8 | — | — |
 | **B — API et infra** | **Livré** : job `maintenance.cleanup` (§2.4), Redis retiré (§2.5), types renommés et filtres serveur des tickets (§2.7) | — | — |
-| **C — Données** | **En cours** : projets réactivés et inventoriés (`06-INVENTAIRE-SUPABASE.md`) ; restent l'export `pg_dump` + fichiers (accès base et `service_role` requis), la répétition de l'import sur le VPS, la reprise des secrets (§2.1) | moyen (dépend de Supabase) | ½ journée |
-| **D — Bascule** | Checklist `04-PLAN…` §4 : gel des écritures, import définitif, DNS, webhook FedaPay live, communication utilisateurs, surveillance J+1, plan de retour arrière | élevé (production) | 1 journée |
+| **C — Données** | **Quasi livré** (09/09) : export réel contrôlé, import à blanc réussi sur PostgreSQL 16 et API vérifiée dessus (`06-INVENTAIRE-SUPABASE.md` §3.1) ; restent le téléchargement des fichiers Storage (`export-storage.mjs`), leur envoi vers MinIO et la reprise des secrets (§2.1) | faible | 1 h |
+| **D — Bascule** | **Préparé** (09/09) : `deploy/vps/bascule.sh` (sauvegarde, import, fichiers → MinIO, redémarrage, santé) validé à blanc ; reste l'exécution sur le VPS une fois celui-ci prêt (`04-PLAN…` §2), puis la checklist §4 : gel des écritures, DNS, webhook FedaPay live, surveillance J+1, plan de retour arrière | élevé (production) | 1 journée |
 
 Ordre recommandé : C (export réel) dès maintenant, puis répétition générale sur le VPS, puis D.

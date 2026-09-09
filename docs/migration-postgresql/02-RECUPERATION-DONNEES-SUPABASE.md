@@ -80,16 +80,24 @@ pgAdmin 4 embarque `pg_dump.exe`, `pg_restore.exe` et `psql.exe` dans son dossie
 (`C:\Program Files\pgAdmin 4\runtime`). Vérifier que la version embarquée est **17** (`pg_dump --version` ;
 pgAdmin 4 v9 embarque 17, v8 embarque 16) ; sinon installer PostgreSQL 17 « Command Line Tools »
 (installeur EDB). Node est nécessaire pour les fichiers Storage (déjà présent pour le front).
-L'accès direct `db.<ref>.supabase.co` est en IPv6 : depuis un poste sans IPv6, utiliser l'URL
-« Session pooler » du tableau de bord (port 5432).
+L'accès direct `db.<ref>.supabase.co` n'a qu'un enregistrement AAAA (IPv6) : depuis un poste sans
+IPv6 il échoue en « Name or service not known », utiliser l'URL « Session pooler » du tableau de bord
+(port 5432). Le préfixe de région du pooler varie (`aws-0`, `aws-1`, …) : relevez-le dans
+*Connect*, un mauvais préfixe renvoie « Tenant or user not found ». Sur liaison instable, ajoutez
+les keepalives TCP à l'URL, sinon une coupure en cours de dump laisse `pg_dump` suspendu :
+`?connect_timeout=30&keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=3&tcp_user_timeout=60000`.
 
 ```powershell
-$env:SUPABASE_DB_URL = 'postgresql://postgres.<ref>:<MDP>@aws-0-<region>.pooler.supabase.com:5432/postgres'
+$env:SUPABASE_DB_URL = 'postgresql://postgres.<ref>:<MDP>@aws-1-<region>.pooler.supabase.com:5432/postgres?connect_timeout=30&keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=3&tcp_user_timeout=60000'
 $env:SUPABASE_URL = 'https://<ref>.supabase.co'
 $env:SUPABASE_SERVICE_ROLE_KEY = 'sb_secret_...'          # ou service_role
 $env:PGBIN = 'C:\Program Files\pgAdmin 4\runtime'          # facultatif, détection automatique
 powershell -ExecutionPolicy Bypass -File scripts\supabase\export-supabase.ps1
 ```
+
+Si l'export a été lancé sans `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (message « fichiers Storage
+non exportés »), inutile de tout refaire : relancer seulement la partie fichiers dans le même dossier,
+`node scripts\supabase\export-storage.mjs export\<horodatage>\storage`, puis le contrôle.
 
 Le script a été validé sous PowerShell 7.4 contre une base de test (détection des binaires, dumps,
 comptages, empreintes, puis `check-export.sh` conforme sur le dossier produit). Il produit la même arborescence que le script bash ; le contrôle

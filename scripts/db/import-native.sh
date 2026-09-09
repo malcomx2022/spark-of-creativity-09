@@ -59,10 +59,15 @@ done
 
 echo "▶ 3. Données"
 # Tables présentes en prod mais absentes des migrations versionnées : signalées, non bloquantes.
-pg_restore -d "$DB" --data-only --disable-triggers --no-owner --no-privileges \
-  "$EXPORT/data_public.dump" 2>&1 | grep -iE "error|erreur" | sort -u || true
-pg_restore -d "$DB" --data-only --disable-triggers --no-owner --no-privileges --table=users \
-  "$EXPORT/data_auth.dump" 2>&1 | grep -iE "error|erreur" | sort -u || true
+# Une archive pg_dump 17 émet « SET transaction_timeout = 0 », paramètre inconnu de PostgreSQL 16 :
+# l'erreur est sans effet sur les données (pg_restore la compte dans « errors ignored »), on la masque.
+# pg_restore répond dans la langue de l'OS : filtre bilingue (error / erreur).
+restore_data() {
+  pg_restore -d "$DB" --data-only --disable-triggers --no-owner --no-privileges "$@" 2>&1 \
+    | grep -iE "error|erreur" | grep -viE "transaction_timeout|errors ignored on restore|erreurs ignor" | sort -u || true
+}
+restore_data "$EXPORT/data_public.dump"
+restore_data --table=users "$EXPORT/data_auth.dump"
 
 echo "▶ 4-5. Conversion native"
 $PSQL -d "$DB" -f "$ROOT/db/native/100_to_native.sql"
