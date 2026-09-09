@@ -95,6 +95,10 @@ $env:PGBIN = 'C:\Program Files\pgAdmin 4\runtime'          # facultatif, détect
 powershell -ExecutionPolicy Bypass -File scripts\supabase\export-supabase.ps1
 ```
 
+Si l'export a été lancé sans `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (message « fichiers Storage
+non exportés »), inutile de tout refaire : relancer seulement la partie fichiers dans le même dossier,
+`node scripts\supabase\export-storage.mjs export\<horodatage>\storage`, puis le contrôle.
+
 Le script a été validé sous PowerShell 7.4 contre une base de test (détection des binaires, dumps,
 comptages, empreintes, puis `check-export.sh` conforme sur le dossier produit). Il produit la même arborescence que le script bash ; le contrôle
 (`check-export.sh`) et l'import (`import-native.sh`) se lancent ensuite dans **Git Bash** (fourni avec

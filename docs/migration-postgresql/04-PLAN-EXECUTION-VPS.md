@@ -64,8 +64,12 @@ docker compose up -d api worker
 
 Les colonnes `*_url` / `files.path` contiennent des chemins `bucket/objet` : l'API les résout en
 URL pré-signées, aucune réécriture de données n'est nécessaire si l'on conserve les mêmes noms de
-buckets et chemins (vérifier `files.bucket`, `practitioners.id_document_url`, `messages.attachment_url`
-qui peut contenir une URL publique Supabase absolue ⇒ `UPDATE … SET attachment_url = regexp_replace(...)`).
+buckets et chemins. Vérifié sur l'export réel du 09/09/2026 (document 06 §3.1) : aucune colonne
+texte ne contient d'URL `supabase.co` absolue, `messages` est vide.
+
+Répétition déjà faite hors VPS le 09/09/2026 (PostgreSQL 16 + `pg_restore` 17, `DROP_RLS=1`) :
+import sans erreur, comptages identiques, API démarrée sur la base obtenue. La même commande sur le
+VPS doit donner le même résultat ; seule la partie `mc mirror` reste à jouer pour de vrai.
 
 ## 4. Checklist de bascule (P5)
 

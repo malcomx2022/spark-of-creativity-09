@@ -132,8 +132,30 @@ fournisseurs, §6 du document 02) : `PHONE_ENCRYPTION_KEY` n'est pas critique ic
 (`saved_payment_methods` est vide), mais FedaPay **live**, Twilio, Resend, Mapbox et VAPID le sont.
 
 Validation du 08/09/2026 : `export-storage.mjs` (réécrit sans dépendance) a inventorié les 101 objets
-et téléchargé le bucket public `avatars` depuis le projet réel ; `pg_dump` reste à exécuter sur un
-poste disposant du port 5432.
+et téléchargé le bucket public `avatars` depuis le projet réel.
+
+### 3.1 Export réel et répétition d'import (09/09/2026)
+
+Export `20260909T001732Z` réalisé depuis Windows (`export-supabase.ps1`, pg_dump 17.2, serveur
+17.6) puis contrôlé et importé à blanc sur un PostgreSQL 16 avec `pg_restore` 17 :
+
+| Contrôle | Résultat |
+|---|---|
+| `check-export.sh` | 26 comptages identiques à §2.1 (`auth.users` 49, `storage.objects` 101, 55 tables `public` avec données), archives lisibles, empreintes conformes, aucune table absente du schéma natif |
+| `import-native.sh … DROP_RLS=1` | terminé sans erreur ; 49 comptes copiés dans `public.users` (49 hachages bcrypt, 37 e-mails vérifiés, 2 super_admin), 56 comptages source/cible identiques |
+| Schéma obtenu vs `schema.native.sql` | aucun écart de colonne (`information_schema.columns`), 170 fonctions de part et d'autre, 24 triggers, 4 politiques RLS (tables d'auth natives) |
+| Données | 0 profil orphelin, 33 praticiens géolocalisés, 32 pièces d'identité référencées par chemin Storage, **aucune URL `supabase.co` absolue** dans les colonnes texte (aucune réécriture à prévoir, `messages` vide) |
+| API (`node dist/main.js`) sur la base importée | `/api/health` ok, `GET /api/practitioners` = 25 approuvés sans champ personnel, connexion refusée (401) sur compte inconnu et sur mauvais mot de passe d'un compte réel |
+
+Deux correctifs en ont découlé : `auth.users` du shim (`000_supabase_compat_shim.sql`) reprend
+désormais toutes les colonnes de la table Supabase réelle (`invited_at`, jetons de confirmation,
+`is_sso_user`…), sans quoi `pg_restore` rejetait la table entière et aucun compte n'était repris ;
+et `import-native.sh` masque l'erreur inoffensive `SET transaction_timeout` (paramètre 17 inconnu de 16).
+
+Reste pour le lot C : les **fichiers Storage** (l'export a été lancé sans `SUPABASE_URL` /
+`SUPABASE_SERVICE_ROLE_KEY`) : relancer seulement
+`node scripts/supabase/export-storage.mjs export\20260909T001732Z\storage` avec ces deux variables,
+puis `check-export.sh` doit passer sans bloquant ; et la reprise des secrets (§ ci-dessus).
 
 ## 4. Points d'attention
 
