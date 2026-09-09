@@ -44,21 +44,36 @@ docker compose exec postgres psql -U postgres -d domicares -c "ALTER ROLE domica
 DNS : `A domicares.life → IP`, `A www → IP`, `CAA 0 issue "letsencrypt.org"`. Caddy obtient le
 certificat automatiquement au premier `docker compose up -d caddy`.
 
-Buckets S3 : créer `documents`, `avatars`, `message-attachments` (MinIO : `mc mb`), privés ;
+Buckets S3 : `documents`, `avatars`, `message-attachments`, privés, créés par `bascule.sh` (§3) ;
 l'API génère des URLs pré-signées (remplace `get-presigned-url`).
 
 ## 3. Importer les données réelles (répétition en P4, définitif en P5)
 
+Une seule commande, en tant que `deploy`, dans le clone du dépôt, avec l'export copié sur le VPS
+(`scp -r export/<h> deploy@<vps>:~/export/`) :
+
 ```bash
-# sur le VPS, avec l'export copié dans ~/export/<h>
+deploy/vps/bascule.sh ~/export/<h>            # options : --skip-files, --no-restart, --force ; DRY_RUN=1 pour voir les commandes
+```
+
+`bascule.sh` enchaîne : contrôle de l'export (`check-export.sh`), de `pg_restore` 17 et de `.env` ;
+sauvegarde de la base courante dans `deploy/vps/backups/pre-bascule-<h>.dump` ; arrêt de `api` +
+`worker`, recréation de la base, `scripts/db/import-native.sh` (`DROP_RLS=1`, mots de passe des
+rôles pris dans `.env`) ; fichiers Storage vers MinIO avec le client `minio/mc` lancé dans le réseau
+docker de la pile (MinIO n'est pas exposé sur l'hôte ; buckets créés s'ils manquent, mêmes noms et
+mêmes chemins) ; redémarrage et `/api/health` depuis le conteneur `api`. Il est relançable après
+correction : la base est recréée à chaque passage.
+
+Équivalent manuel :
+
+```bash
 docker compose stop api worker
 docker compose exec -T postgres psql -U postgres -c "DROP DATABASE IF EXISTS domicares" -c "CREATE DATABASE domicares"
-PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD DROP_RLS=1 \
+PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD DROP_RLS=1 DOMICARES_APP_PASSWORD=$DOMICARES_APP_PASSWORD \
   PGBIN=/usr/lib/postgresql/17/bin scripts/db/import-native.sh ~/export/<h> domicares   # client 17 installé par install-vps.sh
-# fichiers
-mc mirror ~/export/<h>/storage/documents         local/documents
-mc mirror ~/export/<h>/storage/avatars           local/avatars
-mc mirror ~/export/<h>/storage/message-attachments local/message-attachments
+NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$(docker compose ps -q minio)")
+docker run --rm --network "$NET" -v ~/export/<h>/storage:/export:ro --entrypoint sh minio/mc -c \
+  'mc alias set local http://minio:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY" && for b in documents avatars message-attachments; do mc mb -p local/$b; mc mirror --overwrite /export/$b local/$b; done'
 docker compose up -d api worker
 ```
 
@@ -69,7 +84,7 @@ texte ne contient d'URL `supabase.co` absolue, `messages` est vide.
 
 Répétition déjà faite hors VPS le 09/09/2026 (PostgreSQL 16 + `pg_restore` 17, `DROP_RLS=1`) :
 import sans erreur, comptages identiques, API démarrée sur la base obtenue. La même commande sur le
-VPS doit donner le même résultat ; seule la partie `mc mirror` reste à jouer pour de vrai.
+VPS doit donner le même résultat ; seule la partie fichiers reste à jouer pour de vrai.
 
 ## 4. Checklist de bascule (P5)
 
@@ -83,8 +98,8 @@ Avant (J-7 → J-1)
 
 Jour J
 - [ ] Maintenance ON (plus d'écriture côté Supabase).
-- [ ] `export-supabase.sh` final → copie sur le VPS → `import-native.sh` → comptages ✔.
-- [ ] Storage : `mc mirror` du delta.
+- [ ] `export-supabase.sh` (ou `.ps1`) final → `check-export.sh` → copie sur le VPS → `deploy/vps/bascule.sh` → comptages ✔.
+- [ ] Storage : inclus dans `bascule.sh` (`mc mirror --overwrite`).
 - [ ] Webhook FedaPay **live** basculé vers `https://domicares.life/api/webhooks/fedapay`, nouveau `FEDAPAY_WEBHOOK_SECRET` dans `.env`, `docker compose up -d api`.
 - [ ] DNS → IP du VPS ; vérifier TLS, `/api/health`, connexion patient (mot de passe existant), OTP SMS, paiement sandbox de bout en bout, réception webhook, message temps réel, push.
 - [ ] Maintenance OFF.
