@@ -52,7 +52,7 @@ for path in "$ROOT"/supabase/migrations/*.sql; do
   [[ "$f" < "$SNAPSHOT" ]] && continue   # antérieures au snapshot : déjà incluses dedans
   # La vue admin_dashboard_stats est créée avant sa fonction dans le dump : erreur non bloquante,
   # la vue est recréée par 100_to_native.sql.
-  if psql -X -q -d "$DB" -f "$path" 2>&1 | grep -E "ERROR" | grep -v "get_admin_dashboard_stats() does not exist"; then
+  if psql -X -q -d "$DB" -f "$path" 2>&1 | grep -iE "ERROR|ERREUR" | grep -v "get_admin_dashboard_stats"; then
     echo "✖ Erreur bloquante dans $f"; exit 1
   fi
 done
@@ -61,9 +61,10 @@ echo "▶ 3. Données"
 # Tables présentes en prod mais absentes des migrations versionnées : signalées, non bloquantes.
 # Une archive pg_dump 17 émet « SET transaction_timeout = 0 », paramètre inconnu de PostgreSQL 16 :
 # l'erreur est sans effet sur les données (pg_restore la compte dans « errors ignored »), on la masque.
+# pg_restore répond dans la langue de l'OS : filtre bilingue (error / erreur).
 restore_data() {
   pg_restore -d "$DB" --data-only --disable-triggers --no-owner --no-privileges "$@" 2>&1 \
-    | grep -E "error|ERROR" | grep -v -e "transaction_timeout" -e "errors ignored on restore" | sort -u || true
+    | grep -iE "error|erreur" | grep -viE "transaction_timeout|errors ignored on restore|erreurs ignor" | sort -u || true
 }
 restore_data "$EXPORT/data_public.dump"
 restore_data --table=users "$EXPORT/data_auth.dump"
