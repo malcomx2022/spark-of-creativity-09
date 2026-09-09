@@ -68,7 +68,7 @@ fi
 echo "▶ 4. Fichiers Storage"
 if [[ -f "$EXPORT/storage/manifest.json" ]]; then
   if command -v python3 >/dev/null; then
-    python3 - "$EXPORT/storage" <<'PY' || errors=$((errors + 1))
+    PYTHONIOENCODING=utf-8 python3 - "$EXPORT/storage" <<'PY' || errors=$((errors + 1))
 import json, os, sys
 root = sys.argv[1]
 m = json.load(open(os.path.join(root, "manifest.json")))
