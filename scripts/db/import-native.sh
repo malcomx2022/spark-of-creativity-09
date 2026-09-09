@@ -52,7 +52,7 @@ for path in "$ROOT"/supabase/migrations/*.sql; do
   [[ "$f" < "$SNAPSHOT" ]] && continue   # antérieures au snapshot : déjà incluses dedans
   # La vue admin_dashboard_stats est créée avant sa fonction dans le dump : erreur non bloquante,
   # la vue est recréée par 100_to_native.sql.
-  if psql -X -q -d "$DB" -f "$path" 2>&1 | grep -E "ERROR" | grep -v "get_admin_dashboard_stats() does not exist"; then
+  if psql -X -q -d "$DB" -f "$path" 2>&1 | grep -iE "ERROR|ERREUR" | grep -v "get_admin_dashboard_stats"; then
     echo "✖ Erreur bloquante dans $f"; exit 1
   fi
 done
@@ -60,9 +60,9 @@ done
 echo "▶ 3. Données"
 # Tables présentes en prod mais absentes des migrations versionnées : signalées, non bloquantes.
 pg_restore -d "$DB" --data-only --disable-triggers --no-owner --no-privileges \
-  "$EXPORT/data_public.dump" 2>&1 | grep -E "error|ERROR" | sort -u || true
+  "$EXPORT/data_public.dump" 2>&1 | grep -iE "error|erreur" | sort -u || true
 pg_restore -d "$DB" --data-only --disable-triggers --no-owner --no-privileges --table=users \
-  "$EXPORT/data_auth.dump" 2>&1 | grep -E "error|ERROR" | sort -u || true
+  "$EXPORT/data_auth.dump" 2>&1 | grep -iE "error|erreur" | sort -u || true
 
 echo "▶ 4-5. Conversion native"
 $PSQL -d "$DB" -f "$ROOT/db/native/100_to_native.sql"
