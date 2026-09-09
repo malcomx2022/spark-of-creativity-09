@@ -11,14 +11,21 @@
   avec scripts/db/import-native.sh.
 
   Variables d'environnement :
-    SUPABASE_DB_URL             URL directe ou « Session pooler » (port 5432, pas 6543) — obligatoire
+    SUPABASE_DB_URL             URL de connexion — obligatoire. Utilisez le « Session pooler » (port 5432, pas 6543) :
+                                l'hôte direct db.<ref>.supabase.co n'a qu'un enregistrement AAAA (IPv6) et échoue en
+                                « Name or service not known » depuis un réseau sans IPv6. Le préfixe de région du
+                                pooler varie (aws-0, aws-1, …) : relevez-le dans Supabase → Connect, un mauvais
+                                préfixe renvoie « Tenant or user not found ».
+                                Sur liaison instable, ajoutez les keepalives TCP à l'URL : sans eux, une coupure
+                                en cours de dump laisse pg_dump suspendu sur un socket mort au lieu d'échouer.
+                                ?connect_timeout=30&keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=3&tcp_user_timeout=60000
     SUPABASE_URL                https://<ref>.supabase.co  — pour les fichiers Storage
     SUPABASE_SERVICE_ROLE_KEY   clé service_role ou sb_secret_… — pour les fichiers Storage
     PGBIN                       dossier des binaires PostgreSQL 17 (pg_dump.exe, psql.exe) ; détection automatique :
                                 C:\Program Files\PostgreSQL\17\bin, puis le dossier runtime de pgAdmin 4
 
 .EXAMPLE
-  $env:SUPABASE_DB_URL = 'postgresql://postgres.<ref>:<MDP>@aws-0-eu-west-2.pooler.supabase.com:5432/postgres'
+  $env:SUPABASE_DB_URL = 'postgresql://postgres.<ref>:<MDP>@aws-1-<region>.pooler.supabase.com:5432/postgres?connect_timeout=30&keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=3&tcp_user_timeout=60000'
   $env:SUPABASE_URL = 'https://<ref>.supabase.co'
   $env:SUPABASE_SERVICE_ROLE_KEY = 'sb_secret_...'
   powershell -ExecutionPolicy Bypass -File scripts\supabase\export-supabase.ps1
