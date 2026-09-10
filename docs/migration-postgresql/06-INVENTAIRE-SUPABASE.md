@@ -152,10 +152,10 @@ désormais toutes les colonnes de la table Supabase réelle (`invited_at`, jeton
 `is_sso_user`…), sans quoi `pg_restore` rejetait la table entière et aucun compte n'était repris ;
 et `import-native.sh` masque l'erreur inoffensive `SET transaction_timeout` (paramètre 17 inconnu de 16).
 
-Reste pour le lot C : les **fichiers Storage** (l'export a été lancé sans `SUPABASE_URL` /
-`SUPABASE_SERVICE_ROLE_KEY`) : relancer seulement
-`node scripts/supabase/export-storage.mjs export\20260909T001732Z\storage` avec ces deux variables,
-puis `check-export.sh` doit passer sans bloquant ; et la reprise des secrets (§ ci-dessus).
+Fichiers Storage récupérés en local le 10/09/2026 (`export-storage.mjs` relancé seul dans le même
+dossier) : l'export `20260909T001732Z` est complet (base + `auth` + métadonnées Storage + fichiers).
+Conserver deux copies chiffrées hors du poste (P0 du document 04). Le lot C est clos ; la reprise des
+secrets (§ ci-dessus) se fait dans `deploy/vps/.env`, contrôlée par `deploy/vps/preflight.sh`.
 
 ## 4. Points d'attention
 

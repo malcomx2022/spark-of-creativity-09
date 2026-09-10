@@ -41,6 +41,12 @@ docker compose up -d postgres minio    # la base se crée avec 010_roles + schem
 docker compose exec postgres psql -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD '<DOMICARES_APP_PASSWORD>'"
 ```
 
+Contrôle « le VPS est prêt » (sans rien modifier) : `deploy/vps/preflight.sh [~/export/<h>]` vérifie
+les outils, la complétude et la cohérence de `.env` avec `api/src/config/config.schema.ts` (valeurs
+`change-me`, fournisseurs `fake`/`console` interdits en production, clés FedaPay conformes au mode,
+VAPID, Twilio, Resend), la pile docker, disque/RAM, DNS vs IP publique, ports 80/443, et l'export
+si un dossier est donné. Zéro ✖ = feu vert pour `bascule.sh` (§3).
+
 DNS : `A domicares.life → IP`, `A www → IP`, `CAA 0 issue "letsencrypt.org"`. Caddy obtient le
 certificat automatiquement au premier `docker compose up -d caddy`.
 
@@ -90,7 +96,7 @@ VPS doit donner le même résultat ; seule la partie fichiers reste à jouer pou
 
 Avant (J-7 → J-1)
 - [ ] Staging validé par un patient, un praticien, un coach et un admin réels.
-- [ ] Répétition complète import + mesure de durée (< fenêtre de maintenance).
+- [ ] `deploy/vps/preflight.sh ~/export/<h>` sans ✖ ; répétition complète `bascule.sh` + mesure de durée (< fenêtre de maintenance).
 - [ ] TTL DNS abaissé à 300 s.
 - [ ] Nouveau webhook FedaPay créé en **sandbox** vers `https://staging…/api/webhooks/fedapay` et testé (`simulate-webhook` porté).
 - [ ] Clés VAPID et `PHONE_ENCRYPTION_KEY` identiques à Supabase (sinon plan de re-souscription push).
