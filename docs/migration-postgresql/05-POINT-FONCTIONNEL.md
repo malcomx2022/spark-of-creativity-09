@@ -124,7 +124,7 @@ Le job `maintenance.cleanup` (quotidien, worker) exécute les quatre purges et
 |---|---|---|---|
 | **A — Dépôt** | **Livré** : §2.2, §2.3, README racine, archivage §2.8 | — | — |
 | **B — API et infra** | **Livré** : job `maintenance.cleanup` (§2.4), Redis retiré (§2.5), types renommés et filtres serveur des tickets (§2.7) | — | — |
-| **C — Données** | **Quasi livré** (09/09) : export réel contrôlé, import à blanc réussi sur PostgreSQL 16 et API vérifiée dessus (`06-INVENTAIRE-SUPABASE.md` §3.1) ; restent le téléchargement des fichiers Storage (`export-storage.mjs`), leur envoi vers MinIO et la reprise des secrets (§2.1) | faible | 1 h |
-| **D — Bascule** | **Préparé** (09/09) : `deploy/vps/bascule.sh` (sauvegarde, import, fichiers → MinIO, redémarrage, santé) validé à blanc ; reste l'exécution sur le VPS une fois celui-ci prêt (`04-PLAN…` §2), puis la checklist §4 : gel des écritures, DNS, webhook FedaPay live, surveillance J+1, plan de retour arrière | élevé (production) | 1 journée |
+| **C — Données** | **Livré** (10/09) : export réel contrôlé, fichiers Storage récupérés en local, import à blanc réussi sur PostgreSQL 16 et API vérifiée dessus (`06-INVENTAIRE-SUPABASE.md` §3.1) ; l'envoi des fichiers vers MinIO fait partie de `bascule.sh` (lot D) ; reste la reprise des secrets (§2.1) dans `.env` | — | — |
+| **D — Bascule** | **Préparé** (10/09) : `deploy/vps/preflight.sh` (le VPS est-il prêt ?) et `deploy/vps/bascule.sh` (sauvegarde, import, fichiers → MinIO, redémarrage, santé) validés à blanc ; reste l'exécution sur le VPS une fois celui-ci prêt (`04-PLAN…` §2), puis la checklist §4 : gel des écritures, DNS, webhook FedaPay live, surveillance J+1, plan de retour arrière | élevé (production) | 1 journée |
 
 Ordre recommandé : C (export réel) dès maintenant, puis répétition générale sur le VPS, puis D.
