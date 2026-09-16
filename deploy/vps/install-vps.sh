@@ -61,6 +61,17 @@ else
   echo "  (la couper maintenant rendrait le VPS inaccessible). Depuis votre poste : ssh-copy-id root@<IP>,"
   echo "  vérifiez que « ssh root@<IP> » passe sans mot de passe, puis relancez ce script."
 fi
+# fail2ban : ne jamais bannir le poste d'administration. Le durcissement SSH ci-dessus fait
+# souvent échouer quelques connexions (phrase de passe, bascule clé/mot de passe) ; au-delà de
+# cinq essais la jail sshd jette les paquets et « ssh » part en « Connection timed out », sans
+# autre accès que la console du fournisseur. ADMIN_IP force l'adresse si SSH_CLIENT est absent.
+ADMIN_IP="${ADMIN_IP:-$(awk '{print $1}' <<<"${SSH_CLIENT:-}")}"
+if [[ -n "$ADMIN_IP" ]]; then
+  printf '[DEFAULT]\nignoreip = 127.0.0.1/8 ::1 %s\nbantime = 10m\n' "$ADMIN_IP" > /etc/fail2ban/jail.local
+  echo "  fail2ban : $ADMIN_IP en liste blanche (ignoreip)"
+else
+  echo "  ⚠ fail2ban : adresse d'administration inconnue, aucune liste blanche (ADMIN_IP=<ip> pour la définir)"
+fi
 systemctl enable --now fail2ban
 dpkg-reconfigure -f noninteractive unattended-upgrades
 # Swap (utile sur 4 Go de RAM)

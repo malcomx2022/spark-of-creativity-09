@@ -89,6 +89,17 @@ Si `apt` est déjà cassé par un dépôt en double, réparez avant de relancer 
 ssh root@<IP_VPS> "rm -f /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y postgresql-client-17"
 ```
 
+`fail2ban` est activé avec votre adresse publique en liste blanche, déduite de la connexion
+SSH en cours. Lancé autrement (console du fournisseur, script local), précisez-la :
+`ADMIN_IP=<votre IP> bash /root/install-vps.sh`. Sans cette liste blanche, quelques
+authentifications ratées suffisent à faire bannir votre poste, et `ssh` répond alors
+`Connection timed out` sans autre recours que la console du fournisseur :
+
+```bash
+fail2ban-client status sshd                    # adresses bannies
+fail2ban-client set sshd unbanip <votre IP>
+```
+
 Attention enfin au durcissement SSH : le script coupe l'authentification par mot de passe
 dès qu'une clé publique est autorisée, y compris une clé déposée par l'hébergeur. Vérifiez
 **immédiatement après** que `ssh root@<IP_VPS>` fonctionne toujours. En cas de blocage,
@@ -323,6 +334,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
 | `set: pipefail: invalid option name` | script en CRLF (clone Windows) : `sed -i 's/\r$//' <script>`, et renormaliser le clone (§2) |
 | `Conflicting values set for option Signed-By` | dépôt déclaré deux fois : `rm -f /etc/apt/sources.list.d/docker.list`, puis `apt-get update` |
+| `ssh: Connection timed out` après l'installation | poste banni par `fail2ban` (essais ratés) : console du fournisseur, `fail2ban-client set sshd unbanip <IP>`, puis `ignoreip` dans `/etc/fail2ban/jail.local` |
 | Connexion SSH refusée après `install-vps.sh` | mot de passe désactivé et clé non autorisée : console navigateur de l'hébergeur, puis réactiver `PasswordAuthentication` (§2) |
 | `scp: stat local ... No such file or directory` | chemin relatif à la racine du dépôt : `cd` à la racine avant le `scp` |
 | `git pull` refusé sur le VPS | clé de déploiement absente ou révoquée (§3) |
