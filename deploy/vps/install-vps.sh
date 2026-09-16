@@ -6,18 +6,39 @@
 # =============================================================================
 set -euo pipefail
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
-apt-get update && apt-get upgrade -y
+PG17=/usr/lib/postgresql/17/bin
+CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+# Un dépôt déclaré deux fois avec des chemins de clé différents rend apt inutilisable
+# (« Conflicting values set for option Signed-By »), et toutes les installations suivantes
+# échouent. Les images de certains hébergeurs (Hostinger, OVH…) livrent déjà le dépôt Docker :
+# on ne le réécrit que s'il est absent.
+has_source() { grep -Rqs "$1" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; }
+
+apt-get update
+apt-get upgrade -y
 apt-get install -y ca-certificates curl gnupg ufw fail2ban unattended-upgrades git postgresql-client-16 rclone
+
 # Docker
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
-apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+if has_source 'download\.docker\.com'; then
+  echo "  dépôt Docker déjà configuré par l'image : conservé tel quel"
+else
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $CODENAME stable" > /etc/apt/sources.list.d/docker.list
+  apt-get update
+fi
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
 # Client PostgreSQL 17 (pg_restore compatible avec l'export pg_dump 17 de Supabase ; le serveur reste en 16)
-install -d /usr/share/postgresql-common/pgdg
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
-echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" > /etc/apt/sources.list.d/pgdg.list
-apt-get update && apt-get install -y postgresql-client-17
+if has_source 'apt\.postgresql\.org'; then
+  echo "  dépôt PostgreSQL déjà configuré : conservé tel quel"
+else
+  install -d /usr/share/postgresql-common/pgdg
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+  echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $CODENAME-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+fi
+apt-get update
+apt-get install -y postgresql-client-17
 # Utilisateur de déploiement
 id "$DEPLOY_USER" &>/dev/null || adduser --disabled-password --gecos "" "$DEPLOY_USER"
 usermod -aG docker,sudo "$DEPLOY_USER"
@@ -44,4 +65,17 @@ systemctl enable --now fail2ban
 dpkg-reconfigure -f noninteractive unattended-upgrades
 # Swap (utile sur 4 Go de RAM)
 if ! swapon --show | grep -q swap; then fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi
+# Contrôle final : ne jamais annoncer « prêt » si un outil indispensable manque.
+missing=0
+check() { if eval "$2" >/dev/null 2>&1; then echo "  ✔ $1"; else echo "  ✖ $1 MANQUANT"; missing=$((missing + 1)); fi; }
+echo "▶ Contrôle des outils"
+check "docker $(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,)" "command -v docker"
+check "docker compose $(docker compose version --short 2>/dev/null)" "docker compose version"
+check "pg_restore 17 ($PG17/pg_restore)" "$PG17/pg_restore --version"
+check "utilisateur $DEPLOY_USER" "id $DEPLOY_USER"
+check "ufw actif" "ufw status | grep -q 'Status: active'"
+if [[ "$missing" -gt 0 ]]; then
+  echo "✖ $missing outil(s) manquant(s) : corrigez avant de continuer (souvent « apt-get update » en échec plus haut)."
+  exit 1
+fi
 echo "✔ VPS prêt. Suite pas à pas : docs/migration-postgresql/07-INSTALLATION-VPS.md (§3 clé de déploiement GitHub, §4 .env, §6 démarrage)."

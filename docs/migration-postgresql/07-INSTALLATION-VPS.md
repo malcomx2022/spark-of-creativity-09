@@ -71,10 +71,32 @@ Le script installe et configure : Docker CE + plugin Compose, client PostgreSQL 
 fail2ban, mises à jour automatiques, 2 Go de swap, l'utilisateur `deploy` (groupes `docker`
 et `sudo`, vos clés SSH recopiées), puis durcit SSH.
 
-Contrôle :
+Le script se termine par un contrôle des outils et refuse d'annoncer « VPS prêt » si l'un
+d'eux manque. Certaines images d'hébergeur livrent déjà Docker : le dépôt existant est alors
+conservé, car déclarer deux fois la même source avec des chemins de clé différents casse apt
+(« Conflicting values set for option Signed-By ») et fait échouer silencieusement toutes les
+installations suivantes, `postgresql-client-17` compris.
+
+Contrôle indépendant :
 
 ```bash
 ssh root@<IP_VPS> "docker --version && docker compose version && /usr/lib/postgresql/17/bin/pg_restore --version && ufw status"
+```
+
+Si `apt` est déjà cassé par un dépôt en double, réparez avant de relancer :
+
+```bash
+ssh root@<IP_VPS> "rm -f /etc/apt/sources.list.d/docker.list && apt-get update && apt-get install -y postgresql-client-17"
+```
+
+Attention enfin au durcissement SSH : le script coupe l'authentification par mot de passe
+dès qu'une clé publique est autorisée, y compris une clé déposée par l'hébergeur. Vérifiez
+**immédiatement après** que `ssh root@<IP_VPS>` fonctionne toujours. En cas de blocage,
+utilisez la console navigateur de l'hébergeur (Hostinger : hPanel → VPS → Terminal) et
+rétablissez l'accès :
+
+```bash
+sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config && systemctl restart ssh
 ```
 
 Si votre hébergeur propose son propre pare-feu (Hostinger : hPanel → VPS → Pare-feu),
@@ -300,5 +322,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
 | `set: pipefail: invalid option name` | script en CRLF (clone Windows) : `sed -i 's/\r$//' <script>`, et renormaliser le clone (§2) |
+| `Conflicting values set for option Signed-By` | dépôt déclaré deux fois : `rm -f /etc/apt/sources.list.d/docker.list`, puis `apt-get update` |
+| Connexion SSH refusée après `install-vps.sh` | mot de passe désactivé et clé non autorisée : console navigateur de l'hébergeur, puis réactiver `PasswordAuthentication` (§2) |
 | `scp: stat local ... No such file or directory` | chemin relatif à la racine du dépôt : `cd` à la racine avant le `scp` |
 | `git pull` refusé sur le VPS | clé de déploiement absente ou révoquée (§3) |
