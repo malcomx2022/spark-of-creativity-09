@@ -49,8 +49,21 @@ mot de passe. Tant que ce n'est pas le cas, ne passez pas au §2.
 Le dépôt est privé : copiez le script depuis `<POSTE>` plutôt que de le télécharger.
 
 ```powershell
+cd C:\chemin\vers\spark-of-creativity-09          # la racine du dépôt, pas deploy\vps
 scp deploy\vps\install-vps.sh root@<IP_VPS>:/root/
-ssh root@<IP_VPS> "bash /root/install-vps.sh"
+ssh root@<IP_VPS> "sed -i 's/\r$//' /root/install-vps.sh && bash /root/install-vps.sh"
+```
+
+Le `sed` retire d'éventuelles fins de ligne Windows : un dépôt cloné avec
+`core.autocrlf=true` produit des scripts en CRLF que bash refuse dès la première ligne
+(`set: pipefail: invalid option name`). Le fichier `.gitattributes` du dépôt force
+désormais LF sur les scripts, mais un clone antérieur garde ses CRLF ; pour le corriger
+une fois pour toutes sur votre poste :
+
+```powershell
+git pull
+git rm --cached -r . | Out-Null
+git reset --hard
 ```
 
 Le script installe et configure : Docker CE + plugin Compose, client PostgreSQL 16 **et 17**
@@ -286,4 +299,6 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | 502 sur `/api/*` | `api` non démarré ou base injoignable : `docker compose ps`, `docker compose logs api` |
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
+| `set: pipefail: invalid option name` | script en CRLF (clone Windows) : `sed -i 's/\r$//' <script>`, et renormaliser le clone (§2) |
+| `scp: stat local ... No such file or directory` | chemin relatif à la racine du dépôt : `cd` à la racine avant le `scp` |
 | `git pull` refusé sur le VPS | clé de déploiement absente ou révoquée (§3) |
