@@ -27,11 +27,21 @@ chown -R $DEPLOY_USER:$DEPLOY_USER /home/$DEPLOY_USER/.ssh && chmod 700 /home/$D
 ufw default deny incoming && ufw default allow outgoing
 ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp
 ufw --force enable
-# SSH durci
-sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/; s/^#\?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-systemctl restart ssh || systemctl restart sshd
+# SSH durci — seulement si une clé publique est déjà autorisée : sur un VPS livré avec un mot de
+# passe root (Hostinger, OVH…), couper l'authentification par mot de passe sans clé installée rend
+# la machine définitivement inaccessible.
+keys=$(cat /root/.ssh/authorized_keys "/home/$DEPLOY_USER/.ssh/authorized_keys" 2>/dev/null | grep -cE '^(ssh-|ecdsa-|sk-)' || true)
+if [[ "${keys:-0}" -gt 0 ]]; then
+  sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/; s/^#\?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  systemctl restart ssh || systemctl restart sshd
+  echo "✔ SSH : mot de passe désactivé ($keys clé(s) publique(s) autorisée(s))"
+else
+  echo "⚠ SSH : aucune clé publique dans /root/.ssh/authorized_keys — authentification par mot de passe CONSERVÉE"
+  echo "  (la couper maintenant rendrait le VPS inaccessible). Depuis votre poste : ssh-copy-id root@<IP>,"
+  echo "  vérifiez que « ssh root@<IP> » passe sans mot de passe, puis relancez ce script."
+fi
 systemctl enable --now fail2ban
 dpkg-reconfigure -f noninteractive unattended-upgrades
 # Swap (utile sur 4 Go de RAM)
 if ! swapon --show | grep -q swap; then fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi
-echo "✔ VPS prêt. Connectez-vous en $DEPLOY_USER, clonez le dépôt puis : cd deploy/vps && cp .env.example .env && docker compose up -d"
+echo "✔ VPS prêt. Suite pas à pas : docs/migration-postgresql/07-INSTALLATION-VPS.md (§3 clé de déploiement GitHub, §4 .env, §6 démarrage)."

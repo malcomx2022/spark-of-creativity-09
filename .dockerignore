@@ -1,0 +1,32 @@
+# Contexte de build de l'image « web » (deploy/vps/web.Dockerfile, contexte = racine du dépôt).
+# Sans ce fichier, `COPY . .` embarque node_modules, .git et surtout export/ (données
+# personnelles et pièces d'identité) dans une couche de l'image : 716 Mo au lieu de ~5 Mo.
+node_modules
+*/node_modules
+.git
+.github
+dist
+build
+coverage
+
+# Données exportées depuis Supabase : ne doivent JAMAIS entrer dans une image
+export/
+deploy/vps/backups/
+*.dump
+*.rar
+
+# Secrets et environnements locaux
+.env
+.env.*
+!.env.example
+
+# Back-end : image séparée (contexte api/, voir api/.dockerignore)
+api/
+
+# Inutile au build du front
+db/
+docs/
+scripts/
+supabase/
+.lovable
+*.log

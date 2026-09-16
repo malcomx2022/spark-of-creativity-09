@@ -22,6 +22,7 @@ services:
       - caddy_config:/config
     environment:
       DOMAIN: ${DOMAIN}
+      WWW_DOMAIN: ${WWW_DOMAIN:-www.localhost}
       ACME_EMAIL: ${ACME_EMAIL}
     depends_on: [web, api]
 

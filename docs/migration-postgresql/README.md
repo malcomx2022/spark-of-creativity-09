@@ -13,6 +13,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | [04-PLAN-EXECUTION-VPS.md](04-PLAN-EXECUTION-VPS.md) | Plan phasé jusqu'à la mise en production sur VPS, bascule, rollback, exploitation |
 | [05-POINT-FONCTIONNEL.md](05-POINT-FONCTIONNEL.md) | Point d'alignement après l'étape 7 : ce qui est cohérent, les écarts restants (données, CI/CD, fichiers, rétention, infra) et les lots proposés avant la bascule |
 | [06-INVENTAIRE-SUPABASE.md](06-INVENTAIRE-SUPABASE.md) | Inventaire réel des deux projets Supabase après réactivation (volumétrie, comptes, praticiens, fichiers, configuration, écart de schéma) et commandes d'export restantes |
+| [07-INSTALLATION-VPS.md](07-INSTALLATION-VPS.md) | Installation du VPS pas à pas : clé SSH, dépendances, clé de déploiement GitHub, `.env`, DNS, démarrage de la pile, import des données, GitHub Actions, bascule, exploitation et dépannage |
 
 ## Outillage livré (testé)
 
@@ -31,6 +32,8 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | `scripts/supabase/export-storage.mjs` | Téléchargement de tous les fichiers des buckets Storage |
 | `scripts/db/import-native.sh` | Import d'un export dans PostgreSQL natif + conversion + contrôle des comptages |
 | `deploy/vps/` | `docker-compose.yml`, `Caddyfile`, Dockerfile front, sauvegarde, `install-vps.sh`, `.env.example` |
+| `deploy/vps/preflight.sh` | Contrôle « le VPS est-il prêt ? » : outils, `.env`, pile docker, ressources, DNS, ports, export |
+| `deploy/vps/bascule.sh` | Jour J : sauvegarde, import des données, fichiers vers MinIO, redémarrage, contrôle de santé |
 
 Validation effectuée dans ce dépôt (PostgreSQL 16.13) : rejeu des 93 migrations, conversion,
 export d'une base « Supabase simulée » puis import natif : comptages identiques, mots de passe
