@@ -42,6 +42,7 @@ CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml
 ## Documentation
 
 - `docs/migration-postgresql/` : état des lieux, récupération des données Supabase,
-  rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement.
+  rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement, et
+  `07-INSTALLATION-VPS.md` (installation et déploiement du VPS pas à pas).
 - `api/README.md` : table des routes de l'API (et ce qu'elles remplacent), jobs, configuration.
 - `docs/archive/` : documents de l'ère Lovable / Supabase, conservés pour l'historique.

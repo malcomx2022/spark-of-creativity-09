@@ -32,7 +32,9 @@
   }
 }
 
-www.{$DOMAIN} {
+# WWW_DOMAIN = www.<domaine> en production ; www.localhost en recette (sous-domaine sans
+# enregistrement DNS : Caddy demanderait un certificat Let's Encrypt en boucle et échouerait).
+{$WWW_DOMAIN:www.localhost} {
   redir https://{$DOMAIN}{uri} permanent
 }
 

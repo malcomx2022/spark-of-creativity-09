@@ -1,0 +1,10 @@
+# Contexte de build de l'image « api » (api/Dockerfile). Le Dockerfile ne copie que
+# package*.json, tsconfig*.json et src/ ; ce fichier évite d'envoyer 190 Mo au démon docker.
+node_modules
+dist
+coverage
+test
+.env
+.env.*
+!.env.example
+*.log

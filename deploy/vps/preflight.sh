@@ -103,7 +103,9 @@ DOMAIN="${DOMAIN:-$(env_get DOMAIN)}"
 pub=$(curl -4 -s --max-time 5 https://api.ipify.org 2>/dev/null || curl -4 -s --max-time 5 https://ifconfig.me 2>/dev/null || echo "")
 [[ -n "$pub" ]] && ok "IP publique : $pub" || warn "IP publique non déterminée"
 if [[ -n "$DOMAIN" ]]; then
-  for h in "$DOMAIN" "www.$DOMAIN"; do
+  WWW="$(env_get WWW_DOMAIN)"; WWW="${WWW:-www.localhost}"
+  [[ "$WWW" == *.localhost ]] && ok "WWW_DOMAIN=$WWW (pas de certificat demandé pour le www : recette)"
+  for h in "$DOMAIN" $( [[ "$WWW" == *.localhost ]] || echo "$WWW" ); do
     res=$(getent ahostsv4 "$h" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')
     if [[ -z "$res" ]]; then warn "DNS $h : aucun enregistrement A"
     elif [[ -n "$pub" && "$res" == *"$pub"* ]]; then ok "DNS $h → $res(ce VPS)"
