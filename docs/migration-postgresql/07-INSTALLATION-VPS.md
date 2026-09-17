@@ -260,6 +260,13 @@ mégaoctets et contient un dossier `storage`. S'il n'en fait que quelques centai
 kilooctets, seules la base et les métadonnées ont été transférées, et les documents des
 praticiens manqueront à l'arrivée.
 
+Vérifiez aussi que l'horodatage est le bon. `export-supabase` et `export-storage.mjs`
+créent chacun leur dossier : lancés à quelques minutes d'intervalle, les dumps atterrissent
+dans un horodatage et les fichiers dans un autre. Transférez alors le dossier **complet**,
+celui qui contient à la fois les `.dump` et `storage/`, sans assembler deux exports :
+`data_storage_meta.dump` décrit les objets à l'instant du dump, et croiser des métadonnées
+avec des fichiers pris plus tard laisse des lignes sans fichier.
+
 Puis sur le VPS, en `deploy` :
 
 ```bash
@@ -277,11 +284,18 @@ Attendu : `✔ import terminé, comptages identiques`, puis `documents : 97 obje
 
 ## 9. Recette fonctionnelle
 
-Sur `https://staging.<domaine>` : connexion avec un mot de passe existant (les hachages
-bcrypt sont repris tels quels), OTP SMS, recherche de praticiens sur la carte, prise de
-rendez-vous, paiement en sandbox de bout en bout, message temps réel, notification push,
-et les écrans d'administration (file KYC, finance, support). Le document 04 §4 demande la
-validation par un patient, un praticien, un coach et un administrateur réels.
+Sur le domaine servi par la pile — `https://staging.<domaine>` en recette, `https://<domaine>`
+quand la production est déployée directement sur l'apex : connexion avec un mot de passe
+existant (les hachages bcrypt sont repris tels quels), OTP SMS, recherche de praticiens sur la
+carte, affichage d'un avatar et d'une pièce justificative (vérifie MinIO de bout en bout),
+prise de rendez-vous, message temps réel, notification push, et les écrans d'administration
+(file KYC, finance, support). Le document 04 §4 demande la validation par un patient, un
+praticien, un coach et un administrateur réels.
+
+Le parcours de paiement se teste **en dernier**. Tant que `FEDAPAY_MODE=live`, il n'y a pas de
+bac à sable : un paiement de bout en bout débite réellement. Passez donc l'ensemble des autres
+points d'abord, puis configurez le webhook live (§11) et validez le paiement par une
+transaction de montant minimal, remboursée ensuite depuis le tableau de bord FedaPay.
 
 ## 10. Déploiement continu par GitHub Actions
 
