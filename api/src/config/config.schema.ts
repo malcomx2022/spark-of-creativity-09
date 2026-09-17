@@ -9,6 +9,10 @@ export const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   API_PREFIX: z.string().default('api'),
+  // Non renseignée, la documentation OpenAPI suit NODE_ENV : ouverte hors production, fermée
+  // en production. La chaîne vide vaut « non renseignée » et non « false », sans quoi une clé
+  // présente mais vide dans .env fermerait la documentation jusqu'en développement.
+  API_DOCS_ENABLED: z.preprocess((v) => (v === '' ? undefined : v), bool.optional()),
   FRONTEND_URL: z.string().url().default('http://localhost:8080'),
   CORS_ORIGINS: z.string().default('http://localhost:8080'),
 
