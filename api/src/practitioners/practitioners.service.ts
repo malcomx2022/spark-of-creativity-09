@@ -13,6 +13,17 @@ const PUBLIC_COLUMNS = [
   'communes_served', 'intervention_zone', 'intervention_radius', 'certifications', 'session_types', 'image',
 ] as const;
 
+/**
+ * `practitioners.rating` est un numeric : node-postgres le rend en chaîne (types.ts la déclare
+ * en lecture `string | null`, en écriture `number | null`). Le front l'affiche par
+ * `practitioner.rating.toFixed(1)` et levait « rating.toFixed is not a function », vidant la
+ * page de recherche. La note est convertie ici, comme stats.service.ts le fait déjà pour la même
+ * colonne et comme les coordonnées le sont par `round` plus bas.
+ */
+function withRating<T extends { rating: string | null }>({ rating, ...rest }: T) {
+  return { ...rest, rating: rating === null ? null : Number(rating) };
+}
+
 const DOCUMENT_KEYS = ['profilePhoto', 'idDocument', 'diploma', 'licenseDocument'] as const;
 type DocumentKey = (typeof DOCUMENT_KEYS)[number];
 
@@ -161,7 +172,9 @@ export class PractitionersService {
       if (q.type) query = query.where('practitioner_type', '=', q.type);
       const rows = await query.orderBy('rating', 'desc').limit(q.limit).execute();
       const round = (v: string | null) => (v === null ? null : Math.round(Number(v) * 1000) / 1000);
-      return rows.map(({ latitude, longitude, ...pub }) => (opts.includeCoordinates ? { ...pub, latitude: round(latitude), longitude: round(longitude) } : pub));
+      return rows.map(({ latitude, longitude, ...pub }) =>
+        opts.includeCoordinates ? { ...withRating(pub), latitude: round(latitude), longitude: round(longitude) } : withRating(pub),
+      );
     });
   }
 
@@ -170,7 +183,7 @@ export class PractitionersService {
       trx.selectFrom('practitioners').select(PUBLIC_COLUMNS).where('id', '=', id).where('kyc_status', '=', 'approved').executeTakeFirst(),
     );
     if (!p) throw new NotFoundException('Praticien introuvable');
-    return p;
+    return withRating(p);
   }
 
   /** Port de find-available-practitioner : filtre métier, distance, créneau du jour et exceptions. */
@@ -207,7 +220,7 @@ export class PractitionersService {
           ? !!exception.is_available
           : slots.some((s) => s.practitioner_id === p.id && String(s.start_time).slice(0, 5) <= time && String(s.end_time).slice(0, 5) > time);
         const { latitude: _lat, longitude: _lng, ...pub } = p;
-        return { ...pub, distanceKm: Number(p.distanceKm.toFixed(2)), isAvailableAt, hasException: !!exception };
+        return { ...withRating(pub), distanceKm: Number(p.distanceKm.toFixed(2)), isAvailableAt, hasException: !!exception };
       });
       const first = results.find((r) => r.isAvailableAt) ?? null;
       return { found: !!first, practitioner: first, practitioners: results.slice(0, q.limit) };

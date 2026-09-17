@@ -205,6 +205,19 @@ describe('Practitioners, files, KYC (e2e)', () => {
     expect(notif?.title).toBe('Compte activé');
   });
 
+  it('la note revient en nombre, pas en chaîne (numeric rendu par node-postgres)', async () => {
+    // practitioners.rating est un numeric : node-postgres le rend en chaîne, et types.ts le
+    // déclare ainsi en lecture. Le front affiche practitioner.rating.toFixed(1) ; laissée en
+    // chaîne, la note levait « rating.toFixed is not a function » et vidait la page de recherche.
+    const liste = await app.inject({ method: 'GET', url: '/api/practitioners?type=medecin' });
+    const dansLaListe = liste.json().find((p: { id: string }) => p.id === practitionerId);
+    expect(typeof dansLaListe.rating).toBe('number');
+
+    const fiche = await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}` });
+    expect(fiche.statusCode).toBe(200);
+    expect(typeof fiche.json().rating).toBe('number');
+  });
+
   it('disponibilités, exceptions et tarifs : CRUD, chevauchement 409, réservé aux praticiens', async () => {
     const notPractitioner = await app.inject({ method: 'POST', url: '/api/practitioners/me/availability', headers: auth('patient'), payload: { dayOfWeek: 1, startTime: '08:00', endTime: '12:00' } });
     expect(notPractitioner.statusCode).toBe(403);
@@ -242,6 +255,7 @@ describe('Practitioners, files, KYC (e2e)', () => {
     // D'autres praticiens de test peuvent partager les mêmes coordonnées : on vérifie le nôtre.
     const mine = ok.json().practitioners.find((p: { id: string }) => p.id === practitionerId);
     expect(mine).toMatchObject({ isAvailableAt: true, hasException: false });
+    expect(typeof mine.rating).toBe('number');
     expect(mine.distanceKm).toBeLessThan(1);
     expect(mine.latitude).toBeUndefined();
 
