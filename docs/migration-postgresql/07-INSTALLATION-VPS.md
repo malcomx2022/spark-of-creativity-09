@@ -364,6 +364,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 |---|---|
 | Caddy boucle sur « obtaining certificate » | DNS non propagé, ou `WWW_DOMAIN` sans enregistrement A → `www.localhost` en recette |
 | `api` redémarre en boucle | configuration refusée : `docker compose logs api` donne la variable fautive (`config.schema.ts`) |
+| `{"message":"Cannot GET /health"...}` sur `https://<domaine>/api/health` | Caddy retirait le préfixe : `handle_path /api/*` doit être `handle /api/*`, l'API montant déjà ses routes sous `API_PREFIX` |
 | 502 sur `/api/*` | `api` non démarré ou base injoignable : `docker compose ps`, `docker compose logs api` |
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
