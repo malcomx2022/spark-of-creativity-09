@@ -360,4 +360,5 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | `ssh: Connection timed out` après l'installation | poste banni par `fail2ban` (essais ratés) : console du fournisseur, `fail2ban-client set sshd unbanip <IP>`, puis `ignoreip` dans `/etc/fail2ban/jail.local` |
 | Connexion SSH refusée après `install-vps.sh` | mot de passe désactivé et clé non autorisée : console navigateur de l'hébergeur, puis réactiver `PasswordAuthentication` (§2) |
 | `scp: stat local ... No such file or directory` | chemin relatif à la racine du dépôt : `cd` à la racine avant le `scp` |
+| `preflight.sh` : « port 80/443 occupé » alors que seul Caddy écoute | `ss -p` ne montre le propriétaire qu'aux sockets de l'utilisateur courant : lancé en `deploy`, un service root apparaît anonyme. Le script interroge maintenant docker ; s'il reste un doute, `sudo ss -ltnp "sport = :80"` nomme le tenant |
 | `git pull` refusé sur le VPS | clé de déploiement absente ou révoquée (§3) |
