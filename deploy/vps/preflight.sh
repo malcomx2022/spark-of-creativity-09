@@ -118,7 +118,17 @@ for p in 80 443; do
   elif [[ "$holder" == *docker* || "$holder" == *caddy* ]]; then ok "port $p tenu par docker/Caddy"
   else ko "port $p occupé : $holder"; fi
 done
-command -v ufw >/dev/null && { ufw status 2>/dev/null | grep -q "Status: active" && ok "ufw actif" || warn "ufw inactif"; }
+# « ufw status » exige root : lancé en tant que deploy il échoue et faisait conclure à tort
+# que le pare-feu était inactif. L'état du service, lui, se lit sans privilège.
+if command -v ufw >/dev/null; then
+  if [[ "$(id -u)" == "0" ]]; then
+    ufw status 2>/dev/null | grep -q "Status: active" && ok "ufw actif" || warn "ufw inactif"
+  elif systemctl is-active --quiet ufw 2>/dev/null; then
+    ok "ufw actif (service systemd)"
+  else
+    warn "ufw : service arrêté ou état illisible (vérifier avec « sudo ufw status »)"
+  fi
+fi
 
 if [[ -n "$EXPORT" ]]; then
   echo "▶ 6. Export $EXPORT"
