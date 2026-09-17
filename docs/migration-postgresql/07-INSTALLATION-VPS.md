@@ -250,8 +250,15 @@ secret est nécessaire au démarrage de l'API.
 Depuis `<POSTE>`, envoyez l'export contrôlé (base + fichiers Storage) :
 
 ```powershell
+ssh deploy@<IP_VPS> "mkdir -p ~/export"      # scp ne crée pas le dossier de destination
 scp -r export\20260909T001732Z deploy@<IP_VPS>:~/export/
+ssh deploy@<IP_VPS> "du -sh ~/export/<horodatage> && ls ~/export/<horodatage>"
 ```
+
+Le contrôle de taille n'est pas une coquetterie : un export complet pèse une centaine de
+mégaoctets et contient un dossier `storage`. S'il n'en fait que quelques centaines de
+kilooctets, seules la base et les métadonnées ont été transférées, et les documents des
+praticiens manqueront à l'arrivée.
 
 Puis sur le VPS, en `deploy` :
 
@@ -346,6 +353,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | 502 sur `/api/*` | `api` non démarré ou base injoignable : `docker compose ps`, `docker compose logs api` |
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
+| `backups/... : Permission denied` au lancement de `bascule.sh` | docker a créé `deploy/vps/backups` en root au premier `up` : `sudo chown -R deploy:deploy ~/domicares/deploy/vps/backups` |
 | `pull access denied for minio/minio` | MinIO ne publie plus sur Docker Hub : les images viennent de `quay.io/minio/…`, déjà référencées dans `docker-compose.yml` et `bascule.sh` (mettre le dépôt à jour) |
 | `set: pipefail: invalid option name` | script en CRLF (clone Windows) : `sed -i 's/\r$//' <script>`, et renormaliser le clone (§2) |
 | `Conflicting values set for option Signed-By` | dépôt déclaré deux fois : `rm -f /etc/apt/sources.list.d/docker.list`, puis `apt-get update` |

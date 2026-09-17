@@ -47,12 +47,21 @@ ok ".env : base $POSTGRES_DB, buckets ${B_DOC:-documents}/${B_AVA:-avatars}/${B_
 command -v pg_restore >/dev/null || ko "pg_restore absent (install-vps.sh installe postgresql-client-17)"
 pg_restore --version | grep -q ' 17\.' || ko "pg_restore $(pg_restore --version | awk '{print $3}') : version 17 requise (PGBIN=$PGBIN)"
 command -v docker >/dev/null || ko "docker absent"
-mkdir -p "$HERE/backups"
-if "$ROOT/scripts/supabase/check-export.sh" "$EXPORT" > "$HERE/backups/.check-export.log" 2>&1; then
+# Docker crée les points de montage manquants en root : « ./backups » appartient donc à root
+# dès le premier « up » de postgres, et deploy ne peut plus y écrire. On le signale au lieu de
+# mourir sur un « Permission denied » au milieu d'un contrôle.
+mkdir -p "$HERE/backups" 2>/dev/null || true
+if [[ ! -w "$HERE/backups" ]]; then
+  ko "$HERE/backups non inscriptible par $(id -un) (créé par docker en root) : sudo chown -R $(id -un):$(id -gn) $HERE/backups"
+fi
+LOG="$(mktemp -t bascule-check-XXXXXX.log)"
+IMPORT_LOG="$(mktemp -t bascule-import-XXXXXX.log)"
+trap 'rm -f "$LOG" "$IMPORT_LOG"' EXIT
+if "$ROOT/scripts/supabase/check-export.sh" "$EXPORT" > "$LOG" 2>&1; then
   ok "check-export.sh : aucun bloquant"
 else
-  grep -E '✖|Résultat' "$HERE/backups/.check-export.log" | sed 's/^/    /'
-  if [[ "$SKIP_FILES" == "1" ]] && ! grep -E '✖' "$HERE/backups/.check-export.log" | grep -qv 'manifest.json absent'; then
+  grep -E '✖|Résultat' "$LOG" | sed 's/^/    /'
+  if [[ "$SKIP_FILES" == "1" ]] && ! grep -E '✖' "$LOG" | grep -qv 'manifest.json absent'; then
     ok "seul bloquant : fichiers Storage absents (--skip-files demandé)"
   elif [[ "$FORCE" == "1" ]]; then echo "  ⚠ bloquants ignorés (--force)"
   else ko "export non conforme : corriger, ou --skip-files / --force"; fi
@@ -83,8 +92,8 @@ if [[ "$DRY" == "1" ]]; then
   echo "  \$ DROP_RLS=1 PGBIN=$PGBIN DOMICARES_APP_PASSWORD=… scripts/db/import-native.sh $EXPORT $POSTGRES_DB"
 else
   DROP_RLS=1 PGBIN="$PGBIN" DOMICARES_APP_PASSWORD="$APP_PASSWORD" DOMICARES_MIGRATOR_PASSWORD="$MIG_PASSWORD" \
-    "$ROOT/scripts/db/import-native.sh" "$EXPORT" "$POSTGRES_DB" | tee "$HERE/backups/.import-$STAMP.log"
-  grep -q '✖' "$HERE/backups/.import-$STAMP.log" && ko "écarts de comptage : voir backups/.import-$STAMP.log"
+    "$ROOT/scripts/db/import-native.sh" "$EXPORT" "$POSTGRES_DB" | tee "$IMPORT_LOG"
+  grep -q '✖' "$IMPORT_LOG" && ko "écarts de comptage : voir la sortie ci-dessus"
   ok "import terminé, comptages identiques"
 fi
 
