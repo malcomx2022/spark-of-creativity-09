@@ -174,6 +174,7 @@ Points de vigilance, tous contrôlés au §7 :
 | `FEDAPAY_MODE` | `live` en production (la base importée contient `system_config.fedapay_mode = live`), avec des clés `pk_live_` / `sk_live_` |
 | `FEDAPAY_WEBHOOK_SECRET` | régénéré par FedaPay après le changement d'URL de webhook (§11) |
 | `OTP_PROVIDER`, `STORAGE_PROVIDER`, `FEDAPAY_PROVIDER` | jamais `fake` : l'API refuse de démarrer en production |
+| `API_DOCS_ENABLED` | absente, la documentation OpenAPI est publiée hors production et fermée en production. Elle décrit toute la surface de l'API : `true` ne la rouvre sur `https://<domaine>/api/docs` que le temps d'en avoir besoin |
 | `PG_SHARED_BUFFERS` | `1GB` pour 8 Go de RAM, `512MB` pour 4 Go |
 
 ```bash

@@ -26,14 +26,21 @@ export async function createApp(): Promise<NestFastifyApplication> {
   });
   app.enableShutdownHooks();
 
-  const doc = new DocumentBuilder()
-    .setTitle('Domicares API')
-    .setDescription("Back-end natif Domicares — remplace Supabase Auth, PostgREST et les Edge Functions")
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  SwaggerModule.setup(`${config.API_PREFIX}/docs`, app, SwaggerModule.createDocument(app, doc));
-
-  Logger.log(`Documentation OpenAPI : /${config.API_PREFIX}/docs`, 'Bootstrap');
+  // La documentation OpenAPI décrit toute la surface de l'API, routes et schémas des corps
+  // de requête compris. Publiée en production, elle en donne la carte complète à n'importe
+  // quel visiteur : les routes restent protégées, mais l'inventaire n'a pas à être offert.
+  // Elle reste ouverte hors production, et API_DOCS_ENABLED tranche explicitement si besoin.
+  if (config.API_DOCS_ENABLED ?? config.NODE_ENV !== 'production') {
+    const doc = new DocumentBuilder()
+      .setTitle('Domicares API')
+      .setDescription("Back-end natif Domicares — remplace Supabase Auth, PostgREST et les Edge Functions")
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    SwaggerModule.setup(`${config.API_PREFIX}/docs`, app, SwaggerModule.createDocument(app, doc));
+    Logger.log(`Documentation OpenAPI : /${config.API_PREFIX}/docs`, 'Bootstrap');
+  } else {
+    Logger.log('Documentation OpenAPI non publiée (API_DOCS_ENABLED=true pour l\'ouvrir)', 'Bootstrap');
+  }
   return app;
 }
