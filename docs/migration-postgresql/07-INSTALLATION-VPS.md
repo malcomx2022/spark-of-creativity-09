@@ -231,6 +231,20 @@ Il vérifie les outils, la complétude et la cohérence de `.env` avec
 `api/src/config/config.schema.ts`, l'état de la pile, le disque, la RAM, le DNS face à l'IP
 publique et les ports 80/443. **Zéro ✖ avant de passer au §8.**
 
+Où retrouver les secrets que le contrôle réclame, lorsque Supabase ne les affiche plus :
+
+| Clé | Source |
+|---|---|
+| `RESEND_API_KEY` | resend.com → API Keys → créer une clé (le domaine est déjà vérifié, enregistrement `resend._domainkey`) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | console.twilio.com, page d'accueil du compte |
+| `TWILIO_VERIFY_SERVICE_SID` | console Twilio → Verify → Services (identifiant commençant par `VA`) |
+| `TWILIO_PHONE_NUMBER` | le numéro émetteur au format international |
+| `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` | `docker run --rm node:22-alpine npx -y web-push generate-vapid-keys` ; des clés neuves n'invalident que les abonnements push existants |
+| `FEDAPAY_WEBHOOK_SECRET` | tableau de bord FedaPay → Webhooks → créer l'endpoint `https://<DOMAINE>/api/webhooks/fedapay`, puis copier son secret de signature |
+
+L'endpoint FedaPay peut être déclaré avant que le serveur ne réponde : seule la valeur du
+secret est nécessaire au démarrage de l'API.
+
 ## 8. Importer les données réelles
 
 Depuis `<POSTE>`, envoyez l'export contrôlé (base + fichiers Storage) :
