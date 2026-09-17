@@ -209,7 +209,7 @@ importer de données :
 
 ```bash
 NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$(docker compose ps -q minio)")
-docker run --rm --network "$NET" --env-file .env --entrypoint sh minio/mc -c \
+docker run --rm --network "$NET" --env-file .env --entrypoint sh quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z -c \
   'mc alias set local http://minio:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY" && for b in documents avatars message-attachments; do mc mb -p local/$b; done'
 ```
 
@@ -346,6 +346,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | 502 sur `/api/*` | `api` non démarré ou base injoignable : `docker compose ps`, `docker compose logs api` |
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
+| `pull access denied for minio/minio` | MinIO ne publie plus sur Docker Hub : les images viennent de `quay.io/minio/…`, déjà référencées dans `docker-compose.yml` et `bascule.sh` (mettre le dépôt à jour) |
 | `set: pipefail: invalid option name` | script en CRLF (clone Windows) : `sed -i 's/\r$//' <script>`, et renormaliser le clone (§2) |
 | `Conflicting values set for option Signed-By` | dépôt déclaré deux fois : `rm -f /etc/apt/sources.list.d/docker.list`, puis `apt-get update` |
 | `ssh: Connection timed out` après l'installation | poste banni par `fail2ban` (essais ratés) : console du fournisseur, `fail2ban-client set sshd unbanip <IP>`, puis `ignoreip` dans `/etc/fail2ban/jail.local` |

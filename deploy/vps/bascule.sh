@@ -9,7 +9,7 @@
 #   1. contrôle de l'export, des clients (pg_restore 17) et de .env
 #   2. sauvegarde de la base actuelle dans deploy/vps/backups (pg_dump)
 #   3. arrêt de api + worker, recréation de la base, scripts/db/import-native.sh (DROP_RLS=1)
-#   4. fichiers Storage → MinIO (minio/mc via docker, mêmes buckets et mêmes chemins)
+#   4. fichiers Storage → MinIO (client mc via docker, mêmes buckets et mêmes chemins)
 #   5. redémarrage de api + worker, /api/health, comptages
 # Sans le VPS : DRY_RUN=1 affiche les commandes sans les exécuter.
 # Idempotent : relançable après correction (la base est recréée à chaque passage).
@@ -101,7 +101,7 @@ if [[ "$SKIP_FILES" == "0" ]]; then
     MC_SCRIPT="$MC_SCRIPT; echo \"  $bucket : \$(mc ls -r local/$bucket | wc -l) objet(s)\""
   done
   run docker run --rm --network "$NET" -e S3_ACCESS_KEY="$S3_ACCESS_KEY" -e S3_SECRET_KEY="$S3_SECRET_KEY" \
-    -v "$EXPORT/storage:/export:ro" --entrypoint sh minio/mc -c "$MC_SCRIPT"
+    -v "$EXPORT/storage:/export:ro" --entrypoint sh quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z -c "$MC_SCRIPT"
   if [[ "$DRY" != "1" ]]; then
     expected=$(python3 -c "import json,sys; print(len([f for f in json.load(open(sys.argv[1]))['files'] if not f.get('error')]))" "$EXPORT/storage/manifest.json" 2>/dev/null || echo "?")
     echo "  attendu d'après le manifeste : $expected objet(s) au total"

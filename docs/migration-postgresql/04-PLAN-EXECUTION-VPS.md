@@ -65,7 +65,7 @@ deploy/vps/bascule.sh ~/export/<h>            # options : --skip-files, --no-res
 `bascule.sh` enchaîne : contrôle de l'export (`check-export.sh`), de `pg_restore` 17 et de `.env` ;
 sauvegarde de la base courante dans `deploy/vps/backups/pre-bascule-<h>.dump` ; arrêt de `api` +
 `worker`, recréation de la base, `scripts/db/import-native.sh` (`DROP_RLS=1`, mots de passe des
-rôles pris dans `.env`) ; fichiers Storage vers MinIO avec le client `minio/mc` lancé dans le réseau
+rôles pris dans `.env`) ; fichiers Storage vers MinIO avec le client `mc` (image `quay.io/minio/mc`) lancé dans le réseau
 docker de la pile (MinIO n'est pas exposé sur l'hôte ; buckets créés s'ils manquent, mêmes noms et
 mêmes chemins) ; redémarrage et `/api/health` depuis le conteneur `api`. Il est relançable après
 correction : la base est recréée à chaque passage.
@@ -78,7 +78,7 @@ docker compose exec -T postgres psql -U postgres -c "DROP DATABASE IF EXISTS dom
 PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD DROP_RLS=1 DOMICARES_APP_PASSWORD=$DOMICARES_APP_PASSWORD \
   PGBIN=/usr/lib/postgresql/17/bin scripts/db/import-native.sh ~/export/<h> domicares   # client 17 installé par install-vps.sh
 NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$(docker compose ps -q minio)")
-docker run --rm --network "$NET" -v ~/export/<h>/storage:/export:ro --entrypoint sh minio/mc -c \
+docker run --rm --network "$NET" -v ~/export/<h>/storage:/export:ro --entrypoint sh quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z -c \
   'mc alias set local http://minio:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY" && for b in documents avatars message-attachments; do mc mb -p local/$b; mc mirror --overwrite /export/$b local/$b; done'
 docker compose up -d api worker
 ```
