@@ -7,7 +7,10 @@
   encode zstd gzip
 
   # API REST + WebSocket (Socket.IO) → back-end NestJS
-  handle_path /api/* {
+  # « handle » et non « handle_path » : handle_path retire le préfixe qu'il a filtré, or
+  # l'API monte ses routes sous API_PREFIX=api (setGlobalPrefix). Avec handle_path, un appel
+  # à /api/health arrivait à NestJS sur /health et repartait en 404 « Cannot GET /health ».
+  handle /api/* {
     reverse_proxy api:3000
   }
   handle /socket.io/* {
