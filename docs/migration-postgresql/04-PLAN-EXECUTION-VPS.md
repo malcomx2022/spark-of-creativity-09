@@ -11,7 +11,7 @@ Internet ──► Caddy (443, TLS auto) ──┬── /            → web (n
                     backup (pg_dump quotidien → ./backups → rclone hors site)
 ```
 
-Fichiers : `deploy/vps/docker-compose.yml`, `Caddyfile`, `web.Dockerfile`, `nginx-spa.conf`,
+Fichiers : `deploy/vps/docker-compose.yml`, `caddy/Caddyfile`, `web.Dockerfile`, `nginx-spa.conf`,
 `backup.sh`, `install-vps.sh`, `.env.example`.
 
 Dimensionnement de départ (un seul VPS) : **4 vCPU / 8 Go RAM / 80 Go NVMe**, Ubuntu 24.04

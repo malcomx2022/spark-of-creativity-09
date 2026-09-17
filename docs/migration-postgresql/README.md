@@ -31,7 +31,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | `scripts/supabase/export-supabase.sh` | Export complet depuis Supabase (pg_dump public + auth + storage meta + comptages) |
 | `scripts/supabase/export-storage.mjs` | Téléchargement de tous les fichiers des buckets Storage |
 | `scripts/db/import-native.sh` | Import d'un export dans PostgreSQL natif + conversion + contrôle des comptages |
-| `deploy/vps/` | `docker-compose.yml`, `Caddyfile`, Dockerfile front, sauvegarde, `install-vps.sh`, `.env.example` |
+| `deploy/vps/` | `docker-compose.yml`, `caddy/Caddyfile`, Dockerfile front, sauvegarde, `install-vps.sh`, `.env.example` |
 | `deploy/vps/preflight.sh` | Contrôle « le VPS est-il prêt ? » : outils, `.env`, pile docker, ressources, DNS, ports, export |
 | `deploy/vps/bascule.sh` | Jour J : sauvegarde, import des données, fichiers vers MinIO, redémarrage, contrôle de santé |
 
