@@ -17,7 +17,11 @@ services:
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Un répertoire, pas le fichier seul : docker attache l'inode d'un montage de fichier,
+      # or « git pull » remplace le Caddyfile au lieu de l'écrire en place. Le conteneur
+      # restait alors sur l'ancienne version, et « caddy reload » rechargeait fidèlement
+      # l'ancien contenu. Un montage de répertoire se résout par chemin à chaque lecture.
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
