@@ -112,10 +112,17 @@ if [[ -n "$DOMAIN" ]]; then
     else warn "DNS $h → $res(pas encore ce VPS : bascule DNS à faire le jour J, TTL 300 s)"; fi
   done
 fi
+# « ss -p » ne montre le processus que pour les sockets de l'utilisateur courant : lancé en
+# tant que deploy, un service tenu par root apparaît sans propriétaire et faisait conclure à
+# tort à un serveur web tiers. On interroge alors docker, seule source lisible sans privilège.
 for p in 80 443; do
   holder=$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)
   if [[ -z "$holder" ]]; then ok "port $p libre (Caddy le prendra)"
   elif [[ "$holder" == *docker* || "$holder" == *caddy* ]]; then ok "port $p tenu par docker/Caddy"
+  elif docker ps --format '{{.Ports}}' 2>/dev/null | grep -q ":$p->"; then
+    ok "port $p publié par un conteneur docker (nom du processus illisible sans root)"
+  elif [[ "$holder" != *"users:("* ]]; then
+    warn "port $p occupé, propriétaire illisible sans privilège : sudo ss -ltnp \"sport = :$p\""
   else ko "port $p occupé : $holder"; fi
 done
 # « ufw status » exige root : lancé en tant que deploy il échoue et faisait conclure à tort
