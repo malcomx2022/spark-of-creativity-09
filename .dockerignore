@@ -27,6 +27,5 @@ api/
 db/
 docs/
 scripts/
-supabase/
-.lovable
+legacy/
 *.log

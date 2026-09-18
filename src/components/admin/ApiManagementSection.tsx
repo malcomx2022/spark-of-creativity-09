@@ -423,7 +423,7 @@ export function ApiManagementSection() {
               <div className="flex items-center gap-3">
                 <Wifi className="h-5 w-5 text-green-500" />
                 <div>
-                  <p className="font-medium">Stockage (Supabase Storage)</p>
+                  <p className="font-medium">Stockage objet (MinIO / S3)</p>
                   <p className="text-sm text-muted-foreground">
                     {apiStats?.storage?.documents || 0} documents stockés
                   </p>
@@ -568,7 +568,7 @@ export function ApiManagementSection() {
           <DialogHeader>
             <DialogTitle>Stockage des fichiers</DialogTitle>
             <DialogDescription>
-              Le stockage des documents utilise Supabase Storage intégré.
+              Les documents sont stockés dans un espace S3 compatible (MinIO sur le VPS), servis par des URL signées à durée limitée.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

@@ -1,4 +1,4 @@
-/** Port de supabase/functions/create-payment/fee-calculator.ts et payment-status.ts. */
+/** Port de legacy/supabase/functions/create-payment/fee-calculator.ts et payment-status.ts. */
 import type { FedaPayStatus } from './fedapay.client';
 import type { PaymentStatus } from '../database/types';
 

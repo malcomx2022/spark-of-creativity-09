@@ -124,7 +124,7 @@ diff <(grep -E "^CREATE (TABLE|VIEW|FUNCTION)" export/<h>/schema_public.sql | so
 ```
 
 Toute table/colonne/policy présente dans `schema_public.sql` et absente des migrations doit être
-ajoutée comme migration dans `supabase/migrations/` (puis `scripts/db/build-native-schema.sh`)
+ajoutée comme migration dans `legacy/supabase/migrations/` (puis `scripts/db/build-native-schema.sh`)
 **avant** l'import, sinon `pg_restore` la signalera en erreur.
 
 Répétition à blanc de l'import (obligatoire avant la bascule) :

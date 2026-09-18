@@ -62,7 +62,7 @@ décrit les secrets réellement nécessaires (SSH et domaine seulement).
 | `env.production` | `VITE_SUPABASE_PROJECT_ID`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_URL` | Supprimer |
 | `.env.production.save` | Clés de l'ancien projet Supabase | Supprimer |
 | `.env` | Suivi par git (ne contient plus que les 3 variables de l'API) | Retirer du suivi, garder `.env.example` |
-| `supabase/config.toml` | Configuration CLI Supabase | Supprimer (le dossier `supabase/migrations` et `supabase/functions` restent en référence) |
+| `supabase/config.toml` | Configuration CLI Supabase | Supprimer (le dossier `legacy/supabase/migrations` et `legacy/supabase/functions` restent en référence) |
 | `bun.lockb` | Verrou Bun périmé, le projet utilise npm (`package-lock.json`) | Supprimer |
 | `tmp/` | 1 fichier suivi | Supprimer et ignorer |
 | `README.md` (racine) | Gabarit Lovable | Réécrit : architecture, démarrage local, vérifications, documentation |

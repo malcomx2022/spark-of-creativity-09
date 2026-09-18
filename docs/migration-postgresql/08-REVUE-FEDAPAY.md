@@ -36,7 +36,7 @@ levés. Le `.env` du VPS est aujourd'hui en live.
 | Rendez-vous | `appointments.service.ts` (paiement créé à l'acceptation) |
 | Jobs | `jobs.service.ts`, `worker.ts` |
 | Front | `PaymentDialog.tsx`, `FedaPayWidget.tsx`, `PaymentCallback.tsx`, `lib/fedapay-widget.ts`, widgets de séance, `WebhookConfig.tsx`, `SandboxPaymentTester.tsx` |
-| Historique | `supabase/functions/{create-payment,payment-webhook,create-payout,process-payout-batch,process-refund,reconcile-fedapay,apply-ledger-entries}` |
+| Historique | `legacy/supabase/functions/{create-payment,payment-webhook,create-payout,process-payout-batch,process-refund,reconcile-fedapay,apply-ledger-entries}` |
 | Documentation FedaPay | `integration-api/fr/payouts-management-fr`, `api-reference/payouts/update-start`, `integration-api/fr/webhooks-fr`, `integration-api/fr/collects-management-fr`, `dashboard/fr/refunds-fr`, `api-reference/transactions/create` |
 
 ### 1.3 Ce qui est solide

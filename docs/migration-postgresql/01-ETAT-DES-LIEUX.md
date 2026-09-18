@@ -46,7 +46,7 @@ métier est éclatée entre le front, les policies RLS, 43 fonctions SQL et les 
 | Tests | 1 test React (`LoginWithOTP.test.tsx`), 3 tests Deno côté functions |
 | Types générés | `src/integrations/supabase/types.ts` (3 041 lignes) — dérivé du schéma, à remplacer |
 
-### 3.2 Base de données (`supabase/migrations/`, rejouée localement)
+### 3.2 Base de données (`legacy/supabase/migrations/`, rejouée localement)
 
 | Élément | Valeur |
 |---|---|
@@ -63,7 +63,7 @@ métier est éclatée entre le front, les policies RLS, 43 fonctions SQL et les 
 | Extensions | aucune déclarée dans les migrations (le snapshot fait `drop extension pg_net`) ; `pgcrypto` implicite (`gen_random_uuid`) |
 | Planification | **aucun `pg_cron` versionné** ; 8 fonctions « cron » (`schedule-consultation-tasks`, `auto-sync-pending-payments`, `send-payment-reminders`, `cleanup-*`, `retry-failed-webhooks`…) n'ont pas d'ordonnanceur identifié dans le dépôt |
 
-### 3.3 Edge Functions (`supabase/functions/`)
+### 3.3 Edge Functions (`legacy/supabase/functions/`)
 
 | Élément | Valeur |
 |---|---|

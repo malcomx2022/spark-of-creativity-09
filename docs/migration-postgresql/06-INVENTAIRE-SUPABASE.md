@@ -99,7 +99,7 @@ ré-upload) ; l'API (`GET /api/files/url`) résout ces chemins tels quels.
 | Triggers `public` | 12 | 24 | +12 natifs voulus : 10 `notify_*`, `on_user_created`, `set_users_updated_at` |
 | Policies RLS | **219** | 155 (`120_drop_rls_optional.sql`) | 64 policies créées hors migrations versionnées ; sans effet en cible (RLS retirée, autorisation par l'API) |
 | Extensions | pgcrypto, uuid-ossp, pg_stat_statements, supabase_vault | pgcrypto, uuid-ossp | `pg_cron` **non installé** : confirme l'absence d'ordonnancement historique |
-| Edge Functions déployées | 51 (dont `export-database`, `import-database`) | — | identiques au dossier `supabase/functions` |
+| Edge Functions déployées | 51 (dont `export-database`, `import-database`) | — | identiques au dossier `legacy/supabase/functions` |
 
 Le `diff` colonne par colonne se fait sur `schema_public.sql` produit par l'export (§5 du document 02).
 

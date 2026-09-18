@@ -34,7 +34,7 @@ echo "▶ Version serveur / client"
 psql "$SUPABASE_DB_URL" -At -c "select version()" | tee "$OUT/server_version.txt"
 pg_dump --version | tee "$OUT/client_version.txt"
 
-echo "▶ Schéma public (référence : compare-le avec supabase/migrations)"
+echo "▶ Schéma public (référence : compare-le avec legacy/supabase/migrations)"
 pg_dump "$SUPABASE_DB_URL" --schema-only --schema=public --no-owner --no-privileges > "$OUT/schema_public.sql"
 
 echo "▶ Données public (format custom, restaurable avec pg_restore)"
