@@ -70,7 +70,7 @@ export class PaymentsService {
   async create(userId: string, dto: CreatePaymentDto) {
     const appointmentId = dto.appointmentId;
 
-    const { target, amount } = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
+    const { target, amount, existing } = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const target = await this.resolveTarget(trx, appointmentId);
       let amount: number;
       if (target.kind === 'group_session') {
@@ -86,12 +86,28 @@ export class PaymentsService {
         if (!PAYABLE_STATUSES.includes(appointment.status)) {
           throw new BadRequestException({ statusCode: 400, error: 'NOT_PAYABLE', message: `Ce rendez-vous ne peut pas être payé (statut : ${appointment.status})`, currentStatus: appointment.status, allowedStatuses: PAYABLE_STATUSES });
         }
-        amount = dto.amount ?? appointment.payment_amount ?? DEFAULT_APPOINTMENT_AMOUNT;
+        // Le tarif est fixé par le praticien à l'acceptation (appointments.service) : le client ne
+        // le choisit pas. Un montant différent est refusé plutôt qu'ignoré, pour que l'écart remonte
+        // au lieu de passer inaperçu. Sans tarif enregistré (rendez-vous antérieur), le montant
+        // proposé est accepté à défaut de mieux.
+        const tarif = appointment.payment_amount;
+        if (tarif != null && tarif > 0) {
+          if (dto.amount !== undefined && dto.amount !== tarif) {
+            throw new BadRequestException({ statusCode: 400, error: 'AMOUNT_MISMATCH', message: `Le montant doit être celui fixé pour ce rendez-vous (${tarif} XOF)`, expectedAmount: tarif });
+          }
+          amount = tarif;
+        } else {
+          amount = dto.amount ?? DEFAULT_APPOINTMENT_AMOUNT;
+        }
       }
       if (!amount || amount <= 0) throw new BadRequestException('Montant invalide');
 
-      // Paiement encore ouvert : bloque 2 min (UX), puis le marque échoué pour permettre une nouvelle tentative.
-      const existing = await trx.selectFrom('payments').select(['id', 'status', 'created_at']).where('appointment_id', '=', appointmentId).where('status', 'in', OPEN_STATUSES).orderBy('created_at', 'desc').executeTakeFirst();
+      // Un rendez-vous déjà encaissé ne se repaie pas.
+      const paid = await trx.selectFrom('payments').select('id').where('appointment_id', '=', appointmentId).where('status', 'in', ['paid', 'partially_refunded']).executeTakeFirst();
+      if (paid) throw new ConflictException({ statusCode: 409, error: 'ALREADY_PAID', message: 'Ce rendez-vous est déjà payé', paymentId: paid.id });
+
+      // Paiement encore ouvert : bloque 2 min (UX) ; au-delà il est remplacé, après vérification chez FedaPay.
+      const existing = await trx.selectFrom('payments').select(['id', 'status', 'created_at', 'fedapay_transaction_id']).where('appointment_id', '=', appointmentId).where('status', 'in', OPEN_STATUSES).orderBy('created_at', 'desc').executeTakeFirst();
       if (existing) {
         const ageMs = Date.now() - existing.created_at.getTime();
         const timeoutMs = this.config.PAYMENT_PENDING_TIMEOUT_MINUTES * 60_000;
@@ -103,11 +119,24 @@ export class PaymentsService {
             paymentId: existing.id, retryAfter: remaining, existingPaymentStatus: existing.status,
           });
         }
-        await trx.updateTable('payments').set({ status: 'failed', payout_status: 'failed', updated_at: new Date() }).where('id', '=', existing.id).execute();
-        if (target.kind === 'appointment') await trx.updateTable('appointments').set({ status: 'confirmed', updated_at: new Date() }).where('id', '=', appointmentId).where('status', '=', 'pending_payment').execute();
       }
-      return { target, amount };
+      return { target, amount, existing };
     });
+
+    // Le paiement périmé n'est pas simplement marqué échoué : le lien FedaPay restait payable, et une
+    // approbation tardive après un second paiement débitait le patient deux fois. On interroge FedaPay :
+    // approuvé entre-temps → il est comptabilisé et le rendez-vous est payé, pas de second encaissement ;
+    // sinon il est annulé ici ET chez FedaPay.
+    if (existing) {
+      if (existing.fedapay_transaction_id) {
+        const remote = await this.fedapay.getTransaction(existing.fedapay_transaction_id).catch(() => null);
+        if (remote && normalizeStatus(remote.status) === 'paid') {
+          await this.transition(existing.id, 'paid', remote.status, 'create:replace');
+          throw new ConflictException({ statusCode: 409, error: 'ALREADY_PAID', message: 'Ce paiement vient d’être confirmé', paymentId: existing.id });
+        }
+      }
+      await this.cancelOpen(existing.id, 'create:replace', 'timeout');
+    }
 
     // Transaction + token FedaPay (hors transaction SQL : appels réseau).
     const [firstname, ...rest] = dto.payerName.trim().split(/\s+/);
@@ -138,6 +167,8 @@ export class PaymentsService {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const feeConfig = parseFeeConfig(await this.readSystemConfig(trx, ['payment_commission_rate', 'payment_gateway_fees', 'payment_rounding_mode']));
       const fees = calculateFees(amount, 'XOF', feeConfig);
+      // Le contrôle du paiement ouvert et cette insertion ne partagent pas de transaction (appel FedaPay
+      // entre les deux) : l'index partiel payments_one_open_per_appointment arbitre deux appels simultanés.
       const payment = await trx
         .insertInto('payments')
         .values({
@@ -150,7 +181,14 @@ export class PaymentsService {
           payment_session_data: JSON.stringify({ token }),
         })
         .returningAll()
-        .executeTakeFirstOrThrow();
+        .executeTakeFirstOrThrow()
+        .catch((err: unknown) => {
+          if ((err as { code?: string }).code === '23505') {
+            this.fedapay.cancelTransaction(transactionId).catch(() => undefined);
+            throw new ConflictException({ statusCode: 409, error: 'PAYMENT_IN_PROGRESS', message: 'Un paiement vient d’être créé pour ce rendez-vous. Veuillez patienter.' });
+          }
+          throw err;
+        });
       await this.logEvent(trx, payment.id, 'payment.intent.created', { amount: fees.amount, currency: fees.currency, payment_method: dto.paymentMethod, idempotency_key: idempotencyKey });
       await trx.insertInto('payment_attempts').values({ payment_id: payment.id, appointment_id: appointmentId, user_id: userId, status: 'pending', payment_method: dto.paymentMethod, amount }).execute();
       let expiresAt: Date | null = null;
@@ -245,18 +283,36 @@ export class PaymentsService {
   // Annulation (ex cancel-pending-payment) et synchronisation (ex sync-payment-status)
   // ---------------------------------------------------------------------------
   async cancelPending(userId: string, paymentId: string) {
-    return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
-      const payment = await trx.selectFrom('payments').selectAll().where('id', '=', paymentId).where('status', 'in', OPEN_STATUSES).executeTakeFirst();
+    await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
+      const payment = await trx.selectFrom('payments').select(['id', 'patient_id', 'appointment_id']).where('id', '=', paymentId).where('status', 'in', OPEN_STATUSES).executeTakeFirst();
       if (!payment) throw new NotFoundException('Aucun paiement en attente avec cet identifiant');
       const target = await this.resolveTarget(trx, payment.appointment_id);
       const practitioner = await trx.selectFrom('practitioners').select('user_id').where('id', '=', target.practitionerId).executeTakeFirst();
       if (payment.patient_id !== userId && practitioner?.user_id !== userId) throw new ForbiddenException('Vous ne pouvez pas annuler ce paiement');
-      await this.applyStatus(trx, payment, 'canceled', 'failed', target.practitionerId, null);
       await this.logEvent(trx, payment.id, 'payment.canceled', { by: userId });
-      // Le rendez-vous redevient payable (confirmé côté praticien) ; l'inscription à une séance reste en attente.
-      if (target.kind === 'appointment' && target.appointment.status === 'pending_payment') await trx.updateTable('appointments').set({ status: 'confirmed', updated_at: new Date() }).where('id', '=', target.appointmentId).execute();
-      return { success: true, paymentId, status: 'canceled' as const };
     });
+    await this.cancelOpen(paymentId, `user:${userId}`);
+    return { success: true, paymentId, status: 'canceled' as const };
+  }
+
+  /**
+   * Annule un paiement encore ouvert, ici et chez FedaPay. Sans l'annulation distante, le lien de
+   * paiement restait valide après l'annulation locale : le patient pouvait le régler plus tard, et
+   * l'approbation tardive s'ajoutait au paiement de remplacement (double encaissement). L'appel
+   * distant est au mieux : un refus n'empêche pas l'annulation locale. Le rendez-vous redevient
+   * payable ; l'inscription à une séance de groupe reste en attente.
+   */
+  async cancelOpen(paymentId: string, source: string, fedapayStatus = 'canceled'): Promise<boolean> {
+    const payment = await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('payments').select(['id', 'appointment_id', 'fedapay_transaction_id']).where('id', '=', paymentId).where('status', 'in', OPEN_STATUSES).executeTakeFirst());
+    if (!payment) return false;
+    if (payment.fedapay_transaction_id) {
+      await this.fedapay.cancelTransaction(payment.fedapay_transaction_id).catch((e) => this.logger.warn(`annulation FedaPay ${payment.fedapay_transaction_id} : ${e instanceof Error ? e.message : e}`));
+    }
+    await this.transition(payment.id, 'canceled', fedapayStatus, source);
+    if (!parseGroupSessionRef(payment.appointment_id)) {
+      await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.updateTable('appointments').set({ status: 'confirmed', updated_at: new Date() }).where('id', '=', payment.appointment_id).where('status', '=', 'pending_payment').execute());
+    }
+    return true;
   }
 
   async sync(userId: string | null, paymentId: string) {
@@ -292,6 +348,32 @@ export class PaymentsService {
       const b = Buffer.from(provided.toLowerCase());
       return a.length === b.length && timingSafeEqual(a, b);
     });
+  }
+
+  /**
+   * Fenêtre d'acceptation d'un webhook. L'historique (payment-webhook) rejetait un événement de plus
+   * de cinq minutes en production, trente en sandbox ; le port l'avait perdu, et un événement signé
+   * capturé restait rejouable sans limite. L'horodatage vient de l'en-tête « t=… » quand FedaPay le
+   * fournit, sinon de created_at dans le corps (secondes, millisecondes ou ISO). Sans horodatage,
+   * l'événement est accepté, comme avant : l'idempotence par event_id reste le second rempart.
+   */
+  webhookTimestampError(header: string | undefined, rawBody: string): string | null {
+    const parts = Object.fromEntries((header ?? '').split(',').map((kv) => kv.trim().split('=')).filter((kv) => kv.length === 2)) as Record<string, string>;
+    let ts: number | null = parts.t ? Number(parts.t) : null;
+    if (ts === null) {
+      try {
+        const c = (JSON.parse(rawBody) as { created_at?: unknown }).created_at;
+        if (typeof c === 'number') ts = c;
+        else if (typeof c === 'string') { const ms = Date.parse(c); ts = Number.isNaN(ms) ? Number(c) : ms / 1000; }
+      } catch { /* corps illisible : la validation du corps s'en charge */ }
+    }
+    if (ts === null || !Number.isFinite(ts)) return null;
+    if (ts > 1e12) ts /= 1000; // millisecondes
+    const sandbox = this.config.FEDAPAY_MODE === 'sandbox';
+    const diff = Date.now() / 1000 - ts;
+    if (diff > (sandbox ? 1800 : 300)) return 'Webhook trop ancien';
+    if (diff < -(sandbox ? 300 : 60)) return 'Horodatage du webhook dans le futur';
+    return null;
   }
 
   async handleWebhook(payload: WebhookPayload) {
@@ -342,6 +424,12 @@ export class PaymentsService {
    */
   async retryFailedWebhooks(limit = 10, force = false) {
     const MAX_RETRIES = 5;
+    // Un événement réservé (processing) dont le traitement a été interrompu — arrêt du processus entre
+    // la réservation et le traitement, qui sont deux transactions — n'aurait jamais été repris : le
+    // rejeu ne lit que les « failed ». Passé dix minutes, il lui est rendu.
+    await this.database.runAs(SERVICE_CONTEXT, (trx) =>
+      trx.updateTable('webhook_events').set({ processing_status: 'failed', error_message: 'Traitement interrompu : réservé depuis plus de 10 minutes' }).where('processing_status', '=', 'processing').where('created_at', '<', new Date(Date.now() - 10 * 60_000)).execute(),
+    );
     const failed = await this.database.runAs(SERVICE_CONTEXT, (trx) =>
       trx.selectFrom('webhook_events').selectAll().where('processing_status', '=', 'failed').where('retry_count', '<', MAX_RETRIES).orderBy('created_at', 'asc').limit(limit).execute(),
     );
@@ -403,6 +491,15 @@ export class PaymentsService {
       const session = ref ? await trx.selectFrom('group_sessions').select(['id', 'coach_id', 'session_name']).where('id', '=', ref.sessionId).executeTakeFirst() : undefined;
       const practitionerId = appointment?.practitioner_id ?? session?.coach_id ?? null;
 
+      // Un « refunded » reçu après un remboursement partiel enregistré ici ne doit pas passer le
+      // paiement en remboursement intégral : la somme des remboursements tranche. Sans remboursement
+      // local (opération faite depuis le tableau de bord FedaPay), le statut distant fait foi.
+      if (newStatus === 'refunded') {
+        const done = await trx.selectFrom('payment_refunds').select('refund_amount').where('payment_id', '=', payment.id).where('status', '=', 'completed').execute();
+        const refunded = done.reduce((s, r) => s + r.refund_amount, 0);
+        if (refunded > 0 && refunded < payment.amount) newStatus = 'partially_refunded';
+      }
+
       if (payment.status === newStatus) return { paymentId: payment.id, status: newStatus, changed: false };
       if (['paid', 'partially_refunded'].includes(payment.status) && !['refunded', 'partially_refunded', 'chargeback'].includes(newStatus)) {
         // Un paiement payé ne redevient pas pending/failed sur un événement tardif.
@@ -410,7 +507,22 @@ export class PaymentsService {
         return { paymentId: payment.id, status: payment.status, changed: false, ignored: true };
       }
 
-      const payoutStatus: PayoutStatus = newStatus === 'paid' ? 'held' : ['failed', 'canceled', 'refunded', 'chargeback'].includes(newStatus) ? 'failed' : (payment.payout_status ?? 'pending');
+      if (newStatus === 'paid') {
+        // Double encaissement : un autre paiement de ce rendez-vous est déjà encaissé (approbation tardive
+        // d'un paiement remplacé, par exemple). Celui-ci est enregistré payé — l'argent est bien arrivé —
+        // mais exclu des soldes (payout_status = failed) et signalé à la finance pour remboursement.
+        const other = await trx.selectFrom('payments').select('id').where('appointment_id', '=', payment.appointment_id).where('id', '!=', payment.id).where('status', 'in', ['paid', 'partially_refunded']).executeTakeFirst();
+        if (other) {
+          await this.applyStatus(trx, payment, 'paid', 'failed', practitionerId, null);
+          await this.logEvent(trx, payment.id, 'payment.duplicate', { duplicate_of: other.id, from: payment.status, fedapay_status: fedapayStatus, source, transaction_id: payment.fedapay_transaction_id });
+          await trx.updateTable('payment_attempts').set({ status: 'success', completed_at: new Date() }).where('payment_id', '=', payment.id).where('status', '=', 'pending').execute();
+          await this.notifyFinanceAdmins(trx, '⚠️ Double paiement à rembourser', `Le paiement ${payment.id} (${payment.amount} XOF, transaction ${payment.fedapay_transaction_id}) a été encaissé alors que ${other.id} l'était déjà pour ${payment.appointment_id}. Rembourser le doublon.`, '/admin?tab=finance');
+          return { paymentId: payment.id, status: 'paid', previousStatus: payment.status, changed: true, duplicateOf: other.id };
+        }
+      }
+
+      // Un paiement déjà reversé au praticien (payout_status = paid) le reste : l'argent est parti.
+      const payoutStatus: PayoutStatus = newStatus === 'paid' ? 'held' : ['failed', 'canceled', 'refunded', 'chargeback'].includes(newStatus) ? (payment.payout_status === 'paid' ? 'paid' : 'failed') : (payment.payout_status ?? 'pending');
       const hold = newStatus === 'paid' ? holdUntil(await this.holdPeriodDays(trx)) : payment.hold_until;
       await this.applyStatus(trx, payment, newStatus, payoutStatus, practitionerId, hold);
       await this.logEvent(trx, payment.id, `payment.${newStatus}`, { from: payment.status, fedapay_status: fedapayStatus, source, transaction_id: payment.fedapay_transaction_id });
@@ -509,17 +621,21 @@ export class PaymentsService {
   async cleanupStuckPayments(expirationMinutes = this.config.PAYMENT_STUCK_EXPIRATION_MINUTES, dryRun = false) {
     const threshold = new Date(Date.now() - expirationMinutes * 60_000);
     const stuck = await this.database.runAs(SERVICE_CONTEXT, (trx) =>
-      trx.selectFrom('payments').select(['id', 'status', 'appointment_id']).where('status', 'in', OPEN_STATUSES).where('created_at', '<', threshold).orderBy('created_at').limit(200).execute(),
+      trx.selectFrom('payments').select(['id', 'status', 'appointment_id', 'fedapay_transaction_id']).where('status', 'in', OPEN_STATUSES).where('created_at', '<', threshold).orderBy('created_at').limit(200).execute(),
     );
-    const cleaned: Array<{ paymentId: string; oldStatus: PaymentStatus; newStatus: 'canceled' }> = [];
+    const cleaned: Array<{ paymentId: string; oldStatus: PaymentStatus; newStatus: 'canceled' | 'paid' }> = [];
     for (const p of stuck) {
-      if (!dryRun) await this.transition(p.id, 'canceled', 'timeout', 'job:payments.cleanup');
+      if (dryRun) { cleaned.push({ paymentId: p.id, oldStatus: p.status, newStatus: 'canceled' }); continue; }
+      // Un paiement Mobile Money peut dépasser le délai : FedaPay est interrogé avant d'annuler. Approuvé,
+      // il est comptabilisé ; sinon il est annulé ici et chez FedaPay, et le rendez-vous redevient payable.
+      const remote = p.fedapay_transaction_id ? await this.fedapay.getTransaction(p.fedapay_transaction_id).catch(() => null) : null;
+      if (remote && normalizeStatus(remote.status) === 'paid') {
+        await this.transition(p.id, 'paid', remote.status, 'job:payments.cleanup');
+        cleaned.push({ paymentId: p.id, oldStatus: p.status, newStatus: 'paid' });
+        continue;
+      }
+      await this.cancelOpen(p.id, 'job:payments.cleanup', 'timeout');
       cleaned.push({ paymentId: p.id, oldStatus: p.status, newStatus: 'canceled' });
-    }
-    if (!dryRun) {
-      await this.database.runAs(SERVICE_CONTEXT, (trx) =>
-        trx.updateTable('appointments').set({ status: 'confirmed', updated_at: new Date() }).where('id', 'in', stuck.map((s) => s.appointment_id).concat(['-'])).where('status', '=', 'pending_payment').execute(),
-      );
     }
     return { dryRun, expirationMinutes, count: cleaned.length, cleaned };
   }

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 
 /** Statuts renvoyés par FedaPay (transactions). */
-export type FedaPayStatus = 'pending' | 'processing' | 'authorized' | 'approved' | 'declined' | 'canceled' | 'refunded' | 'transferred' | 'timeout';
+export type FedaPayStatus = 'pending' | 'processing' | 'authorized' | 'approved' | 'declined' | 'canceled' | 'refunded' | 'transferred' | 'expired' | 'timeout';
 
 export interface FedaPayCustomer {
   firstname: string;
@@ -50,6 +50,11 @@ export interface FedaPayClient {
   createTransaction(input: CreateTransactionInput): Promise<FedaPayTransaction>;
   generateToken(transactionId: string): Promise<{ token: string; url: string }>;
   getTransaction(transactionId: string): Promise<FedaPayTransaction>;
+  /**
+   * Annule une transaction encore en attente (DELETE /v1/transactions/{id}) pour que son lien de
+   * paiement cesse d'être payable. Au mieux : un refus (déjà payée, inexistante) rend false.
+   */
+  cancelTransaction(transactionId: string): Promise<boolean>;
   /** Transactions créées dans l'intervalle (réconciliation). */
   listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]>;
   /** Remboursement total ou partiel d'une transaction approuvée. */
@@ -133,6 +138,19 @@ export class HttpFedaPayClient implements FedaPayClient {
 
   async getTransaction(transactionId: string): Promise<FedaPayTransaction> {
     return unwrap(await this.request(`/transactions/${transactionId}`));
+  }
+
+  async cancelTransaction(transactionId: string): Promise<boolean> {
+    try {
+      await this.request(`/transactions/${transactionId}`, { method: 'DELETE' });
+      return true;
+    } catch (err) {
+      if (err instanceof FedaPayError && err.status >= 400 && err.status < 500) {
+        this.logger.warn(`annulation refusée pour la transaction ${transactionId} (${err.status})`);
+        return false;
+      }
+      throw err;
+    }
   }
 
   /** Pagination complète (reconcile-fedapay s'arrêtait à 100 transactions). */
@@ -219,6 +237,13 @@ export class FakeFedaPayClient implements FedaPayClient {
     const t = this.transactions.get(transactionId);
     if (!t) throw new FedaPayError('Transaction inconnue', 404);
     return { id: t.id, status: t.status, amount: t.amount };
+  }
+
+  async cancelTransaction(transactionId: string): Promise<boolean> {
+    const t = this.transactions.get(transactionId);
+    if (!t || t.status !== 'pending') return false;
+    t.status = 'canceled';
+    return true;
   }
 
   /** Simule l'évolution côté FedaPay (utilisé par les tests et l'endpoint admin de simulation). */

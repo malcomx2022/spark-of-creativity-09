@@ -10,6 +10,11 @@
 --    (renseignée par l'API depuis consent_versions.is_active).
 -- 3. Index manquants sur des tables lues par filtre (litiges, messages de litige, avis, notes de
 --    soins, comptes rendus) — aucun index n'existait en dehors des clés primaires.
+-- 4. payments : un seul paiement ouvert par rendez-vous. PaymentsService.create() contrôle puis
+--    insère dans deux transactions distinctes (appel FedaPay entre les deux) : deux appels
+--    simultanés créaient deux transactions FedaPay pour un même rendez-vous, donc deux
+--    encaissements possibles. L'index partiel arbitre ; la clé d'idempotence, aléatoire à chaque
+--    appel, ne protégeait de rien.
 -- =============================================================================
 BEGIN;
 
@@ -25,5 +30,9 @@ CREATE INDEX IF NOT EXISTS idx_care_notes_practitioner ON public.care_notes (pra
 CREATE INDEX IF NOT EXISTS idx_consultation_reports_appointment ON public.consultation_reports (appointment_id);
 CREATE INDEX IF NOT EXISTS idx_consultation_reports_practitioner ON public.consultation_reports (practitioner_id);
 CREATE INDEX IF NOT EXISTS idx_faqs_published ON public.faqs (is_published, target_audience);
+
+CREATE UNIQUE INDEX IF NOT EXISTS payments_one_open_per_appointment
+  ON public.payments (appointment_id)
+  WHERE status IN ('initiated', 'pending', 'authorized');
 
 COMMIT;
