@@ -213,9 +213,9 @@ export default function PatientSignup() {
       acceptTermsAt: acceptedAt,
     };
 
-    // Inscription avec Supabase
+    // Inscription via l'API
     try {
-      // 1. Créer le compte utilisateur Supabase (auto-confirmé)
+      // 1. Créer le compte utilisateur (auto-confirmé)
       let authData: { user: AuthUser; session: AuthSession | null; requiresEmailVerification: boolean } | null = null;
       let authError: Error | null = null;
       try {

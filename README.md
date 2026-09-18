@@ -15,8 +15,10 @@ dossier médical, support et back-office.
 | Déploiement | Docker Compose + Caddy (TLS automatique) | `deploy/vps/` |
 
 Le front ne parle qu'à l'API (`VITE_API_URL`, défaut `/api`) et au WebSocket Socket.IO
-(`VITE_WS_URL`, défaut même origine). Le dossier `supabase/` contient les migrations et Edge
-Functions de l'ancienne plateforme, conservées uniquement comme référence de la migration.
+(`VITE_WS_URL`, défaut même origine). Le projet ne dépend plus de Supabase ni de Lovable :
+le dossier `legacy/supabase/` conserve les migrations et Edge Functions de l'ancienne
+plateforme comme seule référence de la migration (source de `scripts/db/build-native-schema.sh`),
+exclu des images Docker et de la CI.
 
 ## Démarrer en local
 

@@ -15,7 +15,7 @@ export interface OtpProvider {
 
 export const OTP_PROVIDER = Symbol('OTP_PROVIDER');
 
-/** Twilio Verify — port de supabase/functions/send-otp et verify-otp. */
+/** Twilio Verify — port de legacy/supabase/functions/send-otp et verify-otp. */
 @Injectable()
 export class TwilioVerifyProvider implements OtpProvider {
   private readonly logger = new Logger(TwilioVerifyProvider.name);

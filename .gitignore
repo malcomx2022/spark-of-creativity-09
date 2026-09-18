@@ -28,8 +28,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Supabase temporary files
-supabase/.temp/
+# Supabase temporary files (dossier hérité)
+legacy/supabase/.temp/
 
 # Exports Supabase (données personnelles) — ne jamais versionner
 export/

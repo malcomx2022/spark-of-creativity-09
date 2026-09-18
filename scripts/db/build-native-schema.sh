@@ -2,7 +2,7 @@
 # =============================================================================
 # build-native-schema.sh — Reconstruit db/native/schema.native.sql à partir de :
 #   db/native/000_supabase_compat_shim.sql  (émulation auth/storage pour rejouer)
-#   supabase/migrations/*.sql               (les 94 migrations Lovable/Supabase)
+#   legacy/supabase/migrations/*.sql               (les 94 migrations Lovable/Supabase)
 #   db/native/100_to_native.sql             (conversion vers PostgreSQL natif)
 #   db/native/110_realtime_notify.sql       (LISTEN/NOTIFY à la place de Realtime)
 #   db/native/130_fixes_heritage.sql        (corrections de défauts hérités, hors schéma généré)
@@ -26,7 +26,7 @@ echo "▶ Rejeu des migrations Supabase (ordre chronologique)"
 # Le dump 20260126121712_remote_schema.sql est un instantané complet ; les migrations
 # antérieures sont déjà incluses dedans. On rejoue le dump puis les migrations postérieures.
 SNAPSHOT="20260126121712_remote_schema.sql"
-for path in "$ROOT"/supabase/migrations/*.sql; do
+for path in "$ROOT"/legacy/supabase/migrations/*.sql; do
   f="$(basename "$path")"
   [[ "$f" < "$SNAPSHOT" ]] && continue   # antérieures au snapshot : déjà incluses dedans
   # La vue admin_dashboard_stats est créée avant sa fonction dans le dump : erreur non bloquante,
@@ -43,7 +43,7 @@ $PSQL -d "$DB" -f "$ROOT/db/native/110_realtime_notify.sql"
 echo "▶ Export du schéma consolidé"
 {
   echo "-- FICHIER GÉNÉRÉ par scripts/db/build-native-schema.sh — ne pas éditer à la main."
-  echo "-- Schéma PostgreSQL natif Domicares = supabase/migrations/* rejoués + db/native/100 + 110."
+  echo "-- Schéma PostgreSQL natif Domicares = legacy/supabase/migrations/* rejoués + db/native/100 + 110."
   echo "-- Pré-requis : db/native/010_roles.sql avant, db/native/020_grants.sql après. Les policies RLS sont conservées ;"
   echo "-- exécuter db/native/120_drop_rls_optional.sql pour les retirer (option B)."
   echo "-- Généré le $(date -u +%Y-%m-%dT%H:%M:%SZ)"

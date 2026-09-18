@@ -8,7 +8,7 @@ export interface EmailMessage {
   text?: string;
 }
 
-/** Envoi d'e-mails : Resend (comme supabase/functions/_shared/notifications.ts) ou console en dev. */
+/** Envoi d'e-mails : Resend (comme legacy/supabase/functions/_shared/notifications.ts) ou console en dev. */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);

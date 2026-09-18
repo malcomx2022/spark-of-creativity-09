@@ -7,7 +7,7 @@
 #
 # Étapes :
 #   1. crée la base + rôles (010_roles.sql)
-#   2. installe le shim Supabase (000) puis rejoue supabase/migrations/* (schéma identique à la prod)
+#   2. installe le shim Supabase (000) puis rejoue legacy/supabase/migrations/* (schéma identique à la prod)
 #   3. restaure les DONNÉES public + auth.users (triggers désactivés)
 #   4. exécute 100_to_native.sql (public.users, FK, GUC, suppression storage/auth.users)
 #   5. exécute 110_realtime_notify.sql ; 120_drop_rls_optional.sql si DROP_RLS=1 ; 130_fixes_heritage.sql
@@ -47,7 +47,7 @@ if [[ -n "${DOMICARES_MIGRATOR_PASSWORD:-}" ]]; then $PSQL -d "$DB" -c "ALTER RO
 
 echo "▶ 2. Shim + migrations Supabase"
 $PSQL -d "$DB" -f "$ROOT/db/native/000_supabase_compat_shim.sql"
-for path in "$ROOT"/supabase/migrations/*.sql; do
+for path in "$ROOT"/legacy/supabase/migrations/*.sql; do
   f="$(basename "$path")"
   [[ "$f" < "$SNAPSHOT" ]] && continue   # antérieures au snapshot : déjà incluses dedans
   # La vue admin_dashboard_stats est créée avant sa fonction dans le dump : erreur non bloquante,
