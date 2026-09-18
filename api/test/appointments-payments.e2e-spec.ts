@@ -124,6 +124,8 @@ describe('Appointments & payments (e2e)', () => {
     const payment = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payments').selectAll().where('id', '=', paymentId).executeTakeFirstOrThrow());
     expect(payment).toMatchObject({ status: 'initiated', payout_status: 'pending', amount: 15000, commission_amount: 5550, net_amount: 9450, gateway_fees_amount: 325, payment_method: 'mtn', currency: 'XOF' });
     expect(payment.fedapay_transaction_id).toBe(transactionId);
+    // Transmis à FedaPay comme dans sa documentation : numéro international et mode du moyen choisi.
+    expect(fedapay.transactions.get(transactionId)?.input).toMatchObject({ mode: 'mtn_open', customer: { phoneNumber: patientPhone, country: 'bj' } });
     const appt = await app.inject({ method: 'GET', url: `/api/appointments/${appointmentId}`, headers: auth('patient') });
     expect(appt.json()).toMatchObject({ status: 'pending_payment', payment_amount: 15000 });
     expect(appt.json().payment_expires_at).not.toBeNull();

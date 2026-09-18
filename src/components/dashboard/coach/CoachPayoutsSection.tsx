@@ -294,6 +294,8 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
       held: { variant: "outline", label: "En rétention" },
       ready: { variant: "default", label: "Prêt" },
       paid: { variant: "default", label: "Versé" },
+      planned: { variant: "secondary", label: "Planifié" },
+      sent: { variant: "outline", label: "En cours de versement" },
       completed: { variant: "default", label: "Complété" },
       failed: { variant: "destructive", label: "Échoué" },
     };

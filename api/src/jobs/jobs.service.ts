@@ -5,7 +5,7 @@ import { DisputesService } from '../disputes/disputes.service';
 import { FinanceService } from '../finance/finance.service';
 import { PaymentsService } from '../payments/payments.service';
 
-export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup' | 'funds.release' | 'webhooks.retry' | 'payments.reminders' | 'disputes.sla' | 'maintenance.cleanup';
+export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup' | 'payouts.sync' | 'funds.release' | 'webhooks.retry' | 'payments.reminders' | 'disputes.sla' | 'maintenance.cleanup';
 
 export interface JobDefinition {
   name: JobName;
@@ -23,6 +23,7 @@ export class JobsService {
     { name: 'consultations.tick', everyMs: 5 * 60_000, description: 'cleanup_expired_payment_slots(), request_consultation_confirmation(), auto_confirm_consultations() (ex schedule-consultation-tasks)' },
     { name: 'payments.sync', everyMs: 10 * 60_000, description: 'Resynchronise les paiements ouverts depuis FedaPay (ex auto-sync-pending-payments)' },
     { name: 'payments.cleanup', everyMs: 15 * 60_000, description: 'Annule les paiements bloqués et libère les rendez-vous (ex cleanup-stuck-payments)' },
+    { name: 'payouts.sync', everyMs: 10 * 60_000, description: 'Interroge FedaPay sur les reversements démarrés (GET /v1/payouts/{id}) et confirme les remboursements en attente vus « refunded » — aucun événement payout.* n’est documenté' },
     { name: 'funds.release', everyMs: 60 * 60_000, description: 'Libère les fonds retenus dont hold_until est dépassé (ex release-held-funds, horaire)' },
     { name: 'webhooks.retry', everyMs: 5 * 60_000, description: 'Rejoue les webhooks FedaPay en échec avec backoff exponentiel (ex retry-failed-webhooks)' },
     { name: 'payments.reminders', everyMs: 6 * 60 * 60_000, description: 'Rappelle les inscriptions aux séances de groupe en attente de paiement depuis plus de 24 h (ex send-payment-reminders)' },
@@ -54,6 +55,9 @@ export class JobsService {
           break;
         case 'payments.cleanup':
           result = await this.payments.cleanupStuckPayments(typeof options.expirationMinutes === 'number' ? options.expirationMinutes : undefined, options.dryRun === true);
+          break;
+        case 'payouts.sync':
+          result = await this.finance.syncPayouts(typeof options.limit === 'number' ? options.limit : undefined);
           break;
         case 'funds.release':
           result = await this.finance.releaseHeldFunds();

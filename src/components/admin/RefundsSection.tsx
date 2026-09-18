@@ -9,7 +9,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { RefreshCcw } from "lucide-react";
+import { RefreshCcw, CheckCircle2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+/**
+ * Canal du remboursement. FedaPay ne documente le remboursement que depuis son tableau de bord (MTN
+ * uniquement) : le canal « manuel » enregistre ici, avec sa référence, un remboursement déjà effectué
+ * là-bas ; le canal API tente l'appel et laisse le remboursement « en attente » tant que FedaPay ne
+ * l'a pas confirmé.
+ */
+type RefundChannel = 'fedapay' | 'manual';
+
+const REFUND_STATUS_LABELS: Record<string, string> = { pending: 'En attente de confirmation', completed: 'Effectué', failed: 'Échoué' };
 
 /** Ligne de GET /admin/finance/payments (jointures patient et rendez-vous aplaties). */
 interface RefundablePayment {
@@ -30,6 +41,7 @@ interface PaymentRefund {
   payment_id: string;
   refund_amount: number;
   refund_reason: string | null;
+  provider_refund_id: string | null;
   status: string;
   created_at: string;
   processed_at: string | null;
@@ -40,6 +52,9 @@ export function RefundsSection() {
   const [selectedPayment, setSelectedPayment] = useState<RefundablePayment | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [channel, setChannel] = useState<RefundChannel>('fedapay');
+  const [providerReference, setProviderReference] = useState("");
+  const [confirmRef, setConfirmRef] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
   // Fetch paid payments eligible for refund
@@ -82,23 +97,52 @@ export function RefundsSection() {
         }
       }
 
-      // Remboursement FedaPay, écritures comptables et journal d'audit sont gérés par l'API.
-      return api.post('/admin/finance/refunds', {
+      if (channel === 'manual' && providerReference.trim().length < 3) {
+        throw new Error('Indiquez la référence du remboursement effectué chez FedaPay');
+      }
+
+      // Remboursement FedaPay (ou enregistrement d'un remboursement manuel), écritures comptables
+      // et journal d'audit sont gérés par l'API.
+      return api.post<{ status: string }>('/admin/finance/refunds', {
         paymentId: selectedPayment.id,
         ...(parsedAmount !== null ? { refundAmount: parsedAmount } : {}),
         reason: refundReason,
+        channel,
+        ...(channel === 'manual' ? { providerReference: providerReference.trim() } : {}),
       }, { timeoutMs: 60_000 });
     },
-    onSuccess: () => {
-      toast.success('Remboursement traité avec succès');
+    onSuccess: (data) => {
+      if (data?.status === 'pending') {
+        toast.info('Remboursement enregistré, en attente de confirmation par FedaPay. Confirmez-le ci-dessous une fois vérifié sur le tableau de bord FedaPay.');
+      } else {
+        toast.success('Remboursement traité avec succès');
+      }
       setSelectedPayment(null);
       setRefundAmount("");
       setRefundReason("");
+      setProviderReference("");
+      setChannel('fedapay');
       queryClient.invalidateQueries({ queryKey: ['refundable-payments'] });
       queryClient.invalidateQueries({ queryKey: ['payment-refunds'] });
     },
     onError: (error: unknown) => {
       toast.error('Erreur: ' + errorMessage(error, 'remboursement impossible'));
+    }
+  });
+
+  // Confirmation d'un remboursement « en attente » après vérification chez FedaPay.
+  const confirmMutation = useMutation({
+    mutationFn: async (refund: PaymentRefund) => {
+      const reference = (confirmRef[refund.id] ?? '').trim();
+      return api.post(`/admin/finance/refunds/${refund.id}/confirm`, reference ? { providerReference: reference } : {}, { timeoutMs: 60_000 });
+    },
+    onSuccess: () => {
+      toast.success('Remboursement confirmé et comptabilisé');
+      queryClient.invalidateQueries({ queryKey: ['refundable-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-refunds'] });
+    },
+    onError: (error: unknown) => {
+      toast.error('Erreur: ' + errorMessage(error, 'confirmation impossible'));
     }
   });
 
@@ -108,7 +152,7 @@ export function RefundsSection() {
       'completed': 'outline',
       'failed': 'destructive'
     };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+    return <Badge variant={variants[status] || 'default'}>{REFUND_STATUS_LABELS[status] ?? status}</Badge>;
   };
 
   return (
@@ -204,13 +248,40 @@ export function RefundsSection() {
                                 rows={4}
                               />
                             </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Canal</label>
+                              <Select value={channel} onValueChange={(v) => setChannel(v as RefundChannel)}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="fedapay">Par l'API FedaPay</SelectItem>
+                                  <SelectItem value="manual">Déjà effectué sur le tableau de bord FedaPay</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground">
+                                {channel === 'manual'
+                                  ? "Le remboursement a été fait chez FedaPay (MTN uniquement) ou par virement : indiquez sa référence, Domicares enregistre les écritures et prévient le patient."
+                                  : "Domicares demande le remboursement à FedaPay. S'il reste « en attente », confirmez-le ci-dessous après vérification."}
+                              </p>
+                            </div>
+                            {channel === 'manual' && (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Référence FedaPay du remboursement</label>
+                                <Input
+                                  placeholder="Ex. : 123456 ou référence du virement"
+                                  value={providerReference}
+                                  onChange={(e) => setProviderReference(e.target.value)}
+                                />
+                              </div>
+                            )}
                           </div>
                           <DialogFooter>
                             <Button
                               onClick={() => refundMutation.mutate()}
-                              disabled={!refundAmount || !refundReason || refundMutation.isPending}
+                              disabled={!refundAmount || !refundReason || (channel === 'manual' && providerReference.trim().length < 3) || refundMutation.isPending}
                             >
-                              {refundMutation.isPending ? 'Traitement...' : 'Confirmer le Remboursement'}
+                              {refundMutation.isPending ? 'Traitement...' : channel === 'manual' ? 'Enregistrer le Remboursement' : 'Confirmer le Remboursement'}
                             </Button>
                           </DialogFooter>
                         </DialogContent>
@@ -243,6 +314,7 @@ export function RefundsSection() {
                 <TableHead>Raison</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead>Traité Le</TableHead>
+                <TableHead>Référence / Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -265,11 +337,29 @@ export function RefundsSection() {
                         ? new Date(refund.processed_at).toLocaleDateString('fr-FR')
                         : '-'}
                     </TableCell>
+                    <TableCell>
+                      {refund.status === 'pending' ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            className="h-8 w-40"
+                            placeholder="Référence FedaPay"
+                            value={confirmRef[refund.id] ?? ''}
+                            onChange={(e) => setConfirmRef((prev) => ({ ...prev, [refund.id]: e.target.value }))}
+                          />
+                          <Button size="sm" variant="outline" onClick={() => confirmMutation.mutate(refund)} disabled={confirmMutation.isPending}>
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Confirmer
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground font-mono">{refund.provider_refund_id || '-'}</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     Aucun remboursement trouvé
                   </TableCell>
                 </TableRow>
