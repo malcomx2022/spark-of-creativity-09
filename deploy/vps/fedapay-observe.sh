@@ -13,7 +13,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 N="${1:-10}"
-env_get() { grep -E "^$1=" "$HERE/.env" | head -1 | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+|[[:space:]]+$//g; s/^"(.*)"$/\1/'; }
+env_get() { { grep -E "^$1=" "$HERE/.env" || true; } | head -1 | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+|[[:space:]]+$//g; s/^"(.*)"$/\1/'; }
 DB="$(env_get POSTGRES_DB)"
 q() { docker compose --project-directory "$HERE" exec -T postgres psql -U postgres -d "$DB" -X -P pager=off -c "$1"; }
 

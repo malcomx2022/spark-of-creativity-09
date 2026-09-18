@@ -23,7 +23,8 @@ ENV_FILE="$HERE/.env"
 run() { if [[ "$DRY" == "1" ]]; then echo "  \$ $*"; else "$@"; fi; }
 ok()  { echo "  ✔ $*"; }
 ko()  { echo "  ✖ $*"; exit 1; }
-env_get() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+|[[:space:]]+$//g; s/^"(.*)"$/\1/'; }
+# Variable absente ⇒ chaîne vide (et non un échec : avec set -e/pipefail, un grep sans résultat arrêtait le script en silence).
+env_get() { { grep -E "^$1=" "$ENV_FILE" || true; } | head -1 | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+|[[:space:]]+$//g; s/^"(.*)"$/\1/'; }
 mask() { local v="$1"; [[ -z "$v" ]] && { echo "(vide)"; return; }; echo "${v:0:6}…${v: -3} (${#v} car.)"; }
 compose() { run docker compose --project-directory "$HERE" "$@"; }
 
