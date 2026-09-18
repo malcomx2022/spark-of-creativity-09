@@ -133,6 +133,12 @@ describe('Appointments & payments (e2e)', () => {
     expect(dup.json().error).toBe('PAYMENT_IN_PROGRESS');
   });
 
+  it('le montant d’un rendez-vous est celui fixé par le praticien : un autre montant est refusé', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/payments', headers: auth('patient'), payload: { appointmentId, amount: 100, paymentMethod: 'mtn', phoneNumber: patientPhone, payerName: 'User patient' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'AMOUNT_MISMATCH', expectedAmount: 15000 });
+  });
+
   it('webhook FedaPay : signature vérifiée, idempotence, paiement → paid, rendez-vous confirmé, ledger et solde', async () => {
     const body = { id: `evt-${tag}-1`, name: 'transaction.approved', entity: { id: transactionId, status: 'approved' } };
     const unsigned = await app.inject({ method: 'POST', url: '/api/webhooks/fedapay', payload: body });
@@ -150,6 +156,11 @@ describe('Appointments & payments (e2e)', () => {
     const stripe = await app.inject({ method: 'POST', url: '/api/webhooks/fedapay', headers: { 'content-type': 'application/json', 'x-fedapay-signature': `t=${ts},s=${createHmac('sha256', 'test-webhook-secret').update(`${ts}.${raw}`).digest('hex')}` }, payload: raw });
     expect(stripe.statusCode).toBe(200);
     expect(stripe.json().changed).toBe(false);
+    // Un événement correctement signé mais vieux d'une heure est rejeté (fenêtre de 30 min en sandbox).
+    const old = String(Math.floor(Date.now() / 1000) - 3600);
+    const rawOld = JSON.stringify({ id: `evt-${tag}-old`, name: 'transaction.approved', entity: { id: transactionId, status: 'approved' } });
+    const stale = await app.inject({ method: 'POST', url: '/api/webhooks/fedapay', headers: { 'content-type': 'application/json', 'x-fedapay-signature': `t=${old},s=${createHmac('sha256', 'test-webhook-secret').update(`${old}.${rawOld}`).digest('hex')}` }, payload: rawOld });
+    expect(stale.statusCode).toBe(401);
 
     const payment = await app.inject({ method: 'GET', url: `/api/payments/${paymentId}`, headers: auth('patient') });
     expect(payment.json()).toMatchObject({ status: 'paid', payout_status: 'held' });
@@ -249,6 +260,56 @@ describe('Appointments & payments (e2e)', () => {
     expect(manual.json()).toMatchObject({ synced: false, status: 'paid' });
     const balance = await db.db.selectFrom('practitioner_balances').select('balance_on_hold').where('practitioner_id', '=', practitionerId).executeTakeFirstOrThrow();
     expect(balance.balance_on_hold).toBe(9450 * 2);
+  });
+
+  it('statut FedaPay « expired » : le paiement est terminé (failed), pas laissé en attente', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(11), time: '10:00', reason: 'Expiration FedaPay' } });
+    const accepted = await app.inject({ method: 'POST', url: `/api/appointments/${created.json().id}/respond`, headers: auth('practitioner'), payload: { action: 'accept' } });
+    fedapay.setStatus(accepted.json().transactionId, 'expired');
+    const sync = await app.inject({ method: 'POST', url: `/api/payments/${accepted.json().paymentId}/sync`, headers: auth('patient') });
+    expect(sync.json()).toMatchObject({ status: 'failed' });
+  });
+
+  it('double encaissement : un paiement remplacé puis approuvé tardivement est signalé, pas crédité deux fois', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(12), time: '16:00', reason: 'Doublon' } });
+    const id = created.json().id;
+    const first = await app.inject({ method: 'POST', url: `/api/appointments/${id}/respond`, headers: auth('practitioner'), payload: { action: 'accept', paymentMethod: 'mtn' } });
+    const txA = first.json().transactionId as string;
+    const payA = first.json().paymentId as string;
+    // Le nettoyage interroge FedaPay (toujours pending), puis annule ici ET chez FedaPay.
+    await app.inject({ method: 'POST', url: '/api/admin/jobs/payments.cleanup/run', headers: auth('admin'), payload: { expirationMinutes: 0 } });
+    expect((await fedapay.getTransaction(txA)).status).toBe('canceled');
+    expect((await app.inject({ method: 'GET', url: `/api/appointments/${id}`, headers: auth('patient') })).json().status).toBe('confirmed');
+    // Second paiement, payé.
+    const second = await app.inject({ method: 'POST', url: '/api/payments', headers: auth('patient'), payload: { appointmentId: id, paymentMethod: 'moov', phoneNumber: patientPhone, payerName: 'User patient' } });
+    expect(second.statusCode).toBe(201);
+    await webhook({ id: `evt-${tag}-dupB`, name: 'transaction.approved', entity: { id: second.json().transactionId, status: 'approved' } });
+    const before = await db.db.selectFrom('practitioner_balances').select('balance_on_hold').where('practitioner_id', '=', practitionerId).executeTakeFirstOrThrow();
+    // Un troisième paiement est refusé : le rendez-vous est déjà payé.
+    const third = await app.inject({ method: 'POST', url: '/api/payments', headers: auth('patient'), payload: { appointmentId: id, paymentMethod: 'mtn', phoneNumber: patientPhone, payerName: 'User patient' } });
+    expect(third.statusCode).toBe(409);
+    expect(third.json().error).toBe('ALREADY_PAID');
+    // FedaPay approuve malgré tout l'ancienne transaction : encaissée, exclue des soldes, finance alertée.
+    fedapay.setStatus(txA, 'approved');
+    const late = await webhook({ id: `evt-${tag}-dupA`, name: 'transaction.approved', entity: { id: txA, status: 'approved' } });
+    expect(late.json()).toMatchObject({ status: 'paid', duplicateOf: second.json().paymentId });
+    const dup = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payments').select(['status', 'payout_status']).where('id', '=', payA).executeTakeFirstOrThrow());
+    expect(dup).toMatchObject({ status: 'paid', payout_status: 'failed' });
+    const after = await db.db.selectFrom('practitioner_balances').select('balance_on_hold').where('practitioner_id', '=', practitionerId).executeTakeFirstOrThrow();
+    expect(after.balance_on_hold).toBe(before.balance_on_hold);
+    const alert = await db.db.selectFrom('notifications').select('title').where('user_id', '=', userIds['admin']).where('title', 'like', '%Double paiement%').executeTakeFirst();
+    expect(alert).toBeDefined();
+  });
+
+  it('webhook bloqué en « processing » : rendu au rejeu après dix minutes', async () => {
+    const eventId = `evt-${tag}-stuck`;
+    await db.runAs({ role: 'service_role' }, (trx) => trx.insertInto('webhook_events').values({ event_id: eventId, event_type: 'transaction.approved', payload: JSON.stringify({ id: eventId, name: 'transaction.approved', entity: { id: 'tx-inconnue', status: 'approved' } }), processing_status: 'processing', created_at: new Date(Date.now() - 20 * 60_000) }).execute());
+    const job = await app.inject({ method: 'POST', url: '/api/admin/jobs/webhooks.retry/run', headers: auth('admin'), payload: { force: true } });
+    expect(job.statusCode).toBe(200);
+    const row = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('webhook_events').select(['processing_status', 'retry_count']).where('event_id', '=', eventId).executeTakeFirstOrThrow());
+    expect(row.processing_status).toBe('failed');
+    expect(row.retry_count).toBe(1);
+    await db.runAs({ role: 'service_role' }, (trx) => trx.deleteFrom('webhook_events').where('event_id', '=', eventId).execute());
   });
 
   it('job consultations.tick : créneau non payé expiré → cancelled_unpaid', async () => {

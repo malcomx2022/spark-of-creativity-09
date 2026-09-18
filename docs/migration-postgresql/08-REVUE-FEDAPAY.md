@@ -322,11 +322,11 @@ probablement jamais : l'état des reversements et des remboursements doit être 
 
 ## 3. Plan de correction proposé
 
-| Lot | Contenu | Dépend de FedaPay ? |
-|---|---|---|
-| **1 — argent et sécurité** | C1, C4, M1, M2, M3, M4, M6, M7, M10 | non : corrigeables et testables maintenant |
-| **2 — reversements et remboursements** | C2 (démarrage, statuts, suivi par interrogation), C3 (mode manuel + confirmation API), m1, m2, m9 | oui : une session sandbox et une question au support |
-| **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non |
+| Lot | Contenu | Dépend de FedaPay ? | État |
+|---|---|---|---|
+| **1 — argent et sécurité** | C1, C4, M1, M2, M3, M4, M6, M7, M10 | non : corrigeables et testables maintenant | **livré** (18/09) — voir §5 |
+| **2 — reversements et remboursements** | C2 (démarrage, statuts, suivi par interrogation), C3 (mode manuel + confirmation API), m1, m2, m9 | oui : une session sandbox et une question au support | à faire |
+| **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non | à faire |
 
 Ordre recommandé : lot 1, puis campagne **sandbox** complète (paiement MTN et Moov,
 webhook réel, expiration, annulation, remboursement, reversement démarré et suivi jusqu'à
@@ -339,3 +339,23 @@ Tant que le lot 1 n'est pas livré et qu'une campagne sandbox n'a pas eu lieu, u
 réel sur `domicares.life` n'est pas un test : c'est une première exécution en production
 d'un code jamais exercé. Repasser `FEDAPAY_MODE=sandbox` avec les clés sandbox sur le VPS
 le temps de la campagne ne coûte qu'un redémarrage de `api`.
+
+## 5. Lot 1 — ce qui a été livré
+
+| Constat | Correction | Garde-fou |
+|---|---|---|
+| C1 | `payments.service.ts` : le tarif fixé à l'acceptation prime ; un `amount` différent est refusé en **400 `AMOUNT_MISMATCH`** avec le montant attendu ; sans tarif enregistré, le montant proposé reste accepté | e2e : `amount: 100` sur un rendez-vous à 15 000 → 400 |
+| C4 | `fees.ts` : `expired → failed` ; statut ajouté au client, à la simulation et à la réconciliation | e2e : `sync` sur une transaction `expired` → `failed` |
+| M1 | trois gardes : un rendez-vous déjà payé refuse un nouveau paiement (**409 `ALREADY_PAID`**) ; un paiement ouvert périmé est vérifié chez FedaPay avant remplacement (approuvé → comptabilisé, sinon annulé ici **et** chez FedaPay par `DELETE /v1/transactions/{id}`, au mieux) ; un `approved` tardif sur un rendez-vous déjà encaissé est enregistré payé mais exclu des soldes (`payout_status = failed`), journalisé `payment.duplicate` et signalé à la finance. Le job de nettoyage interroge FedaPay avant d'annuler. Index partiel `payments_one_open_per_appointment` (`130_fixes_heritage.sql`) contre deux créations simultanées | e2e : scénario complet — nettoyage, second paiement payé, troisième refusé, approbation tardive du premier signalée, solde inchangé |
+| M2 | `webhookTimestampError` : `t=` de l'en-tête ou `created_at` du corps ; rejet au-delà de 5 min en live, 30 min en sandbox, tolérance d'avance 1 / 5 min ; sans horodatage, accepté comme avant | e2e : événement signé vieux d'une heure → 401 |
+| M3 | `transition` : sur `refunded`, la somme des remboursements enregistrés tranche entre partiel et intégral ; un paiement déjà reversé garde `payout_status = paid` | e2e : webhook `refunded` après remboursement partiel → reste `partially_refunded` |
+| M4 | `handleTransfer` : un reversement `completed` ou `failed` ignore tout événement ultérieur | e2e : `transfer.failed` après `completed` → ignoré, statut inchangé |
+| M6 | `reconcile` : borne haute à `23:59:59.999` du jour demandé | — (la sémantique de `created_at[lte]` côté FedaPay reste à confirmer en sandbox) |
+| M7 | `refund` : le statut rendu par FedaPay fait foi ; non confirmé → remboursement `pending`, aucune écriture ni ajustement de solde, finance prévenue | e2e existant (client factice : `approved`) |
+| M10 | `retryFailedWebhooks` : un événement `processing` depuis plus de dix minutes est rendu au rejeu | e2e : ligne bloquée → `failed`, puis rejouée |
+
+`cancelPending`, le nettoyage, le remplacement d'un paiement périmé et la désinscription d'une
+séance passent tous par `cancelOpen`, qui annule ici et chez FedaPay et rend le rendez-vous
+payable. L'annulation distante est au mieux : un refus n'empêche pas l'annulation locale, et
+l'endpoint `DELETE /v1/transactions/{id}` figure dans la référence FedaPay mais reste à exercer
+en sandbox.

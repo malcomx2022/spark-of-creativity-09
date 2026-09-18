@@ -61,6 +61,8 @@ export const STATUS_MAP: Record<FedaPayStatus, PaymentStatus> = {
   canceled: 'canceled',
   refunded: 'refunded',
   transferred: 'paid',
+  // Collecte non finalisée dans le délai FedaPay : terminée, pas « en attente ».
+  expired: 'failed',
   timeout: 'failed',
 };
 

@@ -86,6 +86,8 @@ export class WebhooksController {
     const raw = rawBody ? rawBody.toString() : JSON.stringify(req.body ?? {});
     if (!signature) throw new UnauthorizedException('Signature manquante');
     if (!this.payments.verifySignature(raw, signature)) throw new UnauthorizedException('Signature invalide');
+    const stale = this.payments.webhookTimestampError(signature, raw);
+    if (stale) throw new UnauthorizedException(stale);
     return this.payments.handleWebhook(req.body as WebhookPayload);
   }
 }

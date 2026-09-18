@@ -24,6 +24,6 @@ export type ListPaymentsQuery = z.infer<typeof listPaymentsQuerySchema>;
 /** Simulation d'un événement FedaPay (ex simulate-webhook, admin / fake uniquement). */
 export const simulateWebhookSchema = z.object({
   transactionId: z.string().min(1),
-  status: z.enum(['pending', 'processing', 'authorized', 'approved', 'declined', 'canceled', 'refunded', 'transferred', 'timeout']),
+  status: z.enum(['pending', 'processing', 'authorized', 'approved', 'declined', 'canceled', 'refunded', 'transferred', 'expired', 'timeout']),
 });
 export type SimulateWebhookDto = z.infer<typeof simulateWebhookSchema>;

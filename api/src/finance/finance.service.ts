@@ -435,12 +435,14 @@ export class FinanceService implements OnModuleInit {
     return this.database.runAs(SERVICE_CONTEXT, async (trx) => {
       const payout = await trx.selectFrom('practitioner_payouts').selectAll().where(sql<boolean>`transaction_ids @> array[${e.transferId}]::text[]`).executeTakeFirst();
       if (!payout) return { handled: false, reason: 'payout_not_found', transferId: e.transferId };
+      // Un reversement terminé ne bouge plus : un « failed » tardif ou rejoué après « completed » supprimait
+      // les liens payout_payments et libérait des fonds déjà versés.
+      if (payout.status === 'completed' || payout.status === 'failed') return { handled: true, payoutId: payout.id, status: payout.status, changed: false, ignored: e.status, reason: 'terminal' };
       const practitioner = await trx.selectFrom('practitioners').select(['user_id', 'name']).where('id', '=', payout.practitioner_id).executeTakeFirst();
       const ok = ['approved', 'sent', 'completed', 'transferred'].includes(e.status);
       const ko = ['declined', 'failed', 'canceled', 'cancelled'].includes(e.status);
       if (!ok && !ko) return { handled: true, payoutId: payout.id, status: payout.status, ignored: e.status };
       if (ok) {
-        if (payout.status === 'completed') return { handled: true, payoutId: payout.id, status: 'completed', changed: false };
         await trx.updateTable('practitioner_payouts').set({ status: 'completed', processed_at: new Date() }).where('id', '=', payout.id).execute();
         if (practitioner?.user_id) await this.inApp.notifyUser(trx, practitioner.user_id, { title: 'Reversement effectué', message: `Votre reversement de ${payout.amount.toLocaleString('fr-FR')} XOF a été effectué avec succès !`, type: 'payout', link: '/dashboard/practitioner?tab=payouts' });
       } else {
@@ -505,9 +507,18 @@ export class FinanceService implements OnModuleInit {
       throw new HttpException({ statusCode: 502, error: 'FEDAPAY_REFUND', message: `Le remboursement a été refusé par le prestataire de paiement : ${err instanceof Error ? err.message : err}` }, HttpStatus.BAD_GATEWAY);
     }
 
+    // Le statut rendu par FedaPay fait foi : un remboursement encore « pending » chez lui n'est pas
+    // enregistré terminé ici, ni imputé au praticien, tant qu'il n'est pas confirmé.
+    const settled = ['approved', 'completed', 'refunded', 'sent', 'success'].includes(provider.status.toLowerCase());
     return this.database.runAs({ role: 'service_role', userId: adminId }, async (trx) => {
       const { payment, actual, totalRefunded, practitionerId } = prepared;
-      const refund = await trx.insertInto('payment_refunds').values({ payment_id: payment.id, refund_amount: actual, refund_reason: dto.reason, refunded_by: adminId, provider_refund_id: provider.id, status: 'completed', processed_at: new Date() }).returningAll().executeTakeFirstOrThrow();
+      const refund = await trx.insertInto('payment_refunds').values({ payment_id: payment.id, refund_amount: actual, refund_reason: dto.reason, refunded_by: adminId, provider_refund_id: provider.id, status: settled ? 'completed' : 'pending', processed_at: settled ? new Date() : null }).returningAll().executeTakeFirstOrThrow();
+      if (!settled) {
+        await trx.insertInto('payment_events').values({ payment_id: payment.id, event_type: 'payment.refund.pending', event_data: JSON.stringify({ refund_id: refund.id, amount: actual, provider_status: provider.status, by: adminId }) }).execute();
+        await this.payments.notifyFinanceAdmins(trx, 'Remboursement en attente de confirmation', `FedaPay a répondu « ${provider.status} » pour le remboursement de ${actual.toLocaleString('fr-FR')} XOF du paiement ${payment.id}. Il sera comptabilisé à sa confirmation.`, '/admin?tab=finance');
+        await this.audit.log(trx, { adminId, action: 'process_refund', entityType: 'payment', entityId: payment.id, ip, details: { refund_amount: actual, reason: dto.reason, refund_id: refund.id, provider_refund_id: provider.id, provider_status: provider.status, settled: false } });
+        return { refundId: refund.id, refundAmount: actual, status: 'pending', paymentStatus: payment.status, netRefund: 0 };
+      }
       const full = totalRefunded + actual >= payment.amount;
       await trx.updateTable('payments').set({ status: full ? 'refunded' : 'partially_refunded', updated_at: new Date() }).where('id', '=', payment.id).execute();
       await trx.insertInto('payment_events').values({ payment_id: payment.id, event_type: full ? 'payment.refunded' : 'payment.partially_refunded', event_data: JSON.stringify({ refund_id: refund.id, amount: actual, reason: dto.reason, by: adminId }) }).execute();
@@ -590,7 +601,9 @@ export class FinanceService implements OnModuleInit {
 
   /** Ex reconcile-fedapay : compare les transactions FedaPay et la table payments sur une période. */
   async reconcile(adminId: string, dto: ReconciliationDto, ip?: string) {
-    const end = dto.periodEnd ? new Date(dto.periodEnd) : new Date();
+    // Borne haute à la fin du jour demandé : à minuit, les transactions du dernier jour manquaient d'un
+    // côté et sortaient en fausses anomalies à chaque rapport.
+    const end = dto.periodEnd ? new Date(`${dto.periodEnd.slice(0, 10)}T23:59:59.999Z`) : new Date();
     const start = dto.periodStart ? new Date(dto.periodStart) : new Date(end.getTime() - 7 * 86_400_000);
     if (start > end) throw new BadRequestException('La date de début doit précéder la date de fin');
     const report = await this.database.runAs({ role: 'service_role', userId: adminId }, (trx) => trx.insertInto('reconciliation_reports').values({ created_by: adminId, period_start: start, period_end: end, status: 'in_progress' }).returning('id').executeTakeFirstOrThrow());

@@ -348,7 +348,7 @@ export class GroupSessionsService {
       const open = await trx.selectFrom('payments').select('id').where('appointment_id', '=', `${GROUP_SESSION_PREFIX}${participant.session_id}_${participantId}`).where('status', 'in', ['initiated', 'pending', 'authorized']).execute();
       return open.map((p) => p.id);
     });
-    for (const id of openIds) await this.payments.transition(id, 'canceled', 'canceled', 'group_session.withdraw').catch(() => undefined);
+    for (const id of openIds) await this.payments.cancelOpen(id, 'group_session.withdraw').catch(() => undefined);
     await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.deleteFrom('group_session_participants').where('id', '=', participantId).execute());
     return { success: true, participantId, paymentsCanceled: openIds.length };
   }

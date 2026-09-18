@@ -279,6 +279,10 @@ describe('Group sessions & finance (e2e)', () => {
     expect(done.status).toBe('completed');
     const notif = await db.db.selectFrom('notifications').select('title').where('user_id', '=', userIds['coach']).where('title', '=', 'Reversement effectué').executeTakeFirst();
     expect(notif).toBeDefined();
+    // Un « failed » tardif sur un reversement terminé est ignoré : les fonds versés ne sont pas relibérés.
+    const lateFail = await webhook({ id: `evt-${tag}-transfer-late`, name: 'transfer.failed', entity: { id: transferId, status: 'failed' } });
+    expect(lateFail.json()).toMatchObject({ handled: true, status: 'completed', changed: false });
+    expect((await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('practitioner_payouts').select('status').where('id', '=', payoutId).executeTakeFirstOrThrow())).status).toBe('completed');
   });
 
   it('reversement individuel échoué côté FedaPay : fonds libérés et journal d’audit', async () => {
@@ -304,6 +308,9 @@ describe('Group sessions & finance (e2e)', () => {
     const partial = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 4000, reason: 'Geste commercial' } });
     expect(partial.statusCode).toBe(201);
     expect(partial.json()).toMatchObject({ refundAmount: 4000, status: 'completed', paymentStatus: 'partially_refunded', netRefund: 2520 });
+    // Un webhook « refunded » reçu après un remboursement partiel ne passe pas le paiement en remboursement intégral.
+    const refundedEvt = await webhook({ id: `evt-${tag}-refunded-partial`, name: 'transaction.refunded', entity: { id: transactions['p1'], status: 'refunded' } });
+    expect(refundedEvt.json()).toMatchObject({ status: 'partially_refunded', changed: false });
     const tooMuch = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 7000, reason: 'x' } });
     expect(tooMuch.statusCode).toBe(400);
     const rest = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], reason: 'Séance annulée' } });
