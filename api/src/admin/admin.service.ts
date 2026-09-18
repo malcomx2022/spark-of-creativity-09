@@ -8,6 +8,7 @@ import { ReviewsService } from '../reviews/reviews.service';
 import type { AdminRole } from '../common/decorators/roles.decorator';
 import type { DB } from '../database/types';
 import type { AuditQuery, CreateAdminDto, CreateConsentVersionDto, DeleteUserDto, LogSearchActivityDto, ModerateReviewDto, OtpAttemptsQuery, SearchActivityQuery, SystemConfigDto, TodayAppointmentsQuery, UsersQuery } from './admin.dto';
+import { withDateOnly } from '../common/utils/date-only';
 
 const BCRYPT_COST = 12;
 const TEST_DOMAIN = '@test.com';
@@ -151,7 +152,7 @@ export class AdminService {
         trx.selectFrom('addresses').selectAll().where('user_id', '=', userId).orderBy('is_default', 'desc').execute(),
         trx.selectFrom('medical_profiles').selectAll().where('user_id', '=', userId).executeTakeFirst(),
         trx.selectFrom('appointments').select(['id', 'specialty', 'status', 'practitioner_name', 'date', 'time', 'reason', 'payment_amount', 'created_at']).where('patient_id', '=', userId).orderBy('created_at', 'desc').limit(5).execute(),
-        trx.selectFrom('group_session_participants as p').innerJoin('group_sessions as s', 's.id', 'p.session_id').select(['p.id', 'p.payment_status', 'p.joined_at', 's.session_name', 's.scheduled_date', 's.status as session_status']).where('p.patient_id', '=', userId).orderBy('p.joined_at', 'desc').limit(5).execute(),
+        trx.selectFrom('group_session_participants as p').innerJoin('group_sessions as s', 's.id', 'p.session_id').select(['p.id', 'p.payment_status', 'p.joined_at', 's.session_name', 's.scheduled_date', 's.status as session_status']).where('p.patient_id', '=', userId).orderBy('p.joined_at', 'desc').limit(5).execute().then((rows) => rows.map((r) => withDateOnly(r, 'scheduled_date'))),
       ]);
       return { ...profile, emergency_contacts: emergencyContacts, addresses, medical_profile: medicalProfile ?? null, appointments, group_sessions: groupSessions };
     });
@@ -176,7 +177,7 @@ export class AdminService {
         trx.selectFrom('appointments').select(['id', 'patient_name', 'status', 'specialty', 'date', 'time', 'reason', 'payment_amount', 'created_at']).where('practitioner_id', '=', practitionerId).orderBy('created_at', 'desc').limit(5).execute(),
         trx.selectFrom('practitioner_payment_info').selectAll().where('practitioner_id', '=', practitionerId).orderBy('updated_at', 'desc').execute(),
         trx.selectFrom('practitioner_balances').selectAll().where('practitioner_id', '=', practitionerId).executeTakeFirst(),
-        trx.selectFrom('group_sessions').select(['id', 'session_name', 'scheduled_date', 'status', 'current_participants', 'max_participants']).where('coach_id', '=', practitionerId).orderBy('scheduled_date', 'desc').limit(5).execute(),
+        trx.selectFrom('group_sessions').select(['id', 'session_name', 'scheduled_date', 'status', 'current_participants', 'max_participants']).where('coach_id', '=', practitionerId).orderBy('scheduled_date', 'desc').limit(5).execute().then((rows) => rows.map((r) => withDateOnly(r, 'scheduled_date'))),
       ]);
       return { ...practitioner, email: user?.email ?? null, last_sign_in_at: user?.last_sign_in_at ?? null, banned_until: user?.banned_until ?? null, appointments, payment_info: paymentInfo, balance: balance ?? null, group_sessions: sessions };
     });

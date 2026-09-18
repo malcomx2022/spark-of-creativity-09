@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { normalizePhoneNumber } from '../auth/phone.util';
+import { withDateOnly } from '../common/utils/date-only';
 import { DatabaseService } from '../database/database.service';
 import type { Profile, ProfileUpdate } from '../database/types';
 import type { UpdateProfileDto } from './profiles.dto';
@@ -14,7 +15,7 @@ export class ProfilesService {
       trx.selectFrom('profiles').selectAll().where('id', '=', userId).executeTakeFirst(),
     );
     if (!profile) throw new NotFoundException('Profil introuvable');
-    return profile;
+    return withDateOnly(profile, 'date_of_birth');
   }
 
   async updateOwn(userId: string, dto: UpdateProfileDto): Promise<Profile> {
@@ -34,7 +35,7 @@ export class ProfilesService {
         return row;
       });
       if (!profile) throw new NotFoundException('Profil introuvable');
-      return profile;
+      return withDateOnly(profile, 'date_of_birth');
     } catch (err) {
       // Trigger check_phone_uniqueness() : RAISE EXCEPTION 'Phone number … already exists'
       if (err instanceof Error && /already exists/i.test(err.message)) throw new ConflictException('Ce numéro de téléphone est déjà utilisé');

@@ -367,6 +367,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | `api` redémarre en boucle | configuration refusée : `docker compose logs api` donne la variable fautive (`config.schema.ts`) |
 | `{"message":"Cannot GET /health"...}` sur `https://<domaine>/api/health` | Caddy retirait le préfixe : `handle_path /api/*` doit être `handle /api/*`, l'API montant déjà ses routes sous `API_PREFIX` |
 | Une modification du `Caddyfile` reste sans effet après `git pull` et `caddy reload` | ancienne pile montant le fichier seul : docker en attache l'inode, que `git pull` remplace. `docker compose exec caddy cat /etc/caddy/Caddyfile` montre l'ancien contenu ; `docker compose up -d --force-recreate caddy` débloque, le montage de répertoire supprime le problème |
+| Champ `<input type="date">` vide, date décalée d'un jour, ou date affichée « Fri Sep 1 » | colonne `date` rendue en objet `Date` par node-postgres puis sérialisée en ISO complète : elle se convertit en `yyyy-MM-dd` à la frontière (`api/src/common/utils/date-only.ts`) |
 | Page blanche après un bref affichage, sans erreur réseau | exception pendant le rendu : ouvrir la console du navigateur. Cas rencontré : `rating.toFixed is not a function`, une colonne `numeric` rendue en chaîne par node-postgres et non convertie à la frontière de l'API |
 | 502 sur `/api/*` | `api` non démarré ou base injoignable : `docker compose ps`, `docker compose logs api` |
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |

@@ -112,6 +112,15 @@ describe('Auth (e2e)', () => {
     const res = await app.inject({ method: 'PATCH', url: '/api/profile', headers: { authorization: `Bearer ${accessToken}` }, payload: { fullName: 'Patient Modifié', gender: 'femme' } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ full_name: 'Patient Modifié', gender: 'femme' });
+
+    // date_of_birth est un `date` : rendu en objet Date par node-postgres, il repart en chaîne
+    // ISO complète. ProfileSection alimente un <input type="date"> avec cette valeur ; le champ
+    // resterait vide et un enregistrement effacerait la date de naissance. Voir date-only.
+    const avecDate = await app.inject({ method: 'PATCH', url: '/api/profile', headers: { authorization: `Bearer ${accessToken}` }, payload: { dateOfBirth: '1990-03-17' } });
+    expect(avecDate.statusCode).toBe(200);
+    expect(avecDate.json().date_of_birth).toBe('1990-03-17');
+    const relu = await app.inject({ method: 'GET', url: '/api/profile', headers: { authorization: `Bearer ${accessToken}` } });
+    expect(relu.json().date_of_birth).toBe('1990-03-17');
     const meta = await app.inject({ method: 'PATCH', url: '/api/auth/me/metadata', headers: { authorization: `Bearer ${accessToken}` }, payload: { metadata: { pending_onboarding: null, onboarding_done: true } } });
     expect(meta.statusCode).toBe(200);
     expect(meta.json().metadata).toMatchObject({ full_name: 'Patient E2E', onboarding_done: true, pending_onboarding: null });

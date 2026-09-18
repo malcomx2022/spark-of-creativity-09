@@ -10,6 +10,7 @@ import { BalancesService, parseGroupSessionRef } from '../payments/balances.serv
 import { FEDAPAY_CLIENT, FedaPayError, type FedaPayClient } from '../payments/fedapay.client';
 import { PaymentsService, type WebhookPayload } from '../payments/payments.service';
 import type { AdminPaymentsQuery, CreateBatchDto, CreatePayoutDto, ListQuery, PaymentInfoDto, PayoutsQuery, ReconciliationDto, RefundDto, WebhookEventsQuery } from './finance.dto';
+import { toDateOnly, withDateOnly } from '../common/utils/date-only';
 
 const REFUNDABLE = ['paid', 'partially_refunded'];
 const ACTIVE_PAYOUT = ['planned', 'sent', 'completed'];
@@ -95,7 +96,8 @@ export class FinanceService implements OnModuleInit {
   async myPayouts(userId: string, q: ListQuery) {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const p = await this.practitionerOf(trx, userId);
-      return trx.selectFrom('practitioner_payouts').selectAll().where('practitioner_id', '=', p.id).orderBy('created_at', 'desc').offset(q.page * q.limit).limit(q.limit).execute();
+      const rows = await trx.selectFrom('practitioner_payouts').selectAll().where('practitioner_id', '=', p.id).orderBy('created_at', 'desc').offset(q.page * q.limit).limit(q.limit).execute();
+      return rows.map((r) => withDateOnly(r, 'period_start', 'period_end'));
     });
   }
 
@@ -345,7 +347,7 @@ export class FinanceService implements OnModuleInit {
   async listBatches(q: ListQuery) {
     return this.database.runAs(SERVICE_CONTEXT, async (trx) => {
       const count = await trx.selectFrom('payout_batches').select((eb) => eb.fn.countAll<string>().as('n')).executeTakeFirstOrThrow();
-      const data = await trx.selectFrom('payout_batches').selectAll().orderBy('created_at', 'desc').offset(q.page * q.limit).limit(q.limit).execute();
+      const data = (await trx.selectFrom('payout_batches').selectAll().orderBy('created_at', 'desc').offset(q.page * q.limit).limit(q.limit).execute()).map((b) => withDateOnly(b, 'batch_date'));
       return { data, count: Number(count.n) };
     });
   }
@@ -724,7 +726,7 @@ export class FinanceService implements OnModuleInit {
       const link = `/dashboard/patient?tab=group-sessions&participant=${p.id}`;
       const recent = await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('notifications').select('id').where('user_id', '=', p.patient_id).where('type', '=', 'payment_reminder').where('link', '=', link).where('created_at', '>', new Date(Date.now() - 24 * 3_600_000)).executeTakeFirst());
       if (recent) continue;
-      const date = p.scheduled_date instanceof Date ? p.scheduled_date.toISOString().slice(0, 10) : String(p.scheduled_date);
+      const date = toDateOnly(p.scheduled_date);
       const formatted = new Date(`${date}T00:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
       try {
         await this.dispatch.dispatch({ userId: p.patient_id, title: '⏰ Rappel de paiement', message: `Votre inscription à la séance "${p.session_name}" le ${formatted} à ${p.start_time} est en attente de paiement (${p.price_per_person} XOF). Finalisez votre paiement pour confirmer votre place.`, type: 'payment_reminder', link, channels: ['sms', 'push'] });

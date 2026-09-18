@@ -5,6 +5,7 @@ import type { DB } from '../database/types';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import type { AddressDto, CareNoteDto, ConsentDto, ConsultationReportDto, EmergencyContactDto, ListQuery, MedicalProfileDto, TriageAnswers, UpdateCareNoteDto, UpdateConsultationReportDto } from './medical.dto';
 import { calculateTriageScore, TRIAGE_MAX_SCORE } from './triage';
+import { withDateOnly } from '../common/utils/date-only';
 
 /**
  * Dossier médical — port de useProfile (profil médical, contacts d'urgence, adresses), useCareNotes /
@@ -111,7 +112,7 @@ export class MedicalService {
       const contacts = inProgress ? await trx.selectFrom('emergency_contacts').selectAll().where('user_id', '=', patientId).orderBy('created_at', 'desc').execute() : [];
       const person = await trx.selectFrom('profiles').select(['id', 'full_name', 'phone', 'gender', 'date_of_birth']).where('id', '=', patientId).executeTakeFirst();
       if (!person) throw new NotFoundException('Patient introuvable');
-      return { patient: person, medical_profile: shared ? profile ?? null : null, medical_profile_shared: shared, emergency_contacts: contacts, emergency_contacts_visible: inProgress };
+      return { patient: withDateOnly(person, 'date_of_birth'), medical_profile: shared ? profile ?? null : null, medical_profile_shared: shared, emergency_contacts: contacts, emergency_contacts_visible: inProgress };
     });
   }
 
