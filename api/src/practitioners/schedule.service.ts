@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import type { AvailabilityDto, AvailabilityUpdateDto, ExceptionDto, RateDto, RateUpdateDto } from './practitioners.dto';
+import { withDateOnly } from '../common/utils/date-only';
 
 /** Disponibilités hebdomadaires, exceptions par date et tarifs (ex useAvailability / usePractitionerRates). */
 @Injectable()
@@ -58,13 +59,13 @@ export class ScheduleService {
   listExceptions(practitionerId: string, from?: string) {
     let q = this.database.db.selectFrom('practitioner_exceptions').selectAll().where('practitioner_id', '=', practitionerId);
     if (from) q = q.where('date', '>=', from);
-    return q.orderBy('date').execute();
+    return q.orderBy('date').execute().then((rows) => rows.map((r) => withDateOnly(r, 'date')));
   }
 
   addException(userId: string, practitionerId: string, dto: ExceptionDto) {
     return this.database.runAs({ role: 'authenticated', userId }, (trx) =>
       trx.insertInto('practitioner_exceptions').values({ practitioner_id: practitionerId, date: dto.date, reason: dto.reason ?? null, is_available: dto.isAvailable }).returningAll().executeTakeFirstOrThrow(),
-    );
+    ).then((row) => withDateOnly(row, 'date'));
   }
 
   async deleteException(userId: string, practitionerId: string, id: string) {

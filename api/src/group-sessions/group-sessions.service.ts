@@ -7,6 +7,7 @@ import { InAppNotificationsService } from '../notifications/in-app-notifications
 import { GROUP_SESSION_PREFIX } from '../payments/balances.service';
 import { PaymentsService } from '../payments/payments.service';
 import type { CancelSessionDto, CoachSessionsQuery, CreateGroupSessionDto, ListGroupSessionsQuery, MineQuery, RegisterDto, RetryPaymentDto, UpdateGroupSessionDto } from './group-sessions.dto';
+import { toDateOnly, withDateOnly } from '../common/utils/date-only';
 
 const OPEN_STATUSES = ['planifiee', 'confirmee'] as const;
 
@@ -44,7 +45,7 @@ export class GroupSessionsService {
   }
 
   private static isPast(session: { scheduled_date: Date | string; start_time: string }): boolean {
-    const date = session.scheduled_date instanceof Date ? session.scheduled_date.toISOString().slice(0, 10) : String(session.scheduled_date);
+    const date = toDateOnly(session.scheduled_date);
     return new Date(`${date}T${session.start_time}`) < new Date();
   }
 
@@ -88,7 +89,7 @@ export class GroupSessionsService {
       const count = await base.select((eb) => eb.fn.countAll<string>().as('n')).executeTakeFirstOrThrow();
       const data = await base.selectAll().orderBy('scheduled_date', 'asc').orderBy('start_time', 'asc').offset(q.page * q.limit).limit(q.limit).execute();
       const coaches = data.length ? await trx.selectFrom('practitioners').select(['id', 'name', 'image', 'specialty']).where('id', 'in', [...new Set(data.map((s) => s.coach_id))]).execute() : [];
-      return { data: data.map((s) => ({ ...s, coach: coaches.find((c) => c.id === s.coach_id) ?? null })), count: Number(count.n) };
+      return { data: data.map((s) => ({ ...withDateOnly(s, 'scheduled_date'), coach: coaches.find((c) => c.id === s.coach_id) ?? null })), count: Number(count.n) };
     });
   }
 
@@ -105,7 +106,7 @@ export class GroupSessionsService {
       const stats = (await this.participantStats(trx, [session.id])).get(session.id) ?? { paid: 0, pending: 0 };
       const myRegistration = userId ? await trx.selectFrom('group_session_participants').select(['id', 'payment_status', 'joined_at']).where('session_id', '=', sessionId).where('patient_id', '=', userId).executeTakeFirst() : undefined;
       return {
-        ...session,
+        ...withDateOnly(session, 'scheduled_date'),
         coach: coach ? { id: coach.id, name: coach.name, image: coach.image, specialty: coach.specialty, verified: coach.kyc_status === 'approved' && !!coach.kyc_validated_at } : null,
         participants_paid: stats.paid, participants_pending: stats.pending,
         spots_remaining: Math.max(0, (session.max_participants ?? 0) - stats.paid - stats.pending),
@@ -123,7 +124,7 @@ export class GroupSessionsService {
       const count = await base.select((eb) => eb.fn.countAll<string>().as('n')).executeTakeFirstOrThrow();
       const data = await base.selectAll().orderBy('scheduled_date', 'desc').orderBy('start_time', 'desc').offset(q.page * q.limit).limit(q.limit).execute();
       const stats = await this.participantStats(trx, data.map((s) => s.id));
-      return { data: data.map((s) => ({ ...s, participants_paid: stats.get(s.id)?.paid ?? 0, participants_pending: stats.get(s.id)?.pending ?? 0 })), count: Number(count.n) };
+      return { data: data.map((s) => ({ ...withDateOnly(s, 'scheduled_date'), participants_paid: stats.get(s.id)?.paid ?? 0, participants_pending: stats.get(s.id)?.pending ?? 0 })), count: Number(count.n) };
     });
   }
 
@@ -149,7 +150,7 @@ export class GroupSessionsService {
         id: r.id, session_id: r.session_id, patient_id: r.patient_id, joined_at: r.joined_at, payment_status: r.payment_status,
         session: {
           id: r.session_id, session_name: r.session_name, session_type: r.session_type, max_participants: r.max_participants, min_participants: r.min_participants, current_participants: r.current_participants,
-          scheduled_date: r.scheduled_date, start_time: r.start_time, end_time: r.end_time, price_per_person: r.price_per_person, location: r.location, status: r.status, description: r.description,
+          scheduled_date: toDateOnly(r.scheduled_date), start_time: r.start_time, end_time: r.end_time, price_per_person: r.price_per_person, location: r.location, status: r.status, description: r.description,
           coach: { id: r.coach_id, name: r.coach_name, image: r.coach_image, specialty: r.coach_specialty },
         },
       }));
@@ -185,7 +186,8 @@ export class GroupSessionsService {
       const coach = await this.coachOf(trx, userId);
       const conflict = await trx.selectFrom('group_sessions').select(['id', 'session_name']).where('coach_id', '=', coach.id).where('scheduled_date', '=', dto.scheduledDate).where('start_time', '=', dto.startTime).where('status', '!=', 'annulee').executeTakeFirst();
       if (conflict) throw new ConflictException(`Vous avez déjà une séance "${conflict.session_name}" prévue à cette date et heure.`);
-      return trx.insertInto('group_sessions').values({ coach_id: coach.id, status: 'planifiee', current_participants: 0, ...(this.toRow(dto) as Required<ReturnType<GroupSessionsService['toRow']>>) }).returningAll().executeTakeFirstOrThrow();
+      const created = await trx.insertInto('group_sessions').values({ coach_id: coach.id, status: 'planifiee', current_participants: 0, ...(this.toRow(dto) as Required<ReturnType<GroupSessionsService['toRow']>>) }).returningAll().executeTakeFirstOrThrow();
+      return withDateOnly(created, 'scheduled_date');
     });
   }
 
@@ -199,16 +201,16 @@ export class GroupSessionsService {
       const stats = (await this.participantStats(trx, [session.id])).get(session.id) ?? { paid: 0, pending: 0 };
       if (dto.maxParticipants !== undefined && dto.maxParticipants < stats.paid + stats.pending) throw new BadRequestException(`Impossible de réduire la capacité sous le nombre d'inscrits (${stats.paid + stats.pending})`);
       const updated = await trx.updateTable('group_sessions').set({ ...this.toRow(dto), updated_at: new Date() }).where('id', '=', sessionId).returningAll().executeTakeFirstOrThrow();
-      const changedSchedule = (dto.scheduledDate !== undefined && dto.scheduledDate !== String(session.scheduled_date).slice(0, 10)) || (dto.startTime !== undefined && dto.startTime !== session.start_time) || (dto.location !== undefined && dto.location !== session.location);
+      const changedSchedule = (dto.scheduledDate !== undefined && dto.scheduledDate !== toDateOnly(session.scheduled_date)) || (dto.startTime !== undefined && dto.startTime !== session.start_time) || (dto.location !== undefined && dto.location !== session.location);
       const notifyIds = changedSchedule ? (await trx.selectFrom('group_session_participants').select('patient_id').where('session_id', '=', sessionId).where('payment_status', 'in', ['paid', 'pending']).execute()).map((p) => p.patient_id) : [];
       return { session: updated, changedSchedule, notifyIds };
     });
     if (changedSchedule) {
       for (const patientId of notifyIds) {
-        await this.dispatch.dispatch({ userId: patientId, title: 'Séance modifiée', message: `La séance "${session.session_name}" a été modifiée : ${String(session.scheduled_date).slice(0, 10)} à ${session.start_time}, ${session.location}.`, type: 'appointment', link: '/dashboard/patient?tab=group-sessions', channels: ['email', 'push'] }).catch((e) => this.logger.warn(`notification ${patientId} : ${e}`));
+        await this.dispatch.dispatch({ userId: patientId, title: 'Séance modifiée', message: `La séance "${session.session_name}" a été modifiée : ${toDateOnly(session.scheduled_date)} à ${session.start_time}, ${session.location}.`, type: 'appointment', link: '/dashboard/patient?tab=group-sessions', channels: ['email', 'push'] }).catch((e) => this.logger.warn(`notification ${patientId} : ${e}`));
       }
     }
-    return session;
+    return withDateOnly(session, 'scheduled_date');
   }
 
   /** Confirmation par le coach : au moins min_participants inscrits payés ; les participants payés sont notifiés. */
@@ -223,9 +225,9 @@ export class GroupSessionsService {
       return { session: updated, paidIds };
     });
     for (const patientId of paidIds) {
-      await this.dispatch.dispatch({ userId: patientId, title: '✅ Séance confirmée', message: `La séance "${session.session_name}" du ${String(session.scheduled_date).slice(0, 10)} à ${session.start_time} est confirmée. Rendez-vous à ${session.location}.`, type: 'appointment', link: '/dashboard/patient?tab=group-sessions', channels: ['email', 'sms', 'push'] }).catch((e) => this.logger.warn(`notification ${patientId} : ${e}`));
+      await this.dispatch.dispatch({ userId: patientId, title: '✅ Séance confirmée', message: `La séance "${session.session_name}" du ${toDateOnly(session.scheduled_date)} à ${session.start_time} est confirmée. Rendez-vous à ${session.location}.`, type: 'appointment', link: '/dashboard/patient?tab=group-sessions', channels: ['email', 'sms', 'push'] }).catch((e) => this.logger.warn(`notification ${patientId} : ${e}`));
     }
-    return session;
+    return withDateOnly(session, 'scheduled_date');
   }
 
   /**
@@ -250,9 +252,9 @@ export class GroupSessionsService {
     }
     for (const p of participants) {
       const refund = p.payment_status === 'paid' ? ' Votre paiement vous sera remboursé.' : '';
-      await this.dispatch.dispatch({ userId: p.patient_id, title: 'Séance annulée', message: `La séance "${session.session_name}" du ${String(session.scheduled_date).slice(0, 10)} a été annulée par le coach.${dto.reason ? ` Motif : ${dto.reason}.` : ''}${refund}`, type: 'appointment', link: '/dashboard/patient?tab=group-sessions', channels: ['email', 'sms', 'push'] }).catch((e) => this.logger.warn(`notification ${p.patient_id} : ${e}`));
+      await this.dispatch.dispatch({ userId: p.patient_id, title: 'Séance annulée', message: `La séance "${session.session_name}" du ${toDateOnly(session.scheduled_date)} a été annulée par le coach.${dto.reason ? ` Motif : ${dto.reason}.` : ''}${refund}`, type: 'appointment', link: '/dashboard/patient?tab=group-sessions', channels: ['email', 'sms', 'push'] }).catch((e) => this.logger.warn(`notification ${p.patient_id} : ${e}`));
     }
-    return { ...session, participants_notified: participants.length, payments_canceled: openPaymentIds.length, refunds_to_process: paidCount };
+    return { ...withDateOnly(session, 'scheduled_date'), participants_notified: participants.length, payments_canceled: openPaymentIds.length, refunds_to_process: paidCount };
   }
 
   /** Clôture (terminee) une fois la séance passée : les revenus deviennent comptabilisables (CoachDashboard). */
@@ -261,7 +263,8 @@ export class GroupSessionsService {
       const { session } = await this.ownSession(trx, userId, sessionId);
       if (!OPEN_STATUSES.includes(session.status as (typeof OPEN_STATUSES)[number])) throw new BadRequestException(`Une séance ${session.status} ne peut pas être clôturée`);
       if (!GroupSessionsService.isPast(session)) throw new BadRequestException("La séance n'a pas encore eu lieu");
-      return trx.updateTable('group_sessions').set({ status: 'terminee', updated_at: new Date() }).where('id', '=', sessionId).returningAll().executeTakeFirstOrThrow();
+      const done = await trx.updateTable('group_sessions').set({ status: 'terminee', updated_at: new Date() }).where('id', '=', sessionId).returningAll().executeTakeFirstOrThrow();
+      return withDateOnly(done, 'scheduled_date');
     });
   }
 

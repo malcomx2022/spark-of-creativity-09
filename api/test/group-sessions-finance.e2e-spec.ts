@@ -137,6 +137,16 @@ describe('Group sessions & finance (e2e)', () => {
     expect(one.json()).toMatchObject({ spots_remaining: 2, my_registration: null, coach: { verified: true } });
     const mine = await app.inject({ method: 'GET', url: '/api/group-sessions/coach', headers: auth('coach') });
     expect(mine.json().data[0]).toMatchObject({ id: sessionId, participants_paid: 0 });
+
+    // La colonne `scheduled_date` est un `date` : node-postgres la rend en objet Date, qui
+    // devient une chaîne ISO complète une fois sérialisée. Le front concatène la date avec
+    // l'heure et alimente des <input type="date"> : il lui faut « yyyy-MM-dd », sur les quatre
+    // sorties. Voir common/utils/date-only.
+    const attendu = payload.scheduledDate;
+    expect(res.json().scheduled_date).toBe(attendu);
+    expect(list.json().data[0].scheduled_date).toBe(attendu);
+    expect(one.json().scheduled_date).toBe(attendu);
+    expect(mine.json().data[0].scheduled_date).toBe(attendu);
   });
 
   it('inscription avec paiement : place réservée, montant de la séance, doublon et séance complète refusés', async () => {
