@@ -14,6 +14,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | [05-POINT-FONCTIONNEL.md](05-POINT-FONCTIONNEL.md) | Point d'alignement après l'étape 7 : ce qui est cohérent, les écarts restants (données, CI/CD, fichiers, rétention, infra) et les lots proposés avant la bascule |
 | [06-INVENTAIRE-SUPABASE.md](06-INVENTAIRE-SUPABASE.md) | Inventaire réel des deux projets Supabase après réactivation (volumétrie, comptes, praticiens, fichiers, configuration, écart de schéma) et commandes d'export restantes |
 | [07-INSTALLATION-VPS.md](07-INSTALLATION-VPS.md) | Installation du VPS pas à pas : clé SSH, dépendances, clé de déploiement GitHub, `.env`, DNS, démarrage de la pile, import des données, GitHub Actions, bascule, exploitation et dépannage |
+| [08-REVUE-FEDAPAY.md](08-REVUE-FEDAPAY.md) | Revue de bout en bout de l'intégration FedaPay (client, webhooks, reversements, remboursements, réconciliation, front) : constats par sévérité avec fichier et ligne, écarts avec la documentation FedaPay, plan de correction en trois lots |
 
 ## Outillage livré (testé)
 
