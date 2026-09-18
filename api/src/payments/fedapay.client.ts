@@ -4,11 +4,23 @@ import { APP_CONFIG, AppConfig } from '../config/config.module';
 /** Statuts renvoyés par FedaPay (transactions). */
 export type FedaPayStatus = 'pending' | 'processing' | 'authorized' | 'approved' | 'declined' | 'canceled' | 'refunded' | 'transferred' | 'expired' | 'timeout';
 
+/**
+ * Identifiants de mode FedaPay pour le Bénin (page « Méthodes de paiement », modes sans redirection,
+ * les seuls disponibles pour les dépôts) : MTN = `mtn_open`, Moov = `moov`. Le virement bancaire
+ * n'y figure pas ; `bank_transfer` est l'exemple de la référence API et reste à confirmer en sandbox.
+ */
+export const FEDAPAY_MODES: Record<string, string> = { mtn: 'mtn_open', moov: 'moov', bank: 'bank_transfer' };
+
+/** Mode FedaPay d'un moyen de paiement Domicares (`mtn`, `moov`, `bank`) ; inconnu → non transmis. */
+export function fedapayMode(method: string | null | undefined): string | undefined {
+  return method ? FEDAPAY_MODES[method] : undefined;
+}
+
 export interface FedaPayCustomer {
   firstname: string;
   lastname: string;
   email?: string;
-  /** Numéro sans indicatif (FedaPay attend `{ number, country: 'bj' }`). */
+  /** Numéro au format international (`+22997808080`, comme les exemples FedaPay) avec `country: 'bj'`. */
   phoneNumber: string;
   country?: string;
 }
@@ -20,6 +32,8 @@ export interface CreateTransactionInput {
   callbackUrl: string;
   customer: FedaPayCustomer;
   metadata: Record<string, unknown>;
+  /** Moyen choisi par le patient (`mtn_open`, `moov`) ; absent, la page FedaPay propose tout. */
+  mode?: string;
 }
 
 export interface FedaPayTransaction {
@@ -29,13 +43,14 @@ export interface FedaPayTransaction {
   reference?: string;
 }
 
-export type FedaPayPayoutStatus = 'pending' | 'started' | 'sent' | 'failed' | 'approved' | 'declined';
+/** Cycle documenté d'un dépôt : pending → (scheduled) → started → processing → sent | failed. */
+export type FedaPayPayoutStatus = 'pending' | 'scheduled' | 'started' | 'processing' | 'sent' | 'failed' | 'approved' | 'declined';
 
 export interface CreatePayoutInput {
   amount: number;
   currency?: string;
-  /** mtn | moov | bank */
-  mode: string;
+  /** Mode FedaPay (`mtn_open`, `moov`, …) ; absent, FedaPay détecte l'opérateur d'après le numéro. */
+  mode?: string;
   customer: { firstname: string; lastname: string; email?: string; phoneNumber?: string; country?: string; bankAccount?: { number: string; bank: string; holder: string } };
   description?: string;
 }
@@ -59,8 +74,14 @@ export interface FedaPayClient {
   listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]>;
   /** Remboursement total ou partiel d'une transaction approuvée. */
   refundTransaction(transactionId: string, amount: number): Promise<{ id: string; status: string; amount?: number }>;
-  /** Reversement (payout) vers un praticien — ex create-payout / process-payout-batch. */
+  /** Crée un dépôt (POST /v1/payouts) : il reste `pending` chez FedaPay tant qu'il n'est pas démarré. */
   createPayout(input: CreatePayoutInput): Promise<FedaPayPayout>;
+  /** Démarre l'envoi immédiat d'un dépôt (PUT /v1/payouts/start) ; renvoie son état après démarrage. */
+  startPayout(payoutId: string): Promise<FedaPayPayout>;
+  /** État courant d'un dépôt (GET /v1/payouts/{id}) — seul suivi fiable, aucun événement payout.* n'est documenté. */
+  getPayout(payoutId: string): Promise<FedaPayPayout>;
+  /** Supprime un dépôt jamais démarré (DELETE /v1/payouts/{id}) ; un refus rend false. */
+  deletePayout(payoutId: string): Promise<boolean>;
 }
 
 export const FEDAPAY_CLIENT = Symbol('FEDAPAY_CLIENT');
@@ -69,6 +90,12 @@ export class FedaPayError extends Error {
   constructor(message: string, readonly status: number, readonly details?: unknown) {
     super(message);
   }
+}
+
+function unwrapPayout(data: Record<string, unknown>): FedaPayPayout {
+  const p = (data['v1/payout'] ?? (data.v1 as Record<string, unknown> | undefined)?.payout ?? data.payout ?? data) as Record<string, unknown>;
+  if (p.id === undefined) throw new FedaPayError('Identifiant de reversement absent de la réponse FedaPay', 502, data);
+  return { id: String(p.id), status: String(p.status ?? 'pending'), amount: p.amount as number | undefined };
 }
 
 function unwrap(data: Record<string, unknown>): FedaPayTransaction {
@@ -125,6 +152,7 @@ export class HttpFedaPayClient implements FedaPayClient {
           phone_number: { number: input.customer.phoneNumber, country: input.customer.country ?? 'bj' },
         },
         custom_metadata: input.metadata,
+        ...(input.mode ? { mode: input.mode } : {}),
       }),
     });
     return unwrap(data);
@@ -175,10 +203,42 @@ export class HttpFedaPayClient implements FedaPayClient {
     const customer: Record<string, unknown> = { firstname: input.customer.firstname, lastname: input.customer.lastname, email: input.customer.email };
     if (input.customer.bankAccount) customer.bank_account = { number: input.customer.bankAccount.number, bank: input.customer.bankAccount.bank, holder: input.customer.bankAccount.holder };
     else customer.phone_number = { number: input.customer.phoneNumber, country: input.customer.country ?? 'bj' };
-    const data = await this.request('/payouts', { method: 'POST', body: JSON.stringify({ amount: input.amount, currency: { iso: input.currency ?? 'XOF' }, mode: input.mode, description: input.description, customer }) });
-    const p = (data['v1/payout'] ?? (data.v1 as Record<string, unknown> | undefined)?.payout ?? data.payout ?? data) as Record<string, unknown>;
-    if (p.id === undefined) throw new FedaPayError('Identifiant de reversement absent de la réponse FedaPay', 502, data);
-    return { id: String(p.id), status: String(p.status ?? 'pending'), amount: p.amount as number | undefined };
+    const data = await this.request('/payouts', { method: 'POST', body: JSON.stringify({ amount: input.amount, currency: { iso: input.currency ?? 'XOF' }, ...(input.mode ? { mode: input.mode } : {}), description: input.description, customer }) });
+    return unwrapPayout(data);
+  }
+
+  async startPayout(payoutId: string): Promise<FedaPayPayout> {
+    // Corps `{ payouts: [{ id }] }` comme le guide « Gestion des dépôts » (Payout.sendAllNow du SDK) ;
+    // la référence OpenAPI montre un tableau nu et un tableau en réponse : les deux formes sont lues.
+    const data = await this.request('/payouts/start', { method: 'PUT', body: JSON.stringify({ payouts: [{ id: Number(payoutId) }] }) });
+    const list = (Array.isArray(data) ? data : (data['v1/payouts'] ?? data.payouts ?? null)) as Record<string, unknown>[] | null;
+    if (Array.isArray(list)) {
+      const mine = list.find((p) => String(p.id) === payoutId) ?? list[0];
+      if (mine && mine.id !== undefined) return unwrapPayout({ payout: mine });
+    }
+    try {
+      return unwrapPayout(data);
+    } catch {
+      // Réponse sans état exploitable : l'état réel est relu, le job payouts.sync fera le reste.
+      return this.getPayout(payoutId);
+    }
+  }
+
+  async getPayout(payoutId: string): Promise<FedaPayPayout> {
+    return unwrapPayout(await this.request(`/payouts/${payoutId}`));
+  }
+
+  async deletePayout(payoutId: string): Promise<boolean> {
+    try {
+      await this.request(`/payouts/${payoutId}`, { method: 'DELETE' });
+      return true;
+    } catch (err) {
+      if (err instanceof FedaPayError && err.status >= 400 && err.status < 500) {
+        this.logger.warn(`suppression refusée pour le dépôt ${payoutId} (${err.status})`);
+        return false;
+      }
+      throw err;
+    }
   }
 }
 
@@ -187,8 +247,12 @@ export class HttpFedaPayClient implements FedaPayClient {
 export class FakeFedaPayClient implements FedaPayClient {
   readonly transactions = new Map<string, FedaPayTransaction & { input: CreateTransactionInput; createdAt: Date; refunded: number }>();
   readonly payouts = new Map<string, FedaPayPayout & { input: CreatePayoutInput }>();
-  /** Force l'échec du prochain reversement (tests). */
+  /** Force l'échec de la création du prochain reversement (tests). */
   failNextPayout = false;
+  /** Force l'échec du démarrage du prochain reversement, après création (tests). */
+  failNextPayoutStart = false;
+  /** Le prochain remboursement est rendu « pending » par FedaPay au lieu d'« approved » (tests). */
+  pendingNextRefund = false;
   // Identifiants uniques entre exécutions (les tests e2e partagent une base).
   private seq = Number(String(Date.now()).slice(-9));
 
@@ -209,7 +273,9 @@ export class FakeFedaPayClient implements FedaPayClient {
     if (t.status !== 'approved' && t.status !== 'transferred' && t.status !== 'refunded') throw new FedaPayError('Transaction non remboursable', 400);
     t.refunded += amount;
     if (t.refunded >= (t.amount ?? 0)) t.status = 'refunded';
-    return { id: `rf_${transactionId}_${t.refunded}`, status: 'approved', amount };
+    const status = this.pendingNextRefund ? 'pending' : 'approved';
+    this.pendingNextRefund = false;
+    return { id: `rf_${transactionId}_${t.refunded}`, status, amount };
   }
 
   async createPayout(input: CreatePayoutInput): Promise<FedaPayPayout> {
@@ -223,6 +289,31 @@ export class FakeFedaPayClient implements FedaPayClient {
     return { id, status: p.status, amount: input.amount };
   }
 
+  async startPayout(payoutId: string): Promise<FedaPayPayout> {
+    const p = this.payouts.get(payoutId);
+    if (!p) throw new FedaPayError('Dépôt inconnu', 404);
+    if (this.failNextPayoutStart) {
+      this.failNextPayoutStart = false;
+      throw new FedaPayError('Démarrage du dépôt refusé (simulation)', 400, { message: 'insufficient_balance' });
+    }
+    if (p.status === 'pending') p.status = 'started';
+    return { id: p.id, status: p.status, amount: p.amount };
+  }
+
+  async getPayout(payoutId: string): Promise<FedaPayPayout> {
+    const p = this.payouts.get(payoutId);
+    if (!p) throw new FedaPayError('Dépôt inconnu', 404);
+    return { id: p.id, status: p.status, amount: p.amount };
+  }
+
+  async deletePayout(payoutId: string): Promise<boolean> {
+    const p = this.payouts.get(payoutId);
+    if (!p || p.status !== 'pending') return false;
+    this.payouts.delete(payoutId);
+    return true;
+  }
+
+  /** Simule l'évolution d'un dépôt côté FedaPay (`started` → `sent` | `failed`). */
   setPayoutStatus(payoutId: string, status: string): void {
     const p = this.payouts.get(payoutId);
     if (p) p.status = status;

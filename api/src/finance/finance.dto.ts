@@ -56,13 +56,28 @@ export const createBatchSchema = z.object({
 });
 export type CreateBatchDto = z.infer<typeof createBatchSchema>;
 
-/** Ex process-refund. */
-export const refundSchema = z.object({
-  paymentId: z.string().uuid(),
-  refundAmount: z.number().int().positive('Le montant du remboursement doit être un nombre positif').optional(),
-  reason: z.string().trim().min(3, 'Le motif est obligatoire').max(500),
-});
+/**
+ * Ex process-refund. Canal `fedapay` : appel API (le statut rendu fait foi). Canal `manual` : remboursement
+ * déjà effectué depuis le tableau de bord FedaPay (seule voie documentée) ou par un autre moyen, enregistré
+ * avec sa référence ; aucun appel FedaPay, écritures et soldes traités ici.
+ */
+export const refundSchema = z
+  .object({
+    paymentId: z.string().uuid(),
+    refundAmount: z.number().int().positive('Le montant du remboursement doit être un nombre positif').optional(),
+    reason: z.string().trim().min(3, 'Le motif est obligatoire').max(500),
+    channel: z.enum(['fedapay', 'manual']).default('fedapay'),
+    /** Référence FedaPay (ou du virement) du remboursement effectué hors API — obligatoire en canal manuel. */
+    providerReference: z.string().trim().min(3).max(120).optional(),
+  })
+  .superRefine((d, ctx) => {
+    if (d.channel === 'manual' && !d.providerReference) ctx.addIssue({ code: 'custom', path: ['providerReference'], message: 'La référence du remboursement effectué chez FedaPay est obligatoire' });
+  });
 export type RefundDto = z.infer<typeof refundSchema>;
+
+/** Confirmation d'un remboursement `pending` après vérification chez FedaPay. */
+export const confirmRefundSchema = z.object({ providerReference: z.string().trim().min(3).max(120).optional() });
+export type ConfirmRefundDto = z.infer<typeof confirmRefundSchema>;
 
 export const reconciliationSchema = z.object({ periodStart: z.string().datetime().optional(), periodEnd: z.string().datetime().optional() });
 export type ReconciliationDto = z.infer<typeof reconciliationSchema>;

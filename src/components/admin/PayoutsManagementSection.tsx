@@ -140,7 +140,7 @@ export function PayoutsManagementSection() {
     const config: Record<string, { variant: "default" | "secondary" | "outline" | "destructive"; label: string }> = {
       'queued': { variant: 'secondary', label: 'En attente' },
       'processing': { variant: 'default', label: 'En cours' },
-      'sent': { variant: 'outline', label: 'Envoyé' },
+      'sent': { variant: 'outline', label: 'Démarré chez FedaPay' },
       'completed': { variant: 'outline', label: 'Terminé' },
       'failed': { variant: 'destructive', label: 'Échoué' },
       'partially_sent': { variant: 'secondary', label: 'Partiel' },

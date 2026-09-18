@@ -3,12 +3,13 @@ import {
   BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { sql, type Transaction } from 'kysely';
+import { normalizePhoneNumber } from '../auth/phone.util';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import type { DB, Payment, PaymentStatus, PayoutStatus } from '../database/types';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { BalancesService, parseGroupSessionRef } from './balances.service';
-import { FEDAPAY_CLIENT, FedaPayError, type FedaPayClient } from './fedapay.client';
+import { FEDAPAY_CLIENT, FedaPayError, fedapayMode, type FedaPayClient } from './fedapay.client';
 import { calculateFees, holdUntil, normalizeStatus, OPEN_STATUSES, parseFeeConfig } from './fees';
 import { LedgerService } from './ledger.service';
 import type { CreatePaymentDto, ListPaymentsQuery } from './payments.dto';
@@ -151,8 +152,10 @@ export class PaymentsService {
         amount,
         description: target.kind === 'group_session' ? `Inscription séance: ${target.session.session_name}` : `Paiement rendez-vous médical #${appointmentId}`,
         callbackUrl: `${appBaseUrl}/payment/callback?appointment_id=${appointmentId}`,
-        customer: { firstname, lastname, email: dto.payerEmail, phoneNumber: dto.phoneNumber.replace(/^\+229/, ''), country: 'bj' },
+        // Numéro au format international et moyen choisi (`mtn_open` / `moov`) comme dans les exemples FedaPay.
+        customer: { firstname, lastname, email: dto.payerEmail, phoneNumber: normalizePhoneNumber(dto.phoneNumber), country: 'bj' },
         metadata: { appointment_id: appointmentId, user_id: userId, payment_method: dto.paymentMethod, payer_name: dto.payerName, payer_email: dto.payerEmail ?? null, idempotency_key: idempotencyKey },
+        mode: fedapayMode(dto.paymentMethod),
       });
       transactionId = transaction.id;
       const generated = await this.fedapay.generateToken(transactionId);

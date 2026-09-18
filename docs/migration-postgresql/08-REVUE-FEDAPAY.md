@@ -325,7 +325,7 @@ probablement jamais : l'état des reversements et des remboursements doit être 
 | Lot | Contenu | Dépend de FedaPay ? | État |
 |---|---|---|---|
 | **1 — argent et sécurité** | C1, C4, M1, M2, M3, M4, M6, M7, M10 | non : corrigeables et testables maintenant | **livré** (18/09) — voir §5 |
-| **2 — reversements et remboursements** | C2 (démarrage, statuts, suivi par interrogation), C3 (mode manuel + confirmation API), m1, m2, m9 | oui : une session sandbox et une question au support | à faire |
+| **2 — reversements et remboursements** | C2 (démarrage, statuts, suivi par interrogation), C3 (mode manuel + confirmation API), m1, m2, m9 | partiellement : livrable sur la documentation, trois points à confirmer en sandbox (§6) | **livré** (18/09) — voir §6 |
 | **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non | à faire |
 
 Ordre recommandé : lot 1, puis campagne **sandbox** complète (paiement MTN et Moov,
@@ -359,3 +359,32 @@ séance passent tous par `cancelOpen`, qui annule ici et chez FedaPay et rend le
 payable. L'annulation distante est au mieux : un refus n'empêche pas l'annulation locale, et
 l'endpoint `DELETE /v1/transactions/{id}` figure dans la référence FedaPay mais reste à exercer
 en sandbox.
+
+## 6. Lot 2 — ce qui a été livré
+
+Le lot a été implémenté sur la seule documentation FedaPay (index `llms.txt`, guide « Gestion des
+dépôts », page « Méthodes de paiement », références `payouts/*`, `transactions/create`,
+`transactions/send-payment`, tableau de bord « Remboursements »). Trois choix restent à confirmer par
+la campagne sandbox, ils sont listés en fin de section.
+
+| Constat | Correction | Garde-fou |
+|---|---|---|
+| C2 | `fedapay.client.ts` : `startPayout` (`PUT /v1/payouts/start`, corps `{ payouts: [{ id }] }` comme le guide et le SDK), `getPayout`, `deletePayout`. `finance.service.ts` : `transfer` crée **puis démarre** le dépôt ; un démarrage refusé supprime le dépôt créé (au mieux) et l'échec libère les fonds. `sent` signifie désormais « créé et démarré » (`account_details.fedapay_status`) ; `completed` n'est posé que lorsque FedaPay dit `sent` — dans la réponse au démarrage, par le job ou par un webhook `transfer.*` s'il arrive | e2e : dépôt factice `started` après traitement du lot ; démarrage refusé → 502, fonds libérés, aucun dépôt `pending` orphelin |
+| C2 / m9 | Job **`payouts.sync`** (10 min, `POST /api/admin/jobs/payouts.sync/run`) : `GET /v1/payouts/{id}` pour chaque reversement `sent`, `settlePayout` applique l'état ; un `failed` après démarrage remet les paiements réservés à `ready` (ils restaient `paid` à tort : les fonds n'étaient jamais relibérés) et recalcule le solde | e2e : job à vide → inchangé ; `sent` chez FedaPay → `completed` + notification ; `transfer.failed` après démarrage → `failed`, paiement `ready`, solde restauré |
+| C3 | `POST /admin/finance/refunds` accepte `channel: 'fedapay' \| 'manual'` + `providerReference` (obligatoire en manuel) : le remboursement fait depuis le tableau de bord FedaPay (seule voie documentée, MTN uniquement) est enregistré sans appel API, avec écritures, soldes, notification et audit. En canal API, un 404 FedaPay renvoie **502 `FEDAPAY_REFUND_UNAVAILABLE`** qui renvoie vers le canal manuel. Nouveau **`POST /admin/finance/refunds/:id/confirm`** pour un remboursement `pending` (référence facultative) ; un seul `pending` par paiement (**409 `REFUND_PENDING`**). Le job confirme d'office un `pending` intégral quand la transaction est `refunded` chez FedaPay. Écran `RefundsSection` : choix du canal, référence, bouton « Confirmer » sur les lignes en attente | e2e : `pending` → 409 sur un second, job sans effet (partiel), confirmation → écritures ; manuel sans référence → 400, avec référence → `refunded` sans appel FedaPay |
+| m1 | `mode` transmis à la création de transaction (`mtn_open` / `moov`, valeurs de la page « Méthodes de paiement » pour le Bénin) via `fedapayMode()` — même table pour les dépôts | e2e : `input.mode === 'mtn_open'` |
+| m2 | Numéros transmis au format international (`+229…`, `country: 'bj'`) pour les transactions et les dépôts, via `normalizePhoneNumber` | e2e : `phoneNumber: '+229…'` dans la transaction et le dépôt factices |
+
+Écrans : `PayoutsManagementSection` affiche `sent` comme « Démarré chez FedaPay » ; `PayoutsSection` et
+`CoachPayoutsSection` connaissent `planned` et `sent` (« En cours de versement »).
+
+**À confirmer en sandbox** (une session suffit, résultats à reporter dans `FEDAPAY_MODES` et ce
+document) :
+
+1. Le format du corps de `PUT /v1/payouts/start` : `{ payouts: [...] }` (guide, SDK) est envoyé ; la
+   référence OpenAPI montre un tableau nu. `startPayout` lit les deux formes en réponse et relit le
+   dépôt si la réponse est inexploitable.
+2. Le `mode` des dépôts : `mtn_open` et `moov` sont documentés pour le Bénin ; `bank_transfer` (virement)
+   n'est qu'un exemple de la référence — un dépôt bancaire refusé échoue proprement (fonds libérés).
+3. Le format du numéro : la référence dit « sans préfixe national », tous les exemples montrent `+229…` ;
+   c'est la forme des exemples qui est envoyée.

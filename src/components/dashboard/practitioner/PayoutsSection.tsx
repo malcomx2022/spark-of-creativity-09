@@ -280,7 +280,9 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
   const getPayoutStatusBadge = (status: string) => {
     const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
       pending: { variant: "secondary", label: "En attente" },
+      planned: { variant: "secondary", label: "Planifié" },
       processing: { variant: "outline", label: "En cours" },
+      sent: { variant: "outline", label: "En cours de versement" },
       completed: { variant: "default", label: "Complété" },
       failed: { variant: "destructive", label: "Échoué" },
     };

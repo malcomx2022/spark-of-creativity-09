@@ -7,7 +7,7 @@ import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
-  AdminPaymentsQuery, adminPaymentsQuerySchema, CreateBatchDto, createBatchSchema, CreatePayoutDto, createPayoutSchema, ListQuery, listQuerySchema, PaymentInfoDto, paymentInfoSchema, PayoutsQuery, payoutsQuerySchema,
+  AdminPaymentsQuery, adminPaymentsQuerySchema, ConfirmRefundDto, confirmRefundSchema, CreateBatchDto, createBatchSchema, CreatePayoutDto, createPayoutSchema, ListQuery, listQuerySchema, PaymentInfoDto, paymentInfoSchema, PayoutsQuery, payoutsQuerySchema,
   ReconciliationDto, reconciliationSchema, RefundDto, refundSchema, WebhookEventsQuery, webhookEventsQuerySchema,
 } from './finance.dto';
 import { FinanceService } from './finance.service';
@@ -111,9 +111,16 @@ export class AdminFinanceController {
   }
 
   @Post('refunds')
-  @ApiOperation({ summary: 'Remboursement total ou partiel (ex process-refund)' })
+  @ApiOperation({ summary: 'Remboursement total ou partiel (ex process-refund) — canal API FedaPay ou manuel (fait depuis le tableau de bord FedaPay)' })
   refund(@CurrentUser() user: AuthenticatedUser, @Body(new ZodValidationPipe(refundSchema)) dto: RefundDto, @Req() req: FastifyRequest) {
     return this.finance.refund(user.id, dto, req.ip);
+  }
+
+  @Post('refunds/:id/confirm')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Confirme un remboursement en attente après vérification chez FedaPay' })
+  confirmRefund(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(confirmRefundSchema)) dto: ConfirmRefundDto, @Req() req: FastifyRequest) {
+    return this.finance.confirmRefund(user.id, id, dto?.providerReference, req.ip);
   }
 
   @Get('held-funds')
