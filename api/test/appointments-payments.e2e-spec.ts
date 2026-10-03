@@ -126,6 +126,10 @@ describe('Appointments & payments (e2e)', () => {
     expect(payment.fedapay_transaction_id).toBe(transactionId);
     // Transmis à FedaPay comme dans sa documentation : numéro international et mode du moyen choisi.
     expect(fedapay.transactions.get(transactionId)?.input).toMatchObject({ mode: 'mtn_open', customer: { phoneNumber: patientPhone, country: 'bj' } });
+    // URL de retour sans chaîne de requête, identifiant du paiement en chemin : FedaPay y ajoute lui-même ?id=&status= (M8).
+    const callbackUrl = fedapay.transactions.get(transactionId)?.input.callbackUrl ?? '';
+    expect(callbackUrl.endsWith(`/payment/callback/${paymentId}`)).toBe(true);
+    expect(callbackUrl).not.toContain('?');
     const appt = await app.inject({ method: 'GET', url: `/api/appointments/${appointmentId}`, headers: auth('patient') });
     expect(appt.json()).toMatchObject({ status: 'pending_payment', payment_amount: 15000 });
     expect(appt.json().payment_expires_at).not.toBeNull();
@@ -170,10 +174,26 @@ describe('Appointments & payments (e2e)', () => {
     expect(payment.json().invoice_number).toMatch(/^INV-\d{6}-\d{6}$/);
     const appt = await app.inject({ method: 'GET', url: `/api/appointments/${appointmentId}`, headers: auth('practitioner') });
     expect(appt.json().status).toBe('confirmed');
-    const entries = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('ledger_entries').selectAll().where('reference_id', '=', paymentId).execute());
+    // Partie double équilibrée (M11) : 15 000 encaissés = 9 450 dus au praticien + 5 550 de commission ; les
+    // 325 XOF de frais de passerelle, payés par la plateforme, sont une charge contre la trésorerie, pas un produit.
+    const entries = await db.runAs({ role: 'service_role' }, (trx) =>
+      trx
+        .selectFrom('ledger_entries')
+        .innerJoin('ledger_accounts', 'ledger_accounts.id', 'ledger_entries.account_id')
+        .select(['ledger_entries.debit', 'ledger_entries.credit', 'ledger_accounts.account_type'])
+        .where('ledger_entries.reference_id', '=', paymentId)
+        .execute(),
+    );
     expect(entries.length).toBe(5);
-    expect(entries.reduce((s, e) => s + e.debit, 0)).toBe(15000);
-    expect(entries.reduce((s, e) => s + e.credit, 0)).toBe(15000 + 9450 + 5550 + 325);
+    const debits = entries.reduce((s, e) => s + e.debit, 0);
+    expect(debits).toBe(15000 + 325);
+    expect(entries.reduce((s, e) => s + e.credit, 0)).toBe(debits);
+    const net = (type: string) => entries.filter((e) => e.account_type === type).reduce((s, e) => s + e.debit - e.credit, 0);
+    expect(net('cash')).toBe(15000 - 325);
+    expect(net('payable')).toBe(-9450);
+    expect(net('revenue_commission')).toBe(-5550);
+    expect(net('expense_gateway')).toBe(325);
+    expect(entries.some((e) => e.account_type === 'obligation' || e.account_type === 'revenue_fees')).toBe(false);
     const balance = await db.db.selectFrom('practitioner_balances').selectAll().where('practitioner_id', '=', practitionerId).executeTakeFirstOrThrow();
     expect(balance.balance_on_hold).toBe(9450);
     const events = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('webhook_events').select(['processing_status']).where('event_id', '=', `evt-${tag}-1`).executeTakeFirstOrThrow());

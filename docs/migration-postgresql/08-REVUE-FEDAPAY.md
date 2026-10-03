@@ -326,7 +326,7 @@ probablement jamais : l'état des reversements et des remboursements doit être 
 |---|---|---|---|
 | **1 — argent et sécurité** | C1, C4, M1, M2, M3, M4, M6, M7, M10 | non : corrigeables et testables maintenant | **livré** (18/09) — voir §5 |
 | **2 — reversements et remboursements** | C2 (démarrage, statuts, suivi par interrogation), C3 (mode manuel + confirmation API), m1, m2, m9 | partiellement : livrable sur la documentation, trois points à confirmer en sandbox (§6) | **livré** (18/09) — voir §6 |
-| **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non | à faire |
+| **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non | **M8, M9, M11 livrés** (03/10) — voir §7 ; M5, m3 à m8 à faire |
 
 Ordre recommandé : lot 1, puis campagne **sandbox** complète (paiement MTN et Moov,
 webhook réel, expiration, annulation, remboursement, reversement démarré et suivi jusqu'à
@@ -388,3 +388,23 @@ document) :
    n'est qu'un exemple de la référence — un dépôt bancaire refusé échoue proprement (fonds libérés).
 3. Le format du numéro : la référence dit « sans préfixe national », tous les exemples montrent `+229…` ;
    c'est la forme des exemples qui est envoyée.
+
+## 7. Lot 3 — ce qui a été livré (M8, M9, M11)
+
+| Constat | Correction | Garde-fou |
+|---|---|---|
+| M8 | `payments.service.ts` : l'identifiant du paiement est fixé avant l'appel FedaPay et l'URL de retour devient `/payment/callback/<paymentId>`, sans chaîne de requête, puisque FedaPay y ajoute lui-même `?id=<transaction>&status=<statut>`. Front : route `/payment/callback/:paymentId` (l'ancienne reste servie), `src/lib/payment-callback.ts` lit `id` / `status` de FedaPay, accepte les paramètres historiques et répare la forme `?appointment_id=X?id=258&status=approved` des transactions créées avant le changement | e2e : `callbackUrl` se termine par `/payment/callback/<paymentId>` et ne contient pas `?` ; Vitest : lecture des paramètres, ancienne URL réparée |
+| M9 | `PaymentCallback.tsx` : le serveur fait foi. Un paiement encore en cours affiche « Paiement en attente de confirmation », est relu toutes les 5 s (resynchronisation FedaPay à la première relecture puis toutes les 30 s) pendant 3 min, puis « Toujours en attente » avec un bouton « Vérifier maintenant » ; « Paiement non confirmé » n'apparaît que sur `failed` / `canceled` / `chargeback`. Statuts libellés en français | Vitest : attente puis confirmation, en cours jamais présenté comme échoué, revérification manuelle, refus affiché, paiement introuvable |
+| M11 | `ledger.service.ts` : pour un montant A, un net N, une commission C et des frais de passerelle G : débit `cash` A, crédit `payable` N, crédit `revenue_commission` C (crédit `revenue_fees` G seulement si les frais sont facturés au patient), puis débit `expense_gateway` G / crédit `cash` G. La paire `obligation` sans contrepartie disparaît. Commission calculée comme A − N − frais patient pour rester équilibré malgré les arrondis (écart journalisé). Valeur d'enum `expense_gateway` ajoutée par `130_fixes_heritage.sql` | e2e : 5 lignes, débits = crédits = 15 325, `cash` +14 675, `payable` −9 450, `revenue_commission` −5 550, `expense_gateway` +325, ni `obligation` ni `revenue_fees` |
+
+Sur le VPS, rejouer le correctif de schéma (idempotent) avant de redéployer l'API :
+
+```bash
+docker compose --project-directory deploy/vps exec -T postgres psql -U postgres -d domicares -f /docker-entrypoint-initdb.d/27_fixes.sql
+```
+
+Les écritures déjà enregistrées avec l'ancien schéma ne sont pas réécrites : les tables de paiement de
+production sont vides (§1.1), il n'y en a aucune. Si des paiements sandbox ont été comptabilisés avant ce
+correctif, purger leurs lignes `ledger_entries` avec les données de recette (`09-CAMPAGNE-SANDBOX.md` §5).
+
+Restent du lot 3 : M5 (reversement hors transaction, réconciliation des dépôts), m3 à m8.

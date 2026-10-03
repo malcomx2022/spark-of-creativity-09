@@ -15,6 +15,13 @@
 --    simultanés créaient deux transactions FedaPay pour un même rendez-vous, donc deux
 --    encaissements possibles. L'index partiel arbitre ; la clé d'idempotence, aléatoire à chaque
 --    appel, ne protégeait de rien.
+-- 5. ledger_account_type : valeur `expense_gateway` (charge des frais de passerelle FedaPay).
+--    L'historique comptait ces frais, payés par la plateforme, en produit `revenue_fees` et
+--    créditait en plus une « obligation » patient sans contrepartie : les écritures d'un
+--    encaissement n'étaient pas équilibrées (08-REVUE-FEDAPAY M11). Sur une base déjà installée,
+--    rejouer ce fichier (idempotent) avant de déployer l'API :
+--    docker compose --project-directory deploy/vps exec -T postgres \
+--      psql -U postgres -d domicares -f /docker-entrypoint-initdb.d/27_fixes.sql
 -- =============================================================================
 BEGIN;
 
@@ -34,5 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_faqs_published ON public.faqs (is_published, targ
 CREATE UNIQUE INDEX IF NOT EXISTS payments_one_open_per_appointment
   ON public.payments (appointment_id)
   WHERE status IN ('initiated', 'pending', 'authorized');
+
+-- Utilisable seulement après COMMIT (règle PostgreSQL sur les valeurs d'enum ajoutées en transaction).
+ALTER TYPE public.ledger_account_type ADD VALUE IF NOT EXISTS 'expense_gateway';
 
 COMMIT;
