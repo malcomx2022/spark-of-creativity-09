@@ -7,7 +7,7 @@ import { toast } from './use-toast';
 /** Le numéro chiffré n'est jamais renvoyé par l'API : seul le numéro masqué est exposé. */
 export interface SavedPaymentMethod {
   id: string;
-  provider: 'mtn' | 'orange' | 'moov';
+  provider: 'mtn' | 'moov';
   phone_number_masked: string;
   is_default: boolean;
   consent_given_at: string;
@@ -34,7 +34,7 @@ export function useSavedPaymentMethods() {
       phoneNumber,
       setAsDefault,
     }: {
-      provider: 'mtn' | 'orange' | 'moov';
+      provider: 'mtn' | 'moov';
       phoneNumber: string;
       setAsDefault: boolean;
     }) => {

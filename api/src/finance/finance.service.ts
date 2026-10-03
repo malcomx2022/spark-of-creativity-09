@@ -7,7 +7,7 @@ import type { DB, LedgerAccountType, LedgerOwnerType, PractitionerPayout } from 
 import { DispatchService } from '../notifications/dispatch.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { BalancesService, parseGroupSessionRef } from '../payments/balances.service';
-import { FEDAPAY_CLIENT, FedaPayError, fedapayMode, type FedaPayClient } from '../payments/fedapay.client';
+import { FEDAPAY_CLIENT, FedaPayError, fedapayMode, type FedaPayClient, type FedaPayPayout } from '../payments/fedapay.client';
 import { PaymentsService, type WebhookPayload } from '../payments/payments.service';
 import type { AdminPaymentsQuery, CreateBatchDto, CreatePayoutDto, ListQuery, PaymentInfoDto, PayoutsQuery, ReconciliationDto, RefundDto, WebhookEventsQuery } from './finance.dto';
 import { toDateOnly, withDateOnly } from '../common/utils/date-only';
@@ -45,10 +45,12 @@ type PayoutDestination =
   | { practitioner: PractitionerRef; info: { account_holder_name: string; payment_method: string }; mode: string; customer: Record<string, unknown> };
 
 interface Anomaly {
-  type: 'missing_in_db' | 'missing_in_fedapay' | 'amount_mismatch' | 'status_mismatch';
+  type: 'missing_in_db' | 'missing_in_fedapay' | 'amount_mismatch' | 'status_mismatch' | 'payout_missing_in_db' | 'payout_missing_in_fedapay' | 'payout_status_mismatch';
   severity: 'low' | 'medium' | 'high' | 'critical';
   fedapay_transaction_id?: string;
   db_payment_id?: string;
+  fedapay_payout_id?: string;
+  db_payout_id?: string;
   fedapay_amount?: number;
   db_amount?: number;
   fedapay_status?: string;
@@ -289,12 +291,21 @@ export class FinanceService implements OnModuleInit {
    * chez FedaPay) puis démarrage immédiat. Un démarrage refusé supprime le dépôt créé (au mieux) pour
    * qu'il ne soit pas envoyé plus tard depuis le tableau de bord sans que Domicares le sache.
    */
-  private async transfer(destination: { mode: string; customer: Record<string, unknown> }, amount: number, description: string): Promise<{ ok: true; id: string; status: string } | { ok: false; error: string }> {
+  private async transfer(destination: { mode: string; customer: Record<string, unknown> }, amount: number, description: string, onCreated: (transferId: string) => Promise<void>): Promise<{ ok: true; id: string; status: string } | { ok: false; error: string }> {
     let created: { id: string };
     try {
       created = await this.fedapay.createPayout({ amount, mode: fedapayMode(destination.mode), customer: destination.customer as never, description });
     } catch (err) {
       return { ok: false, error: this.describeError(err) };
+    }
+    // M5 : l'identifiant FedaPay est enregistré avant le démarrage. Si le processus s'arrête entre le démarrage
+    // et markSent, le job payouts.sync retrouve le dépôt et applique son état réel, au lieu de laisser le
+    // reversement « planned », fonds réservés, avec un 409 à chaque nouvelle tentative.
+    try {
+      await onCreated(created.id);
+    } catch (err) {
+      await this.fedapay.deletePayout(created.id).catch(() => false);
+      return { ok: false, error: `Dépôt ${created.id} créé mais non enregistré — ${this.describeError(err)}` };
     }
     try {
       const started = await this.fedapay.startPayout(created.id);
@@ -303,6 +314,13 @@ export class FinanceService implements OnModuleInit {
       await this.fedapay.deletePayout(created.id).catch(() => false);
       return { ok: false, error: `Dépôt ${created.id} créé mais non démarré — ${this.describeError(err)}` };
     }
+  }
+
+  /** Trace minimale, dans sa propre transaction, du dépôt FedaPay créé pour un reversement (M5). */
+  private async recordTransfer(payoutId: string, transferId: string): Promise<void> {
+    await this.database.runAs(SERVICE_CONTEXT, (trx) =>
+      sql`update public.practitioner_payouts set transaction_ids = array[${transferId}]::text[], account_details = coalesce(account_details, '{}'::jsonb) || ${JSON.stringify({ fedapay_status: 'pending', transfer_started_at: new Date().toISOString() })}::jsonb where id = ${payoutId}::uuid`.execute(trx),
+    );
   }
 
   /**
@@ -396,7 +414,7 @@ export class FinanceService implements OnModuleInit {
       return { payout, dest, total, description: dto.description ?? `Reversement période ${periodStart} - ${periodEnd}` };
     });
 
-    const result = await this.transfer(prepared.dest, prepared.total, prepared.description);
+    const result = await this.transfer(prepared.dest, prepared.total, prepared.description, (id) => this.recordTransfer(prepared.payout.id, id));
     // Le statut (sent / failed) et l'audit sont validés avant de signaler l'échec au client.
     const outcome = await this.database.runAs({ role: 'service_role', userId: adminId }, async (trx) => {
       const { payout, dest } = prepared;
@@ -484,7 +502,7 @@ export class FinanceService implements OnModuleInit {
         results.skipped.push({ practitionerId: payout.practitioner_id, name: dest.practitioner.name, reason: dest.skip });
         continue;
       }
-      const r = await this.transfer(dest, payout.amount, `Reversement lot ${batchId} — ${dest.practitioner.name}`);
+      const r = await this.transfer(dest, payout.amount, `Reversement lot ${batchId} — ${dest.practitioner.name}`, (id) => this.recordTransfer(payout.id, id));
       await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
         if (r.ok) await this.markSent(trx, payout, r.id, { userId: dest.practitioner.user_id, amount: payout.amount, mode: dest.mode }, r.status);
         else await this.markFailed(trx, payout.id, payout.practitioner_id, r.error, dest.practitioner.user_id, payout.amount);
@@ -515,6 +533,41 @@ export class FinanceService implements OnModuleInit {
    * remboursements encore `pending` dont la transaction est passée `refunded` chez FedaPay.
    */
   async syncPayouts(limit = 100) {
+    // M5 : reversements restés « planned » avec un dépôt FedaPay connu — le processus s'est arrêté entre la
+    // création du dépôt et l'enregistrement du résultat. L'état réel chez FedaPay tranche : jamais démarré
+    // → dépôt supprimé et fonds libérés ; démarré ou envoyé → l'argent est parti, le reversement suit.
+    const interrupted = await this.database.runAs(SERVICE_CONTEXT, (trx) =>
+      trx.selectFrom('practitioner_payouts').selectAll().where('status', '=', 'planned').where('transaction_ids', 'is not', null).where(sql<boolean>`coalesce((account_details->>'transfer_started_at')::timestamptz, created_at) < now() - interval '2 minutes'`).limit(limit).execute(),
+    );
+    const recovered = { checked: 0, released: 0, sent: 0, errors: [] as string[] };
+    for (const payout of interrupted) {
+      const transferId = payout.transaction_ids?.[0];
+      if (!transferId) continue;
+      recovered.checked++;
+      try {
+        const remote = await this.fedapay.getPayout(transferId).catch((err: unknown) => {
+          if (err instanceof FedaPayError && err.status === 404) return null;
+          throw err;
+        });
+        const st = (remote?.status ?? '').toLowerCase();
+        const neverStarted = !remote || st === 'pending' || st === 'scheduled';
+        if (remote && neverStarted) await this.fedapay.deletePayout(transferId).catch(() => false);
+        await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
+          const practitioner = await trx.selectFrom('practitioners').select('user_id').where('id', '=', payout.practitioner_id).executeTakeFirst();
+          if (neverStarted) {
+            await this.markFailed(trx, payout.id, payout.practitioner_id, remote ? 'Transfert interrompu avant le démarrage du dépôt FedaPay : dépôt supprimé, fonds libérés' : 'Dépôt FedaPay introuvable après un transfert interrompu : fonds libérés', practitioner?.user_id ?? null, payout.amount);
+            recovered.released++;
+          } else {
+            await this.markSent(trx, payout, transferId, { userId: practitioner?.user_id ?? null, amount: payout.amount, mode: payout.payment_method }, remote!.status);
+            recovered.sent++;
+          }
+          await this.audit.log(trx, { adminId: null, action: 'transfer.recovered', entityType: 'payout', entityId: payout.id, details: { transfer_id: transferId, fedapay_status: remote?.status ?? null, amount: payout.amount, outcome: neverStarted ? 'released' : 'sent' } });
+        });
+      } catch (err) {
+        recovered.errors.push(`${payout.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     const open = await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('practitioner_payouts').selectAll().where('status', '=', 'sent').where('transaction_ids', 'is not', null).orderBy('processed_at', 'asc').limit(limit).execute());
     const payouts = { checked: 0, completed: 0, failed: 0, in_flight: 0, errors: [] as string[] };
     for (const payout of open) {
@@ -532,7 +585,7 @@ export class FinanceService implements OnModuleInit {
       }
     }
     const refunds = await this.syncPendingRefunds(limit);
-    return { payouts, refunds };
+    return { payouts, recovered, refunds };
   }
 
   // ---------------------------------------------------------------------------
@@ -791,6 +844,46 @@ export class FinanceService implements OnModuleInit {
           anomalies.push({ type: 'missing_in_fedapay', severity: 'high', db_payment_id: p.id, fedapay_transaction_id: p.fedapay_transaction_id, db_amount: p.amount, db_status: p.status, description: `Paiement DB ${p.id} référence une transaction FedaPay ${p.fedapay_transaction_id} qui n'existe pas`, recommendation: "Vérifier si la transaction FedaPay a été supprimée ou si l'ID est incorrect" });
         }
       }
+      // M5 : réconciliation des dépôts. Les reversements ne sont suivis que par interrogation (aucun événement
+      // payout.* documenté) ; comparer la liste FedaPay aux reversements en base révèle un dépôt sans trace
+      // locale ou un état divergent (argent parti alors que les fonds ont été relibérés, ou l'inverse).
+      let remotePayouts: FedaPayPayout[] = [];
+      let payoutsError: string | null = null;
+      try {
+        remotePayouts = await this.fedapay.listPayouts(start, end);
+      } catch (err) {
+        payoutsError = err instanceof Error ? err.message : String(err);
+      }
+      const localPayouts = await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('practitioner_payouts').select(['id', 'amount', 'status', 'transaction_ids']).where('created_at', '>=', start).where('created_at', '<=', end).where('transaction_ids', 'is not', null).execute());
+      const localByTransfer = new Map(localPayouts.flatMap((p) => (p.transaction_ids ?? []).map((t) => [t, p] as const)));
+      const remotePayoutIds = new Set(remotePayouts.map((p) => p.id));
+      let payoutsMatched = 0;
+      for (const rp of remotePayouts) {
+        const lp = localByTransfer.get(rp.id);
+        if (!lp) {
+          anomalies.push({ type: 'payout_missing_in_db', severity: 'high', fedapay_payout_id: rp.id, fedapay_amount: rp.amount, fedapay_status: rp.status, description: `Dépôt FedaPay ${rp.id} (${rp.amount ?? '?'} XOF, ${rp.status}) sans reversement correspondant dans la base`, recommendation: 'Vérifier si le dépôt a été créé depuis le tableau de bord FedaPay : enregistrer le reversement, ou supprimer le dépôt chez FedaPay s’il n’a pas été démarré' });
+          continue;
+        }
+        payoutsMatched++;
+        const outcome = payoutOutcome(rp.status);
+        const local = lp.status ?? 'planned';
+        const mismatch = (local === 'completed' && outcome !== 'completed') || (local === 'failed' && outcome !== 'failed') || ((local === 'sent' || local === 'planned') && outcome !== 'in_flight');
+        if (mismatch) {
+          const critical = (local === 'failed' && outcome === 'completed') || (local === 'completed' && outcome === 'failed');
+          anomalies.push({ type: 'payout_status_mismatch', severity: critical ? 'critical' : 'medium', fedapay_payout_id: rp.id, db_payout_id: lp.id, fedapay_status: rp.status, db_status: local, fedapay_amount: rp.amount, db_amount: lp.amount, description: `Reversement ${lp.id} : FedaPay=${rp.status}, DB=${local}`, recommendation: critical ? (local === 'failed' ? 'L’argent est parti alors que les fonds ont été relibérés : bloquer tout nouveau reversement de ce praticien et corriger son solde' : 'Le dépôt a échoué chez FedaPay alors que le reversement est clos : relibérer les fonds à la main (le job ne touche plus un reversement terminé)') : 'Lancer le job payouts.sync (POST /api/admin/jobs/payouts.sync/run) pour appliquer l’état FedaPay' });
+        } else if (rp.amount !== undefined && rp.amount !== lp.amount) {
+          anomalies.push({ type: 'payout_status_mismatch', severity: 'high', fedapay_payout_id: rp.id, db_payout_id: lp.id, fedapay_amount: rp.amount, db_amount: lp.amount, db_status: local, fedapay_status: rp.status, description: `Reversement ${lp.id} : montant FedaPay=${rp.amount} XOF, DB=${lp.amount} XOF`, recommendation: 'Vérifier le montant réellement versé au praticien et corriger le reversement' });
+        }
+      }
+      if (!payoutsError) {
+        for (const lp of localPayouts) {
+          if ((lp.status === 'sent' || lp.status === 'completed') && !(lp.transaction_ids ?? []).some((t) => remotePayoutIds.has(t))) {
+            anomalies.push({ type: 'payout_missing_in_fedapay', severity: 'high', db_payout_id: lp.id, fedapay_payout_id: lp.transaction_ids?.[0], db_amount: lp.amount, db_status: lp.status ?? undefined, description: `Reversement ${lp.id} (${lp.status}) référence un dépôt FedaPay ${lp.transaction_ids?.[0]} absent de la liste FedaPay sur la période`, recommendation: 'Vérifier le dépôt chez FedaPay (GET /v1/payouts/{id}) ; s’il n’existe pas, l’argent n’est pas parti : relibérer les fonds' });
+          }
+        }
+      }
+      const payoutAnomalies = anomalies.filter((a) => a.type.startsWith('payout_')).length;
+
       const count = (type: Anomaly['type']) => anomalies.filter((a) => a.type === type).length;
       const critical = anomalies.filter((a) => a.severity === 'critical').length;
       const high = anomalies.filter((a) => a.severity === 'high').length;
@@ -799,6 +892,8 @@ export class FinanceService implements OnModuleInit {
       if (count('missing_in_db')) recommendations.push(`⚠️ ${count('missing_in_db')} transaction(s) FedaPay non enregistrée(s) dans la base. Synchroniser les webhooks ou créer manuellement les paiements.`);
       if (count('missing_in_fedapay')) recommendations.push(`⚠️ ${count('missing_in_fedapay')} paiement(s) en base référencent des transactions FedaPay inexistantes. Vérifier les ID de transaction.`);
       if (count('amount_mismatch')) recommendations.push(`💰 ${count('amount_mismatch')} écart(s) de montant détecté(s). Vérifier les frais et commissions.`);
+      if (payoutsError) recommendations.push(`⚠️ Dépôts non réconciliés (liste FedaPay indisponible) : ${payoutsError}`);
+      if (payoutAnomalies) recommendations.push(`🏦 ${payoutAnomalies} anomalie(s) sur les reversements (dépôts FedaPay). Voir le détail.`);
       recommendations.push(anomalies.length === 0 ? '✅ Aucune anomalie détectée. Tous les paiements sont cohérents entre FedaPay et la base de données.' : `📊 Total: ${anomalies.length} anomalie(s) à traiter.`);
       const summary = { total_fedapay_transactions: remote.length, total_db_payments: local.length, matched_count: matched, missing_in_db_count: count('missing_in_db'), missing_in_fedapay_count: count('missing_in_fedapay'), amount_mismatch_count: count('amount_mismatch'), status_mismatch_count: count('status_mismatch'), total_amount_discrepancy: discrepancy };
       await this.database.runAs({ role: 'service_role', userId: adminId }, async (trx) => {
@@ -810,7 +905,7 @@ export class FinanceService implements OnModuleInit {
           for (const a of admins) await this.inApp.notifyUser(trx, a.user_id, { title: 'Anomalies de réconciliation détectées', message: `Réconciliation FedaPay du ${start.toISOString().slice(0, 10)} au ${end.toISOString().slice(0, 10)}: ${detail} détectée(s). Rapport #${report.id}.`, type: 'reconciliation', link: '/admin?tab=finance' });
         }
       });
-      return { success: true, report_id: report.id, summary: { ...summary, anomalies_count: anomalies.length }, anomalies, recommendations };
+      return { success: true, report_id: report.id, summary: { ...summary, anomalies_count: anomalies.length, total_fedapay_payouts: remotePayouts.length, total_db_payouts: localPayouts.length, payouts_matched_count: payoutsMatched }, anomalies, recommendations };
     } catch (err) {
       await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.updateTable('reconciliation_reports').set({ status: 'failed', recommendations: JSON.stringify([`Échec : ${err instanceof Error ? err.message : err}`]), updated_at: new Date() }).where('id', '=', report.id).execute()).catch(() => undefined);
       throw err;

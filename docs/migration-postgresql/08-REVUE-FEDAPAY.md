@@ -326,7 +326,7 @@ probablement jamais : l'état des reversements et des remboursements doit être 
 |---|---|---|---|
 | **1 — argent et sécurité** | C1, C4, M1, M2, M3, M4, M6, M7, M10 | non : corrigeables et testables maintenant | **livré** (18/09) — voir §5 |
 | **2 — reversements et remboursements** | C2 (démarrage, statuts, suivi par interrogation), C3 (mode manuel + confirmation API), m1, m2, m9 | partiellement : livrable sur la documentation, trois points à confirmer en sandbox (§6) | **livré** (18/09) — voir §6 |
-| **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non | **M8, M9, M11 livrés** (03/10) — voir §7 ; M5, m3 à m8 à faire |
+| **3 — qualité** | M5, M8, M9, M11, m3 à m8 | non | **livré** (03/10) — voir §7 |
 
 Ordre recommandé : lot 1, puis campagne **sandbox** complète (paiement MTN et Moov,
 webhook réel, expiration, annulation, remboursement, reversement démarré et suivi jusqu'à
@@ -389,7 +389,7 @@ document) :
 3. Le format du numéro : la référence dit « sans préfixe national », tous les exemples montrent `+229…` ;
    c'est la forme des exemples qui est envoyée.
 
-## 7. Lot 3 — ce qui a été livré (M8, M9, M11)
+## 7. Lot 3 — ce qui a été livré
 
 | Constat | Correction | Garde-fou |
 |---|---|---|
@@ -407,4 +407,18 @@ Les écritures déjà enregistrées avec l'ancien schéma ne sont pas réécrite
 production sont vides (§1.1), il n'y en a aucune. Si des paiements sandbox ont été comptabilisés avant ce
 correctif, purger leurs lignes `ledger_entries` avec les données de recette (`09-CAMPAGNE-SANDBOX.md` §5).
 
-Restent du lot 3 : M5 (reversement hors transaction, réconciliation des dépôts), m3 à m8.
+### 7.1 Second volet (M5, m3 à m8)
+
+| Constat | Correction | Garde-fou |
+|---|---|---|
+| M5 | `finance.service.ts` : `transfer` enregistre l'identifiant du dépôt FedaPay (`transaction_ids`, `account_details.transfer_started_at`) dans sa propre transaction **avant** le démarrage ; si cet enregistrement échoue, le dépôt est supprimé. Le job `payouts.sync` rattrape les reversements restés `planned` avec un dépôt connu depuis plus de deux minutes : jamais démarré chez FedaPay → dépôt supprimé et fonds libérés ; démarré ou envoyé → l'argent est parti, le reversement passe `sent` puis suit son cycle. La réconciliation compare aussi `GET /v1/payouts` aux reversements (`payout_missing_in_db`, `payout_missing_in_fedapay`, `payout_status_mismatch`, critique quand l'argent est parti alors que les fonds ont été relibérés, ou l'inverse) ; écran Réconciliation mis à jour | e2e : identifiant tracé dès la création ; deux reversements plantés `planned` (dépôt `pending`, dépôt `sent`) → `failed` avec dépôt supprimé et praticien prévenu, `completed` ; réconciliation sans anomalie de dépôt sur une campagne cohérente |
+| m3 | `fees.ts` : défauts = configuration de production (5 % de commission, 0 + 2 % de frais passerelle payés par la plateforme) au lieu de 37 % et 100 XOF + 1,5 % ; montants entiers pour le XOF quelles que soient les décimales configurées (les colonnes sont entières). Les tests e2e tournent donc avec les frais réels (15 000 → 750 / 300 / 14 250) | unitaires `fees.spec.ts` (7) : production, défauts, bornes, arrondi au franc avec net + commission = montant, frais au patient, devise décimale ; e2e et statistiques mis à jour |
+| m4 | `payments.service.ts` : `idempotency_key` = `<rendez-vous>:<rang de tentative>` ; la contrainte unique de la colonne refuse un second paiement créé en parallèle pour le même rang (la clé aléatoire ne protégeait de rien) | e2e : clé `<id>:1` |
+| m5 | `payments.payer_phone` masqué (`****0001`), numéro chiffré dans `payment_attempts.phone_number_encrypted` (AES-256-GCM, `PHONE_ENCRYPTION_KEY`, chiffrement partagé avec les moyens de paiement enregistrés : `common/utils/phone-cipher.ts`) ; le corps d'erreur FedaPay journalisé est expurgé des e-mails et numéros et tronqué à 300 caractères | e2e : masque en base, déchiffrement de la tentative avec la clé de test |
+| m6 | `orange` retiré des opérateurs acceptés (informations de reversement, moyens de paiement enregistrés, types) ; les contraintes de la base restent permissives pour ne pas échouer sur une ligne existante | typage |
+| m7 | `POST /api/payments/:id/sync` par un patient : rien sur un paiement terminé, une interrogation FedaPay par paiement toutes les 10 s (entre deux, l'état local est rendu avec `throttled: true`), 30 appels par utilisateur et 10 min puis 429 `TOO_MANY_SYNCS`. L'administration (`/admin/payments/:id/sync`) n'est pas limitée. Compteurs en mémoire du processus API (une seule réplique) | e2e : second appel sous 10 s rendu sans interroger FedaPay, appel admin non limité, paiement terminé ignoré |
+| m8 | La finance n'est plus notifiée de chaque approbation ou refus ; restent les alertes utiles : doublon, webhook échoué définitivement, reversements, et désormais un remboursement constaté chez FedaPay sans remboursement enregistré ici | — |
+
+Le lot 3 est clos. Les points encore ouverts de cette revue sont ceux de la campagne sandbox (§6 : corps de
+`/payouts/start`, `mode` des dépôts, format du numéro, endpoint de remboursement, `DELETE /v1/transactions`,
+sémantique de `created_at[lte]`).

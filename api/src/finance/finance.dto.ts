@@ -5,7 +5,8 @@ const page = { page: z.coerce.number().int().min(0).default(0), limit: z.coerce.
 /** Port de src/schemas/paymentInfoSchema.ts (PaymentInfoSection). */
 export const paymentInfoSchema = z
   .object({
-    paymentMethod: z.enum(['mtn', 'moov', 'orange', 'bank']),
+    // `orange` n'existe pas au Bénin : un tel reversement échouerait chez FedaPay (m6).
+    paymentMethod: z.enum(['mtn', 'moov', 'bank']),
     accountHolderName: z.string().trim().min(2, 'Le nom du titulaire est obligatoire').max(120),
     phoneNumber: z.string().trim().optional(),
     bankName: z.string().trim().max(120).optional(),

@@ -243,7 +243,7 @@ describe('Support, disputes & stats (e2e)', () => {
     expect(pa.json()).toMatchObject({ upcoming: 3, past: 3, completed: 2, awaitingPayment: 1 });
     const coach = await app.inject({ method: 'GET', url: '/api/stats/coach', headers: auth('coach') });
     expect(coach.statusCode).toBe(200);
-    // 2 consultations terminées à 10 000 → 63 % pour le coach
-    expect(coach.json()).toMatchObject({ upcomingAppointments: 2, upcomingSessions: 0, revenueRate: 0.63, appointmentsRevenue: 12_600, totalRevenue: 12_600 });
+    // 2 consultations terminées à 10 000 → 95 % pour le coach (5 % de commission, configuration de production)
+    expect(coach.json()).toMatchObject({ upcomingAppointments: 2, upcomingSessions: 0, revenueRate: 0.95, appointmentsRevenue: 19_000, totalRevenue: 19_000 });
   });
 });
