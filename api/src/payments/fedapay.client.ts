@@ -80,11 +80,21 @@ export interface FedaPayClient {
   startPayout(payoutId: string): Promise<FedaPayPayout>;
   /** État courant d'un dépôt (GET /v1/payouts/{id}) — seul suivi fiable, aucun événement payout.* n'est documenté. */
   getPayout(payoutId: string): Promise<FedaPayPayout>;
+  /** Dépôts créés dans l'intervalle (réconciliation des reversements, M5). */
+  listPayouts(from: Date, to: Date): Promise<FedaPayPayout[]>;
   /** Supprime un dépôt jamais démarré (DELETE /v1/payouts/{id}) ; un refus rend false. */
   deletePayout(payoutId: string): Promise<boolean>;
 }
 
 export const FEDAPAY_CLIENT = Symbol('FEDAPAY_CLIENT');
+
+/**
+ * Masque e-mails et numéros dans un texte destiné aux journaux : le corps d'une erreur FedaPay reprend
+ * le client (e-mail, téléphone) et ne doit pas finir en clair dans les logs (m5).
+ */
+export function redactPersonalData(text: string): string {
+  return text.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>').replace(/\+?\d[\d\s().-]{6,}\d/g, '<numéro>');
+}
 
 export class FedaPayError extends Error {
   constructor(message: string, readonly status: number, readonly details?: unknown) {
@@ -125,7 +135,7 @@ export class HttpFedaPayClient implements FedaPayClient {
       const text = await res.text();
       const data = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
       if (!res.ok) {
-        this.logger.error(`FedaPay ${init.method ?? 'GET'} ${path} → ${res.status}: ${text.slice(0, 500)}`);
+        this.logger.error(`FedaPay ${init.method ?? 'GET'} ${path} → ${res.status}: ${redactPersonalData(text).slice(0, 300)}`);
         throw new FedaPayError(`Erreur FedaPay ${res.status}`, res.status, data);
       }
       return data;
@@ -228,6 +238,17 @@ export class HttpFedaPayClient implements FedaPayClient {
     return unwrapPayout(await this.request(`/payouts/${payoutId}`));
   }
 
+  async listPayouts(from: Date, to: Date): Promise<FedaPayPayout[]> {
+    const out: FedaPayPayout[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const data = await this.request(`/payouts?per_page=100&page=${page}&created_at[gte]=${from.toISOString().slice(0, 10)}&created_at[lte]=${to.toISOString().slice(0, 10)}`);
+      const list = ((data['v1/payouts'] ?? (data.v1 as Record<string, unknown> | undefined)?.payouts ?? data.data ?? data.payouts ?? []) as Record<string, unknown>[]).map((p) => unwrapPayout({ payout: p }));
+      out.push(...list);
+      if (list.length < 100) break;
+    }
+    return out;
+  }
+
   async deletePayout(payoutId: string): Promise<boolean> {
     try {
       await this.request(`/payouts/${payoutId}`, { method: 'DELETE' });
@@ -246,7 +267,7 @@ export class HttpFedaPayClient implements FedaPayClient {
 @Injectable()
 export class FakeFedaPayClient implements FedaPayClient {
   readonly transactions = new Map<string, FedaPayTransaction & { input: CreateTransactionInput; createdAt: Date; refunded: number }>();
-  readonly payouts = new Map<string, FedaPayPayout & { input: CreatePayoutInput }>();
+  readonly payouts = new Map<string, FedaPayPayout & { input: CreatePayoutInput; createdAt: Date }>();
   /** Force l'échec de la création du prochain reversement (tests). */
   failNextPayout = false;
   /** Force l'échec du démarrage du prochain reversement, après création (tests). */
@@ -284,9 +305,13 @@ export class FakeFedaPayClient implements FedaPayClient {
       throw new FedaPayError('Reversement refusé (simulation)', 400, { message: 'insufficient_funds' });
     }
     const id = `po_${++this.seq}`;
-    const p = { id, status: 'pending', amount: input.amount, input };
+    const p = { id, status: 'pending', amount: input.amount, input, createdAt: new Date() };
     this.payouts.set(id, p);
     return { id, status: p.status, amount: input.amount };
+  }
+
+  async listPayouts(from: Date, to: Date): Promise<FedaPayPayout[]> {
+    return [...this.payouts.values()].filter((p) => p.createdAt >= from && p.createdAt <= to).map((p) => ({ id: p.id, status: p.status, amount: p.amount }));
   }
 
   async startPayout(payoutId: string): Promise<FedaPayPayout> {

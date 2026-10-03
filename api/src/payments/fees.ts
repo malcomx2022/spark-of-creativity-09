@@ -24,24 +24,35 @@ function roundHalfUp(value: number, decimals: number): number {
   return Math.round(value * m) / m;
 }
 
+/** Devises sans sous-unité : les montants restent entiers quelles que soient les décimales configurées. */
+const ZERO_DECIMAL_CURRENCIES = new Set(['XOF', 'XAF', 'GNF', 'RWF', 'BIF', 'DJF', 'KMF', 'JPY']);
+
 export function calculateFees(amount: number, currency: string, config: FeeConfig): FeeBreakdown {
-  const commissionAmount = roundHalfUp(amount * config.commissionRate, config.roundingDecimals);
-  const gatewayFeesAmount = roundHalfUp(config.gatewayFeeFixed + amount * config.gatewayFeePercentage, config.roundingDecimals);
+  // commission_amount / net_amount sont des colonnes entières : des décimales étaient arrondies en silence
+  // par PostgreSQL et net + commission pouvait différer du montant d'un franc (m3).
+  const decimals = ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : config.roundingDecimals;
+  const commissionAmount = roundHalfUp(amount * config.commissionRate, decimals);
+  const gatewayFeesAmount = roundHalfUp(config.gatewayFeeFixed + amount * config.gatewayFeePercentage, decimals);
   const feesAmount = config.gatewayFeePaidBy === 'platform' ? commissionAmount : commissionAmount + gatewayFeesAmount;
-  return { amount, commissionAmount, gatewayFeesAmount, feesAmount, netAmount: roundHalfUp(amount - feesAmount, config.roundingDecimals), currency };
+  return { amount, commissionAmount, gatewayFeesAmount, feesAmount, netAmount: roundHalfUp(amount - feesAmount, decimals), currency };
 }
 
-/** system_config → FeeConfig (mêmes défauts : 37 % de commission, 1,5 % + 100 XOF de frais passerelle payés par la plateforme). */
+/**
+ * system_config → FeeConfig. Les défauts sont ceux de la configuration de production
+ * (06-INVENTAIRE-SUPABASE §2.5) : 5 % de commission, 2 % de frais de passerelle payés par la plateforme,
+ * montants entiers. L'ancien code codait 37 % et 100 XOF + 1,5 % en affirmant reprendre les défauts
+ * historiques (0 + 2 %) : les tests validaient une configuration qui n'était celle de personne (m3).
+ */
 export function parseFeeConfig(systemConfig: Record<string, unknown>): FeeConfig {
   const commission = (systemConfig['payment_commission_rate'] as { rate?: number } | undefined)?.rate;
   const gateway = systemConfig['payment_gateway_fees'] as { fixed?: number; percentage?: number; paid_by?: 'patient' | 'platform' } | undefined;
   const rounding = systemConfig['payment_rounding_mode'] as { decimals?: number } | undefined;
   return {
-    commissionRate: typeof commission === 'number' && commission >= 0 && commission <= 0.5 ? commission : 0.37,
-    gatewayFeeFixed: gateway?.fixed ?? 100,
-    gatewayFeePercentage: gateway?.percentage ?? 0.015,
+    commissionRate: typeof commission === 'number' && commission >= 0 && commission <= 0.5 ? commission : 0.05,
+    gatewayFeeFixed: gateway?.fixed ?? 0,
+    gatewayFeePercentage: gateway?.percentage ?? 0.02,
     gatewayFeePaidBy: gateway?.paid_by ?? 'platform',
-    roundingDecimals: rounding?.decimals ?? 2,
+    roundingDecimals: rounding?.decimals ?? 0,
   };
 }
 

@@ -31,7 +31,7 @@ const pdf = 'data:application/pdf;base64,' + Buffer.from('%PDF-1.4\n%fake\n').to
 const futureDate = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 const sign = (body: string) => createHmac('sha256', 'test-webhook-secret').update(body).digest('hex');
 const PRICE = 10_000;
-const NET = 6_300; // 37 % de commission, frais passerelle payés par la plateforme
+const NET = 9_500; // configuration de production : 5 % de commission, 2 % de frais passerelle payés par la plateforme
 
 describe('Group sessions & finance (e2e)', () => {
   let app: NestFastifyApplication;
@@ -323,6 +323,7 @@ describe('Group sessions & finance (e2e)', () => {
     expect(await balance(coachId)).toMatchObject({ balance_available: 0 });
 
     // Échec après démarrage (webhook transfer.failed, ou le job) : le paiement réservé redevient « prêt ».
+    fedapay.setPayoutStatus(ok.json().transferId, 'failed');
     const failedEvt = await webhook({ id: `evt-${tag}-transfer-failed`, name: 'transfer.failed', entity: { id: ok.json().transferId, status: 'failed' } });
     expect(failedEvt.json()).toMatchObject({ handled: true, status: 'failed', changed: true });
     expect(await balance(coachId)).toMatchObject({ balance_available: NET });
@@ -337,6 +338,38 @@ describe('Group sessions & finance (e2e)', () => {
     fedapay.setPayoutStatus(again.json().transferId, 'sent');
     await app.inject({ method: 'POST', url: '/api/admin/jobs/payouts.sync/run', headers: auth('admin') });
     expect((await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('practitioner_payouts').select('status').where('id', '=', again.json().payoutId).executeTakeFirstOrThrow())).status).toBe('completed');
+    // M5 : le dépôt FedaPay est tracé sur le reversement dès sa création, avant le démarrage.
+    const traced = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('practitioner_payouts').select(['transaction_ids', 'account_details']).where('id', '=', again.json().payoutId).executeTakeFirstOrThrow());
+    expect(traced.transaction_ids).toEqual([again.json().transferId]);
+  });
+
+  it('M5 : un transfert interrompu entre la création du dépôt et l’enregistrement du résultat est rattrapé par payouts.sync', async () => {
+    const startedAt = new Date(Date.now() - 10 * 60_000).toISOString();
+    const plant = async (remoteStatus: string) => {
+      const deposit = await fedapay.createPayout({ amount: 1000, customer: { firstname: 'Coach', lastname: 'Fit', phoneNumber: '+22997000009' } });
+      if (remoteStatus !== 'pending') fedapay.setPayoutStatus(deposit.id, remoteStatus);
+      const row = await db.runAs({ role: 'service_role' }, (trx) =>
+        trx
+          .insertInto('practitioner_payouts')
+          .values({ practitioner_id: coachId, amount: 1000, net_amount: 1000, currency: 'XOF', payment_method: 'mtn', status: 'planned', period_start: futureDate(-3), period_end: futureDate(-2), transaction_ids: [deposit.id], account_details: JSON.stringify({ fedapay_status: 'pending', transfer_started_at: startedAt }) })
+          .returning('id')
+          .executeTakeFirstOrThrow(),
+      );
+      return { payoutId: row.id, transferId: deposit.id };
+    };
+    const neverStarted = await plant('pending');
+    const sentMeanwhile = await plant('sent');
+    const job = await app.inject({ method: 'POST', url: '/api/admin/jobs/payouts.sync/run', headers: auth('admin') });
+    expect(job.json().result.recovered).toMatchObject({ checked: 2, released: 1, sent: 1, errors: [] });
+    const rows = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('practitioner_payouts').select(['id', 'status']).where('id', 'in', [neverStarted.payoutId, sentMeanwhile.payoutId]).execute());
+    // Jamais démarré : dépôt supprimé chez FedaPay, reversement échoué (fonds libérés) ; envoyé entre-temps : reversement terminé.
+    expect(rows.find((r) => r.id === neverStarted.payoutId)?.status).toBe('failed');
+    expect(fedapay.payouts.has(neverStarted.transferId)).toBe(false);
+    expect(rows.find((r) => r.id === sentMeanwhile.payoutId)?.status).toBe('completed');
+    const released = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('practitioner_payouts').select('account_details').where('id', '=', neverStarted.payoutId).executeTakeFirstOrThrow());
+    expect(String((released.account_details as { error?: string })?.error)).toContain('Transfert interrompu');
+    const notified = await db.db.selectFrom('notifications').select('message').where('user_id', '=', userIds['coach']).where('message', 'like', '%Transfert interrompu%').executeTakeFirst();
+    expect(notified).toBeDefined();
   });
 
   it('remboursements : API FedaPay confirmée ou en attente puis confirmée, canal manuel, écritures, inscription remboursée', async () => {
@@ -354,14 +387,14 @@ describe('Group sessions & finance (e2e)', () => {
     expect((await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payments').select('status').where('id', '=', paymentIds['p1']).executeTakeFirstOrThrow())).status).toBe('paid');
     const confirmed = await app.inject({ method: 'POST', url: `/api/admin/finance/refunds/${pending.json().refundId}/confirm`, headers: auth('admin'), payload: { providerReference: 'FP-RB-0001' } });
     expect(confirmed.statusCode).toBe(200);
-    expect(confirmed.json()).toMatchObject({ refundId: pending.json().refundId, refundAmount: 2000, status: 'completed', paymentStatus: 'partially_refunded', netRefund: 1260 });
+    expect(confirmed.json()).toMatchObject({ refundId: pending.json().refundId, refundAmount: 2000, status: 'completed', paymentStatus: 'partially_refunded', netRefund: 1900 });
     const twice = await app.inject({ method: 'POST', url: `/api/admin/finance/refunds/${pending.json().refundId}/confirm`, headers: auth('admin'), payload: {} });
     expect(twice.statusCode).toBe(400);
 
     // FedaPay confirme dans la réponse : comptabilisé immédiatement.
     const partial = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 2000, reason: 'Geste commercial' } });
     expect(partial.statusCode).toBe(201);
-    expect(partial.json()).toMatchObject({ refundAmount: 2000, status: 'completed', paymentStatus: 'partially_refunded', netRefund: 1260 });
+    expect(partial.json()).toMatchObject({ refundAmount: 2000, status: 'completed', paymentStatus: 'partially_refunded', netRefund: 1900 });
     // Un webhook « refunded » reçu après un remboursement partiel ne passe pas le paiement en remboursement intégral.
     const refundedEvt = await webhook({ id: `evt-${tag}-refunded-partial`, name: 'transaction.refunded', entity: { id: transactions['p1'], status: 'refunded' } });
     expect(refundedEvt.json()).toMatchObject({ status: 'partially_refunded', changed: false });
@@ -392,6 +425,9 @@ describe('Group sessions & finance (e2e)', () => {
     const rec = await app.inject({ method: 'POST', url: '/api/admin/finance/reconciliation', headers: auth('admin'), payload: {} });
     expect(rec.statusCode).toBe(201);
     expect(rec.json().summary.matched_count).toBeGreaterThanOrEqual(2);
+    // M5 : les dépôts FedaPay sont réconciliés avec les reversements ; aucun écart attendu ici.
+    expect(rec.json().summary.payouts_matched_count).toBeGreaterThanOrEqual(2);
+    expect(rec.json().anomalies.filter((a: { type: string }) => a.type.startsWith('payout_'))).toEqual([]);
     const report = await app.inject({ method: 'GET', url: `/api/admin/finance/reconciliation/${rec.json().report_id}`, headers: auth('admin') });
     expect(report.json().status).toBe('completed');
     const repair = await app.inject({ method: 'POST', url: '/api/admin/finance/balances/repair', headers: auth('admin') });

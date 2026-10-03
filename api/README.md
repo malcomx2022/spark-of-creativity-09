@@ -153,7 +153,7 @@ version Supabase, compensé alors par `repair-balances`).
   « prêts » via `payout_payments` (plus de remise à zéro du solde) ; un échec ou un praticien
   ignoré libère les fonds. Les webhooks `transfer.*` retrouvent le reversement par
   `transaction_ids`. Les informations de reversement (`practitioner_payment_info`, méthodes
-  `mtn` / `moov` / `orange` / `bank`) doivent être vérifiées.
+  `mtn` / `moov` / `bank` ; `orange` n'existe pas au Bénin) doivent être vérifiées.
 - **Remboursements** : total ou partiel via FedaPay, statut `refunded` / `partially_refunded`,
   inscription de séance passée à `refunded`, écritures comptables équilibrées, patient notifié.
 - **Jobs ajoutés** : `funds.release` (horaire, ex release-held-funds), `webhooks.retry` (5 min,
@@ -173,6 +173,14 @@ version Supabase, compensé alors par `repair-balances`).
 - **Retour de paiement** : `callback_url` = `/payment/callback/<paymentId>` sans chaîne de requête,
   FedaPay y ajoutant `?id=&status=` ; la page front attend un paiement encore en cours au lieu de
   l'afficher en échec.
+- **Frais** : défauts alignés sur la configuration de production (5 % de commission, 2 % de frais de
+  passerelle payés par la plateforme), montants entiers en XOF ; `idempotency_key` =
+  `<rendez-vous>:<rang>` ; numéro du payeur masqué dans `payments`, chiffré dans `payment_attempts`.
+- **`POST /api/payments/:id/sync`** (patient) : une interrogation FedaPay par paiement toutes les 10 s,
+  30 appels par utilisateur et 10 min, rien sur un paiement terminé ; la voie admin n'est pas limitée.
+- **Reversements** : l'identifiant du dépôt FedaPay est enregistré avant son démarrage ; `payouts.sync`
+  rattrape un transfert interrompu (dépôt jamais démarré → supprimé et fonds libérés ; envoyé → suivi) ;
+  la réconciliation compare aussi `GET /v1/payouts` aux reversements.
 
 ## Support, litiges, dossier médical et statistiques (étape 6)
 

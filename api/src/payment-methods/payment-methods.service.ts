@@ -1,12 +1,13 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { Inject, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 import { normalizePhoneNumber } from '../auth/phone.util';
+import { PhoneCipher } from '../common/utils/phone-cipher';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService } from '../database/database.service';
 
 export const savePaymentMethodSchema = z.object({
-  provider: z.enum(['mtn', 'moov', 'orange']),
+  // Opérateurs Mobile Money du Bénin ; `orange` (absent au Bénin) n'est plus accepté (m6).
+  provider: z.enum(['mtn', 'moov']),
   phoneNumber: z.string().trim().min(8).max(20),
   setAsDefault: z.boolean().default(false),
 });
@@ -20,32 +21,22 @@ export type SavePaymentMethodDto = z.infer<typeof savePaymentMethodSchema>;
  */
 @Injectable()
 export class PaymentMethodsService {
-  private readonly key: Buffer;
+  private readonly cipher: PhoneCipher;
 
   constructor(private readonly database: DatabaseService, @Inject(APP_CONFIG) config: AppConfig) {
-    // Hors production, une clé dérivée du secret JWT évite une configuration supplémentaire.
-    this.key = config.PHONE_ENCRYPTION_KEY ? Buffer.from(config.PHONE_ENCRYPTION_KEY, 'base64') : createHash('sha256').update(config.JWT_ACCESS_SECRET).digest();
-    if (this.key.length !== 32) throw new InternalServerErrorException('PHONE_ENCRYPTION_KEY doit être une clé de 32 octets encodée en base64');
+    this.cipher = new PhoneCipher(config);
   }
 
   encrypt(plain: string): string {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.key, iv);
-    const data = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final(), cipher.getAuthTag()]);
-    return `${iv.toString('base64')}:${data.toString('base64')}`;
+    return this.cipher.encrypt(plain);
   }
 
   decrypt(payload: string): string {
-    const [ivB64, dataB64] = payload.split(':');
-    if (!ivB64 || !dataB64) throw new InternalServerErrorException('Numéro chiffré illisible');
-    const data = Buffer.from(dataB64, 'base64');
-    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(ivB64, 'base64'));
-    decipher.setAuthTag(data.subarray(data.length - 16));
-    return Buffer.concat([decipher.update(data.subarray(0, data.length - 16)), decipher.final()]).toString('utf8');
+    return this.cipher.decrypt(payload);
   }
 
   static mask(phone: string): string {
-    return phone.length <= 4 ? phone : `****${phone.slice(-4)}`;
+    return PhoneCipher.mask(phone);
   }
 
   list(userId: string) {

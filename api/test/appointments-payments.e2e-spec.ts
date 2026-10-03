@@ -7,6 +7,7 @@ import { sql } from 'kysely';
 import { createApp } from '../src/app.factory';
 import { DatabaseService } from '../src/database/database.service';
 import { FakeFedaPayClient } from '../src/payments/fedapay.client';
+import { PhoneCipher } from '../src/common/utils/phone-cipher';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-secret-test-secret-test-secret-123456';
@@ -109,7 +110,7 @@ describe('Appointments & payments (e2e)', () => {
     expect(mine.json().some((a: { id: string }) => a.id === appointmentId)).toBe(true);
   });
 
-  it('le praticien accepte → pending_payment, paiement FedaPay initié avec les frais officiels', async () => {
+  it('le praticien accepte → pending_payment, paiement FedaPay initié avec les frais de production (5 % + 2 % passerelle)', async () => {
     const notMine = await app.inject({ method: 'POST', url: `/api/appointments/${appointmentId}/respond`, headers: auth('patient'), payload: { action: 'accept' } });
     expect(notMine.statusCode).toBe(403);
     const res = await app.inject({ method: 'POST', url: `/api/appointments/${appointmentId}/respond`, headers: auth('practitioner'), payload: { action: 'accept' } });
@@ -122,8 +123,15 @@ describe('Appointments & payments (e2e)', () => {
     expect(again.statusCode).toBe(409);
 
     const payment = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payments').selectAll().where('id', '=', paymentId).executeTakeFirstOrThrow());
-    expect(payment).toMatchObject({ status: 'initiated', payout_status: 'pending', amount: 15000, commission_amount: 5550, net_amount: 9450, gateway_fees_amount: 325, payment_method: 'mtn', currency: 'XOF' });
+    expect(payment).toMatchObject({ status: 'initiated', payout_status: 'pending', amount: 15000, commission_amount: 750, net_amount: 14250, gateway_fees_amount: 300, payment_method: 'mtn', currency: 'XOF' });
     expect(payment.fedapay_transaction_id).toBe(transactionId);
+    // m4 : clé d'idempotence dérivée du rendez-vous et du rang de tentative, plus aléatoire.
+    expect(payment.idempotency_key).toBe(`${appointmentId}:1`);
+    // m5 : numéro masqué dans payments, chiffré (clé PHONE_ENCRYPTION_KEY) dans payment_attempts.
+    expect(payment.payer_phone).toBe(`****${patientPhone.slice(-4)}`);
+    const attempt = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_attempts').select('phone_number_encrypted').where('payment_id', '=', paymentId).executeTakeFirstOrThrow());
+    expect(attempt.phone_number_encrypted).not.toContain(patientPhone.slice(-6));
+    expect(new PhoneCipher({ JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET! }).decrypt(attempt.phone_number_encrypted!)).toBe(patientPhone);
     // Transmis à FedaPay comme dans sa documentation : numéro international et mode du moyen choisi.
     expect(fedapay.transactions.get(transactionId)?.input).toMatchObject({ mode: 'mtn_open', customer: { phoneNumber: patientPhone, country: 'bj' } });
     // URL de retour sans chaîne de requête, identifiant du paiement en chemin : FedaPay y ajoute lui-même ?id=&status= (M8).
@@ -174,8 +182,8 @@ describe('Appointments & payments (e2e)', () => {
     expect(payment.json().invoice_number).toMatch(/^INV-\d{6}-\d{6}$/);
     const appt = await app.inject({ method: 'GET', url: `/api/appointments/${appointmentId}`, headers: auth('practitioner') });
     expect(appt.json().status).toBe('confirmed');
-    // Partie double équilibrée (M11) : 15 000 encaissés = 9 450 dus au praticien + 5 550 de commission ; les
-    // 325 XOF de frais de passerelle, payés par la plateforme, sont une charge contre la trésorerie, pas un produit.
+    // Partie double équilibrée (M11) : 15 000 encaissés = 14 250 dus au praticien + 750 de commission ; les
+    // 300 XOF de frais de passerelle, payés par la plateforme, sont une charge contre la trésorerie, pas un produit.
     const entries = await db.runAs({ role: 'service_role' }, (trx) =>
       trx
         .selectFrom('ledger_entries')
@@ -186,16 +194,16 @@ describe('Appointments & payments (e2e)', () => {
     );
     expect(entries.length).toBe(5);
     const debits = entries.reduce((s, e) => s + e.debit, 0);
-    expect(debits).toBe(15000 + 325);
+    expect(debits).toBe(15000 + 300);
     expect(entries.reduce((s, e) => s + e.credit, 0)).toBe(debits);
     const net = (type: string) => entries.filter((e) => e.account_type === type).reduce((s, e) => s + e.debit - e.credit, 0);
-    expect(net('cash')).toBe(15000 - 325);
-    expect(net('payable')).toBe(-9450);
-    expect(net('revenue_commission')).toBe(-5550);
-    expect(net('expense_gateway')).toBe(325);
+    expect(net('cash')).toBe(15000 - 300);
+    expect(net('payable')).toBe(-14250);
+    expect(net('revenue_commission')).toBe(-750);
+    expect(net('expense_gateway')).toBe(300);
     expect(entries.some((e) => e.account_type === 'obligation' || e.account_type === 'revenue_fees')).toBe(false);
     const balance = await db.db.selectFrom('practitioner_balances').selectAll().where('practitioner_id', '=', practitionerId).executeTakeFirstOrThrow();
-    expect(balance.balance_on_hold).toBe(9450);
+    expect(balance.balance_on_hold).toBe(14250);
     const events = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('webhook_events').select(['processing_status']).where('event_id', '=', `evt-${tag}-1`).executeTakeFirstOrThrow());
     expect(events.processing_status).toBe('success');
     const pNotif = await db.db.selectFrom('notifications').select('title').where('user_id', '=', userIds['practitioner']).where('title', 'like', '%paiement reçu%').executeTakeFirst();
@@ -281,7 +289,24 @@ describe('Appointments & payments (e2e)', () => {
     const manual = await app.inject({ method: 'POST', url: `/api/payments/${accepted.json().paymentId}/sync`, headers: auth('patient') });
     expect(manual.json()).toMatchObject({ synced: false, status: 'paid' });
     const balance = await db.db.selectFrom('practitioner_balances').select('balance_on_hold').where('practitioner_id', '=', practitionerId).executeTakeFirstOrThrow();
-    expect(balance.balance_on_hold).toBe(9450 * 2);
+    expect(balance.balance_on_hold).toBe(14250 * 2);
+  });
+
+  it('m7 : la resynchronisation par le patient est limitée — une interrogation FedaPay par paiement toutes les 10 s, aucune sur un paiement terminé', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(13), time: '11:00', reason: 'Limitation sync' } });
+    const accepted = await app.inject({ method: 'POST', url: `/api/appointments/${created.json().id}/respond`, headers: auth('practitioner'), payload: { action: 'accept' } });
+    const pid = accepted.json().paymentId as string;
+    const first = await app.inject({ method: 'POST', url: `/api/payments/${pid}/sync`, headers: auth('patient') });
+    expect(first.json()).toMatchObject({ status: 'pending', fedapayStatus: 'pending' });
+    fedapay.setStatus(accepted.json().transactionId, 'approved');
+    // Moins de 10 s plus tard : l'état local est rendu sans interroger FedaPay.
+    const second = await app.inject({ method: 'POST', url: `/api/payments/${pid}/sync`, headers: auth('patient') });
+    expect(second.json()).toMatchObject({ synced: false, status: 'pending', throttled: true });
+    // L'administration n'est pas limitée : l'approbation est récupérée.
+    const admin = await app.inject({ method: 'POST', url: `/api/admin/payments/${pid}/sync`, headers: auth('admin') });
+    expect(admin.json()).toMatchObject({ synced: true, status: 'paid' });
+    const final = await app.inject({ method: 'POST', url: `/api/payments/${pid}/sync`, headers: auth('patient') });
+    expect(final.json()).toMatchObject({ synced: false, status: 'paid', skipped: 'final' });
   });
 
   it('statut FedaPay « expired » : le paiement est terminé (failed), pas laissé en attente', async () => {

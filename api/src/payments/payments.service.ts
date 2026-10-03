@@ -4,18 +4,23 @@ import {
 } from '@nestjs/common';
 import { sql, type Transaction } from 'kysely';
 import { normalizePhoneNumber } from '../auth/phone.util';
+import { PhoneCipher } from '../common/utils/phone-cipher';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import type { DB, Payment, PaymentStatus, PayoutStatus } from '../database/types';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { BalancesService, parseGroupSessionRef } from './balances.service';
 import { FEDAPAY_CLIENT, FedaPayError, fedapayMode, type FedaPayClient } from './fedapay.client';
-import { calculateFees, holdUntil, normalizeStatus, OPEN_STATUSES, parseFeeConfig } from './fees';
+import { calculateFees, FINAL_STATUSES, holdUntil, normalizeStatus, OPEN_STATUSES, parseFeeConfig } from './fees';
 import { LedgerService } from './ledger.service';
 import type { CreatePaymentDto, ListPaymentsQuery } from './payments.dto';
 
 const DEFAULT_APPOINTMENT_AMOUNT = 10_000;
 const PAYABLE_STATUSES = ['confirmed', 'pending_payment', 'pending'];
+/** m7 : POST /payments/:id/sync par un patient — une interrogation FedaPay par paiement toutes les 10 s, 30 appels par utilisateur et 10 min. */
+const SYNC_COOLDOWN_MS = 10_000;
+const SYNC_USER_LIMIT = 30;
+const SYNC_USER_WINDOW_MS = 10 * 60_000;
 
 export interface WebhookPayload {
   id?: string;
@@ -32,6 +37,10 @@ export type PaymentTarget =
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
+  private readonly phones: PhoneCipher;
+  /** Dernière interrogation FedaPay par paiement et horodatages des synchronisations par utilisateur (m7, mémoire du processus API). */
+  private readonly syncLastCall = new Map<string, number>();
+  private readonly syncByUser = new Map<string, number[]>();
 
   constructor(
     private readonly database: DatabaseService,
@@ -40,7 +49,9 @@ export class PaymentsService {
     private readonly balances: BalancesService,
     @Inject(FEDAPAY_CLIENT) private readonly fedapay: FedaPayClient,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-  ) {}
+  ) {
+    this.phones = new PhoneCipher(config);
+  }
 
   /** Ex get-fedapay-config : clé publique pour le widget checkout côté client. */
   publicConfig() {
@@ -71,7 +82,7 @@ export class PaymentsService {
   async create(userId: string, dto: CreatePaymentDto) {
     const appointmentId = dto.appointmentId;
 
-    const { target, amount, existing } = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
+    const { target, amount, existing, attempt } = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const target = await this.resolveTarget(trx, appointmentId);
       let amount: number;
       if (target.kind === 'group_session') {
@@ -121,7 +132,11 @@ export class PaymentsService {
           });
         }
       }
-      return { target, amount, existing };
+      // Clé d'idempotence dérivée du rendez-vous et du rang de la tentative (m4) : la contrainte unique de
+      // payments.idempotency_key refuse alors un second paiement créé en parallèle pour le même rang, là où
+      // une clé aléatoire à chaque appel ne protégeait de rien.
+      const attempts = await trx.selectFrom('payments').select((eb) => eb.fn.countAll<string>().as('n')).where('appointment_id', '=', appointmentId).executeTakeFirstOrThrow();
+      return { target, amount, existing, attempt: Number(attempts.n) + 1 };
     });
 
     // Le paiement périmé n'est pas simplement marqué échoué : le lien FedaPay restait payable, et une
@@ -143,7 +158,8 @@ export class PaymentsService {
     const [firstname, ...rest] = dto.payerName.trim().split(/\s+/);
     const lastname = rest.join(' ') || firstname;
     const appBaseUrl = this.config.APP_BASE_URL ?? this.config.FRONTEND_URL;
-    const idempotencyKey = `${appointmentId}-${randomUUID()}`;
+    const idempotencyKey = `${appointmentId}:${attempt}`;
+    const phone = normalizePhoneNumber(dto.phoneNumber);
     // Identifiant du paiement fixé avant l'appel FedaPay : l'URL de retour le porte en chemin, sans
     // chaîne de requête, car FedaPay y ajoute lui-même `?id=<transaction>&status=<statut>` (M8).
     // Une URL déjà munie de `?appointment_id=` donnait `…?appointment_id=X?id=258&status=approved`.
@@ -157,7 +173,7 @@ export class PaymentsService {
         description: target.kind === 'group_session' ? `Inscription séance: ${target.session.session_name}` : `Paiement rendez-vous médical #${appointmentId}`,
         callbackUrl: `${appBaseUrl}/payment/callback/${paymentId}`,
         // Numéro au format international et moyen choisi (`mtn_open` / `moov`) comme dans les exemples FedaPay.
-        customer: { firstname, lastname, email: dto.payerEmail, phoneNumber: normalizePhoneNumber(dto.phoneNumber), country: 'bj' },
+        customer: { firstname, lastname, email: dto.payerEmail, phoneNumber: phone, country: 'bj' },
         metadata: { appointment_id: appointmentId, user_id: userId, payment_method: dto.paymentMethod, payer_name: dto.payerName, payer_email: dto.payerEmail ?? null, idempotency_key: idempotencyKey },
         mode: fedapayMode(dto.paymentMethod),
       });
@@ -185,7 +201,8 @@ export class PaymentsService {
           fedapay_transaction_id: transactionId, fedapay_payment_url: paymentUrl, idempotency_key: idempotencyKey,
           commission_amount: fees.commissionAmount, gateway_fees_amount: fees.gatewayFeesAmount, fees_amount: fees.feesAmount, net_amount: fees.netAmount,
           hold_until: holdUntil(await this.holdPeriodDays(trx)),
-          payer_name: dto.payerName, payer_email: dto.payerEmail ?? null, payer_phone: dto.phoneNumber,
+          // m5 : le numéro n'est stocké en clair nulle part — masqué ici, chiffré dans payment_attempts.
+          payer_name: dto.payerName, payer_email: dto.payerEmail ?? null, payer_phone: PhoneCipher.mask(phone),
           payment_session_data: JSON.stringify({ token }),
         })
         .returningAll()
@@ -198,7 +215,7 @@ export class PaymentsService {
           throw err;
         });
       await this.logEvent(trx, payment.id, 'payment.intent.created', { amount: fees.amount, currency: fees.currency, payment_method: dto.paymentMethod, idempotency_key: idempotencyKey });
-      await trx.insertInto('payment_attempts').values({ payment_id: payment.id, appointment_id: appointmentId, user_id: userId, status: 'pending', payment_method: dto.paymentMethod, amount }).execute();
+      await trx.insertInto('payment_attempts').values({ payment_id: payment.id, appointment_id: appointmentId, user_id: userId, status: 'pending', payment_method: dto.paymentMethod, amount, phone_number_encrypted: this.phones.encrypt(phone) }).execute();
       let expiresAt: Date | null = null;
       if (target.kind === 'appointment') {
         expiresAt = new Date(Date.now() + this.config.PAYMENT_SLOT_EXPIRY_MINUTES * 60_000);
@@ -328,6 +345,24 @@ export class PaymentsService {
     if (!payment) throw new NotFoundException('Paiement introuvable');
     if (userId) await this.getOwn(userId, paymentId); // contrôle d'accès
     if (!payment.fedapay_transaction_id) throw new BadRequestException({ statusCode: 400, message: 'Paiement sans transaction FedaPay', payment: { id: payment.id, status: payment.status } });
+    if (userId) {
+      // m7 : un patient ne déclenche pas d'appels FedaPay à volonté. Un paiement terminé n'a rien à
+      // resynchroniser (l'administration garde POST /admin/payments/:id/sync) ; un paiement ouvert n'est
+      // interrogé qu'une fois toutes les 10 s — entre deux, l'état local est rendu tel quel — dans la
+      // limite de 30 appels par utilisateur et 10 min.
+      if (FINAL_STATUSES.includes(payment.status)) return { synced: false, status: payment.status, fedapayStatus: null, skipped: 'final' };
+      const now = Date.now();
+      const recent = (this.syncByUser.get(userId) ?? []).filter((t) => now - t < SYNC_USER_WINDOW_MS);
+      if (recent.length >= SYNC_USER_LIMIT) {
+        throw new HttpException({ statusCode: 429, error: 'TOO_MANY_SYNCS', message: 'Trop de vérifications : réessayez dans quelques minutes', retryAfter: Math.ceil((SYNC_USER_WINDOW_MS - (now - recent[0])) / 1000) }, HttpStatus.TOO_MANY_REQUESTS);
+      }
+      const last = this.syncLastCall.get(paymentId) ?? 0;
+      if (now - last < SYNC_COOLDOWN_MS) return { synced: false, status: payment.status, fedapayStatus: null, throttled: true, retryAfter: Math.ceil((SYNC_COOLDOWN_MS - (now - last)) / 1000) };
+      recent.push(now);
+      this.syncByUser.set(userId, recent);
+      this.syncLastCall.set(paymentId, now);
+      if (this.syncLastCall.size > 5000) for (const [k, t] of this.syncLastCall) if (now - t > SYNC_COOLDOWN_MS) this.syncLastCall.delete(k);
+    }
     const remote = await this.fedapay.getTransaction(payment.fedapay_transaction_id);
     const newStatus = normalizeStatus(remote.status);
     if (newStatus === payment.status) return { synced: false, status: payment.status, fedapayStatus: remote.status };
@@ -568,8 +603,14 @@ export class PaymentsService {
         await trx.updateTable('appointments').set({ status: 'confirmed', updated_at: new Date() }).where('id', '=', appointment.id).execute();
         await this.inApp.notifyUser(trx, payment.patient_id, { title: newStatus === 'failed' ? 'Paiement échoué' : 'Paiement annulé', message: newStatus === 'failed' ? 'Votre paiement a échoué. Veuillez réessayer.' : 'Votre paiement a été annulé.', type: 'payment', link: '/dashboard/patient' });
       }
-      if (['approved', 'declined', 'refunded'].includes(fedapayStatus)) {
-        await this.notifyFinanceAdmins(trx, fedapayStatus === 'approved' ? 'Paiement reçu' : `Webhook paiement ${fedapayStatus}`, `Événement ${source} pour la transaction ${payment.fedapay_transaction_id} (${fedapayStatus}). Montant : ${payment.amount} XOF.`);
+      // m8 : la finance n'est plus prévenue de chaque approbation ou refus (bruit à volume réel). Les cas qui
+      // demandent une intervention gardent leur alerte (doublon, webhook échoué définitivement, reversement,
+      // remboursement) ; ici, un remboursement constaté chez FedaPay sans avoir été enregistré dans Domicares.
+      if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
+        const local = await trx.selectFrom('payment_refunds').select('id').where('payment_id', '=', payment.id).where('status', '=', 'completed').executeTakeFirst();
+        if (!local) {
+          await this.notifyFinanceAdmins(trx, 'Remboursement constaté chez FedaPay', `La transaction ${payment.fedapay_transaction_id} est ${fedapayStatus} chez FedaPay (${source}) sans remboursement enregistré ici. Montant : ${payment.amount} XOF. L'enregistrer (canal « déjà effectué ») pour les écritures et le solde.`, '/admin?tab=finance');
+        }
       }
       return { paymentId: payment.id, status: newStatus, previousStatus: payment.status, changed: true };
     });

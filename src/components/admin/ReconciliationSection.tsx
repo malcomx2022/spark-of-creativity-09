@@ -13,10 +13,12 @@ import { useState } from "react";
 import { formatAmount } from "@/lib/payment-config";
 
 interface Anomaly {
-  type: 'missing_in_db' | 'missing_in_fedapay' | 'amount_mismatch' | 'status_mismatch';
+  type: 'missing_in_db' | 'missing_in_fedapay' | 'amount_mismatch' | 'status_mismatch' | 'payout_missing_in_db' | 'payout_missing_in_fedapay' | 'payout_status_mismatch';
   severity: 'low' | 'medium' | 'high' | 'critical';
   fedapay_transaction_id?: string;
   db_payment_id?: string;
+  fedapay_payout_id?: string;
+  db_payout_id?: string;
   fedapay_amount?: number;
   db_amount?: number;
   fedapay_status?: string;
@@ -114,6 +116,9 @@ export default function ReconciliationSection() {
       missing_in_fedapay: "Manquant FedaPay",
       amount_mismatch: "Écart de montant",
       status_mismatch: "Statut différent",
+      payout_missing_in_db: "Dépôt sans reversement",
+      payout_missing_in_fedapay: "Reversement sans dépôt",
+      payout_status_mismatch: "Reversement : statut différent",
     };
     return labels[type] || type;
   };
@@ -153,9 +158,11 @@ export default function ReconciliationSection() {
   };
 
   const latestReport = reports?.[0];
-  const totalAnomalies = latestReport ? 
-    (latestReport.missing_in_db_count + latestReport.missing_in_fedapay_count + 
-     latestReport.amount_mismatch_count + latestReport.status_mismatch_count) : 0;
+  // Les anomalies de reversement (dépôts FedaPay) ne sont comptées que dans la liste, pas dans les compteurs par type.
+  const totalAnomalies = latestReport
+    ? (latestReport.anomalies?.length ??
+      latestReport.missing_in_db_count + latestReport.missing_in_fedapay_count + latestReport.amount_mismatch_count + latestReport.status_mismatch_count)
+    : 0;
 
   return (
     <div className="space-y-6">

@@ -436,7 +436,7 @@ export interface GroupSessionParticipantsTable {
 
 export type PractitionerPayoutStatus = 'planned' | 'sent' | 'completed' | 'failed';
 export type PayoutBatchStatus = 'queued' | 'processing' | 'sent' | 'failed' | 'partially_sent';
-export type PayoutMethod = 'mtn' | 'orange' | 'moov' | 'bank';
+export type PayoutMethod = 'mtn' | 'moov' | 'bank';
 
 export interface PractitionerPayoutsTable {
   id: Generated<string>;
