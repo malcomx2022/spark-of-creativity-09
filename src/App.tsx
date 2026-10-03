@@ -130,6 +130,8 @@ const App = () => (
                 <Route path="/search-practitioners" element={<PractitionerSearch />} />
                 <Route path="/search-coaches" element={<CoachSearch />} />
                 <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
+                {/* Retour FedaPay : identifiant du paiement en chemin (FedaPay ajoute ?id=&status=) ; l'ancienne forme reste servie */}
+                <Route path="/payment/callback/:paymentId" element={<PaymentCallback />} />
                 <Route path="/payment/callback" element={<PaymentCallback />} />
                 
                 {/* Routes protégées */}

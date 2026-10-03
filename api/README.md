@@ -165,7 +165,14 @@ version Supabase, compensé alors par `repair-balances`).
   journal `admin_audit_logs` alimenté avec l'adresse IP ; accès finance réservé à
   `finance` / `ops` / `super_admin` (`is_admin()` acceptait n'importe quel rôle).
 - Correctif de schéma `db/native/130_fixes_heritage.sql` : colonne `updated_at` manquante sur
-  `practitioner_payouts` (son trigger faisait échouer toute mise à jour).
+  `practitioner_payouts` (son trigger faisait échouer toute mise à jour) ; valeur d'enum
+  `expense_gateway` pour les frais de passerelle.
+- **Grand livre** (`ledger.service.ts`) : écritures d'encaissement équilibrées — `cash` = `payable` +
+  `revenue_commission`, frais de passerelle en charge `expense_gateway` contre `cash` (l'historique
+  les comptait en produit et créditait une « obligation » patient sans contrepartie).
+- **Retour de paiement** : `callback_url` = `/payment/callback/<paymentId>` sans chaîne de requête,
+  FedaPay y ajoutant `?id=&status=` ; la page front attend un paiement encore en cours au lieu de
+  l'afficher en échec.
 
 ## Support, litiges, dossier médical et statistiques (étape 6)
 

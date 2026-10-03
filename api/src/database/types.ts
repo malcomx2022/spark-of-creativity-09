@@ -302,7 +302,7 @@ export interface WebhookEventsTable {
 }
 
 export type LedgerOwnerType = 'platform' | 'patient' | 'practitioner';
-export type LedgerAccountType = 'cash' | 'payable' | 'receivable' | 'revenue_commission' | 'revenue_fees' | 'obligation';
+export type LedgerAccountType = 'cash' | 'payable' | 'receivable' | 'revenue_commission' | 'revenue_fees' | 'obligation' | 'expense_gateway';
 
 export interface LedgerAccountsTable {
   id: Generated<string>;

@@ -144,6 +144,10 @@ export class PaymentsService {
     const lastname = rest.join(' ') || firstname;
     const appBaseUrl = this.config.APP_BASE_URL ?? this.config.FRONTEND_URL;
     const idempotencyKey = `${appointmentId}-${randomUUID()}`;
+    // Identifiant du paiement fixé avant l'appel FedaPay : l'URL de retour le porte en chemin, sans
+    // chaîne de requête, car FedaPay y ajoute lui-même `?id=<transaction>&status=<statut>` (M8).
+    // Une URL déjà munie de `?appointment_id=` donnait `…?appointment_id=X?id=258&status=approved`.
+    const paymentId = randomUUID();
     let transactionId: string;
     let paymentUrl: string;
     let token: string;
@@ -151,7 +155,7 @@ export class PaymentsService {
       const transaction = await this.fedapay.createTransaction({
         amount,
         description: target.kind === 'group_session' ? `Inscription séance: ${target.session.session_name}` : `Paiement rendez-vous médical #${appointmentId}`,
-        callbackUrl: `${appBaseUrl}/payment/callback?appointment_id=${appointmentId}`,
+        callbackUrl: `${appBaseUrl}/payment/callback/${paymentId}`,
         // Numéro au format international et moyen choisi (`mtn_open` / `moov`) comme dans les exemples FedaPay.
         customer: { firstname, lastname, email: dto.payerEmail, phoneNumber: normalizePhoneNumber(dto.phoneNumber), country: 'bj' },
         metadata: { appointment_id: appointmentId, user_id: userId, payment_method: dto.paymentMethod, payer_name: dto.payerName, payer_email: dto.payerEmail ?? null, idempotency_key: idempotencyKey },
@@ -175,6 +179,7 @@ export class PaymentsService {
       const payment = await trx
         .insertInto('payments')
         .values({
+          id: paymentId,
           appointment_id: appointmentId, patient_id: userId, amount: fees.amount, currency: fees.currency, payment_method: dto.paymentMethod,
           status: 'initiated', payout_status: 'pending', channel: 'momo',
           fedapay_transaction_id: transactionId, fedapay_payment_url: paymentUrl, idempotency_key: idempotencyKey,
