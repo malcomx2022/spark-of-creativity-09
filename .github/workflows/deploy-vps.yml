@@ -1,7 +1,5 @@
 name: Deploy VPS
 
-# Déploiement automatique à chaque push sur main,
-# ou lancement manuel avec possibilité de revenir à un ancien commit.
 on:
   push:
     branches: [main]
@@ -13,7 +11,7 @@ on:
         required: true
         type: string
       revision:
-        description: "SHA complet à déployer (vide : commit du lancement ; permet un rollback)"
+        description: "SHA complet à déployer (vide : commit du lancement)"
         required: false
         type: string
 
@@ -32,17 +30,20 @@ jobs:
 
     env:
       DEPLOY_REVISION: ${{ inputs.revision || github.sha }}
+      DEPLOY_APP_DIR: ${{ secrets.VPS_APP_DIR }}
 
     steps:
-      - name: Mettre à jour le dépôt et relancer la pile
+      - name: Déployer sur le VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          envs: DEPLOY_REVISION
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          timeout: 60s
           command_timeout: 30m
+          envs: DEPLOY_REVISION,DEPLOY_APP_DIR
           script: |
             set -eu
 
@@ -58,16 +59,30 @@ jobs:
                 ;;
             esac
 
-            cd "${{ secrets.VPS_APP_DIR }}"
+            [ -n "$DEPLOY_APP_DIR" ] || {
+              echo "Secret VPS_APP_DIR manquant"
+              exit 1
+            }
+
+            cd "$DEPLOY_APP_DIR"
+
+            test -d .git || {
+              echo "Le dossier ne contient pas le dépôt Git"
+              exit 1
+            }
+
             git fetch origin main
-
-            # Vérifier que le commit appartient à l'historique de main.
             git merge-base --is-ancestor "$DEPLOY_REVISION" origin/main
-
-            # Déployer exactement le commit demandé.
             git reset --hard "$DEPLOY_REVISION"
 
             cd deploy/vps
+
+            test -f .env || {
+              echo "Fichier .env absent sur le VPS"
+              exit 1
+            }
+
+            docker compose config --quiet
             docker compose build --pull web api worker
             docker compose up -d --remove-orphans
             docker compose ps
@@ -79,8 +94,14 @@ jobs:
         run: |
           set -eu
 
+          [ -n "$DOMAIN_NAME" ] || {
+            echo "Secret DOMAIN_NAME manquant"
+            exit 1
+          }
+
           for i in $(seq 1 18); do
             code=000
+
             if response=$(curl --silent --show-error \
               --connect-timeout 5 \
               --max-time 10 \
@@ -91,7 +112,7 @@ jobs:
             fi
 
             if [ "$code" = "200" ]; then
-              echo "API OK — commit ${DEPLOY_REVISION}"
+              echo "API disponible après déploiement de ${DEPLOY_REVISION}"
               exit 0
             fi
 
@@ -99,5 +120,5 @@ jobs:
             sleep 10
           done
 
-          echo "API injoignable après le déploiement"
+          echo "Échec du contrôle de santé de l'API"
           exit 1
