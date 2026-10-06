@@ -251,7 +251,11 @@ les routes, les chemins finaux S3 et les règles FedaPay sont conservés.
 - CI : tests unitaires API ajoutés, lint du socle front bloquant ; lint global
   historique toujours informatif. Suite S3 réelle optionnelle en CI, exécutée localement.
 - Déploiement : workflow manuel existant, désormais épinglé au SHA de son lancement.
-  Résultat à consigner après publication ; aucune livraison VPS supposée à ce stade.
+  **Non exécuté** : le contrôle automatique d'approbation a refusé le push direct
+  vers `main`, au motif qu'une publication sur la branche par défaut sans revue
+  n'était pas explicitement autorisée. Les corrections sont publiées sur
+  `codex/security-review-20261006` pour PR et CI ; la fusion et le déploiement
+  attendent l'autorisation explicite de l'utilisateur. Ne pas contourner ce refus.
 - Exploitation hors correctifs applicatifs : sauvegarde MinIO/hors site, restauration,
   choix RPO/RTO et résorption globale du lint restent à réaliser (lot 6).
 
@@ -260,3 +264,8 @@ précédent avec l'entrée `revision` (SHA complet, ancêtre de `main`) du workf
 aucune migration ne limite ce retour. Les objets déjà publiés et les
 chemins historiques sont conservés. Des envois PUT commencés avant le déploiement
 peuvent devoir être recommencés : les anciennes URLs n'utilisent pas la quarantaine.
+
+Commits préparés : `ebb5f76` (plan et consignes), `39c822f` (correctifs applicatifs),
+`aeb183c` (CI, suivi et déploiement épinglé). Le statut des contrôles GitHub reste
+consultable dans la PR de la branche de correction ; seuls les contrôles locaux
+ci-dessus sont déclarés réussis dans ce document.
