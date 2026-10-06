@@ -12,5 +12,5 @@ export default defineConfig({
     { name: 'webkit-ipad', use: { ...devices['iPad Pro 11'], browserName: 'webkit' } },
     { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {} } },
   ],
-  webServer: { command: 'npm run preview -- --host 127.0.0.1 --port 4173 --strictPort', port: 4173, reuseExistingServer: !process.env.CI },
+  webServer: { command: 'npm run preview -- --host 127.0.0.1 --port 4173 --strictPort', port: 4173, env: { DOMICARES_BROWSER_TEST: '1' }, reuseExistingServer: !process.env.CI },
 });

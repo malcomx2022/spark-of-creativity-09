@@ -28,6 +28,13 @@ export default defineConfig(({ mode }) => ({
       "/socket.io": { target: process.env.VITE_DEV_API_TARGET || "http://localhost:3000", ws: true, changeOrigin: true },
     },
   },
+  // Le navigateur PWA utilise le vrai transport HTTP, sans interception Playwright.
+  // En preview de test seulement, empêcher le chargement des services externes.
+  preview: {
+    headers: process.env.DOMICARES_BROWSER_TEST === '1'
+      ? { 'Content-Security-Policy': "script-src 'self'; connect-src 'self'" }
+      : undefined,
+  },
   plugins: [react(), pwaVersion],
   resolve: {
     alias: {

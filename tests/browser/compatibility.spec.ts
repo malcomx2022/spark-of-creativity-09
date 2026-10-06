@@ -84,7 +84,8 @@ test('formulaire mobile : champs lisibles et focus conservé', async ({ page, co
 test.describe('Service worker réel', () => {
   test.use({ serviceWorkers: 'allow' });
 test('PWA : manifeste, fichiers publics et repli privé hors ligne', async ({ page, context }) => {
-  await isolateServices(context);
+  // Aucune interception réseau : WebKit contourne le worker lors d'une navigation
+  // hors ligne si le contexte Playwright intercepte les requêtes.
   await page.goto('/');
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   const result = await page.evaluate(async () => {
@@ -97,8 +98,9 @@ test('PWA : manifeste, fichiers publics et repli privé hors ligne', async ({ pa
   });
   expect(result.manifest.display).toBe('standalone');
   expect(result.paths.sort()).toEqual(['/offline.html', '/manifest.webmanifest', '/pwa/icon-192.png', '/pwa/icon-512.png', '/pwa/icon-maskable.png', '/pwa/apple-touch-icon.png'].sort());
+  await page.evaluate(() => history.replaceState(null, '', '/dashboard/patient'));
   await context.setOffline(true);
-  await page.goto('/dashboard/patient', { waitUntil: 'domcontentloaded' }).catch(error => {
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(error => {
     if (!String(error).includes('WebKit encountered an internal error')) throw error;
     // WebKit peut rejeter goto alors que la réponse du worker a été affichée.
     // L'assertion suivante reste obligatoire et vérifie le DOM réellement rendu.
