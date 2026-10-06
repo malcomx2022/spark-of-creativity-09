@@ -63,13 +63,30 @@ Le mode `setOffline` de Playwright/WebKit bloque la navigation avant le worker :
 ce mécanisme d'émulation ne valide donc pas le mode avion Safari physique.
 La sonde HTTP et le CSP des services externes ne sont actifs qu'en preview avec
 `DOMICARES_BROWSER_TEST=1`, jamais dans le build servi par Caddy.
-Les services API, Socket.IO et FedaPay sont isolés et simulés. Ces tests ne
+Les tests d'écrans bloquent les workers pour éviter leur interaction avec
+l'interception API de Playwright. Le test PWA active le vrai worker et n'intercepte
+aucune requête ; le preview de recette bloque les scripts et connexions externes.
+Les services des écrans sont simulés : aucune API de production ni aucun paiement réel. Ces tests ne
 valident donc ni un paiement réel ni une livraison push Apple.
 
 Résultats locaux : typechecks front/API réussis, build Vite réussi,
 **39 tests Vitest** et **31 tests unitaires API** réussis. Lint : **0 erreur,
 46 avertissements**. `npm audit` front : **0 vulnérabilité**, outils de test inclus.
-Les résultats Chromium et WebKit CI sont ajoutés après exécution.
+Chromium local : **38 scénarios réussis**. La sonde de rupture HTTP a aussi été
+vérifiée localement dans Chromium, en plus de la vraie mise hors ligne.
+
+CI sur `4463d31` :
+- [Web CI](https://github.com/malcomx2022/spark-of-creativity-09/actions/runs/37443053238) :
+  **succès**, lint/typecheck/39 tests/build et **114 scénarios navigateur** validés
+  (113 dès la première exécution, un espace patient WebKit après une relance).
+  Le délai d'attente des assertions de rendu passe ensuite à 10 secondes pour
+  absorber le chargement des chunks sur le runner, sans retirer d'assertion.
+- [API CI](https://github.com/malcomx2022/spark-of-creativity-09/actions/runs/37443053056) :
+  **succès**, typecheck/tests/build/intégration PostgreSQL. Les tests S3 nécessitent
+  toujours un MinIO dédié ; cette CI n'active pas ces quatre essais optionnels.
+
+Livraison : [PR 84](https://github.com/malcomx2022/spark-of-creativity-09/pull/84).
+Les jobs de la dernière révision doivent rester verts avant fusion.
 
 Le téléchargement local de WebKit retourne HTTP 403 « Domain forbidden » pour
 les domaines de distribution Playwright. WebKit est installé et testé sur le

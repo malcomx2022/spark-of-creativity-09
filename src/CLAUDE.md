@@ -41,3 +41,9 @@ Ne pas ajouter des dépendances d'effets de paiement sans vérifier leurs décle
   et rejet des écritures hors ligne par le client avant tout appel réseau.
 - Responsive : boutons multilignes, `min-width: 0`, actions empilées et onglets défilants ;
   vérifier 320/390/768/1280 px avec données longues après modification des layouts.
+
+- Pour les tests navigateur : isoler les services des écrans avec workers bloqués.
+  Le scénario PWA utilise le worker réel sans interception réseau. Dans WebKit,
+  tester le repli avec la sonde de rupture HTTP du preview de recette ; `setOffline`
+  de Playwright n'équivaut pas au mode avion Safari. Cette sonde et son CSP ne
+  doivent jamais être actifs dans le serveur de production.

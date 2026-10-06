@@ -3,7 +3,7 @@
 | Workflow | Déclenchement | Rôle |
 |---|---|---|
 | `api-ci.yml` | PR et push sur `main` touchant `api/**` ou `db/native/**` | Typecheck, build et tests e2e de l'API sur PostgreSQL 16 avec le schéma natif |
-| `web-ci.yml` | PR et push sur `main` touchant le front (`src/**`, config Vite) | Lint bloquant du code actif, typecheck, tests Vitest, build Vite, 114 scénarios WebKit iPhone/iPad et Chromium (services simulés) |
+| `web-ci.yml` | PR et push sur `main` touchant le code actif front/API ou la configuration des tests et du build | Lint bloquant du code actif, typecheck, tests Vitest, build Vite, 114 scénarios WebKit iPhone/iPad et Chromium (services simulés) |
 | `deploy-vps.yml` | Manuel (`workflow_dispatch`, saisir `DEPLOYER`) ; `push` sur `main` à activer une fois le VPS en service | `git reset --hard origin/main` sur le VPS puis `docker compose build` / `up -d` de `deploy/vps`, contrôle `GET /api/health` |
 
 ## Secrets à configurer (Settings → Secrets and variables → Actions)
