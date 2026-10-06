@@ -17,6 +17,23 @@ const pwaVersion: Plugin = {
   },
 };
 
+// Sonde de panne réseau réservée au serveur de recette Playwright.
+// WebKit setOffline interrompt la navigation avant le traitement du service worker.
+const browserNetworkFailure: Plugin = {
+  name: 'browser-network-failure',
+  configurePreviewServer(server) {
+    if (process.env.DOMICARES_BROWSER_TEST !== '1') return;
+    server.middlewares.use((request, _response, next) => {
+      const url = new URL(request.url || '/', 'http://localhost');
+      if (url.searchParams.get('__browser_network_failure') === '1') {
+        request.socket.destroy();
+        return;
+      }
+      next();
+    });
+  },
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -35,7 +52,7 @@ export default defineConfig(({ mode }) => ({
       ? { 'Content-Security-Policy': "script-src 'self'; connect-src 'self'" }
       : undefined,
   },
-  plugins: [react(), pwaVersion],
+  plugins: [react(), pwaVersion, browserNetworkFailure],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

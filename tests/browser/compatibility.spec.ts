@@ -83,7 +83,7 @@ test('formulaire mobile : champs lisibles et focus conservé', async ({ page, co
 
 test.describe('Service worker réel', () => {
   test.use({ serviceWorkers: 'allow' });
-test('PWA : manifeste, fichiers publics et repli privé hors ligne', async ({ page, context }) => {
+test('PWA : manifeste, fichiers publics et repli privé hors ligne', async ({ page, context, browserName }) => {
   // Aucune interception réseau : WebKit contourne le worker lors d'une navigation
   // hors ligne si le contexte Playwright intercepte les requêtes.
   await page.goto('/');
@@ -98,14 +98,14 @@ test('PWA : manifeste, fichiers publics et repli privé hors ligne', async ({ pa
   });
   expect(result.manifest.display).toBe('standalone');
   expect(result.paths.sort()).toEqual(['/offline.html', '/manifest.webmanifest', '/pwa/icon-192.png', '/pwa/icon-512.png', '/pwa/icon-maskable.png', '/pwa/apple-touch-icon.png'].sort());
-  await page.evaluate(() => history.replaceState(null, '', '/dashboard/patient'));
-  await context.setOffline(true);
-  await page.reload({ waitUntil: 'domcontentloaded' }).catch(error => {
-    if (!String(error).includes('WebKit encountered an internal error')) throw error;
-    // WebKit peut rejeter goto alors que la réponse du worker a été affichée.
-    // L'assertion suivante reste obligatoire et vérifie le DOM réellement rendu.
-    console.log('Navigation WebKit hors ligne : vérification du contenu après erreur de transport');
-  });
+  if (browserName === 'webkit') {
+    // Panne HTTP réelle : le serveur ferme la connexion sans réponse. Le worker
+    // doit fournir le repli ; setOffline de Playwright empêche ce traitement WebKit.
+    await page.goto('/dashboard/patient?__browser_network_failure=1');
+  } else {
+    await context.setOffline(true);
+    await page.goto('/dashboard/patient');
+  }
   await expect(page.getByRole('heading', { name: 'Vous êtes hors ligne' })).toBeVisible();
   await expect(page.locator('body')).not.toContainText('safari@test.invalid');
 });

@@ -57,7 +57,12 @@ La suite comporte **114 scénarios** (38 par projet : WebKit iPhone, WebKit iPad
 Chromium). Elle vérifie huit écrans publics à 320/390/768/1280 px, les espaces
 patient/praticien/coach/admin en portrait et paysage, un formulaire avec focus et
 viewport réduit, le manifeste et les six seuls fichiers publics du cache PWA,
-puis une navigation privée réellement hors ligne remplacée par l'écran générique.
+puis le repli de navigation privée : Chromium est réellement mis hors ligne ;
+WebKit utilise une panne HTTP réelle (le serveur preview de test ferme la connexion).
+Le mode `setOffline` de Playwright/WebKit bloque la navigation avant le worker :
+ce mécanisme d'émulation ne valide donc pas le mode avion Safari physique.
+La sonde HTTP et le CSP des services externes ne sont actifs qu'en preview avec
+`DOMICARES_BROWSER_TEST=1`, jamais dans le build servi par Caddy.
 Les services API, Socket.IO et FedaPay sont isolés et simulés. Ces tests ne
 valident donc ni un paiement réel ni une livraison push Apple.
 
