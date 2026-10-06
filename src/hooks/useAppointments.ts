@@ -60,12 +60,12 @@ export function toAppointment(row: AppointmentRow): Appointment {
 
 /**
  * `GET /appointments` renvoie les rendez-vous de l'utilisateur connecté (patient et/ou praticien),
- * triés par date puis heure décroissantes. La pagination reste côté client (au plus 200 lignes).
+ * La vue est déterminée côté serveur ; le total couvre tout l'historique autorisé.
  */
 async function fetchOwnAppointments(field: 'patient_id' | 'practitioner_id', id: string, page: number, pageSize: number) {
-  const rows = await api.get<AppointmentRow[]>('/appointments', { query: { limit: API_LIST_LIMIT } });
-  const mine = rows.filter((row) => row[field] === id);
-  return { data: mine.slice(page * pageSize, (page + 1) * pageSize).map(toAppointment), count: mine.length };
+  const limit = Math.min(pageSize, API_LIST_LIMIT);
+  const result = await api.get<{ data: AppointmentRow[]; count: number }>('/appointments/page', { query: { limit, offset: page * limit, view: field === 'patient_id' ? 'patient' : 'practitioner' } });
+  return { data: result.data.filter(row => row[field] === id).map(toAppointment), count: result.count };
 }
 
 export function usePatientAppointments(patientId?: string, page = 0, pageSize = 100) {

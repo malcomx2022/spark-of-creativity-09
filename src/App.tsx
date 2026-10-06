@@ -38,7 +38,7 @@ const Services = lazy(() => import("./pages/Services"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const Contact = lazy(() => import("./pages/Contact"));
-const CreateTestAccounts = lazy(() => import("./pages/CreateTestAccounts"));
+const CreateTestAccounts = import.meta.env.DEV ? lazy(() => import("./pages/CreateTestAccounts")) : null;
 const ConfirmEmail = lazy(() => import("./pages/ConfirmEmail"));
 const RegistrationSuccess = lazy(() => import("./pages/RegistrationSuccess"));
 const CompleteRegistration = lazy(() => import("./pages/CompleteRegistration"));
@@ -133,7 +133,7 @@ const App = () => (
                 <Route path="/triage" element={<Triage />} />
                 <Route path="/search-practitioners" element={<PractitionerSearch />} />
                 <Route path="/search-coaches" element={<CoachSearch />} />
-                <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
+                {CreateTestAccounts && <Route path="/create-test-accounts" element={<CreateTestAccounts />} />}
                 {/* Retour FedaPay : identifiant du paiement en chemin (FedaPay ajoute ?id=&status=) ; l'ancienne forme reste servie */}
                 <Route path="/payment/callback/:paymentId" element={<PaymentCallback />} />
                 <Route path="/payment/callback" element={<PaymentCallback />} />

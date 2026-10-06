@@ -93,7 +93,7 @@ describe('Security regressions (real PostgreSQL)', () => {
   it('masks notes in list/detail/confirm/cancel/export while preserving practitioner access', async () => {
     const a = await appointment('awaiting_confirmation');
     const b = await appointment('confirmed');
-    for (const url of ['/api/appointments', `/api/appointments/${a.id}`, '/api/medical/export']) {
+    for (const url of ['/api/appointments', '/api/appointments/page', `/api/appointments/${a.id}`, '/api/medical/export']) {
       const res = await app.inject({ method: 'GET', url, headers: auth(patient) });
       expect(res.statusCode).toBe(200);
       expect(res.body).not.toContain('PRIVATE_SENTINEL');
@@ -105,6 +105,26 @@ describe('Security regressions (real PostgreSQL)', () => {
       expect(res.statusCode).toBe(200);
       expect(res.json().internal_notes).toBeNull();
     }
+  });
+
+  it('paginates beyond 200 appointments without leaking another account or internal notes', async () => {
+    await db.runAs(SERVICE_CONTEXT, trx => trx.insertInto('appointments').values(Array.from({ length: 205 }, () => ({
+      patient_id: patient.user.id, practitioner_id: practitionerId, date: '2098-01-01', time: '09:00',
+      patient_name: 'Audit patient', practitioner_name: 'Audit practitioner', specialty: 'Généraliste', reason: 'Audit pagination', address: 'Cotonou',
+      status: 'confirmed' as const, internal_notes: 'PRIVATE_PAGINATION',
+    }))).execute());
+    const base = '/api/appointments/page?view=patient&from=2098-01-01&to=2098-01-01&limit=200';
+    const first = await app.inject({ method: 'GET', url: base, headers: auth(patient) });
+    const second = await app.inject({ method: 'GET', url: `${base}&offset=200`, headers: auth(patient) });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().count).toBe(205);
+    expect(first.json().data).toHaveLength(200);
+    expect(second.json().data).toHaveLength(5);
+    const ids = new Set(first.json().data.map((a: { id: string }) => a.id));
+    expect(second.json().data.every((a: { id: string }) => !ids.has(a.id))).toBe(true);
+    expect(first.body + second.body).not.toContain('PRIVATE_PAGINATION');
+    const forbidden = await app.inject({ method: 'GET', url: base, headers: auth(other) });
+    expect(forbidden.json()).toEqual({ data: [], count: 0 });
   });
 
   it.each(['banned_until', 'deleted_at'] as const)('refuses %s accounts on OTP, refresh, password and protected/optional routes', async (column) => {

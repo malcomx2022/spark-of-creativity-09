@@ -102,13 +102,30 @@ export class AppointmentsService {
   // ---------------------------------------------------------------------------
   async list(userId: string, q: ListAppointmentsQuery) {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
-      const practitioner = await trx.selectFrom('practitioners').select('id').where('user_id', '=', userId).executeTakeFirst();
-      let query = trx.selectFrom('appointments').selectAll().where((eb) => (practitioner ? eb.or([eb('patient_id', '=', userId), eb('practitioner_id', '=', practitioner.id)]) : eb('patient_id', '=', userId)));
-      if (q.status === 'active') query = query.where('status', 'in', ACTIVE_STATUSES as Appointment['status'][]);
-      else if (q.status) query = query.where('status', '=', q.status as Appointment['status']);
-      if (q.from) query = query.where('date', '>=', q.from);
-      if (q.to) query = query.where('date', '<=', q.to);
-      return (await query.orderBy('date', 'desc').orderBy('time', 'desc').limit(q.limit).execute()).map((a) => appointmentResponse(a, userId));
+      const query = await this.ownAppointments(trx, userId, q);
+      return (await query.selectAll().orderBy('date', 'desc').orderBy('time', 'desc').orderBy('id', 'desc').limit(q.limit).offset(q.offset).execute()).map((a) => appointmentResponse(a, userId));
+    });
+  }
+
+  private async ownAppointments(trx: Transaction<DB>, userId: string, q: ListAppointmentsQuery) {
+    const practitioner = await trx.selectFrom('practitioners').select('id').where('user_id', '=', userId).executeTakeFirst();
+    let query = trx.selectFrom('appointments');
+    if (q.view === 'patient') query = query.where('patient_id', '=', userId);
+    else if (q.view === 'practitioner') query = query.where('practitioner_id', '=', practitioner?.id ?? '00000000-0000-0000-0000-000000000000');
+    else query = query.where(eb => practitioner ? eb.or([eb('patient_id', '=', userId), eb('practitioner_id', '=', practitioner.id)]) : eb('patient_id', '=', userId));
+    if (q.status === 'active') query = query.where('status', 'in', ACTIVE_STATUSES as Appointment['status'][]);
+    else if (q.status) query = query.where('status', '=', q.status as Appointment['status']);
+    if (q.from) query = query.where('date', '>=', q.from);
+    if (q.to) query = query.where('date', '<=', q.to);
+    return query;
+  }
+
+  async listPage(userId: string, q: ListAppointmentsQuery) {
+    return this.database.runAs({ role: 'service_role', userId }, async trx => {
+      const query = await this.ownAppointments(trx, userId, q);
+      const count = await query.select(eb => eb.fn.countAll<string>().as('count')).executeTakeFirstOrThrow();
+      const rows = await query.selectAll().orderBy('date', 'desc').orderBy('time', 'desc').orderBy('id', 'desc').limit(q.limit).offset(q.offset).execute();
+      return { data: rows.map(row => appointmentResponse(row, userId)), count: Number(count.count) };
     });
   }
 

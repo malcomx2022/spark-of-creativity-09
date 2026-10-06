@@ -26,6 +26,8 @@ export const listAppointmentsQuerySchema = z.object({
   from: date.optional(),
   to: date.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  view: z.enum(['patient', 'practitioner']).optional(),
 });
 export type ListAppointmentsQuery = z.infer<typeof listAppointmentsQuerySchema>;
 

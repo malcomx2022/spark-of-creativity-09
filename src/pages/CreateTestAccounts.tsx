@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, errorMessage } from "@/lib/api";
-import type { CreateTestAccountsResponse } from "@/types/api-responses";
 import { useNavigate } from "react-router-dom";
 import { Loader2, LogOut, RefreshCw } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
@@ -14,7 +13,7 @@ export default function CreateTestAccounts() {
   const navigate = useNavigate();
   const [isCreating, setIsCreating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  const [accounts, setAccounts] = useState<any>(null);
+  const [accounts, setAccounts] = useState<Record<string, { email: string; password: string; created: boolean }> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const createAccounts = async () => {
@@ -23,20 +22,20 @@ export default function CreateTestAccounts() {
     try {
       // Les comptes de test sont créés côté serveur (jeu de données de développement de l'API) :
       // cette page ne fait plus que tester la connexion avec les identifiants documentés.
-      const data: CreateTestAccountsResponse = {
+      const data = {
         success: true,
         accounts: {
           patient: { email: 'patient@test.com', password: 'Test1234!', created: false },
-          practitioner: { email: 'praticien@test.com', password: 'Test1234!', created: false },
+          praticien: { email: 'praticien@test.com', password: 'Test1234!', created: false },
+          coach: { email: 'coach@test.com', password: 'Test1234!', created: false },
           admin: { email: 'admin@test.com', password: 'Test1234!', created: false },
         },
-      } as unknown as CreateTestAccountsResponse;
+      };
 
-      console.log('Accounts created:', data);
-      setAccounts(data?.accounts || []);
+      setAccounts(data.accounts);
       toast({
-        title: "Comptes créés avec succès !",
-        description: "Les comptes de test sont maintenant disponibles.",
+        title: "Identifiants de développement affichés",
+        description: "Les comptes doivent avoir été initialisés côté serveur.",
       });
     } catch (error: any) {
       console.error('Error creating accounts:', error);
@@ -138,7 +137,7 @@ export default function CreateTestAccounts() {
                 ) : (
                   <>
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    Créer/Actualiser les comptes
+                    Afficher les comptes de développement
                   </>
                 )}
               </Button>
