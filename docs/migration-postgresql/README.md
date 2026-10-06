@@ -16,7 +16,7 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 | [07-INSTALLATION-VPS.md](07-INSTALLATION-VPS.md) | Installation du VPS pas à pas : clé SSH, dépendances, clé de déploiement GitHub, `.env`, DNS, démarrage de la pile, import des données, GitHub Actions, bascule, exploitation et dépannage |
 | [08-REVUE-FEDAPAY.md](08-REVUE-FEDAPAY.md) | Revue de bout en bout de l'intégration FedaPay (client, webhooks, reversements, remboursements, réconciliation, front) : constats par sévérité avec fichier et ligne, écarts avec la documentation FedaPay, plan de correction en trois lots |
 | [09-CAMPAGNE-SANDBOX.md](09-CAMPAGNE-SANDBOX.md) | Campagne de recette FedaPay en mode test avant tout paiement réel : bascule sandbox outillée, treize scénarios avec états attendus, commandes d'observation, tableau de résultats, retour en live |
-| [10-PLAN-CORRECTIONS-REVUE.md](10-PLAN-CORRECTIONS-REVUE.md) | Plan du 06/10/2026 : confidentialité des rendez-vous, comptes et jetons, temps réel, fichiers, qualité et sauvegardes ; critères de validation et suivi Claude Code (corrections à faire) |
+| [10-PLAN-CORRECTIONS-REVUE.md](10-PLAN-CORRECTIONS-REVUE.md) | Plan du 06/10/2026 : confidentialité des rendez-vous, comptes et jetons, temps réel, fichiers, qualité et sauvegardes ; critères de validation et suivi Claude Code (lots applicatifs validés localement) |
 
 ## Outillage livré (testé)
 

@@ -1,7 +1,7 @@
 # 10 — Plan de correction après revue du projet
 
 Date : 6 octobre 2026. Base examinée : `d998e78732b9b94a1cee73800fc8497914076ed0`.
-Statut : **plan préparé ; corrections non implémentées**.
+Statut : **lots applicatifs 1 à 5 implémentés et validés localement ; livraison à suivre (§6)**.
 
 ## 1. Objectif et continuité des travaux
 
@@ -15,7 +15,7 @@ Consignes Claude Code : `../../CLAUDE.md`, `../../api/CLAUDE.md`,
 `../../src/CLAUDE.md`, `../../deploy/vps/CLAUDE.md`.
 Aucun de ces fichiers n'existait dans la version examinée ; ils ont été ajoutés pour ce chantier.
 
-Les constats de code ci-dessous sont issus d'une lecture statique. Les scénarios de
+Les constats initiaux de code ci-dessous sont issus d'une lecture statique. Les scénarios de
 reproduction doivent être exécutés avant de déclarer un correctif validé.
 
 ## 2. Référence de validation locale
@@ -36,13 +36,13 @@ Ne pas confondre cette référence avec les validations historiques ou l'état d
 
 | Lot | Priorité | Dépendances | État |
 |---|---|---|---|
-| 0 — Base et reproduction | Préparation | Aucune | À faire |
-| 1 — Confidentialité des rendez-vous | Haute | 0 | À faire |
-| 2 — État des comptes et sessions | Haute | 0 | À faire |
-| 3 — Atomicité des jetons | Haute | 0, coordination avec 2 | À faire |
-| 4 — Cycle de vie temps réel | Moyenne | 2 et 3 | À faire |
-| 5 — Validation des fichiers | Moyenne | 0 | À faire |
-| 6 — Qualité, sauvegardes et recette | Moyenne | 1 à 5 pour la recette finale | À faire |
+| 0 — Base et reproduction | Préparation | Aucune | Validé localement |
+| 1 — Confidentialité des rendez-vous | Haute | 0 | Validé localement |
+| 2 — État des comptes et sessions | Haute | 0 | Validé localement |
+| 3 — Atomicité des jetons | Haute | 0, coordination avec 2 | Validé localement |
+| 4 — Cycle de vie temps réel | Moyenne | 2 et 3 | Validé localement |
+| 5 — Validation des fichiers | Moyenne | 0 | Validé localement |
+| 6 — Qualité, sauvegardes et recette | Moyenne | 1 à 5 pour la recette finale | Partiel |
 
 Livrer des changements distincts par lot. Les sauvegardes et le nettoyage lint ciblé
 peuvent commencer avant la fin des corrections de sécurité. Aucune estimation de
@@ -228,13 +228,35 @@ Un lot peut être implémenté sans être validé ; une recette sandbox n'est pa
 
 | Lot | État | Preuve / commit | Commandes et résultats | Limites / prochaine action |
 |---|---|---|---|---|
-| 0 | À faire | — | Référence §2 | Démarrer PostgreSQL de test |
-| 1 | À faire | — | — | Reproduire la fuite des notes |
-| 2 | À faire | — | — | Fixtures suspendu/supprimé |
-| 3 | À faire | — | — | Reproduction concurrente et coordination onglets |
-| 4 | À faire | — | — | Définir le délai de retrait des droits |
-| 5 | À faire | — | — | Démontrer les contraintes avec MinIO |
-| 6 | À faire | — | — | Choisir RPO/RTO et stockage hors site |
+| 0 | Validé localement | PostgreSQL 16 dédié, port 5435 | Chargement des 5 SQL ; 85 tests existants réussis avant durcissement S3 | Aucun accès aux bases existantes |
+| 1 | Validé localement | Tests de notes sentinelles | Liste/détail/confirmation/annulation/export ; accès praticien et refus tiers | Projection commune conservée |
+| 2 | Validé localement | Fixtures suspendu/supprimé | OTP, refresh, login, gardes obligatoire et optionnelle | Verrouillage mot de passe distinct de la suspension |
+| 3 | Validé localement | Requêtes concurrentes PostgreSQL | Refresh : un succès, famille révoquée ; reset/email : un consommateur | Web Locks entre onglets lorsqu'il est disponible |
+| 4 | Validé localement | E2e Socket.IO + test unitaire LISTEN | Expiration, retrait de rôle, suspension, reconnexion ; aucun listener dupliqué | Réévaluation toutes les 5 s par défaut, hors durée des requêtes DB |
+| 5 | Validé localement | MinIO réel + tests API | Taille signée, quarantaine, validation, publication stable et purge | Droits HEAD/GET/PUT/DELETE/LIST nécessaires |
+| 6 | Partiel | CI unitaire et lint ciblé | Contrôles locaux réussis | Sauvegarde complète, copie hors site, restauration, RPO/RTO restent à faire |
 
-Le présent changement livre uniquement le plan, les consignes Claude Code et les
-liens documentaires. Il n'applique aucune migration ni correction applicative.
+## 6. Livraison applicative du 6 octobre 2026
+
+Les corrections applicatives sont livrées sans migration SQL et sans modification
+des dépendances ou des fichiers de verrouillage. Les contrats JSON/cookies/Bearer,
+les routes, les chemins finaux S3 et les règles FedaPay sont conservés.
+
+- Front : 25 tests, typecheck, build et lint `src/lib/api/ --max-warnings=0` réussis.
+- API : 17 tests unitaires, typecheck et build réussis.
+- Commit applicatif : `39c822f` (`fix: secure patient data sessions realtime and validated S3 uploads`).
+- Intégration : 101 tests sur 10 suites réussis lors de la validation complète ;
+  après les derniers ajustements, 25 tests ciblés réussis sur les 3 suites concernées,
+  dont 4 essais MinIO réels. Les autres suites n’ont pas été modifiées.
+- CI : tests unitaires API ajoutés, lint du socle front bloquant ; lint global
+  historique toujours informatif. Suite S3 réelle optionnelle en CI, exécutée localement.
+- Déploiement : workflow manuel existant, désormais épinglé au SHA de son lancement.
+  Résultat à consigner après publication ; aucune livraison VPS supposée à ce stade.
+- Exploitation hors correctifs applicatifs : sauvegarde MinIO/hors site, restauration,
+  choix RPO/RTO et résorption globale du lint restent à réaliser (lot 6).
+
+Retour arrière applicatif : relancer la procédure de déploiement sur le commit
+précédent avec l'entrée `revision` (SHA complet, ancêtre de `main`) du workflow actuel ;
+aucune migration ne limite ce retour. Les objets déjà publiés et les
+chemins historiques sont conservés. Des envois PUT commencés avant le déploiement
+peuvent devoir être recommencés : les anciennes URLs n'utilisent pas la quarantaine.

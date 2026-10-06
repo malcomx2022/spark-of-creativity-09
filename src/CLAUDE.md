@@ -17,3 +17,7 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
 - Étendre les tests Vitest existants ; couvrir reconnexion, changement d'utilisateur,
   refresh concurrent et erreurs d'envoi réelles lorsque ces parcours changent.
 - Faire passer typecheck, tests et build ; relever les erreurs lint restantes avec leur périmètre.
+
+Validation du chantier : 25 tests front, typecheck/build et lint de `lib/api/` réussis.
+Ce socle est contrôlé par un lint bloquant en CI ; les erreurs héritées des autres
+écrans restent suivies séparément dans le document 10.

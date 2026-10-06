@@ -7,10 +7,11 @@ quitter Supabase, et lister précisément ce qui reste à faire, par lot, avant 
 Complément du 6 octobre 2026 : le [plan de correction de la revue](10-PLAN-CORRECTIONS-REVUE.md)
 décrit les défauts restant à corriger dans les notes internes, les comptes/sessions,
 le temps réel et les fichiers, ainsi que la qualité et les sauvegardes. Les lots
-historiques ci-dessous gardent leur état ; ce complément n'annonce aucun correctif livré.
-La référence locale actualisée est : 20 tests front et 16 tests unitaires API réussis,
-typechecks/builds réussis ; 8 suites e2e (85 tests) non validées faute de PostgreSQL
-local disponible ; lint à 178 erreurs et 46 avertissements.
+historiques ci-dessous gardent leur état ; voir le document 10 pour la livraison des correctifs.
+Après corrections : 25 tests front et 17 tests unitaires API réussis, typechecks/builds
+réussis, suites e2e exécutées sur PostgreSQL 16 isolé et essais S3 réels sur MinIO.
+Le socle `src/lib/api/` passe un lint bloquant ; le lint global reste informatif.
+Les nombres et preuves détaillés figurent dans le document 10.
 
 ## 1. Ce qui est aligné
 

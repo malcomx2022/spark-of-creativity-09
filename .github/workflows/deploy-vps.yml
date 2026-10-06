@@ -9,6 +9,10 @@ on:
       confirm:
         description: "Tapez DEPLOYER pour confirmer"
         required: true
+      revision:
+        description: "SHA complet à déployer (vide : commit du lancement ; permet un rollback)"
+        required: false
+        type: string
   # push:
   #   branches: [main]
 
@@ -20,6 +24,8 @@ jobs:
   deploy:
     if: github.event_name == 'push' || github.event.inputs.confirm == 'DEPLOYER'
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_REVISION: ${{ inputs.revision || github.sha }}
     steps:
       - name: Mettre à jour le dépôt et relancer la pile
         uses: appleboy/ssh-action@v1.0.3
@@ -28,11 +34,16 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          envs: DEPLOY_REVISION
           script: |
             set -e
+            [ "${#DEPLOY_REVISION}" -eq 40 ] || { echo "SHA invalide"; exit 1; }
+            case "$DEPLOY_REVISION" in *[!0-9a-f]*) echo "SHA invalide"; exit 1;; esac
             cd "${{ secrets.VPS_APP_DIR }}"
             git fetch origin main
-            git reset --hard origin/main
+            # Déployer exactement le commit du lancement, même si main avance ensuite.
+            git merge-base --is-ancestor "$DEPLOY_REVISION" origin/main
+            git reset --hard "$DEPLOY_REVISION"
             cd deploy/vps
             docker compose build --pull web api worker
             docker compose up -d --remove-orphans

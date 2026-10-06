@@ -6,7 +6,8 @@ Lire `README.md`, puis les consignes du dossier modifié : `api/CLAUDE.md`,
 `src/CLAUDE.md`, `deploy/vps/CLAUDE.md`.
 Le chantier actif est décrit dans
 `docs/migration-postgresql/10-PLAN-CORRECTIONS-REVUE.md` (6 octobre 2026).
-Ce plan est préparé ; les corrections ne sont pas encore implémentées.
+Les lots applicatifs 1 à 5 sont implémentés et validés localement. Le suivi du
+document 10 distingue les contrôles CI, la livraison et les travaux d’exploitation restants.
 
 Les demandes explicites de l'utilisateur priment sur ces consignes. Respecter les
 modifications locales et limiter chaque changement au lot demandé.

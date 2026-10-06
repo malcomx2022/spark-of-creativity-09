@@ -15,7 +15,7 @@ de la base locale et les routes ; plan actif :
 - Conserver la signature sur le corps brut, l'idempotence des webhooks, le ledger,
   les retenues et la réconciliation FedaPay. Les tests utilisent les fournisseurs factices.
 
-## Corrections attendues
+## Corrections implémentées et points à préserver
 
 - Lot 1 : projection des rendez-vous selon l'appelant, sur lectures et mutations.
 - Lot 2 : contrôle commun de compte actif avant émission des sessions ; vérifier
@@ -31,7 +31,9 @@ de la base locale et les routes ; plan actif :
 ## Validation et suivi
 
 Étendre les suites existantes dans `test/` pour les règles d'accès et les transactions
-réelles. Les tests de concurrence doivent créer un recouvrement réel des requêtes,
+réelles. Les tests de concurrence créés dans `test/security-regressions.e2e-spec.ts` et les
+essais S3 isolés de `test/storage-s3.e2e-spec.ts` sont des références à conserver.
+Les tests de concurrence doivent créer un recouvrement réel des requêtes,
 pas seulement rejouer deux requêtes séquentielles.
 Garder les tests unitaires dans `src/**/*.spec.ts`.
 Une évolution SQL doit être applicable à une base déjà initialisée et testée aussi

@@ -19,3 +19,7 @@ Les consignes de `../../CLAUDE.md` s'appliquent. Références :
   guide d'installation lorsque le lot change leurs prérequis. Ne pas versionner de secrets.
 - Tester les commandes et scripts sur un environnement isolé. Un changement de
   documentation ou un plan n'autorise pas une bascule, un reset distant ou un paiement live.
+
+Le workflow déploie désormais le SHA exact de son lancement (`github.sha`).
+Le chantier applicatif du 6 octobre 2026 ne nécessite aucune migration SQL.
+Le suivi du document 10 doit préciser le résultat réel du workflow de déploiement.

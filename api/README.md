@@ -88,6 +88,32 @@ fonctionnent (`DatabaseService.runAs`).
 
 ## Démarrer en local
 
+### Durcissement du 6 octobre 2026
+
+Les réponses de rendez-vous et l'export patient masquent les notes internes pour le
+patient. Les comptes suspendus/supprimés sont refusés à l'émission des sessions et
+sur les routes authentifiées. Les refresh tokens sont sérialisés par famille ; les
+jetons de vérification/reset sont consommés atomiquement. Aucun changement de schéma.
+
+Socket.IO ferme la connexion à l'expiration du JWT et réévalue l'état du compte,
+les rôles et les rooms toutes les `REALTIME_AUTH_CHECK_MS` (5 000 ms par défaut).
+Le front reconnecte effectivement le socket après rotation. Les navigateurs qui
+supportent Web Locks coordonnent aussi les rotations entre onglets ; les autres
+gardent le verrou par onglet et la politique serveur stricte de réutilisation.
+
+Les URLs PUT signent `Content-Length` et ciblent `_pending/<userId>/…`. Le contrat
+`filePath` reste le chemin final. `POST /files` lit les octets avec une limite de
+10 Mo, vérifie taille/type et signatures de format, puis publie une copie stable.
+Les objets `_pending/` ne sont pas téléchargeables par l'API et ceux de plus de 24 h
+sont purgés par `maintenance.cleanup`. Prévoir les droits S3 HEAD/GET/PUT/DELETE/LIST
+sur les trois buckets. Les objets historiques et documents KYC restent accessibles.
+La limite JSON Fastify est de 22 Mo pour les ensembles de documents KYC en base64.
+
+Les essais S3 réels utilisent un bucket temporaire, créé puis supprimé :
+`S3_TEST_ENDPOINT=http://127.0.0.1:9010 S3_TEST_ACCESS_KEY=… S3_TEST_SECRET_KEY=… npm run test:e2e -- --runTestsByPath test/storage-s3.e2e-spec.ts`.
+Utiliser uniquement un stockage de test dédié ; sans `S3_TEST_ENDPOINT`, cette suite
+est ignorée explicitement. Le guide et le suivi détaillés sont dans le document 10.
+
 ```bash
 # 1. Base : PostgreSQL 16, puis dans l'ordre
 psql -U postgres -c "CREATE DATABASE domicares"
