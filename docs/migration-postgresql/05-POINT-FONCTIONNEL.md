@@ -4,6 +4,14 @@
 vérifier que la base, le back-end, le front et l'outillage sont cohérents entre eux pour
 quitter Supabase, et lister précisément ce qui reste à faire, par lot, avant la bascule.
 
+Complément du 6 octobre 2026 : le [plan de correction de la revue](10-PLAN-CORRECTIONS-REVUE.md)
+décrit les défauts restant à corriger dans les notes internes, les comptes/sessions,
+le temps réel et les fichiers, ainsi que la qualité et les sauvegardes. Les lots
+historiques ci-dessous gardent leur état ; ce complément n'annonce aucun correctif livré.
+La référence locale actualisée est : 20 tests front et 16 tests unitaires API réussis,
+typechecks/builds réussis ; 8 suites e2e (85 tests) non validées faute de PostgreSQL
+local disponible ; lint à 178 erreurs et 46 avertissements.
+
 ## 1. Ce qui est aligné
 
 | Domaine | État | Preuve |

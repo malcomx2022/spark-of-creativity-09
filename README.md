@@ -43,6 +43,10 @@ CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml
 
 ## Documentation
 
+- `CLAUDE.md` et les consignes locales `api/CLAUDE.md`, `src/CLAUDE.md`,
+  `deploy/vps/CLAUDE.md` : conventions et continuité du travail avec Claude Code.
+- `docs/migration-postgresql/10-PLAN-CORRECTIONS-REVUE.md` : plan de correction
+  de la revue du 6 octobre 2026, critères de validation et suivi (non implémenté).
 - `docs/migration-postgresql/` : état des lieux, récupération des données Supabase,
   rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement, et
   `07-INSTALLATION-VPS.md` (installation et déploiement du VPS pas à pas).
