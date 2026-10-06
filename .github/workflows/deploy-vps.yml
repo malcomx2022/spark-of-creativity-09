@@ -40,7 +40,6 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           timeout: 60s
           command_timeout: 30m
           envs: DEPLOY_REVISION,DEPLOY_APP_DIR
