@@ -2,10 +2,10 @@ name: Web CI
 
 on:
   pull_request:
-    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'tsconfig*.json', 'tailwind.config.ts', '.github/workflows/web-ci.yml']
+    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', '.github/workflows/web-ci.yml']
   push:
     branches: [main]
-    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'tsconfig*.json', 'tailwind.config.ts', '.github/workflows/web-ci.yml']
+    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', '.github/workflows/web-ci.yml']
 
 jobs:
   build:
@@ -18,11 +18,13 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Dépendances (avis élevés et critiques bloquants)
+        run: npm audit --audit-level=high
       - name: "Lint (informatif, erreurs any héritées des écrans d'origine)"
         run: npm run lint
         continue-on-error: true
       - name: Lint bloquant du socle API et de ses tests
-        run: npx eslint src/lib/api --max-warnings=0
+        run: npx eslint src/lib/api src/components/PwaStatus.tsx src/lib/__tests__/pwa-worker.test.ts --max-warnings=0
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.app.json
       - name: Tests

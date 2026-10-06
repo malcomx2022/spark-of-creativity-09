@@ -1,6 +1,21 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import type { Plugin } from "vite";
+const pwaVersion: Plugin = {
+  name: 'domicares-pwa-version',
+  writeBundle(options, bundle) {
+    const file = path.resolve(options.dir || 'dist', 'sw.js');
+    const hash = createHash('sha256').update(Object.keys(bundle).sort().join('\n'));
+    for (const publicFile of ['sw.js', 'offline.html', 'manifest.webmanifest', 'pwa/icon-192.png', 'pwa/icon-512.png', 'pwa/icon-maskable.png', 'pwa/apple-touch-icon.png']) {
+      hash.update(readFileSync(path.resolve('public', publicFile)));
+    }
+    const version = hash.digest('hex').slice(0, 16);
+    writeFileSync(file, readFileSync(file, 'utf8').replace('__BUILD_VERSION__', version));
+  },
+};
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -13,7 +28,7 @@ export default defineConfig(({ mode }) => ({
       "/socket.io": { target: process.env.VITE_DEV_API_TARGET || "http://localhost:3000", ws: true, changeOrigin: true },
     },
   },
-  plugins: [react()],
+  plugins: [react(), pwaVersion],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
