@@ -18,7 +18,7 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   refresh concurrent et erreurs d'envoi réelles lorsque ces parcours changent.
 - Faire passer typecheck, tests et build ; relever les erreurs lint restantes avec leur périmètre.
 
-Validation du chantier : 36 tests front ; typecheck/build réussis. Le lint actif
+Validation du chantier : 39 tests front ; typecheck/build réussis. Le lint actif
 est bloquant en CI : zéro erreur et 46 avertissements hérités visibles. Les archives
 Supabase et les artefacts sont explicitement exclus, sans modifier leurs fichiers.
 Ne pas ajouter des dépendances d'effets de paiement sans vérifier leurs déclenchements.

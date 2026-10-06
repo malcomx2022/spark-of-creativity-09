@@ -1,7 +1,7 @@
 # Lint et compatibilité Safari/iOS — 6 octobre 2026
 
 Suite du document 11, à partir de `main` après fusion de la PR 83.
-Code applicatif : commit `8391d32`.
+Code applicatif initial : commit `8391d32` ; complément de normalisation des coordonnées dans la même PR.
 
 ## Corrections livrées
 
@@ -32,6 +32,12 @@ Code applicatif : commit `8391d32`.
   textarea lisible, chat dimensionné en `dvh`. Le bandeau PWA réserve sa hauteur
   dans la page avec ResizeObserver afin de ne pas masquer les dernières actions.
 
+- **Coordonnées privées :** normalisation des `numeric` PostgreSQL reçus sous forme
+  de chaînes avant l'affichage du profil praticien/coach. Évite l'exception `toFixed
+  is not a function` dans l'écran de localisation ; zéro et valeurs nulles préservés,
+  valeurs non numériques remplacées par null. Trois tests de régression couvrent
+  ce contrat sans modifier la réponse de l'API.
+
 ## Contrôles reproductibles
 
 ```sh
@@ -56,7 +62,7 @@ Les services API, Socket.IO et FedaPay sont isolés et simulés. Ces tests ne
 valident donc ni un paiement réel ni une livraison push Apple.
 
 Résultats locaux : typechecks front/API réussis, build Vite réussi,
-**36 tests Vitest** et **31 tests unitaires API** réussis. Lint : **0 erreur,
+**39 tests Vitest** et **31 tests unitaires API** réussis. Lint : **0 erreur,
 46 avertissements**. `npm audit` front : **0 vulnérabilité**, outils de test inclus.
 Les résultats Chromium et WebKit CI sont ajoutés après exécution.
 

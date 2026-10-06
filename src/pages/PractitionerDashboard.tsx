@@ -1,4 +1,4 @@
-import type { PractitionerProfile } from "@/types/practitioner";
+import { getOwnPractitionerProfile } from "@/lib/api/practitioner-profile";
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,7 +66,7 @@ export default function PractitionerDashboard() {
     queryFn: async () => {
       if (!practitionerUserId) return null;
       try {
-        return await api.get<PractitionerProfile>('/practitioners/me');
+        return await getOwnPractitionerProfile();
       } catch (error) {
         if (isApiError(error, 404)) return null;
         throw error;

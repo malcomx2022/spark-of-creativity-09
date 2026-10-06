@@ -1,4 +1,4 @@
-import type { PractitionerProfile } from "@/types/practitioner";
+import { getOwnPractitionerProfile } from "@/lib/api/practitioner-profile";
 import { useState, useMemo, lazy, Suspense } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,7 +60,7 @@ export default function CoachDashboard() {
       if (!user?.id) return null;
 
       try {
-        const me = await api.get<PractitionerProfile>('/practitioners/me');
+        const me = await getOwnPractitionerProfile();
         return me.practitioner_type === 'coach_sportif' ? me : null;
       } catch (error) {
         if (isApiError(error, 404)) return null;

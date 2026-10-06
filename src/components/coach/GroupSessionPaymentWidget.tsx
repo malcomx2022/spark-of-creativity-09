@@ -1,11 +1,3 @@
-type CurrentSession = {
-  id: string; session_name: string; scheduled_date: string; start_time: string; status: string | null;
-  max_participants: number; current_participants: number | null; price_per_person: number;
-  coach: { id: string; verified?: boolean } | null;
-  spots_remaining?: number;
-  my_registration?: { id: string; payment_status: string | null; joined_at: string } | null;
-};
-
 import { useEffect, useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -25,6 +17,14 @@ import { clearPersistedPaymentState } from '@/lib/payment-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+
+type CurrentSession = {
+  id: string; session_name: string; scheduled_date: string; start_time: string; status: string | null;
+  max_participants: number; current_participants: number | null; price_per_person: number;
+  coach: { id: string; verified?: boolean } | null;
+  spots_remaining?: number;
+  my_registration?: { id: string; payment_status: string | null; joined_at: string } | null;
+};
 
 type PaymentMethod = 'mtn' | 'moov';
 

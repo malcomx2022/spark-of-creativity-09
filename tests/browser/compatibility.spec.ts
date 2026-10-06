@@ -40,7 +40,7 @@ for (const role of ['patient', 'practitioner', 'coach', 'admin']) {
       const path = new URL(route.request().url()).pathname;
       let data: unknown = [];
       if (path.endsWith('/auth/me')) data = { user, role, adminRoles: role === 'admin' ? ['super_admin'] : [], profile: { full_name: user.metadata.full_name } };
-      if (path.endsWith('/practitioners/me')) data = { id: 'test-practitioner', user_id: user.id, name: user.metadata.full_name, specialty: 'Généraliste', practitioner_type: role === 'coach' ? 'coach_sportif' : 'medecin', kyc_status: 'approved', can_accept_missions: true };
+      if (path.endsWith('/practitioners/me')) data = { id: 'test-practitioner', user_id: user.id, name: user.metadata.full_name, specialty: 'Généraliste', practitioner_type: role === 'coach' ? 'coach_sportif' : 'medecin', kyc_status: 'approved', can_accept_missions: true, latitude: '6.37030000', longitude: '2.39120000' };
       if (path.endsWith('/appointments/page') || path.includes('/group-sessions')) data = { data: [], count: 0 };
       if (path.includes('/stats')) data = {};
       await route.fulfill({ json: data });
@@ -68,6 +68,11 @@ test('formulaire mobile : champs lisibles et focus conservé', async ({ page, co
   await page.setViewportSize({ width: 390, height: 450 });
   await expect(page.getByRole('button', { name: /se connecter/i }).last()).toBeVisible();
   await checkLayout(page);
+  await page.goto('/contact');
+  const message = page.locator('textarea');
+  await message.fill('Test de lisibilité et de focus Safari');
+  await expect(message).toBeFocused();
+  expect(await message.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
 });
 
 test('PWA : manifeste, fichiers publics et repli privé hors ligne', async ({ page, context }) => {
