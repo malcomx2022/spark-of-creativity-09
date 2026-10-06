@@ -6,7 +6,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 2,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
-  use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
+  use: { baseURL: 'http://127.0.0.1:4173', serviceWorkers: 'block', trace: 'retain-on-failure' },
   projects: [
     { name: 'webkit-iphone', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
     { name: 'webkit-ipad', use: { ...devices['iPad Pro 11'], browserName: 'webkit' } },
