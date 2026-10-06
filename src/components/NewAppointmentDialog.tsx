@@ -121,10 +121,10 @@ function DatePopover({ value, onChange, preselectedPractitioner, practitionerAva
 }
 
 // Système de queue de toasts pour éviter l'affichage simultané
-const toastQueue: Array<{ id: string; toast: any }> = [];
+const toastQueue: Array<{ id: string; toast: Parameters<typeof toast>[0] }> = [];
 let isShowingToast = false;
 
-const showToast = (toastConfig: any) => {
+const showToast = (toastConfig: Parameters<typeof toast>[0]) => {
   const id = Math.random().toString(36);
   toastQueue.push({ id, toast: toastConfig });
 
@@ -170,7 +170,7 @@ interface PreselectedPractitioner {
 }
 
 interface NewAppointmentDialogProps {
-  onSubmit: (data: CreateAppointmentData) => Promise<any>;
+  onSubmit: (data: CreateAppointmentData) => Promise<{ id: string } | undefined>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   preselectedPractitioner?: PreselectedPractitioner;

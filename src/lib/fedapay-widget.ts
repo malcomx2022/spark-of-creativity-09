@@ -16,7 +16,7 @@ export interface FedaPayCheckoutOptions {
     id?: number;
     amount: number;
     description: string;
-    custom_metadata?: Record<string, any>;
+    custom_metadata?: Record<string, unknown>;
   };
   customer?: {
     email?: string;
@@ -36,13 +36,13 @@ export interface FedaPayCheckoutOptions {
 }
 
 export interface FedaPayCompletePayload {
-  reason: number;
+  reason: number | string;
   transaction: {
     id: number;
     status: string;
     amount: number;
     description: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 

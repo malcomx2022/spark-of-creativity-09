@@ -100,7 +100,7 @@ export async function subscribeToPush(userId: string): Promise<boolean> {
     const registration = await registerServiceWorker();
 
     // Subscribe to push
-    const subscription = await (registration as any).pushManager.subscribe({
+    const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(await getVapidPublicKey()) as unknown as BufferSource,
     });

@@ -199,3 +199,25 @@ All colors MUST be HSL.
     50% { transform: translateY(-10px); }
   }
 }
+
+/* Zones sûres des applications iOS installées, y compris en paysage. */
+#root {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--pwa-banner-height, 0px));
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.app-header {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+@media (max-width: 767px) {
+  /* Safari zoome les champs sous 16 px lors du focus. Garder le zoom utilisateur disponible. */
+  input, textarea, select { font-size: max(16px, 1em); }
+}
+
+.app-pwa-banner {
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+}

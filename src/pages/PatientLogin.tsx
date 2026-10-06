@@ -110,13 +110,13 @@ export default function PatientLogin() {
       toast(AUTH_MESSAGES.LOGIN_SUCCESS);
       navigateToDashboard(navigate, 'patient');
       setIsSubmitting(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         ...AUTH_MESSAGES.LOGIN_ERROR,
         description: isTimeoutError 
           ? error.message 
-          : (error.message || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription),
+          : ((error instanceof Error ? error.message : "") || AUTH_MESSAGES.LOGIN_ERROR.defaultDescription),
         variant: "destructive"
       });
       setIsSubmitting(false);

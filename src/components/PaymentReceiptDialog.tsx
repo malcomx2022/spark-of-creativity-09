@@ -89,7 +89,7 @@ export function PaymentReceiptDialog({ open, onOpenChange, payment }: PaymentRec
       financialData.push(['Montant net', formatAmount(netAmount, payment.currency)]);
       
       autoTable(doc, {
-        startY: (doc as any).lastAutoTable.finalY + 10,
+        startY: (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable.finalY + 10,
         head: [['Description', 'Montant']],
         body: financialData,
         theme: 'grid',

@@ -1,3 +1,4 @@
+import type { GroupSessionRow } from "@/hooks/useGroupSessions";
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,8 +8,8 @@ import { CreateGroupSessionDialog } from "@/components/coach/CreateGroupSessionD
 import { EditGroupSessionDialog } from "@/components/coach/EditGroupSessionDialog";
 
 interface SessionsTabProps {
-  coach: any;
-  sessions: any[];
+  coach: { id: string };
+  sessions: GroupSessionRow[];
   isLoadingSessions: boolean;
   onCancelSession: (sessionId: string) => void;
   onConfirmSession: (sessionId: string) => void;
@@ -21,7 +22,7 @@ export default function SessionsTab({
   onCancelSession,
   onConfirmSession,
 }: SessionsTabProps) {
-  const [editingSession, setEditingSession] = useState<any>(null);
+  const [editingSession, setEditingSession] = useState<GroupSessionRow>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [sessionsLimit, setSessionsLimit] = useState(10);
 

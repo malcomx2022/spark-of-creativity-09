@@ -1,3 +1,4 @@
+import type { ConsultationReport } from "@/hooks/useConsultationReports";
 import { useState, useMemo } from 'react';
 import { useConsultationReports } from '@/hooks/useConsultationReports';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,7 +40,7 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
   const [showAppointmentSelection, setShowAppointmentSelection] = useState(false);
   const [showReportForm, setShowReportForm] = useState(false);
   const [showReportDetail, setShowReportDetail] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [selectedReport, setSelectedReport] = useState<ConsultationReport & { patientName: string }>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<{
     id: string;
     patientName: string;
@@ -123,7 +124,7 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
     setShowReportForm(false);
   };
 
-  const handleViewReport = (report: any, patientName: string) => {
+  const handleViewReport = (report: ConsultationReport, patientName: string) => {
     setSelectedReport({ ...report, patientName });
     setShowReportDetail(true);
   };

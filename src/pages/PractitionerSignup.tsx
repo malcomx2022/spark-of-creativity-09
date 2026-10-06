@@ -460,9 +460,9 @@ export default function PractitionerSignup() {
   // Fonction de retry manuel de l'edge function
   const handleRetryEdgeFunction = async (
     userId: string,
-    profileData: any,
-    practitionerData: any,
-    documents: any
+    profileData: Parameters<typeof toPractitionerRegisterPayload>[0],
+    practitionerData: Parameters<typeof toPractitionerRegisterPayload>[1],
+    documents: Parameters<typeof toPractitionerRegisterPayload>[2]
   ) => {
     setIsSubmitting(true);
 

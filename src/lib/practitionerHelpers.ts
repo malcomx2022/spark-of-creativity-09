@@ -20,7 +20,7 @@ export const calculateRealDuration = (
   return defaultDuration;
 };
 
-export const calculateMonthlyTotalMinutes = (appointments: any[]) => {
+export const calculateMonthlyTotalMinutes = (appointments: Array<{ date: string; status: string; duration: number; consultation_started_at?: string; consultation_ended_at?: string }>) => {
   const now = new Date();
   return appointments
     .filter(apt => {

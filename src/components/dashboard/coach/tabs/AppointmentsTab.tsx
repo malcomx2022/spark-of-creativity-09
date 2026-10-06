@@ -1,3 +1,4 @@
+import type { Appointment } from "@/types/appointment";
 import { useState, useMemo } from "react";
 import { CardDescription, Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { AppointmentCard } from "@/components/AppointmentCard";
 import { Calendar } from "lucide-react";
 
 interface AppointmentsTabProps {
-  appointments: any[];
+  appointments: Appointment[];
   isLoadingAppointments: boolean;
   processingAppointment: string | null;
   onAcceptAppointment: (id: string) => void;

@@ -39,18 +39,6 @@ const initialFormData: GroupSessionFormData = {
   description: ""
 };
 
-// Helper pour extraire les erreurs Zod (compatible v3 et v4)
-function getZodErrors(error: unknown): Array<{ path: (string | number)[]; message: string }> {
-  if (error && typeof error === 'object') {
-    if ('issues' in error && Array.isArray((error as any).issues)) {
-      return (error as any).issues;
-    }
-    if ('errors' in error && Array.isArray((error as any).errors)) {
-      return (error as any).errors;
-    }
-  }
-  return [];
-}
 
 export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGroupSessionDialogProps) {
   const { toast } = useToast();
@@ -91,7 +79,7 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
       
       if (!validationResult.success) {
         // Collect all field errors
-        const zodErrors = getZodErrors(validationResult.error);
+        const zodErrors = validationResult.error.issues;
         const errors: Record<string, string> = {};
         zodErrors.forEach(err => {
           const field = String(err.path[0]);
@@ -131,11 +119,11 @@ export function EditGroupSessionDialog({ session, open, onOpenChange }: EditGrou
 
       queryClient.invalidateQueries({ queryKey: ['group-sessions'] });
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Erreur modification séance:", error);
       toast({
         title: "Erreur",
-        description: error.message || "Une erreur est survenue lors de la modification",
+        description: (error instanceof Error ? error.message : "") || "Une erreur est survenue lors de la modification",
         variant: "destructive"
       });
     } finally {

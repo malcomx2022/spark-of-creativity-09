@@ -262,7 +262,7 @@ export default function PractitionerMap({
     });
 
     // Setup global handler for practitioner selection from popup
-    (window as any).selectPractitioner = (id: string) => {
+    (window as Window & { selectPractitioner?: (id: string) => void }).selectPractitioner = (id: string) => {
       const practitioner = practitioners.find(p => p.id === id);
       if (practitioner) {
         setSelectedPractitioner(practitioner);

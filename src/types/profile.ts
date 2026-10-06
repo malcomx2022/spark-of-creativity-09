@@ -61,7 +61,7 @@ export interface TriageResult {
   urgency_level: string;
   message?: string;
   recommendations?: string[];
-  answers?: Record<string, any>;
+  answers?: Record<string, unknown>;
   created_at: string;
 }
 

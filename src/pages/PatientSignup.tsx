@@ -344,14 +344,14 @@ export default function PatientSignup() {
       
       // Rediriger vers la page de confirmation avec l'email
       navigate(`/registration-success?type=patient&email=${encodeURIComponent(formData.email)}`, { replace: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur inscription:', error);
       const isTimeoutError = error instanceof NetworkTimeoutError;
       toast({
         ...AUTH_MESSAGES.SIGNUP_ERROR,
         description: isTimeoutError 
           ? error.message 
-          : (error.message || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription),
+          : ((error instanceof Error ? error.message : "") || AUTH_MESSAGES.SIGNUP_ERROR.defaultDescription),
         variant: "destructive"
       });
     } finally {
@@ -369,7 +369,7 @@ export default function PatientSignup() {
   };
 
   // Fonction de retry manuel de l'edge function
-  const handleRetryFinalization = async (userId: string, payload: any, email: string) => {
+  const handleRetryFinalization = async (userId: string, payload: PatientOnboardingPayload, email: string) => {
     setIsSubmitting(true);
 
     let error: unknown = null;

@@ -138,7 +138,7 @@ export const practitionerSignupSchema = z.object({
 });
 
 // Schéma simplifié pour validation conditionnelle
-export const validateCoachSportifFields = (data: any) => {
+export const validateCoachSportifFields = (data: { sessionTypes?: string[]; interventionZone?: string; interventionRadius?: string; diploma?: File | string; communesServed?: string }) => {
   const errors: Record<string, string> = {};
   
   if (!data.sessionTypes || data.sessionTypes.length === 0) {
@@ -175,7 +175,7 @@ export const validateDocumentSecurity = (base64Data: string, maxSizeMB: number =
     return { valid: false, error: "Document requis" };
   }
 
-  const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  const matches = base64Data.match(/^data:([A-Za-z+/-]+);base64,(.+)$/);
   if (!matches || matches.length !== 3) {
     return { valid: false, error: "Format de fichier invalide" };
   }

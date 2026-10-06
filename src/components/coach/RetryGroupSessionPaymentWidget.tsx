@@ -183,12 +183,12 @@ export function RetryGroupSessionPaymentWidget({
         containerRef.current.innerHTML = '';
       }
       
-      if (typeof window !== 'undefined' && (window as any).FedaPay) {
+      if (typeof window !== 'undefined' && window.FedaPay) {
         try {
           const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
           const phoneForFedaPay = sanitizedPhoneNumber ? sanitizedPhoneNumber.replace(/^\+229/, '') : '';
           
-          (window as any).FedaPay.init({
+          window.FedaPay.init({
             public_key: fedapayConfig.publicKey,
             transaction: {
               id: transactionId,
@@ -207,7 +207,7 @@ export function RetryGroupSessionPaymentWidget({
               iso: 'XOF',
             },
             container: '#fedapay-retry-container',
-            onComplete: async (data: any) => {
+            onComplete: async (data: import("@/lib/fedapay-widget").FedaPayCompletePayload) => {
               console.log('FedaPay onComplete:', data);
               
               const isSuccess = data.reason === "CHECKOUT COMPLETE" || 

@@ -99,7 +99,7 @@ export default function ResetPassword() {
       });
       
       navigate("/login-email", { replace: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Erreur",
         description: errorMessage(err),

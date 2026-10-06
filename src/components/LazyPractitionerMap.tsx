@@ -99,7 +99,7 @@ class ErrorBoundary extends React.Component<
   { children: React.ReactNode; onError: () => void },
   { hasError: boolean }
 > {
-  constructor(props: any) {
+  constructor(props: { children: React.ReactNode; onError: () => void }) {
     super(props);
     this.state = { hasError: false };
   }

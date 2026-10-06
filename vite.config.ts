@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     // Optimisations de build
-    target: "esnext",
+    target: ["safari16.4", "chrome111", "edge111", "firefox128"],
     minify: "esbuild",
     sourcemap: false,
     // Code splitting manuel pour réduire la taille du bundle initial

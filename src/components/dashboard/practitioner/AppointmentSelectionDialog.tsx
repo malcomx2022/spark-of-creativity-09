@@ -1,3 +1,4 @@
+import type { Appointment } from "@/types/appointment";
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -30,7 +31,7 @@ export const AppointmentSelectionDialog = ({
   );
 
   // Composant pour chaque rendez-vous avec vérification de rapport existant
-  const AppointmentItem = ({ appointment }: { appointment: any }) => {
+  const AppointmentItem = ({ appointment }: { appointment: Appointment }) => {
     const { data: existingReport } = useConsultationReportByAppointment(appointment.id);
     const hasReport = !!existingReport;
 

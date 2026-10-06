@@ -8,7 +8,7 @@ import { AUTH_PATHS } from "./auth-constants";
 
 export interface NavigateOptions {
   replace?: boolean;
-  state?: any;
+  state?: unknown;
 }
 
 /**

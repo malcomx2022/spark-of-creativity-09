@@ -51,7 +51,7 @@ import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 
 // Helper pour échapper les valeurs CSV
-const escapeCSV = (value: any): string => {
+const escapeCSV = (value: unknown): string => {
   if (value === null || value === undefined) return '';
   const str = String(value);
   // Si la valeur contient des virgules, guillemets ou sauts de ligne, on l'encadre de guillemets

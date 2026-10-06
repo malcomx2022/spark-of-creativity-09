@@ -1,9 +1,10 @@
+import type { PractitionerProfile } from "@/types/practitioner";
 import { ProfessionalProfileSection } from "@/components/dashboard/practitioner/ProfessionalProfileSection";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 
 interface ProfileTabProps {
   practitionerId: string;
-  practitionerData: any;
+  practitionerData: PractitionerProfile;
 }
 
 export default function ProfileTab({ practitionerId, practitionerData }: ProfileTabProps) {

@@ -1,3 +1,4 @@
+import type { PractitionerProfile } from "@/types/practitioner";
 import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ const BIO_MAX_LENGTH = 500;
 
 interface ProfessionalProfileSectionProps {
   practitionerId: string;
-  practitionerData: any;
+  practitionerData: PractitionerProfile;
   isCoach?: boolean;
 }
 
@@ -256,7 +257,7 @@ export function ProfessionalProfileSection({ practitionerId, practitionerData, i
       
       // Ouvrir immédiatement et laisser le navigateur gérer l'erreur 404
       window.open(url, "_blank", "noopener,noreferrer");
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (import.meta.env.DEV) {
         console.error("Document access error:", error);
       }

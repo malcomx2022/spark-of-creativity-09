@@ -84,23 +84,12 @@ export interface ValidationError {
   field?: string;
 }
 
-// Helper pour extraire les erreurs Zod (compatible v3 et v4)
-function getZodErrors(error: z.ZodError): Array<{ path: (string | number)[]; message: string }> {
-  if ('issues' in error) {
-    return (error as any).issues;
-  }
-  if ('errors' in error) {
-    return (error as any).errors;
-  }
-  return [];
-}
-
 // Fonction de validation legacy pour compatibilité
 export function validateSessionForm(formData: SessionFormData): ValidationError | null {
   const result = sessionFormSchema.safeParse(formData);
   
   if (!result.success) {
-    const errors = getZodErrors(result.error);
+    const errors = result.error.issues;
     const firstError = errors[0];
     return {
       title: "Erreur de validation",
