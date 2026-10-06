@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { STORAGE_PROVIDER, StorageFolder, StorageProvider } from './storage.provider';
+import { randomUUID } from 'node:crypto';
 
 export const ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 Mo (upload-to-wasabi)
@@ -28,7 +29,7 @@ export class StorageService {
 
   buildKey(userId: string, fileName: string): string {
     const sanitized = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    return `${userId}/${Date.now()}-${sanitized}`;
+    return `${userId}/${randomUUID()}-${sanitized}`;
   }
 
   /** `documents/<userId>/…` → { bucket, key }. Tolère les anciens chemins `practitioner-documents/…`. */
@@ -37,6 +38,7 @@ export class StorageService {
     const folder: StorageFolder = first === 'avatars' ? 'avatars' : first === 'message-attachments' ? 'message-attachments' : 'documents';
     const key = first === 'documents' || first === 'avatars' || first === 'message-attachments' || first === 'practitioner-documents' ? rest.join('/') : filePath;
     if (!key) throw new BadRequestException('Chemin de fichier invalide');
+    if (key.split('/').some((segment) => segment === '.' || segment === '..') || key.includes('\\')) throw new BadRequestException('Chemin de fichier invalide');
     return { folder, bucket: this.bucketFor(folder), key };
   }
 
@@ -46,8 +48,37 @@ export class StorageService {
     }
   }
 
-  presignUpload(folder: StorageFolder, key: string, contentType: string, expiresIn = 900) {
-    return this.provider.presignUpload(this.bucketFor(folder), key, contentType, expiresIn);
+  presignUpload(folder: StorageFolder, key: string, contentType: string, fileSize: number, expiresIn = 900) {
+    return this.provider.presignUpload(this.bucketFor(folder), `_pending/${key}`, contentType, expiresIn, fileSize);
+  }
+
+  async validatePending(folder: StorageFolder, key: string) {
+    try {
+      const obj = await this.provider.readObject(this.bucketFor(folder), `_pending/${key}`, MAX_FILE_SIZE);
+      this.assertAllowedType(obj.contentType);
+      assertMagicBytes(obj.body, obj.contentType);
+      return obj;
+    } catch {
+      await this.deletePending(folder, key).catch(() => undefined);
+      throw new BadRequestException('Fichier absent, trop volumineux ou contenu invalide');
+    }
+  }
+
+  deletePending(folder: StorageFolder, key: string): Promise<void> {
+    return this.provider.deleteObject(this.bucketFor(folder), `_pending/${key}`);
+  }
+
+  async cleanupPending(): Promise<number> {
+    const before = new Date(Date.now() - 24 * 3600_000);
+    const buckets = new Set(['documents', 'avatars', 'message-attachments'].map((folder) => this.bucketFor(folder as StorageFolder)));
+    let deleted = 0;
+    for (const bucket of buckets) deleted += await this.provider.cleanupPending(bucket, before);
+    return deleted;
+  }
+
+  putPending(folder: StorageFolder, key: string, body: Buffer, contentType: string): Promise<void> {
+    assertMagicBytes(body, contentType);
+    return this.provider.putObject(this.bucketFor(folder), `_pending/${key}`, body, contentType);
   }
 
   presignDownload(filePath: string, expiresIn = this.config.FILE_URL_TTL_SECONDS): Promise<string> {
@@ -63,6 +94,16 @@ export class StorageService {
     const { bucket, key } = this.resolve(filePath);
     return this.provider.deleteObject(bucket, key);
   }
+}
+
+export function assertMagicBytes(body: Buffer, contentType: string): void {
+  const valid =
+    (contentType === 'application/pdf' && body.subarray(0, 4).toString('latin1') === '%PDF') ||
+    (['image/jpeg', 'image/jpg'].includes(contentType) && body.subarray(0, 3).toString('hex') === 'ffd8ff') ||
+    (contentType === 'image/png' && body.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') ||
+    (contentType === 'image/gif' && ['GIF87a', 'GIF89a'].includes(body.subarray(0, 6).toString('latin1'))) ||
+    (contentType === 'image/webp' && body.subarray(0, 4).toString('latin1') === 'RIFF' && body.subarray(8, 12).toString('latin1') === 'WEBP');
+  if (!valid) throw new BadRequestException('Le contenu ne correspond pas au type de fichier');
 }
 
 /** Décode une data-URL base64 (`data:<mime>;base64,<contenu>`) avec vérification des magic bytes. */

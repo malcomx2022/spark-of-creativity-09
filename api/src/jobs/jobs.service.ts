@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { StorageService } from '../storage/storage.service';
 import { sql } from 'kysely';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import { DisputesService } from '../disputes/disputes.service';
@@ -31,7 +32,7 @@ export class JobsService {
     { name: 'maintenance.cleanup', everyMs: 24 * 60 * 60_000, description: 'Rétention quotidienne : cleanup_old_* (limites OTP > 7 j, journaux d’accès fichiers, tentatives de paiement et activité de recherche > 90 j), repair_missing_profiles() ; comptes orphelins comptés, supprimés seulement avec deleteOrphans=true' },
   ];
 
-  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService, private readonly finance: FinanceService, private readonly disputes: DisputesService) {}
+  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService, private readonly finance: FinanceService, private readonly disputes: DisputesService, private readonly storage: StorageService) {}
 
   /** Verrou consultatif PostgreSQL : un seul exécutant par job, même avec plusieurs workers. */
   async run(name: JobName, options: Record<string, unknown> = {}) {
@@ -79,7 +80,8 @@ export class JobsService {
           const orphans = (await sql<{ n: string }>`select count(*) as n from public.users u left join public.profiles p on p.id = u.id where p.id is null and u.created_at < now() - interval '24 hours' and not exists (select 1 from public.practitioners pr where pr.user_id = u.id)`.execute(trx)).rows[0];
           const orphansDeleted = options.deleteOrphans === true ? (await sql<{ r: unknown }>`select cleanup_orphan_accounts() as r`.execute(trx)).rows[0]?.r ?? null : null;
           const repairedProfiles = (await sql<{ r: unknown }>`select repair_missing_profiles() as r`.execute(trx)).rows[0]?.r ?? null;
-          result = { executed, orphanCandidates: Number(orphans?.n ?? 0), orphansDeleted, repairedProfiles };
+          const pendingFilesDeleted = await this.storage.cleanupPending();
+          result = { executed, orphanCandidates: Number(orphans?.n ?? 0), orphansDeleted, repairedProfiles, pendingFilesDeleted };
           break;
         }
       }

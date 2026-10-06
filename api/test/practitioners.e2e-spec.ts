@@ -157,11 +157,13 @@ describe('Practitioners, files, KYC (e2e)', () => {
   });
 
   it('flux navigateur → S3 : upload-url puis enregistrement ; chemin d’un autre utilisateur refusé', async () => {
-    const url = await app.inject({ method: 'POST', url: '/api/files/upload-url', headers: auth('patient'), payload: { fileName: 'ordonnance.pdf', contentType: 'application/pdf', fileSize: 1234, folder: 'documents' } });
+    const body = Buffer.from('%PDF-1.4\n%fixture');
+    const url = await app.inject({ method: 'POST', url: '/api/files/upload-url', headers: auth('patient'), payload: { fileName: 'ordonnance.pdf', contentType: 'application/pdf', fileSize: body.length, folder: 'documents' } });
     expect(url.statusCode).toBe(200);
     expect(url.json()).toMatchObject({ method: 'PUT', bucket: 'documents' });
-    expect(url.json().filePath).toMatch(new RegExp(`^documents/${userIds['patient']}/\\d+-ordonnance.pdf$`));
-    const reg = await app.inject({ method: 'POST', url: '/api/files', headers: auth('patient'), payload: { filePath: url.json().filePath, fileName: 'ordonnance.pdf', fileSize: 1234, fileType: 'application/pdf' } });
+    expect(url.json().filePath).toMatch(new RegExp(`^documents/${userIds['patient']}/[0-9a-f-]+-ordonnance.pdf$`));
+    await app.get(FakeStorageProvider).putObject('documents', `_pending/${url.json().filePath.slice('documents/'.length)}`, body, 'application/pdf');
+    const reg = await app.inject({ method: 'POST', url: '/api/files', headers: auth('patient'), payload: { filePath: url.json().filePath, fileName: 'ordonnance.pdf', fileSize: body.length, fileType: 'application/pdf' } });
     expect(reg.statusCode).toBe(201);
     const forged = await app.inject({ method: 'POST', url: '/api/files', headers: auth('patient'), payload: { filePath: idDocumentPath, fileName: 'x.pdf', fileSize: 1 } });
     expect(forged.statusCode).toBe(403);

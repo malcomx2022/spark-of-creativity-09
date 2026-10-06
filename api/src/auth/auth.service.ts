@@ -21,6 +21,7 @@ import type { LoginDto, RegisterDto, SendOtpDto, VerifyOtpDto } from './dto/auth
 import { isValidE164, normalizePhoneNumber } from './phone.util';
 import { RoleResolverService } from './role-resolver.service';
 import { IssuedSession, sha256, TokensService } from './tokens.service';
+import { assertActiveAccount } from './account-status.service';
 
 const BCRYPT_COST = 12;
 const MAX_FAILED_LOGINS = 5;
@@ -159,7 +160,7 @@ export class AuthService {
       trx.selectFrom('users').selectAll().where('email', '=', dto.email).where('deleted_at', 'is', null).executeTakeFirst(),
     );
     if (!user || !user.password_hash) throw new UnauthorizedException('Identifiants incorrects');
-    if (user.banned_until && user.banned_until.getTime() > Date.now()) throw new ForbiddenException('Compte suspendu');
+    assertActiveAccount(user);
     if (user.locked_until && user.locked_until.getTime() > Date.now()) {
       throw new HttpException('Trop de tentatives. Compte verrouillé temporairement.', HttpStatus.LOCKED);
     }
@@ -192,26 +193,29 @@ export class AuthService {
   // Refresh / logout
   // ---------------------------------------------------------------------------
   async refresh(refreshToken: string, meta: RequestMeta): Promise<SessionResponse> {
-    return this.database.runAs(SERVICE_CONTEXT, async (trx) => {
-      const row = await trx.selectFrom('refresh_tokens').selectAll().where('token_hash', '=', sha256(refreshToken)).executeTakeFirst();
-      if (!row) throw new UnauthorizedException('Session invalide');
+    const result = await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
+      const initial = await trx.selectFrom('refresh_tokens').select('family_id').where('token_hash', '=', sha256(refreshToken)).executeTakeFirst();
+      if (!initial) throw new UnauthorizedException('Session invalide');
+      // Sérialiser toute la famille, y compris une rotation du jeton enfant concurrente
+      // à la détection de réutilisation du parent. Aucun verrou hors de cette transaction.
+      await sql`select pg_advisory_xact_lock(hashtextextended(${initial.family_id}::text, 0))`.execute(trx);
+      const row = await trx.selectFrom('refresh_tokens').selectAll().where('token_hash', '=', sha256(refreshToken)).forUpdate().executeTakeFirstOrThrow();
       if (row.revoked_at) {
-        // Réutilisation d'un jeton déjà tourné : toute la famille est révoquée, dans une
-        // transaction dédiée pour que la révocation survive à l'exception renvoyée.
-        await this.database.runAs(SERVICE_CONTEXT, (t) =>
-          t.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('family_id', '=', row.family_id).where('revoked_at', 'is', null).execute(),
-        );
+        await trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('family_id', '=', row.family_id).where('revoked_at', 'is', null).execute();
         this.logger.warn(`Réutilisation de refresh token détectée (user ${row.user_id}) : famille révoquée`);
-        throw new UnauthorizedException('Session révoquée. Veuillez vous reconnecter.');
+        // Répondre après COMMIT : lever ici annulerait la révocation.
+        return { kind: 'reused' as const };
       }
       if (row.expires_at.getTime() < Date.now()) throw new UnauthorizedException('Session expirée');
       const user = await trx.selectFrom('users').selectAll().where('id', '=', row.user_id).where('deleted_at', 'is', null).executeTakeFirst();
       if (!user) throw new UnauthorizedException('Compte introuvable');
-      if (user.banned_until && user.banned_until.getTime() > Date.now()) throw new ForbiddenException('Compte suspendu');
+      assertActiveAccount(user);
       await trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('id', '=', row.id).execute();
       const session = await this.tokens.issueSession(trx, user, { ...meta, familyId: row.family_id });
-      return { ...session, user: toPublicUser(user) };
+      return { kind: 'ok' as const, session: { ...session, user: toPublicUser(user) } };
     });
+    if (result.kind === 'reused') throw new UnauthorizedException('Session révoquée. Veuillez vous reconnecter.');
+    return result.session;
   }
 
   async logout(refreshToken: string | undefined, userId: string, everywhere: boolean): Promise<{ loggedOut: true }> {
@@ -359,13 +363,14 @@ export class AuthService {
         userId = byPractitioner?.user_id;
       }
       if (!userId) {
-        const byUser = await trx.selectFrom('users').select('id').where('phone', '=', phone).where('deleted_at', 'is', null).executeTakeFirst();
+        const byUser = await trx.selectFrom('users').select('id').where('phone', '=', phone).executeTakeFirst();
         userId = byUser?.id;
       }
 
       let isNewUser = false;
       let user: User | undefined;
       if (userId) {
+        assertActiveAccount(await trx.selectFrom('users').select(['deleted_at', 'banned_until']).where('id', '=', userId).executeTakeFirst());
         user = await trx
           .updateTable('users')
           .set({ phone, phone_verified_at: sql`coalesce(phone_verified_at, now())`, last_sign_in_at: new Date(), failed_login_attempts: 0, locked_until: null })

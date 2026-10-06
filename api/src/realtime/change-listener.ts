@@ -30,6 +30,12 @@ export async function startChangeListener(databaseUrl: string, bus: EventEmitter
     }
   });
   client.on('error', onError);
-  await client.query('LISTEN table_changes');
+  client.once('end', () => onError(new Error('Connexion LISTEN fermée')));
+  try {
+    await client.query('LISTEN table_changes');
+  } catch (err) {
+    await client.end().catch(() => undefined);
+    throw err;
+  }
   return client;
 }
