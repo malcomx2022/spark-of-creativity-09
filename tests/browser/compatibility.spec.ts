@@ -3,7 +3,12 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 async function isolateServices(context: BrowserContext) {
   await context.route('https://cdn.fedapay.com/**', route => route.abort());
   await context.route('**/socket.io/**', route => route.abort());
-  await context.route('**/api/**', route => route.fulfill({ status: 503, json: { message: 'API isolée pour le test navigateur' } }));
+  await context.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/practitioners') return route.fulfill({ json: [] });
+    if (path === '/api/group-sessions') return route.fulfill({ json: { data: [], count: 0 } });
+    return route.fulfill({ status: 503, json: { message: 'API isolée pour le test navigateur' } });
+  });
 }
 async function checkLayout(page: Page) {
   await expect(page.locator('#root')).not.toBeEmpty();

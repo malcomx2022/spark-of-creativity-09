@@ -2,10 +2,10 @@ name: Web CI
 
 on:
   pull_request:
-    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', '.github/workflows/web-ci.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', '.github/workflows/web-ci.yml']
   push:
     branches: [main]
-    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', '.github/workflows/web-ci.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', '.github/workflows/web-ci.yml']
 
 jobs:
   build:
