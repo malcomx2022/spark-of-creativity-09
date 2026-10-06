@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { UserTypeProvider } from "@/contexts/UserTypeContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isolateSessionCache } from "@/lib/api/session-cache";
 
 // Pages critiques chargées immédiatement
 import Index from "./pages/Index";
@@ -83,6 +84,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const stopCacheIsolation = isolateSessionCache(queryClient);
+if (import.meta.hot) import.meta.hot.dispose(stopCacheIsolation);
 
 const App = () => (
   <HelmetProvider>

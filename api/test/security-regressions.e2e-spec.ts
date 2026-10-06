@@ -68,6 +68,18 @@ describe('Security regressions (real PostgreSQL)', () => {
     await app?.close();
   });
 
+  it('counts every overlapping failed password login and locks the account', async () => {
+    const session = await signup('login-race');
+    const results = await Promise.all(Array.from({ length: 8 }, () => app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: `login-race-${tag}@domicares.test`, password: 'Wrong-password#2026' } })));
+    expect(results.every(r => [401, 423].includes(r.statusCode))).toBe(true);
+    const account = await db.runAs(SERVICE_CONTEXT, trx => trx.selectFrom('users').select(['failed_login_attempts', 'locked_until']).where('id', '=', session.user.id).executeTakeFirstOrThrow());
+    expect(account.failed_login_attempts).toBe(results.filter(r => r.statusCode === 401).length);
+    expect(account.failed_login_attempts).toBeGreaterThanOrEqual(5);
+    expect(account.locked_until!.getTime()).toBeGreaterThan(Date.now());
+    const blocked = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: `login-race-${tag}@domicares.test`, password } });
+    expect(blocked.statusCode).toBe(423);
+  });
+
   it('masks notes in list/detail/confirm/cancel/export while preserving practitioner access', async () => {
     const a = await appointment('awaiting_confirmation');
     const b = await appointment('confirmed');
