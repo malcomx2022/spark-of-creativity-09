@@ -1,20 +1,24 @@
 name: Deploy VPS
 
-# Déploiement de la pile deploy/vps (Caddy, web, api, worker, PostgreSQL, MinIO, backup)
-# par SSH puis `docker compose`. Manuel tant que le VPS n'est pas en service ; pour
-# l'automatiser sur main, décommenter le déclencheur `push`.
+# Déploiement automatique à chaque push sur main,
+# ou lancement manuel avec possibilité de revenir à un ancien commit.
 on:
+  push:
+    branches: [main]
+
   workflow_dispatch:
     inputs:
       confirm:
         description: "Tapez DEPLOYER pour confirmer"
         required: true
+        type: string
       revision:
         description: "SHA complet à déployer (vide : commit du lancement ; permet un rollback)"
         required: false
         type: string
-  # push:
-  #   branches: [main]
+
+permissions:
+  contents: read
 
 concurrency:
   group: deploy-vps
@@ -22,10 +26,13 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'push' || github.event.inputs.confirm == 'DEPLOYER'
+    if: github.event_name == 'push' || inputs.confirm == 'DEPLOYER'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     env:
       DEPLOY_REVISION: ${{ inputs.revision || github.sha }}
+
     steps:
       - name: Mettre à jour le dépôt et relancer la pile
         uses: appleboy/ssh-action@v1.0.3
@@ -35,24 +42,62 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           envs: DEPLOY_REVISION
+          command_timeout: 30m
           script: |
-            set -e
-            [ "${#DEPLOY_REVISION}" -eq 40 ] || { echo "SHA invalide"; exit 1; }
-            case "$DEPLOY_REVISION" in *[!0-9a-f]*) echo "SHA invalide"; exit 1;; esac
+            set -eu
+
+            [ "${#DEPLOY_REVISION}" -eq 40 ] || {
+              echo "SHA invalide : 40 caractères attendus"
+              exit 1
+            }
+
+            case "$DEPLOY_REVISION" in
+              *[!0-9a-f]*)
+                echo "SHA invalide : caractères non hexadécimaux"
+                exit 1
+                ;;
+            esac
+
             cd "${{ secrets.VPS_APP_DIR }}"
             git fetch origin main
-            # Déployer exactement le commit du lancement, même si main avance ensuite.
+
+            # Vérifier que le commit appartient à l'historique de main.
             git merge-base --is-ancestor "$DEPLOY_REVISION" origin/main
+
+            # Déployer exactement le commit demandé.
             git reset --hard "$DEPLOY_REVISION"
+
             cd deploy/vps
             docker compose build --pull web api worker
             docker compose up -d --remove-orphans
+            docker compose ps
             docker image prune -f
+
       - name: Vérifier l'API
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
         run: |
+          set -eu
+
           for i in $(seq 1 18); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.DOMAIN_NAME }}/api/health" || echo 000)
-            if [ "$code" = "200" ]; then echo "API OK"; exit 0; fi
+            code=000
+            if response=$(curl --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 10 \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              "https://${DOMAIN_NAME}/api/health"); then
+              code="$response"
+            fi
+
+            if [ "$code" = "200" ]; then
+              echo "API OK — commit ${DEPLOY_REVISION}"
+              exit 0
+            fi
+
+            echo "Tentative ${i}/18 : HTTP ${code}"
             sleep 10
           done
-          echo "API injoignable (HTTP $code)"; exit 1
+
+          echo "API injoignable après le déploiement"
+          exit 1
