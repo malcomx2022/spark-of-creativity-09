@@ -2,7 +2,7 @@
 
 Les consignes de `../CLAUDE.md` s'appliquent. Voir `README.md` pour la configuration
 de la base locale et les routes ; plan actif :
-`../docs/migration-postgresql/10-PLAN-CORRECTIONS-REVUE.md`.
+`../docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md`.
 
 ## Conventions à conserver
 
@@ -29,6 +29,13 @@ de la base locale et les routes ; plan actif :
   une taille déclarée par le navigateur ne constitue pas une preuve.
 
 ## Validation et suivi
+
+- Tentatives de connexion : incrémentation SQL atomique et verrouillage dans la même écriture ;
+  conserver le limiteur IP des routes publiques d'authentification et ses réponses 429.
+- Push : autoriser les destinations à l'inscription ET avant envoi des anciennes lignes,
+  avec contenu générique sans données médicales.
+- Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
+- Validation courante : 31 tests unitaires et 105 tests d'intégration, dont 4 essais MinIO réels.
 
 Étendre les suites existantes dans `test/` pour les règles d'accès et les transactions
 réelles. Les tests de concurrence créés dans `test/security-regressions.e2e-spec.ts` et les

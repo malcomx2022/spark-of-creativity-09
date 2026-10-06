@@ -31,7 +31,7 @@ const suffix = String(Date.now()).slice(-6);
 const emails = { patient: `msg-pat-${tag}@domicares.test`, practitioner: `msg-prat-${tag}@domicares.test`, other: `msg-oth-${tag}@domicares.test` };
 const password = 'Motdepasse#2026';
 const futureDate = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
-const endpoint = `https://push.example.test/sub/${tag}`;
+const endpoint = `https://fcm.googleapis.com/fcm/send/${tag}`;
 
 function waitFor<T>(socket: Socket, event: string, predicate: (payload: T) => boolean, timeoutMs = 8000): Promise<T> {
   return new Promise((resolve, reject) => {

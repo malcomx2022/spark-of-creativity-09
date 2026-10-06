@@ -15,6 +15,11 @@ Les nombres et preuves détaillés figurent dans le document 10.
 
 ## 1. Ce qui est aligné
 
+Nouvelle revue traitée dans le [document 11](11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md) :
+cache isolé entre comptes, tentatives concurrentes atomiques, push et dépendances corrigés,
+historique des rendez-vous paginé, débordements mobiles corrigés et PWA à cache public uniquement.
+Validation : 32 tests web, 31 unitaires API, 105 intégration/S3 et 80 rendus Chromium.
+
 | Domaine | État | Preuve |
 |---|---|---|
 | Schéma de base | **Natif** : `db/native/schema.native.sql` (58 tables, 5 vues, 46 fonctions, 24 triggers), rôles `domicares_app` / `domicares_migrator`, conversion `auth.users` → `public.users`, 0 FK vers `auth` | `scripts/db/build-native-schema.sh` rejoue les 93 migrations et valide |

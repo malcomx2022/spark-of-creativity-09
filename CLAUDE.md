@@ -5,7 +5,8 @@
 Lire `README.md`, puis les consignes du dossier modifié : `api/CLAUDE.md`,
 `src/CLAUDE.md`, `deploy/vps/CLAUDE.md`.
 Le chantier actif est décrit dans
-`docs/migration-postgresql/10-PLAN-CORRECTIONS-REVUE.md` (6 octobre 2026).
+`docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md` (6 octobre 2026).
+Le document 10 conserve le suivi des protections initiales et des travaux d'exploitation.
 Les lots applicatifs 1 à 5 sont implémentés et validés localement. Le suivi du
 document 10 distingue les contrôles CI, la livraison et les travaux d’exploitation restants.
 
@@ -14,7 +15,7 @@ modifications locales et limiter chaque changement au lot demandé.
 
 ## Architecture à préserver
 
-- Front React 18 / Vite / TanStack Query / Tailwind dans `src/`.
+- Front React 18 / Vite 7 / React Router 7 / TanStack Query / Tailwind 4 dans `src/`.
 - API NestJS 11 / Fastify / Kysely et worker dans `api/` ; PostgreSQL 16 natif.
 - S3 compatible, Socket.IO et relais PostgreSQL LISTEN/NOTIFY ; Docker Compose + Caddy.
 - Autorisations portées par les services et gardes. `DatabaseService.runAs` définit
@@ -40,6 +41,9 @@ Ne pas toucher aux secrets, exports de données ou archives. Une correction loca
 ne constitue pas une instruction de déploiement ou de paiement réel.
 
 ## Vérifications
+
+Utiliser Node 22.12+ (branche 22), `npm ci` et les overrides versionnés. Ne pas
+réintroduire une dépendance vulnérable pour éviter une adaptation de code.
 
 - Front : `npx tsc --noEmit -p tsconfig.app.json`, `npm test`, `npm run build`, `npm run lint`.
 - API (dans `api/`) : `npm run typecheck`, `npm test -- --runInBand`, `npm run build`,

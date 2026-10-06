@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import * as webpush from 'web-push';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
+import { isTrustedPushEndpoint } from './push-endpoint';
 
 export interface PushPayload {
   title: string;
@@ -28,14 +29,17 @@ export class PushService {
   async sendToUser(userId: string, payload: PushPayload): Promise<{ attempted: boolean; success: boolean; sent: number; removed: number; error?: string }> {
     const subscriptions = await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('push_subscriptions').selectAll().where('user_id', '=', userId).execute());
     if (subscriptions.length === 0) return { attempted: false, success: false, sent: 0, removed: 0, error: 'no_subscription' };
-    const body = JSON.stringify({ title: payload.title, message: payload.message, body: payload.message, url: payload.url ?? '/', notificationId: payload.notificationId, tag: payload.tag ?? 'notification' });
+    // Notifications may appear on a locked/shared screen. Details stay behind authentication.
+    const message = 'Vous avez une nouvelle notification. Connectez-vous pour la consulter.';
+    const body = JSON.stringify({ title: 'DomiCares', message, body: message, url: '/login', notificationId: payload.notificationId, tag: 'domicares-notification' });
     if (this.config.PUSH_PROVIDER === 'console') {
-      this.logger.log(`[push:console] ${subscriptions.length} abonnement(s) de ${userId} — ${payload.title}`);
+      this.logger.log(`[push:console] ${subscriptions.length} abonnement(s) de ${userId}`);
       return { attempted: true, success: true, sent: subscriptions.length, removed: 0 };
     }
     let sent = 0;
     const expired: string[] = [];
     for (const s of subscriptions) {
+      if (!isTrustedPushEndpoint(s.endpoint)) { expired.push(s.id); continue; }
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, { TTL: 3600 });
         sent++;

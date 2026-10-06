@@ -43,6 +43,8 @@ jobs:
           done
           psql -h localhost -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD 'ci'"
       - run: npm ci
+      - name: Dépendances (avis élevés et critiques bloquants)
+        run: npm audit --audit-level=high
       - run: npm run typecheck
       - name: Tests unitaires (sécurité et cycle de vie inclus)
         run: npm test -- --runInBand

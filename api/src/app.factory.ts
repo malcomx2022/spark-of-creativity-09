@@ -1,5 +1,6 @@
 import fastifyCookie from '@fastify/cookie';
-import { Logger } from '@nestjs/common';
+import fastifyRateLimit from '@fastify/rate-limit';
+import { HttpException, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -19,6 +20,15 @@ export async function createApp(): Promise<NestFastifyApplication> {
   // Le type du plugin est lié à la version de fastify embarquée par @fastify/cookie ; le cast
   // évite un conflit de déclarations entre les deux copies de fastify (comportement identique).
   await app.register(fastifyCookie as unknown as Parameters<typeof app.register>[0]);
+  await app.register(fastifyRateLimit as unknown as Parameters<typeof app.register>[0], {
+    max: 60,
+    timeWindow: 15 * 60 * 1000,
+    errorResponseBuilder: () => new HttpException('Trop de tentatives. Réessayez plus tard.', 429),
+    // Per-process/IP protection for public auth endpoints, in addition to DB account locks.
+    allowList: (request: { method: string; url: string; routeOptions: { url?: string } }) => request.method !== 'POST'
+      || !new Set(['login', 'register', 'otp/send', 'otp/verify', 'password/forgot', 'password/reset', 'verify-email/resend'])
+        .has((request.routeOptions.url ?? request.url.split('?')[0]).replace(`/${config.API_PREFIX}/auth/`, '')),
+  });
   app.setGlobalPrefix(config.API_PREFIX);
   app.useGlobalFilters(new HttpExceptionFilter());
   app.enableCors({

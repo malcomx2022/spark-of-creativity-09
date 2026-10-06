@@ -4,6 +4,7 @@
 import { api } from './client';
 import { clearSession, getCurrentUser, getSession, onAuthStateChange, refreshSession, setSession, updateSessionUser, type AuthSession, type AuthUser, type SessionResponse } from './session';
 import { disconnectRealtime } from './realtime';
+import { detachBrowserPush } from './push-session';
 import type { Profile } from '@/types/profile';
 
 export type { AuthSession, AuthUser, AuthEvent, AuthListener } from './session';
@@ -66,6 +67,7 @@ export const auth = {
     disconnectRealtime();
     try {
       if (s) {
+        try { await detachBrowserPush(); } catch (error) { console.warn('[auth] push detach failed', error); }
         if (options.everywhere) await api.delete('/auth/sessions');
         else await api.post('/auth/logout', s.refreshToken ? { refreshToken: s.refreshToken } : {});
       }

@@ -7,6 +7,10 @@ procédure de migration sur volumes existants. Ces travaux restent à réaliser.
 
 ## 0. Cible
 
+Suivi applicatif courant : [document 11](11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md),
+sécurité complémentaire, historique paginé, responsive et PWA validés localement.
+La recette sur appareils réels et la validation de la révision déployée restent distinctes.
+
 ```
 Internet ──► Caddy (443, TLS auto) ──┬── /            → web (nginx, build Vite)
                                      ├── /api/*       → api (NestJS, port 3000)

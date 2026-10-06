@@ -1,5 +1,14 @@
 # Domicares API (NestJS + PostgreSQL natif)
 
+Suivi courant : [sécurité, fonctionnel et PWA](../docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md).
+Les routes publiques d'authentification sont limitées à 60 POST/IP/15 min par processus,
+en complément du compteur atomique de tentatives par compte. Conserver l'API derrière Caddy.
+`GET /api/appointments/page?view=patient&limit=100&offset=0` renvoie `{ data, count }` avec
+total autorisé et masquage des notes internes ; `view=practitioner` cible les missions du praticien.
+L'ancienne liste tableau reste disponible sur `GET /api/appointments`.
+Les abonnements push sont limités aux services Google/Mozilla/Apple/Windows et les payloads
+sont génériques. Aucun changement SQL ni secret supplémentaire pour cette livraison.
+
 Back-end qui remplace Supabase Auth, PostgREST et les Edge Functions. Chemin critique de
 `docs/migration-postgresql/03-RETRO-INGENIERIE.md` §8 : étape 1 **authentification, profil,
 rôles**, étape 2 **praticiens, fichiers, KYC**, étape 3 **rendez-vous, paiements FedaPay,

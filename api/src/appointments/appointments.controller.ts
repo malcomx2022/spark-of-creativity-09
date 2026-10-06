@@ -25,6 +25,12 @@ export class AppointmentsController {
     return this.appointments.list(user.id, q);
   }
 
+  @Get('page')
+  @ApiOperation({ summary: 'Mes rendez-vous paginés, avec total et vue patient/praticien' })
+  page(@CurrentUser() user: AuthenticatedUser, @Query(new ZodValidationPipe(listAppointmentsQuerySchema)) q: ListAppointmentsQuery) {
+    return this.appointments.listPage(user.id, q);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.appointments.get(user.id, id);

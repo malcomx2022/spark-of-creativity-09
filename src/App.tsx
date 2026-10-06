@@ -7,6 +7,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { UserTypeProvider } from "@/contexts/UserTypeContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isolateSessionCache } from "@/lib/api/session-cache";
+import { PwaStatus } from "@/components/PwaStatus";
+import { onlineMutationOptions } from "@/lib/api/mutation-policy";
 
 // Pages critiques chargées immédiatement
 import Index from "./pages/Index";
@@ -37,7 +40,7 @@ const Services = lazy(() => import("./pages/Services"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const Contact = lazy(() => import("./pages/Contact"));
-const CreateTestAccounts = lazy(() => import("./pages/CreateTestAccounts"));
+const CreateTestAccounts = import.meta.env.DEV ? lazy(() => import("./pages/CreateTestAccounts")) : null;
 const ConfirmEmail = lazy(() => import("./pages/ConfirmEmail"));
 const RegistrationSuccess = lazy(() => import("./pages/RegistrationSuccess"));
 const CompleteRegistration = lazy(() => import("./pages/CompleteRegistration"));
@@ -77,12 +80,12 @@ const queryClient = new QueryClient({
       // Délai entre les retries
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     },
-    mutations: {
-      // Retry les mutations une fois
-      retry: 1,
-    },
+    mutations: onlineMutationOptions,
   },
 });
+
+const stopCacheIsolation = isolateSessionCache(queryClient);
+if (import.meta.hot) import.meta.hot.dispose(stopCacheIsolation);
 
 const App = () => (
   <HelmetProvider>
@@ -91,6 +94,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <PwaStatus />
           <BrowserRouter>
             <Suspense fallback={<PageLoadingSkeleton />}>
               <Routes>
@@ -129,7 +133,7 @@ const App = () => (
                 <Route path="/triage" element={<Triage />} />
                 <Route path="/search-practitioners" element={<PractitionerSearch />} />
                 <Route path="/search-coaches" element={<CoachSearch />} />
-                <Route path="/create-test-accounts" element={<CreateTestAccounts />} />
+                {CreateTestAccounts && <Route path="/create-test-accounts" element={<CreateTestAccounts />} />}
                 {/* Retour FedaPay : identifiant du paiement en chemin (FedaPay ajoute ?id=&status=) ; l'ancienne forme reste servie */}
                 <Route path="/payment/callback/:paymentId" element={<PaymentCallback />} />
                 <Route path="/payment/callback" element={<PaymentCallback />} />

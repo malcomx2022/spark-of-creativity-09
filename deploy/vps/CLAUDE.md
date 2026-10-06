@@ -24,7 +24,12 @@ Le workflow déploie désormais le SHA exact de son lancement (`github.sha`).
 Le chantier applicatif du 6 octobre 2026 ne nécessite aucune migration SQL.
 Le suivi du document 10 doit préciser le résultat réel du workflow de déploiement.
 
-Livraison courante : corrections publiées sur `codex/security-review-20261006`.
-Le push direct vers `main` a été refusé par le contrôle automatique d'approbation.
-Préparer la PR et ses contrôles, puis obtenir l'autorisation explicite de fusion
-et de déploiement ; aucune livraison VPS n'a été effectuée à ce stade.
+La PR #82 initiale a été fusionnée sur `main` (`4dbc588`). Suivi actif :
+`../../docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md` ;
+branche `codex/audit-followup-20261006`, avec PR et contrôles avant livraison.
+Aucun déploiement VPS n'a été exécuté par le chantier courant.
+
+Utiliser Node 22 pour le build web. Servir manifeste et worker sans cache HTTP durable,
+préserver leur version produite par Vite et valider installation, hors ligne, mise à jour
+consentie et cache exclusivement public. Rollback : images web/API ensemble et actualisation
+des onglets ouverts sur le nouveau client.

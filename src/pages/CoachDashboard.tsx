@@ -345,7 +345,8 @@ export default function CoachDashboard() {
           </div>
 
           <Tabs defaultValue="sessions" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-7">
+            <div className="overflow-x-auto">
+            <TabsList className="inline-flex min-w-max min-h-12 h-auto justify-start">
               <TabsTrigger value="sessions" className="gap-2">
                 <Users className="h-4 w-4" />
                 <span className="sm:hidden">Séan.</span>
@@ -382,6 +383,7 @@ export default function CoachDashboard() {
                 <span className="hidden sm:inline">Support</span>
               </TabsTrigger>
             </TabsList>
+            </div>
 
             <TabsContent value="sessions">
               <Suspense fallback={

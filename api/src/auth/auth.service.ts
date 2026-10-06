@@ -169,11 +169,13 @@ export class AuthService {
     const ok = await bcrypt.compare(dto.password, user.password_hash);
     if (!ok) {
       // Transaction dédiée : le compteur doit être commité même si l'on répond 401.
-      const attempts = user.failed_login_attempts + 1;
       await this.database.runAs(SERVICE_CONTEXT, (trx) =>
         trx
           .updateTable('users')
-          .set({ failed_login_attempts: attempts, locked_until: attempts >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null })
+          .set({
+            failed_login_attempts: sql<number>`failed_login_attempts + 1`,
+            locked_until: sql<Date | null>`case when failed_login_attempts + 1 >= ${MAX_FAILED_LOGINS} then now() + ${LOCK_MINUTES} * interval '1 minute' else locked_until end`,
+          })
           .where('id', '=', user.id)
           .execute(),
       );
@@ -223,6 +225,7 @@ export class AuthService {
       let q = trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null);
       if (!everywhere && refreshToken) q = q.where('token_hash', '=', sha256(refreshToken));
       await q.execute();
+      if (everywhere) await trx.deleteFrom('push_subscriptions').where('user_id', '=', userId).execute();
     });
     return { loggedOut: true };
   }
