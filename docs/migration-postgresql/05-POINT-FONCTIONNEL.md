@@ -18,7 +18,7 @@ Les nombres et preuves détaillés figurent dans le document 10.
 Nouvelle revue traitée dans le [document 11](11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md) :
 cache isolé entre comptes, tentatives concurrentes atomiques, push et dépendances corrigés,
 historique des rendez-vous paginé, débordements mobiles corrigés et PWA à cache public uniquement.
-Validation : 31 tests web, 31 unitaires API, 105 intégration/S3 et 80 rendus Chromium.
+Validation : 32 tests web, 31 unitaires API, 105 intégration/S3 et 80 rendus Chromium.
 
 | Domaine | État | Preuve |
 |---|---|---|

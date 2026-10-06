@@ -18,7 +18,7 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   refresh concurrent et erreurs d'envoi réelles lorsque ces parcours changent.
 - Faire passer typecheck, tests et build ; relever les erreurs lint restantes avec leur périmètre.
 
-Validation du chantier : 31 tests front, typecheck/build et lint de `lib/api/` et de la PWA réussis.
+Validation du chantier : 32 tests front, typecheck/build et lint de `lib/api/` et de la PWA réussis.
 Ce socle est contrôlé par un lint bloquant en CI ; les erreurs héritées des autres
 écrans restent suivies séparément dans le document 10.
 
@@ -28,5 +28,7 @@ Ce socle est contrôlé par un lint bloquant en CI ; les erreurs héritées des 
 - `/create-test-accounts` reste exclusivement DEV et absent du build publié.
 - PWA : autorisation explicite de fichiers publics uniquement ; aucune API, page authentifiée,
   donnée médicale ni paiement en cache. Mises à jour consenties, hash incluant les fichiers publics.
+- Garder `onlineMutationOptions` : mutations non mises en pause, sans retry automatique,
+  et rejet des écritures hors ligne par le client avant tout appel réseau.
 - Responsive : boutons multilignes, `min-width: 0`, actions empilées et onglets défilants ;
   vérifier 320/390/768/1280 px avec données longues après modification des layouts.

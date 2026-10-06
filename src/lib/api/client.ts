@@ -107,6 +107,9 @@ function refreshOnce(): Promise<boolean> {
 }
 
 export async function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()) && typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new ApiError(503, 'Une connexion est nécessaire pour envoyer cette demande. Réessayez une fois connecté.', undefined, 'OFFLINE');
+  }
   const { query, headers = {}, signal, auth = true, timeoutMs = DEFAULT_TIMEOUT } = options;
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
 

@@ -33,12 +33,15 @@ Référence : `main` à `4dbc588`, après fusion de la PR #82. Branche :
   Une première visite connectée est nécessaire pour installer le worker.
 - Le hash du worker inclut les bundles et fichiers publics préchargés. Une nouvelle version attend
   le clic « actualiser » ; seul l'onglet demandeur se recharge. Aucun paiement n'est relancé hors ligne.
+- Les mutations TanStack utilisent `networkMode: always` et `retry: false` ; le client refuse
+  les écritures sans connexion avant tout fetch. Une demande échouée hors ligne n'est ni
+  mise en pause, ni rejouée au retour du réseau (régression sur une réservation).
 - Les notifications sur écran verrouillé sont génériques ; les détails restent derrière l'authentification.
   Ajouter explicitement et tester tout nouveau service push dans l'autorisation serveur.
 
 ## Validation locale réalisée
 
-- Front : **31 tests / 9 fichiers**, TypeScript et build réussis.
+- Front : **32 tests / 10 fichiers**, TypeScript et build réussis.
 - API : **31 tests unitaires / 6 suites**, TypeScript et build réussis.
 - Intégration : **105 tests / 10 suites**, PostgreSQL dédié et 4 essais S3 réels sur MinIO isolé.
   Une première tentative a rencontré MinIO arrêté ; la suite complète passe après son démarrage.
@@ -56,6 +59,7 @@ Le bundle cartographique reste volumineux.
 ## Livraison et contrôle après déploiement
 
 Publication en PR et contrôles CI avant déploiement manuel de la révision fusionnée.
+PR de revue : [#83](https://github.com/malcomx2022/spark-of-creativity-09/pull/83).
 Aucune fusion ni exécution du workflow VPS n'est effectuée par le chantier courant.
 
 Après livraison, vérifier SHA, `/api/health`, `/appointments/page`, manifeste, icônes, cache,

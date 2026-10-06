@@ -9,6 +9,7 @@ import { UserTypeProvider } from "@/contexts/UserTypeContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isolateSessionCache } from "@/lib/api/session-cache";
 import { PwaStatus } from "@/components/PwaStatus";
+import { onlineMutationOptions } from "@/lib/api/mutation-policy";
 
 // Pages critiques chargées immédiatement
 import Index from "./pages/Index";
@@ -79,10 +80,7 @@ const queryClient = new QueryClient({
       // Délai entre les retries
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     },
-    mutations: {
-      // Retry les mutations une fois
-      retry: 1,
-    },
+    mutations: onlineMutationOptions,
   },
 });
 

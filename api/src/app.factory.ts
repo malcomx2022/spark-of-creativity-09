@@ -25,9 +25,9 @@ export async function createApp(): Promise<NestFastifyApplication> {
     timeWindow: 15 * 60 * 1000,
     errorResponseBuilder: () => new HttpException('Trop de tentatives. Réessayez plus tard.', 429),
     // Per-process/IP protection for public auth endpoints, in addition to DB account locks.
-    allowList: (request: { method: string; url: string }) => request.method !== 'POST'
+    allowList: (request: { method: string; url: string; routeOptions: { url?: string } }) => request.method !== 'POST'
       || !new Set(['login', 'register', 'otp/send', 'otp/verify', 'password/forgot', 'password/reset', 'verify-email/resend'])
-        .has(request.url.split('?')[0].replace(`/${config.API_PREFIX}/auth/`, '')),
+        .has((request.routeOptions.url ?? request.url.split('?')[0]).replace(`/${config.API_PREFIX}/auth/`, '')),
   });
   app.setGlobalPrefix(config.API_PREFIX);
   app.useGlobalFilters(new HttpExceptionFilter());
