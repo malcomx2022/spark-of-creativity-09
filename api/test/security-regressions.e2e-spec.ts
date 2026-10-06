@@ -68,6 +68,16 @@ describe('Security regressions (real PostgreSQL)', () => {
     await app?.close();
   });
 
+  it('limits password login attempts per IP, including unknown accounts', async () => {
+    for (let i = 0; i < 60; i++) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress: '192.0.2.10', payload: { email: 'unknown@audit.invalid', password: 'Wrong-password#2026' } });
+      expect(res.statusCode).toBe(401);
+    }
+    const blocked = await app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress: '192.0.2.10', payload: { email: 'unknown@audit.invalid', password: 'Wrong-password#2026' } });
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers['retry-after']).toBeDefined();
+  });
+
   it('counts every overlapping failed password login and locks the account', async () => {
     const session = await signup('login-race');
     const results = await Promise.all(Array.from({ length: 8 }, () => app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: `login-race-${tag}@domicares.test`, password: 'Wrong-password#2026' } })));

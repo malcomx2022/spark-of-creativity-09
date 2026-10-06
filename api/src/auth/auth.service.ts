@@ -225,6 +225,7 @@ export class AuthService {
       let q = trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null);
       if (!everywhere && refreshToken) q = q.where('token_hash', '=', sha256(refreshToken));
       await q.execute();
+      if (everywhere) await trx.deleteFrom('push_subscriptions').where('user_id', '=', userId).execute();
     });
     return { loggedOut: true };
   }

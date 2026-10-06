@@ -134,8 +134,8 @@ export async function unsubscribeFromPush(userId: string): Promise<void> {
       return;
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await (registration as any).pushManager.getSubscription();
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    const subscription = await registration?.pushManager.getSubscription();
 
     if (subscription) {
       // Unsubscribe from push
@@ -165,10 +165,10 @@ export async function isPushSubscribed(): Promise<boolean> {
       return false;
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await (registration as any).pushManager.getSubscription();
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    const subscription = await registration?.pushManager.getSubscription();
 
-    return subscription !== null;
+    return !!subscription;
   } catch (error) {
     console.error('Error checking push subscription:', error);
     return false;

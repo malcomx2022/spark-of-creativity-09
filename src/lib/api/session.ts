@@ -149,9 +149,12 @@ export function refreshSession(): Promise<AuthSession> {
     if (previous && storageReadable && (!latest || latest.user.id !== previous.user.id)) throw new Error('Session fermée pendant le renouvellement');
     return setSession((await res.json()) as SessionResponse, 'TOKEN_REFRESHED');
   };
-  rotation = (typeof navigator !== 'undefined' && navigator.locks
-    ? navigator.locks.request('domicares-session-refresh', rotate)
-    : rotate()).finally(() => { rotation = null; });
+  rotation = (async () => {
+    // Web Locks types describe the callback's own return value; await flattens its promise.
+    return typeof navigator !== 'undefined' && navigator.locks
+      ? await navigator.locks.request('domicares-session-refresh', rotate)
+      : await rotate();
+  })().finally(() => { rotation = null; });
   return rotation;
 }
 
