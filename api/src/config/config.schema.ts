@@ -67,6 +67,7 @@ export const configSchema = z.object({
   WEB_PUSH_EMAIL: z.string().default('mailto:admin@domicares.life'),
   // Temps réel (Socket.IO + LISTEN table_changes)
   REALTIME_ENABLED: bool.default('true'),
+  REALTIME_AUTH_CHECK_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
   // Chiffrement des numéros Mobile Money enregistrés (ex secure-phone) : clé AES-256-GCM en base64 (32 octets)
   PHONE_ENCRYPTION_KEY: z.string().optional(),
   /** Jeton public Mapbox exposé au front par GET /config/public (ex Edge Function get-mapbox-token). */

@@ -3,6 +3,7 @@ import { DatabaseService } from '../database/database.service';
 import type { FileRow } from '../database/types';
 import { MAX_FILE_SIZE, StorageService } from '../storage/storage.service';
 import type { FileUrlQuery, RegisterFileDto, UploadBase64Dto, UploadUrlDto } from './files.dto';
+import { sql } from 'kysely';
 
 export interface RequestMeta {
   ip?: string;
@@ -18,30 +19,42 @@ export class FilesService {
     this.storage.assertAllowedType(dto.contentType);
     if (dto.fileSize > MAX_FILE_SIZE) throw new BadRequestException('Fichier trop volumineux. Taille max : 10 Mo');
     const key = this.storage.buildKey(userId, dto.fileName);
-    const upload = await this.storage.presignUpload(dto.folder, key, dto.contentType);
+    const upload = await this.storage.presignUpload(dto.folder, key, dto.contentType, dto.fileSize);
     return { ...upload, filePath: `${dto.folder}/${key}`, bucket: this.storage.bucketFor(dto.folder) };
   }
 
   async register(userId: string, dto: RegisterFileDto): Promise<FileRow> {
     const { folder, key } = this.storage.resolve(dto.filePath);
     if (!key.startsWith(`${userId}/`)) throw new ForbiddenException('Ce chemin ne vous appartient pas');
-    return this.database.runAs({ role: 'authenticated', userId }, (trx) =>
-      trx
+    return this.database.runAs({ role: 'authenticated', userId }, async (trx) => {
+      // La validation et la publication sont sérialisées ; un PUT encore valide
+      // ne peut modifier que la quarantaine, jamais l'objet publié.
+      await sql`select pg_advisory_xact_lock(hashtextextended(${dto.filePath}, 0))`.execute(trx);
+      const existing = await trx.selectFrom('files').selectAll().where('file_path', '=', dto.filePath).executeTakeFirst();
+      if (existing) return existing;
+      const obj = await this.storage.validatePending(folder, key);
+      if (dto.fileSize !== obj.body.length || (dto.fileType && dto.fileType !== obj.contentType)) {
+        await this.storage.deletePending(folder, key);
+        throw new BadRequestException('Les métadonnées ne correspondent pas au fichier envoyé');
+      }
+      await this.storage.putObject(folder, key, obj.body, obj.contentType);
+      const file = await trx
         .insertInto('files')
         .values({
           user_id: userId,
           file_name: dto.fileName,
           file_path: dto.filePath,
-          file_size: dto.fileSize,
-          file_type: dto.fileType ?? null,
+          file_size: obj.body.length,
+          file_type: obj.contentType,
           storage_provider: 's3',
           folder,
           metadata: dto.metadata ? JSON.stringify(dto.metadata) : null,
         })
-        .onConflict((oc) => oc.column('file_path').doUpdateSet({ file_name: dto.fileName, file_size: dto.fileSize, file_type: dto.fileType ?? null, updated_at: new Date() }))
         .returningAll()
-        .executeTakeFirstOrThrow(),
-    );
+        .executeTakeFirstOrThrow();
+      await this.storage.deletePending(folder, key);
+      return file;
+    });
   }
 
   /** Contrat identique à upload-to-wasabi : { success, filePath, url, bucket }. */
@@ -51,7 +64,7 @@ export class FilesService {
     const body = Buffer.from(dto.fileContent.replace(/^data:[^;]+;base64,/, ''), 'base64');
     if (body.length > MAX_FILE_SIZE) throw new BadRequestException('Fichier trop volumineux. Taille max : 10 Mo');
     const key = this.storage.buildKey(userId, dto.fileName);
-    await this.storage.putObject(dto.folder, key, body, contentType);
+    await this.storage.putPending(dto.folder, key, body, contentType);
     const filePath = `${dto.folder}/${key}`;
     await this.register(userId, { filePath, fileName: dto.fileName, fileSize: body.length, fileType: contentType });
     return { success: true, filePath, url: filePath, bucket: this.storage.bucketFor(dto.folder) };
@@ -69,9 +82,11 @@ export class FilesService {
    */
   async signedUrl(userId: string, query: FileUrlQuery, meta: RequestMeta) {
     const filePath = query.filePath;
+    const { key } = this.storage.resolve(filePath);
+    if (key.startsWith('_pending/')) throw new ForbiddenException('Fichier en attente de validation');
     if (/^https?:\/\//.test(filePath)) return { success: true, url: filePath, filePath, expiresIn: 0, expiresAt: null };
     const allowed = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
-      if (filePath.includes(userId)) return true;
+      if (key.startsWith(`${userId}/`)) return true;
       const admin = await trx.selectFrom('user_roles').select('id').where('user_id', '=', userId).executeTakeFirst();
       if (admin) return true;
       const p = await trx

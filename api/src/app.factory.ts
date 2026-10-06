@@ -9,7 +9,8 @@ import { APP_CONFIG, AppConfig } from './config/config.module';
 
 /** Construit l'application (utilisé par main.ts et par les tests e2e). */
 export async function createApp(): Promise<NestFastifyApplication> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true }), {
+  // Jusqu'à trois documents KYC de 5 Mo encodés en base64 (~20 Mo).
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true, bodyLimit: 22 * 1024 * 1024 }), {
     rawBody: true, // corps brut conservé (req.rawBody) pour la vérification HMAC du webhook FedaPay
     logger: process.env.NODE_ENV === 'test' ? ['error', 'warn'] : ['log', 'error', 'warn'],
   });

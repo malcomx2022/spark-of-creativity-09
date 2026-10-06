@@ -5,6 +5,7 @@ import type { Transaction } from 'kysely';
 import { AccessTokenPayload } from '../common/guards/jwt-auth.guard';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import type { AuthTokenKind, DB } from '../database/types';
+import { assertActiveAccount } from './account-status.service';
 
 export interface IssuedSession {
   accessToken: string;
@@ -35,6 +36,7 @@ export class TokensService {
     user: { id: string; email: string | null },
     meta: { userAgent?: string; ip?: string; familyId?: string },
   ): Promise<IssuedSession> {
+    assertActiveAccount(await trx.selectFrom('users').select(['deleted_at', 'banned_until']).where('id', '=', user.id).executeTakeFirst());
     const refreshToken = randomToken();
     await trx
       .insertInto('refresh_tokens')
@@ -79,14 +81,14 @@ export class TokensService {
 
   /** Consomme un jeton à usage unique ; renvoie null s'il est inconnu, expiré ou déjà utilisé. */
   async consumeOneTimeToken(trx: Transaction<DB>, kind: AuthTokenKind, token: string) {
-    const row = await trx
-      .selectFrom('auth_tokens')
-      .selectAll()
+    return trx
+      .updateTable('auth_tokens')
+      .set({ consumed_at: new Date() })
       .where('kind', '=', kind)
       .where('token_hash', '=', sha256(token))
+      .where('consumed_at', 'is', null)
+      .where('expires_at', '>', new Date())
+      .returningAll()
       .executeTakeFirst();
-    if (!row || row.consumed_at || row.expires_at.getTime() < Date.now()) return null;
-    await trx.updateTable('auth_tokens').set({ consumed_at: new Date() }).where('id', '=', row.id).execute();
-    return row;
   }
 }

@@ -53,6 +53,7 @@ export function getSocket(): Socket | null {
 export function disconnectRealtime() {
   socket?.disconnect();
   socket = null;
+  appointmentRooms.clear();
 }
 
 /** Écoute les changements d'une ou plusieurs tables ; retourne la fonction de désabonnement. */
@@ -93,10 +94,10 @@ onAuthStateChange((event) => {
   else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
     if (socket) {
       socket.auth = { token: getAccessToken() };
-      if (event === 'SIGNED_IN' || !socket.connected) {
-        socket.disconnect();
-        socket.connect();
-      }
+      // Modifier auth ne réauthentifie pas un socket déjà connecté.
+      if (event === 'SIGNED_IN') appointmentRooms.clear();
+      socket.disconnect();
+      socket.connect();
     } else if (handlers.size > 0) getSocket();
   }
 });

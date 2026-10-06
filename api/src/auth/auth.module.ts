@@ -7,11 +7,12 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RoleResolverService } from './role-resolver.service';
 import { TokensService } from './tokens.service';
+import { AccountStatusService } from './account-status.service';
 
 @Module({
   imports: [JwtModule.register({})],
   controllers: [AuthController],
-  providers: [AuthService, TokensService, RoleResolverService, JwtAuthGuard, OptionalJwtAuthGuard, AdminRolesGuard],
-  exports: [JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, AdminRolesGuard, RoleResolverService],
+  providers: [AuthService, TokensService, RoleResolverService, AccountStatusService, JwtAuthGuard, OptionalJwtAuthGuard, AdminRolesGuard],
+  exports: [JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, AdminRolesGuard, RoleResolverService, AccountStatusService],
 })
 export class AuthModule {}

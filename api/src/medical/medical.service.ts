@@ -6,6 +6,7 @@ import { InAppNotificationsService } from '../notifications/in-app-notifications
 import type { AddressDto, CareNoteDto, ConsentDto, ConsultationReportDto, EmergencyContactDto, ListQuery, MedicalProfileDto, TriageAnswers, UpdateCareNoteDto, UpdateConsultationReportDto } from './medical.dto';
 import { calculateTriageScore, TRIAGE_MAX_SCORE } from './triage';
 import { withDateOnly } from '../common/utils/date-only';
+import { appointmentResponse } from '../appointments/appointment-response';
 
 /**
  * Dossier médical — port de useProfile (profil médical, contacts d'urgence, adresses), useCareNotes /
@@ -436,7 +437,7 @@ export class MedicalService {
         trx.selectFrom('triage_results').selectAll().where('user_id', '=', userId).execute(),
         trx.selectFrom('reviews').selectAll().where('patient_id', '=', userId).execute(),
       ]);
-      return { account: user ?? null, profile: profile ?? null, appointments, medicalProfile: medicalProfile ?? null, emergencyContacts: contacts, addresses, consents, triageResults: triage, reviews, exportDate: new Date().toISOString() };
+      return { account: user ?? null, profile: profile ?? null, appointments: appointments.map((a) => appointmentResponse(a, userId)), medicalProfile: medicalProfile ?? null, emergencyContacts: contacts, addresses, consents, triageResults: triage, reviews, exportDate: new Date().toISOString() };
     });
   }
 }

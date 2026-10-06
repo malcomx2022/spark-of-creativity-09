@@ -1,5 +1,10 @@
 # 04 — Plan d'exécution jusqu'à l'hébergement sur VPS
 
+Complément du 6 octobre 2026 : suivre le [plan de correction de la revue](10-PLAN-CORRECTIONS-REVUE.md)
+pour les corrections de sécurité et la recette de stabilisation. Son lot 6 prévoit
+la sauvegarde des objets S3 avec PostgreSQL, un exercice de restauration isolé et une
+procédure de migration sur volumes existants. Ces travaux restent à réaliser.
+
 ## 0. Cible
 
 ```

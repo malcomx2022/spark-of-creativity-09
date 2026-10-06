@@ -7,6 +7,7 @@ import { SmsService } from '../notifications/sms.service';
 import { PaymentsService } from '../payments/payments.service';
 import { haversineKm } from '../practitioners/practitioners.service';
 import type { CreateAppointmentDto, ListAppointmentsQuery, PractitionerStatusDto, RespondDto } from './appointments.dto';
+import { appointmentResponse } from './appointment-response';
 
 const DEFAULT_NON_COACH_AMOUNT = 15_000;
 const DEFAULT_COACH_AMOUNT = 10_000;
@@ -93,7 +94,7 @@ export class AppointmentsService {
     if (created.practitionerPhone) {
       await this.sms.send(created.practitionerPhone, `DomiCares: ${created.patientName} demande un RDV le ${this.formatDate(dto.date)} à ${dto.time}. Connectez-vous pour accepter ou refuser.`).catch(() => undefined);
     }
-    return created.appointment;
+    return appointmentResponse(created.appointment, userId);
   }
 
   // ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ export class AppointmentsService {
       else if (q.status) query = query.where('status', '=', q.status as Appointment['status']);
       if (q.from) query = query.where('date', '>=', q.from);
       if (q.to) query = query.where('date', '<=', q.to);
-      return query.orderBy('date', 'desc').orderBy('time', 'desc').limit(q.limit).execute();
+      return (await query.orderBy('date', 'desc').orderBy('time', 'desc').limit(q.limit).execute()).map((a) => appointmentResponse(a, userId));
     });
   }
 
@@ -124,9 +125,9 @@ export class AppointmentsService {
 
   async get(userId: string, id: string) {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
-      const { appointment, isPatient } = await this.load(trx, userId, id);
+      const { appointment } = await this.load(trx, userId, id);
       // Les notes internes du praticien ne sont pas exposées au patient (mask_appointment_internal_notes).
-      return isPatient ? { ...appointment, internal_notes: null } : appointment;
+      return appointmentResponse(appointment, userId);
     });
   }
 
@@ -250,7 +251,7 @@ export class AppointmentsService {
       if (dto.status === 'in_progress') Object.assign(patch, { status: 'in-progress', visit_status: 'in_progress', consultation_started_at: appointment.consultation_started_at ?? new Date() });
       const updated = await trx.updateTable('appointments').set(patch).where('id', '=', id).returningAll().executeTakeFirstOrThrow();
       if (dto.status === 'arrived') await this.inApp.notifyUser(trx, appointment.patient_id, { title: 'Praticien arrivé', message: `${appointment.practitioner_name} est arrivé(e).`, type: 'appointment', link: '/dashboard/patient' });
-      return updated;
+      return appointmentResponse(updated, userId);
     });
   }
 
@@ -265,7 +266,7 @@ export class AppointmentsService {
         .set({ status: 'awaiting_confirmation', visit_status: 'completed', consultation_ended_at: new Date(), confirmation_requested_at: new Date(), internal_notes: ['CONSULTATION_TERMINEE', notes, appointment.internal_notes].filter(Boolean).join('\n'), updated_at: new Date() })
         .where('id', '=', id).returningAll().executeTakeFirstOrThrow();
       await this.inApp.notifyUser(trx, appointment.patient_id, { title: 'Consultation terminée', message: `Merci de confirmer la consultation avec ${appointment.practitioner_name}. Sans réponse sous 24 h, elle sera confirmée automatiquement.`, type: 'appointment', link: '/dashboard/patient' });
-      return updated;
+      return appointmentResponse(updated, userId);
     });
   }
 
@@ -275,7 +276,8 @@ export class AppointmentsService {
       const { appointment, isPatient } = await this.load(trx, userId, id);
       if (!isPatient) throw new ForbiddenException('Réservé au patient du rendez-vous');
       if (appointment.status !== 'awaiting_confirmation') throw new ConflictException(`Aucune confirmation attendue (statut : ${appointment.status})`);
-      return trx.updateTable('appointments').set({ status: 'completed', patient_confirmed_at: new Date(), updated_at: new Date() }).where('id', '=', id).returningAll().executeTakeFirstOrThrow();
+      const updated = await trx.updateTable('appointments').set({ status: 'completed', patient_confirmed_at: new Date(), updated_at: new Date() }).where('id', '=', id).returningAll().executeTakeFirstOrThrow();
+      return appointmentResponse(updated, userId);
     });
   }
 
@@ -290,7 +292,7 @@ export class AppointmentsService {
       const updated = await trx.updateTable('appointments').set({ status: 'cancelled', visit_status: 'cancelled', internal_notes: [reason ? `CANCELLED: ${reason}` : null, appointment.internal_notes].filter(Boolean).join('\n') || null, updated_at: new Date() }).where('id', '=', id).returningAll().executeTakeFirstOrThrow();
       const other = isPatient ? (await trx.selectFrom('practitioners').select('user_id').where('id', '=', appointment.practitioner_id).executeTakeFirst())?.user_id : appointment.patient_id;
       if (other) await this.inApp.notifyUser(trx, other, { title: 'Rendez-vous annulé', message: `Le rendez-vous du ${appointment.date} à ${appointment.time} a été annulé.${paid ? ' Un remboursement sera traité par le support.' : ''}`, type: 'appointment' });
-      return { ...updated, refundRequired: !!paid };
+      return { ...appointmentResponse(updated, userId), refundRequired: !!paid };
     });
   }
 }

@@ -9,6 +9,8 @@ import { io, Socket } from 'socket.io-client';
 import { createApp } from '../src/app.factory';
 import { DatabaseService } from '../src/database/database.service';
 import { DispatchService } from '../src/notifications/dispatch.service';
+import { JwtService } from '@nestjs/jwt';
+import { RealtimeGateway } from '../src/realtime/realtime.gateway';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-secret-test-secret-test-secret-123456';
@@ -20,6 +22,7 @@ process.env.STORAGE_PROVIDER = 'fake';
 process.env.FEDAPAY_PROVIDER = 'fake';
 process.env.PUSH_PROVIDER = 'console';
 process.env.REALTIME_ENABLED = 'true';
+process.env.REALTIME_AUTH_CHECK_MS = '100';
 process.env.JOBS_ENABLED = 'false';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://domicares_app:devpass@localhost:5433/domicares_dev';
 
@@ -262,4 +265,33 @@ describe('Messaging, notifications & realtime (e2e)', () => {
     expect(await patient.emitWithAck('unsubscribe:appointment', { appointmentId })).toEqual({ ok: true });
     expect(await patient.emitWithAck('typing', { appointmentId, isTyping: false })).toEqual({ ok: false });
   });
+  it('ferme un socket au JWT expiré puis accepte une nouvelle connexion authentifiée', async () => {
+    const token = await app.get(JwtService).signAsync({ sub: userIds['patient'], email: emails.patient, role: 'authenticated' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: 2 });
+    const socket = await connect(baseUrl, token);
+    sockets.push(socket);
+    await waitFor(socket, 'disconnect', () => true, 4000);
+    expect(socket.connected).toBe(false);
+    expect((await open('patient')).connected).toBe(true);
+  });
+
+  it('retire la room admin après retrait du rôle et déconnecte un compte suspendu', async () => {
+    await db.db.insertInto('user_roles').values({ user_id: userIds['other'], role: 'support' }).execute();
+    const client = await open('other');
+    const server = app.get(RealtimeGateway).server.sockets.sockets.get(client.id!)!;
+    expect(server.rooms.has('admin')).toBe(true);
+    await db.db.deleteFrom('user_roles').where('user_id', '=', userIds['other']).execute();
+    const deadline = Date.now() + 2000;
+    while (server.rooms.has('admin') && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(server.rooms.has('admin')).toBe(false);
+    const disconnected = waitFor(client, 'disconnect', () => true, 2000);
+    try {
+      await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ banned_until: new Date(Date.now() + 3600_000) }).where('id', '=', userIds['other']).execute());
+      await disconnected;
+      expect(client.connected).toBe(false);
+    } finally {
+      await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ banned_until: null }).where('id', '=', userIds['other']).execute());
+    }
+  });
+
+
 });

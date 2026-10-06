@@ -38,3 +38,4 @@ deploy/vps/backups/
 
 # Fichiers temporaires
 tmp/
+work/

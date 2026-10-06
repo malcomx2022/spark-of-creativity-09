@@ -21,6 +21,8 @@ jobs:
       - name: "Lint (informatif, erreurs any héritées des écrans d'origine)"
         run: npm run lint
         continue-on-error: true
+      - name: Lint bloquant du socle API et de ses tests
+        run: npx eslint src/lib/api --max-warnings=0
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.app.json
       - name: Tests
