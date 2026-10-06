@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
@@ -335,7 +336,7 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
           : "Vos informations de reversement ont été sauvegardées.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Impossible d'enregistrer",
         description: error?.message || "Une erreur est survenue lors de la sauvegarde.",
@@ -373,11 +374,11 @@ export function PaymentInfoSection({ practitionerId, practitionerName }: Payment
       
       dispatch({ type: "SET_ERRORS", errors: {} });
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const fieldErrors: FormContext["errors"] = {};
       
-      if (error.errors) {
-        error.errors.forEach((err: any) => {
+      if (error instanceof z.ZodError) {
+        error.issues.forEach((err) => {
           const field = err.path[0];
           fieldErrors[field as keyof FormContext["errors"]] = err.message;
         });

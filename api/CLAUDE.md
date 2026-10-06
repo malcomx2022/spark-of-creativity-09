@@ -45,3 +45,8 @@ pas seulement rejouer deux requêtes séquentielles.
 Garder les tests unitaires dans `src/**/*.spec.ts`.
 Une évolution SQL doit être applicable à une base déjà initialisée et testée aussi
 sur une base neuve, avec mise à jour des scripts de génération, CI et documentation concernés.
+
+Le lint global du dépôt couvre aussi l'API active et devient bloquant en CI web.
+Le listener LISTEN conserve un objet de connexion capturé par son callback :
+préserver la protection contre les callbacks d'anciennes connexions, y compris
+avant que la nouvelle connexion ne soit affectée. Ses tests unitaires doivent passer.

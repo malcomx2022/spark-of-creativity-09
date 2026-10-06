@@ -19,7 +19,7 @@ export interface Payment {
   idempotency_key?: string;
   channel?: string;
   provider_ref?: string;
-  payment_session_data?: any;
+  payment_session_data?: Record<string, unknown>;
   receipt_url?: string;
   invoice_number?: string;
 }

@@ -55,10 +55,10 @@ export default function VerifyOTP() {
 
       const destination = await getDashboardPathFromAuth();
       navigate(destination, { replace: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         ...AUTH_MESSAGES.OTP_ERROR,
-        description: error.message || AUTH_MESSAGES.OTP_ERROR.defaultDescription,
+        description: (error instanceof Error ? error.message : "") || AUTH_MESSAGES.OTP_ERROR.defaultDescription,
         variant: "destructive"
       });
     } finally {
@@ -101,10 +101,10 @@ export default function VerifyOTP() {
         ...AUTH_MESSAGES.OTP_RESENT,
         description: `Vérifiez vos ${type === "sms" ? "SMS" : "emails"}.`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         ...AUTH_MESSAGES.OTP_ERROR,
-        description: error.message || AUTH_MESSAGES.OTP_ERROR.defaultDescription,
+        description: (error instanceof Error ? error.message : "") || AUTH_MESSAGES.OTP_ERROR.defaultDescription,
         variant: "destructive"
       });
     }

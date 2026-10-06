@@ -52,7 +52,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
     const FEDAPAY_LOAD_TIMEOUT = 15000; // 15 secondes
 
     const checkFedaPayLoaded = () => {
-      return typeof window !== 'undefined' && (window as any).FedaPay;
+      return typeof window !== 'undefined' && window.FedaPay;
     };
 
     // Vérification immédiate
@@ -240,7 +240,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
           toast({
             title: '⏳ Paiement déjà en cours',
-            description: error.message || 'Un paiement est déjà en attente pour ce rendez-vous.',
+            description: (error instanceof Error ? error.message : "") || 'Un paiement est déjà en attente pour ce rendez-vous.',
             variant: 'destructive',
             duration: 10000,
             action: (
@@ -397,13 +397,13 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
       }
 
       // Check if FedaPay is loaded (double vérification)
-      if (typeof window !== 'undefined' && (window as any).FedaPay) {
+      if (typeof window !== 'undefined' && window.FedaPay) {
         try {
           const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
           const phoneForFedaPay = sanitizedPhoneNumber ? sanitizedPhoneNumber.replace(/^\+229/, '') : '';
           
           // Initialize FedaPay widget in embedded mode
-          const widget = (window as any).FedaPay.init({
+          const widget = window.FedaPay.init({
             public_key: fedapayConfig.publicKey,
             transaction: {
               id: transactionId,
@@ -423,7 +423,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
               iso: 'XOF',
             },
             container: '#fedapay-container',
-            onComplete: async (data: any) => {
+            onComplete: async (data: import("@/lib/fedapay-widget").FedaPayCompletePayload) => {
               console.log('FedaPay onComplete:', data);
               
               // Check for successful payment - FedaPay returns "CHECKOUT COMPLETE" as string

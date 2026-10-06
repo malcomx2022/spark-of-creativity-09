@@ -1,3 +1,4 @@
+import { getOwnPractitionerProfile } from "@/lib/api/practitioner-profile";
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,7 +66,7 @@ export default function PractitionerDashboard() {
     queryFn: async () => {
       if (!practitionerUserId) return null;
       try {
-        return await api.get<{ id: string; name: string; kyc_status?: string | null; kyc_comment?: string | null; can_accept_missions?: boolean | null; practitioner_type?: string | null; [key: string]: unknown }>('/practitioners/me');
+        return await getOwnPractitionerProfile();
       } catch (error) {
         if (isApiError(error, 404)) return null;
         throw error;
@@ -124,7 +125,7 @@ export default function PractitionerDashboard() {
         title: 'Rendez-vous accepté',
         description: 'Le patient a été notifié et peut maintenant procéder au paiement.'
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (import.meta.env.DEV) {
         console.error('Appointment accept error:', error);
       }
@@ -177,7 +178,7 @@ export default function PractitionerDashboard() {
           ? `Le rendez-vous a été réassigné à ${response.reassignedTo.name}.`
           : 'Aucun praticien alternatif n\'a été trouvé. Le patient a été notifié.'
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (import.meta.env.DEV) {
         console.error('Appointment reject error:', error);
       }

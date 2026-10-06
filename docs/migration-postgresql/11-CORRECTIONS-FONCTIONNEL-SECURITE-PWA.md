@@ -52,7 +52,10 @@ Référence : `main` à `4dbc588`, après fusion de la PR #82. Branche :
 - PWA : manifeste sans erreur, inspection des entrées de cache, navigation hors ligne et
   activation consentie vérifiées dans Chromium local.
 
-Le lint global conserve 172 erreurs et 46 avertissements hérités et reste informatif en CI. Safari/iOS réel,
+À la date de cette campagne, le lint global conservait 172 erreurs et 46 avertissements.
+Le [document 12](12-CORRECTIONS-LINT-SAFARI-IOS.md) remplace ce bilan : 98 erreurs actives
+corrigées, archives explicitement exclues, zéro erreur active et lint bloquant en CI.
+Safari/iOS réel,
 clavier mobile, paiements FedaPay et envois SMS/push réels ne sont pas validés par cette campagne.
 Le bundle cartographique reste volumineux.
 

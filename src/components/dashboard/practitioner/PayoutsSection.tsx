@@ -395,7 +395,7 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
       }
       
       // Payouts table if space allows
-      const currentY = (doc as any).lastAutoTable?.finalY || 105;
+      const currentY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || 105;
       if (payouts && payouts.length > 0 && currentY < 220) {
         doc.setFontSize(12);
         doc.text("Historique des Reversements", 14, currentY + 15);

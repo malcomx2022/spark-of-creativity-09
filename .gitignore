@@ -39,3 +39,7 @@ deploy/vps/backups/
 # Fichiers temporaires
 tmp/
 work/
+
+# Résultats des tests navigateur
+playwright-report/
+test-results/

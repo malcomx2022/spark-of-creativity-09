@@ -1,3 +1,4 @@
+import type { PractitionerProfile } from "@/types/practitioner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw, HelpCircle, Filter, FolderCheck, FolderX, Clock, ExternalLink } from "lucide-react";
@@ -103,7 +104,7 @@ function DocumentViewer({ url, name }: { url: string; name: string }) {
 }
 
 interface DocumentsSectionProps {
-  practitionerData: any;
+  practitionerData: PractitionerProfile;
 }
 
 interface DocumentUrls {
@@ -294,11 +295,11 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
         title: "Document téléversé",
         description: "Le document a été mis à jour avec succès.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error uploading document:', error);
       toast({
         title: "Erreur de téléversement",
-        description: error.message || "Impossible de téléverser le document.",
+        description: (error instanceof Error ? error.message : "") || "Impossible de téléverser le document.",
         variant: "destructive",
       });
     } finally {
@@ -333,11 +334,11 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
         title: "Dossier soumis",
         description: "Votre dossier a été re-soumis pour validation. Vous serez notifié par email et SMS.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error resubmitting KYC:', error);
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de soumettre le dossier.",
+        description: (error instanceof Error ? error.message : "") || "Impossible de soumettre le dossier.",
         variant: "destructive",
       });
     } finally {

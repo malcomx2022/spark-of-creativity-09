@@ -179,7 +179,7 @@ export function PatientConsultationReportsVirtualized({
         },
       });
 
-      yPosition = (doc as any).lastAutoTable.finalY + 10;
+      yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable.finalY + 10;
 
       // SECTIONS DE CONTENU
       const addSection = (title: string, content: string) => {

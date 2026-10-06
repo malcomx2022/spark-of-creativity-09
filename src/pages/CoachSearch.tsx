@@ -1,3 +1,5 @@
+import type { GroupSessionRow } from "@/hooks/useGroupSessions";
+import type { PractitionerLocation } from "@/types/practitioner";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
@@ -35,9 +37,9 @@ export default function CoachSearch() {
   const navigate = useNavigate();
   const { data: user } = useAuthUser();
   const [selectedZone, setSelectedZone] = useState<string>("all");
-  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [selectedSession, setSelectedSession] = useState<GroupSessionRow>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
-  const [selectedCoach, setSelectedCoach] = useState<any>(null);
+  const [selectedCoach, setSelectedCoach] = useState<PractitionerLocation>(null);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
   const [sessionsPage, setSessionsPage] = useState(1);
   const [coachesPage, setCoachesPage] = useState(1);
@@ -103,7 +105,7 @@ export default function CoachSearch() {
   const sessionsTotalPages = Math.ceil(availableSessions.length / ITEMS_PER_PAGE);
   const coachesTotalPages = Math.ceil(filteredCoaches.length / ITEMS_PER_PAGE);
 
-  const handleBookSession = (session: any) => {
+  const handleBookSession = (session: GroupSessionRow) => {
     if (!user) {
       navigate('/login');
       return;
@@ -112,7 +114,7 @@ export default function CoachSearch() {
     setSessionDialogOpen(true);
   };
 
-  const handleBookIndividual = (coach: any) => {
+  const handleBookIndividual = (coach: PractitionerLocation) => {
     if (!user) {
       toast({
         title: 'Connexion requise',

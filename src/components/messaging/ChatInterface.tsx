@@ -197,7 +197,7 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
   };
 
   return (
-    <Card className="flex flex-col h-[calc(100vh-12rem)]">
+    <Card className="flex flex-col h-[calc(100dvh-12rem)] min-h-64">
       <CardHeader className="border-b pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

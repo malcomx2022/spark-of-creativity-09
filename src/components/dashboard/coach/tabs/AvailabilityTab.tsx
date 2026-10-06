@@ -1,3 +1,4 @@
+import type { PractitionerProfile } from "@/types/practitioner";
 import AvailabilitySection from "@/components/dashboard/practitioner/AvailabilitySection";
 import { PaymentInfoSection } from "@/components/dashboard/practitioner/PaymentInfoSection";
 import { PractitionerRatesSection } from "@/components/dashboard/practitioner/PractitionerRatesSection";
@@ -5,7 +6,7 @@ import { DocumentsSection } from "@/components/dashboard/practitioner/DocumentsS
 
 interface AvailabilityTabProps {
   practitionerId: string;
-  practitionerData: any;
+  practitionerData: PractitionerProfile;
 }
 
 export default function AvailabilityTab({ practitionerId, practitionerData }: AvailabilityTabProps) {

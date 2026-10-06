@@ -1,3 +1,4 @@
+import type { PatientGroupSession } from "@/hooks/usePatientGroupSessions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ export function PatientGroupSessionsSection() {
   const sessions = sessionsResult?.data || [];
   const totalCount = sessionsResult?.count || 0;
   const totalPages = Math.ceil(totalCount / 20);
-  const [selectedParticipation, setSelectedParticipation] = useState<any>(null);
+  const [selectedParticipation, setSelectedParticipation] = useState<PatientGroupSession>(null);
   const [retryDialogOpen, setRetryDialogOpen] = useState(false);
 
   // Recherche et copie
@@ -49,7 +50,7 @@ export function PatientGroupSessionsSection() {
   };
 
   // ✅ CORRECTION P1 #6: Utiliser le widget de retry pour les paiements en attente
-  const handleRetryPayment = (participation: any) => {
+  const handleRetryPayment = (participation: PatientGroupSession) => {
     setSelectedParticipation(participation);
     setRetryDialogOpen(true);
   };
@@ -100,7 +101,7 @@ export function PatientGroupSessionsSection() {
     return <Badge className="bg-blue-500 text-white">Planifiée</Badge>;
   };
 
-  const categorizeSession = (session: any) => {
+  const categorizeSession = (session: PatientGroupSession) => {
     const sessionDateTime = new Date(session.session.scheduled_date);
     const isSessionPast = isPast(sessionDateTime);
 
@@ -198,7 +199,7 @@ export function PatientGroupSessionsSection() {
     );
   }
 
-  const SessionCard = ({ session }: { session: any }) => (
+  const SessionCard = ({ session }: { session: PatientGroupSession }) => (
     <Card className="shadow-medical hover:shadow-glow transition-all">
       <CardHeader>
         <div className="flex justify-between items-start gap-4">

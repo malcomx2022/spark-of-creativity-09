@@ -3,7 +3,7 @@
  */
 export const playNotificationSound = () => {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioContext = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
     
     // Create oscillator for the sound
     const oscillator = audioContext.createOscillator();

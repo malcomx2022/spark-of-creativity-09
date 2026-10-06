@@ -18,6 +18,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+type CurrentSession = {
+  id: string; session_name: string; scheduled_date: string; start_time: string; status: string | null;
+  max_participants: number; current_participants: number | null; price_per_person: number;
+  coach: { id: string; verified?: boolean } | null;
+  spots_remaining?: number;
+  my_registration?: { id: string; payment_status: string | null; joined_at: string } | null;
+};
+
 type PaymentMethod = 'mtn' | 'moov';
 
 interface GroupSessionPaymentWidgetProps {
@@ -55,9 +63,9 @@ export function GroupSessionPaymentWidget({
   const [saveMethod, setSaveMethod] = useState(false);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const [widgetInitialized, setWidgetInitialized] = useState(false);
-  const [existingRegistration, setExistingRegistration] = useState<any>(null);
+  const [existingRegistration, setExistingRegistration] = useState<CurrentSession["my_registration"]>(null);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
-  const [sessionInfo, setSessionInfo] = useState<any>(null);
+  const [sessionInfo, setSessionInfo] = useState<CurrentSession>(null);
   // ✅ Bug #2 FIX: Ajouter protection chargement script FedaPay
   const [fedapayScriptLoaded, setFedapayScriptLoaded] = useState(false);
   const [fedapayLoadError, setFedapayLoadError] = useState(false);
@@ -72,7 +80,7 @@ export function GroupSessionPaymentWidget({
     const FEDAPAY_LOAD_TIMEOUT = 15000; // 15 secondes
 
     const checkFedaPayLoaded = () => {
-      return typeof window !== 'undefined' && (window as any).FedaPay;
+      return typeof window !== 'undefined' && window.FedaPay;
     };
 
     // Vérification immédiate
@@ -129,13 +137,7 @@ export function GroupSessionPaymentWidget({
         }
 
         // ✅ CORRECTION P2 #12: informations actuelles de la séance (places, coach vérifié, inscription existante)
-        let currentSession: {
-          id: string; session_name: string; scheduled_date: string; start_time: string; status: string | null;
-          max_participants: number; current_participants: number | null; price_per_person: number;
-          coach: { id: string; verified?: boolean } | null;
-          spots_remaining?: number;
-          my_registration?: { id: string; payment_status: string | null; joined_at: string } | null;
-        };
+        let currentSession: CurrentSession;
         try {
           currentSession = await api.get(`/group-sessions/${session.id}`);
         } catch (error) {
@@ -460,12 +462,12 @@ export function GroupSessionPaymentWidget({
         containerRef.current.innerHTML = '';
       }
 
-      if (typeof window !== 'undefined' && (window as any).FedaPay) {
+      if (typeof window !== 'undefined' && window.FedaPay) {
         try {
           const sanitizedPhoneNumber = normalizePhoneNumber(phoneNumber);
           const phoneForFedaPay = sanitizedPhoneNumber ? sanitizedPhoneNumber.replace(/^\+229/, '') : '';
           
-          const widget = (window as any).FedaPay.init({
+          const widget = window.FedaPay.init({
             public_key: fedapayConfig.publicKey,
             transaction: {
               id: transactionId,
@@ -485,7 +487,7 @@ export function GroupSessionPaymentWidget({
               iso: 'XOF',
             },
             container: '#fedapay-group-container',
-            onComplete: async (data: any) => {
+            onComplete: async (data: import("@/lib/fedapay-widget").FedaPayCompletePayload) => {
               console.log('FedaPay onComplete:', data);
               
               const isSuccess = data.reason === "CHECKOUT COMPLETE" || 

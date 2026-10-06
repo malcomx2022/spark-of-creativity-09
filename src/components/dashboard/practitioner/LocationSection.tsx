@@ -1,3 +1,4 @@
+import type { PractitionerProfile } from "@/types/practitioner";
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import { AddressSearchInput } from '@/components/AddressSearchInput';
 
 interface LocationSectionProps {
   practitionerId: string;
-  practitionerData: any;
+  practitionerData: PractitionerProfile;
 }
 
 export function LocationSection({ practitionerId, practitionerData }: LocationSectionProps) {
@@ -218,11 +219,11 @@ export function LocationSection({ practitionerId, practitionerData }: LocationSe
       });
 
       setIsEditing(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la mise à jour:', error);
       toast({
         title: 'Erreur',
-        description: error.message || 'Impossible de mettre à jour la localisation.',
+        description: (error instanceof Error ? error.message : "") || 'Impossible de mettre à jour la localisation.',
         variant: 'destructive',
       });
     } finally {

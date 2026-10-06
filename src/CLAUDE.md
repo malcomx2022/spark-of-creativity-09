@@ -1,7 +1,7 @@
 # Front — consignes complémentaires
 
 Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
-`../docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md`.
+`../docs/migration-postgresql/12-CORRECTIONS-LINT-SAFARI-IOS.md`.
 
 - Garder le socle `lib/api/`, les hooks TanStack Query, les composants et les parcours
   patient, praticien, coach, administrateur. Les droits et montants restent décidés par l'API.
@@ -18,9 +18,18 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   refresh concurrent et erreurs d'envoi réelles lorsque ces parcours changent.
 - Faire passer typecheck, tests et build ; relever les erreurs lint restantes avec leur périmètre.
 
-Validation du chantier : 32 tests front, typecheck/build et lint de `lib/api/` et de la PWA réussis.
-Ce socle est contrôlé par un lint bloquant en CI ; les erreurs héritées des autres
-écrans restent suivies séparément dans le document 10.
+Validation du chantier : 39 tests front ; typecheck/build réussis. Le lint actif
+est bloquant en CI : zéro erreur et 46 avertissements hérités visibles. Les archives
+Supabase et les artefacts sont explicitement exclus, sans modifier leurs fichiers.
+Ne pas ajouter des dépendances d'effets de paiement sans vérifier leurs déclenchements.
+
+- Cible minimale : Safari/iOS 16.4 (Tailwind 4). Conserver `dvh`, les zones sûres,
+  les champs mobiles ≥16 px, et la détection iPadOS avec agent utilisateur de Mac.
+- Réserver la hauteur du bandeau PWA pour garder les actions de bas de page accessibles.
+- Exécuter `npm run build` puis `npm run test:browser` après installation des navigateurs
+  Playwright. Les 114 scénarios simulent les services et utilisent WebKit/Chromium.
+- Ne jamais assimiler les résultats WebKit automatisés à une recette Safari sur appareil
+  physique. Suivre la checklist du document 12 et enregistrer les preuves réelles.
 
 - Installer `session-cache.ts` avant React : purger les résultats et requêtes de l'ancien
   compte avant le rendu du suivant ; garder le cache lors d'une simple rotation.
@@ -32,3 +41,9 @@ Ce socle est contrôlé par un lint bloquant en CI ; les erreurs héritées des 
   et rejet des écritures hors ligne par le client avant tout appel réseau.
 - Responsive : boutons multilignes, `min-width: 0`, actions empilées et onglets défilants ;
   vérifier 320/390/768/1280 px avec données longues après modification des layouts.
+
+- Pour les tests navigateur : isoler les services des écrans avec workers bloqués.
+  Le scénario PWA utilise le worker réel sans interception réseau. Dans WebKit,
+  tester le repli avec la sonde de rupture HTTP du preview de recette ; `setOffline`
+  de Playwright n'équivaut pas au mode avion Safari. Cette sonde et son CSP ne
+  doivent jamais être actifs dans le serveur de production.

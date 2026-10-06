@@ -51,15 +51,15 @@ export function AddAvailabilityDialog({ practitionerId, trigger }: AddAvailabili
 
       setFormData({ day_of_week: 1, start_time: '09:00', end_time: '17:00' });
       setOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Détecter l'erreur de contrainte UNIQUE (code PostgreSQL 23505)
-      const errorMessage = error?.message || error?.toString() || '';
+      const errorMessage = (error instanceof Error ? error.message : String(error ?? "")) || '';
       const isUniqueViolation =
         errorMessage.includes('23505') ||
         errorMessage.includes('unique') ||
         errorMessage.includes('duplicate') ||
         errorMessage.includes('already exists') ||
-        error?.code === '23505';
+        (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505');
 
       if (isUniqueViolation) {
         toast({

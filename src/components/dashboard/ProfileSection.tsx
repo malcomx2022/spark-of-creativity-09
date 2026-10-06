@@ -1,3 +1,4 @@
+import type { Gender } from "@/types/profile";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,7 @@ export function ProfileSection() {
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
-    gender: 'non_specifie' as const,
+    gender: 'non_specifie' as Gender,
     date_of_birth: '',
   });
 
@@ -65,7 +66,7 @@ export function ProfileSection() {
       setFormData({
         full_name: profile.full_name || '',
         phone: profile.phone || '',
-        gender: (profile.gender as any) || 'non_specifie',
+        gender: profile.gender || 'non_specifie',
         date_of_birth: profile.date_of_birth || '',
       });
       hasInitialized.current = true;
@@ -253,7 +254,7 @@ export function ProfileSection() {
                 <Label htmlFor="gender">Sexe</Label>
                 <Select
                   value={formData.gender}
-                  onValueChange={(value) => setFormData({ ...formData, gender: value as any })}
+                  onValueChange={(value) => setFormData({ ...formData, gender: value as Gender })}
                 >
                   <SelectTrigger>
                     <SelectValue />

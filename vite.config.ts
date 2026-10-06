@@ -17,6 +17,23 @@ const pwaVersion: Plugin = {
   },
 };
 
+// Sonde de panne réseau réservée au serveur de recette Playwright.
+// WebKit setOffline interrompt la navigation avant le traitement du service worker.
+const browserNetworkFailure: Plugin = {
+  name: 'browser-network-failure',
+  configurePreviewServer(server) {
+    if (process.env.DOMICARES_BROWSER_TEST !== '1') return;
+    server.middlewares.use((request, _response, next) => {
+      const url = new URL(request.url || '/', 'http://localhost');
+      if (url.searchParams.get('__browser_network_failure') === '1') {
+        request.socket.destroy();
+        return;
+      }
+      next();
+    });
+  },
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -28,7 +45,14 @@ export default defineConfig(({ mode }) => ({
       "/socket.io": { target: process.env.VITE_DEV_API_TARGET || "http://localhost:3000", ws: true, changeOrigin: true },
     },
   },
-  plugins: [react(), pwaVersion],
+  // Le navigateur PWA utilise le vrai transport HTTP, sans interception Playwright.
+  // En preview de test seulement, empêcher le chargement des services externes.
+  preview: {
+    headers: process.env.DOMICARES_BROWSER_TEST === '1'
+      ? { 'Content-Security-Policy': "script-src 'self'; connect-src 'self'" }
+      : undefined,
+  },
+  plugins: [react(), pwaVersion, browserNetworkFailure],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -36,7 +60,7 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     // Optimisations de build
-    target: "esnext",
+    target: ["safari16.4", "chrome111", "edge111", "firefox128"],
     minify: "esbuild",
     sourcemap: false,
     // Code splitting manuel pour réduire la taille du bundle initial

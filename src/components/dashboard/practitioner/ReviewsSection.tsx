@@ -45,7 +45,7 @@ export default function ReviewsSection({ practitionerId }: ReviewsSectionProps) 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(r => {
-        const profile = (r as any).profiles;
+        const profile = r.profiles;
         const name = profile?.full_name?.toLowerCase() || '';
         const comment = r.comment?.toLowerCase() || '';
         return name.includes(query) || comment.includes(query);
@@ -399,7 +399,7 @@ export default function ReviewsSection({ practitionerId }: ReviewsSectionProps) 
             ) : (
               <div className="space-y-6">
                 {filteredReviews.map((review) => {
-                  const profile = (review as any).profiles;
+                  const profile = review.profiles;
                   return (
                     <div key={review.id} className="border-b pb-6 last:border-0 hover:bg-muted/30 -mx-4 px-4 py-4 transition-colors rounded-lg">
                       <div className="flex items-start justify-between mb-2">

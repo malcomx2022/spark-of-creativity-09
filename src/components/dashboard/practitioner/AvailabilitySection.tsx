@@ -1,3 +1,4 @@
+import type { PractitionerProfile } from "@/types/practitioner";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ import { fr } from "date-fns/locale";
 
 interface AvailabilitySectionProps {
   practitionerId: string;
-  practitionerData: any;
+  practitionerData: PractitionerProfile;
 }
 
 const DAYS_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];

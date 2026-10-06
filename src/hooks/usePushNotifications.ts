@@ -55,11 +55,11 @@ export function usePushNotifications(userId?: string) {
           variant: 'destructive',
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error subscribing to push:', error);
       toast({
         title: 'Erreur',
-        description: error.message || 'Impossible d\'activer les notifications push.',
+        description: (error instanceof Error ? error.message : "") || 'Impossible d\'activer les notifications push.',
         variant: 'destructive',
       });
     } finally {
@@ -78,11 +78,11 @@ export function usePushNotifications(userId?: string) {
         title: 'Notifications push désactivées',
         description: 'Vous ne recevrez plus de notifications push.',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error unsubscribing from push:', error);
       toast({
         title: 'Erreur',
-        description: error.message || 'Impossible de désactiver les notifications push.',
+        description: (error instanceof Error ? error.message : "") || 'Impossible de désactiver les notifications push.',
         variant: 'destructive',
       });
     } finally {

@@ -54,15 +54,15 @@ export function AddExceptionDialog({ practitionerId, trigger }: AddExceptionDial
 
       setFormData({ date: '', is_available: false, reason: '' });
       setOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Détecter l'erreur de contrainte UNIQUE (code PostgreSQL 23505)
-      const errorMessage = error?.message || error?.toString() || '';
+      const errorMessage = (error instanceof Error ? error.message : String(error ?? "")) || '';
       const isUniqueViolation =
         errorMessage.includes('23505') ||
         errorMessage.includes('unique') ||
         errorMessage.includes('duplicate') ||
         errorMessage.includes('already exists') ||
-        error?.code === '23505';
+        (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505');
 
       if (isUniqueViolation) {
         const formattedDate = new Date(formData.date).toLocaleDateString('fr-FR', {

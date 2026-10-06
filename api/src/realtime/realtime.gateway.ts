@@ -65,13 +65,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const previous = this.listener;
     this.listener = null;
     await previous?.end().catch(() => undefined);
-    let active: Client | undefined;
-    active = await startChangeListener(this.config.DATABASE_URL, this.bus, (err) => {
-      if (this.stopped || (active && this.listener !== active)) return;
+    const connection: { active?: Client } = {};
+    connection.active = await startChangeListener(this.config.DATABASE_URL, this.bus, (err) => {
+      if (this.stopped || (connection.active && this.listener !== connection.active)) return;
       this.logger.error(`connexion LISTEN perdue : ${err.message} — reconnexion dans 5 s`);
       this.scheduleReconnect();
     });
-    this.listener = active;
+    this.listener = connection.active;
     if (this.stopped) await this.listener.end().catch(() => undefined);
     this.logger.log('relais LISTEN table_changes → Socket.IO actif');
   }

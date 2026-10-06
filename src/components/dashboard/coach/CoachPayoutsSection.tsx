@@ -395,7 +395,7 @@ export default function CoachPayoutsSection({ coachId, coachName }: CoachPayouts
           styles: { fontSize: 8 },
           headStyles: { fillColor: [59, 130, 246] },
         });
-        currentY = (doc as any).lastAutoTable?.finalY + 10 || currentY + 50;
+        currentY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY + 10 || currentY + 50;
       }
 
       // Appointment payments table

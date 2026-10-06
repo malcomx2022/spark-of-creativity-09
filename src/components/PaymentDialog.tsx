@@ -142,7 +142,7 @@ export function PaymentDialog({
   const hasRehydratedRef = useRef(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollStartTimeRef = useRef<number>(0);
-  const widgetRef = useRef<any>(null);
+  const widgetRef = useRef<import("@/lib/fedapay-widget").FedaPayCheckoutWidget>(null);
   // ✅ CORRECTION P0-2: Ref pour protection double-clic robuste (timestamp-based)
   const lastPaymentClickRef = useRef<number>(0);
   const DOUBLE_CLICK_THRESHOLD = 2000; // 2 secondes entre clics
@@ -457,7 +457,7 @@ export function PaymentDialog({
     status: 'pending' | 'success' | 'failed' | 'timeout',
     errorMessage?: string,
     errorType?: string,
-    errorDetails?: Record<string, any>
+    errorDetails?: Record<string, unknown>
   ) => {
     try {
       // Les tentatives sont journalisées côté API (payment_attempts) lors de POST /payments ;
@@ -690,7 +690,7 @@ export function PaymentDialog({
 
           toast({
             title: 'Paiement en cours',
-            description: error.message || 'Un paiement est déjà en attente',
+            description: (error instanceof Error ? error.message : "") || 'Un paiement est déjà en attente',
             variant: 'destructive',
             duration: 10000,
             action: (
