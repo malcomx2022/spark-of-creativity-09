@@ -1,7 +1,8 @@
 # 10 — Plan de correction après revue du projet
 
 Date : 6 octobre 2026. Base examinée : `d998e78732b9b94a1cee73800fc8497914076ed0`.
-Statut : **lots applicatifs 1 à 5 implémentés et validés localement ; livraison à suivre (§6)**.
+Statut : **lots applicatifs 1 à 5 fusionnés via PR #82 sur `main` (`4dbc588`)**.
+Suite active : [corrections fonctionnelles, sécurité, responsive et PWA](11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md).
 
 ## 1. Objectif et continuité des travaux
 
@@ -254,8 +255,8 @@ les routes, les chemins finaux S3 et les règles FedaPay sont conservés.
   **Non exécuté** : le contrôle automatique d'approbation a refusé le push direct
   vers `main`, au motif qu'une publication sur la branche par défaut sans revue
   n'était pas explicitement autorisée. Les corrections sont publiées sur
-  `codex/security-review-20261006` pour PR et CI ; la fusion et le déploiement
-  attendent l'autorisation explicite de l'utilisateur. Ne pas contourner ce refus.
+  `codex/security-review-20261006` pour PR et CI. La PR #82 a ensuite été fusionnée
+  sur `main` (`4dbc588`) ; aucun déploiement VPS n'a été exécuté par ce chantier.
 - Exploitation hors correctifs applicatifs : sauvegarde MinIO/hors site, restauration,
   choix RPO/RTO et résorption globale du lint restent à réaliser (lot 6).
 

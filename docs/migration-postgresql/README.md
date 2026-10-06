@@ -20,6 +20,9 @@ d'architecture (NestJS + PostgreSQL 16 + Redis + S3).
 
 ## Outillage livré (testé)
 
+Suivi actif : [11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md](11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md),
+corrections après la nouvelle revue, avec validation et règles de cache PWA.
+
 | Chemin | Rôle |
 |---|---|
 | `db/native/000_supabase_compat_shim.sql` | Émule `auth.*`, `storage.*`, rôles Supabase pour rejouer les migrations sur un Postgres vierge |

@@ -22,6 +22,9 @@ exclu des images Docker et de la CI.
 
 ## Démarrer en local
 
+Prérequis : Node 22.12+ (branche 22). Front : Vite 7, React Router 7 et Tailwind 4.
+Voir [le suivi sécurité, responsive et PWA](docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md).
+
 1. **Base** : créer une base PostgreSQL 16 et charger, dans l'ordre, `db/native/010_roles.sql`,
    `schema.native.sql`, `120_drop_rls_optional.sql`, `130_fixes_heritage.sql`, `020_grants.sql`
    (voir `api/README.md`, « Démarrer en local »).

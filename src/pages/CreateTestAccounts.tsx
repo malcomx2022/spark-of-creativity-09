@@ -37,11 +37,11 @@ export default function CreateTestAccounts() {
         title: "Identifiants de développement affichés",
         description: "Les comptes doivent avoir été initialisés côté serveur.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating accounts:', error);
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive",
       });
     } finally {
@@ -57,7 +57,7 @@ export default function CreateTestAccounts() {
       setAccounts(null);
       sonnerToast.success("Session nettoyée avec succès!");
       window.location.href = "/";
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Logout error:', error);
       sonnerToast.error("Erreur lors du nettoyage de session");
     }
@@ -88,10 +88,10 @@ export default function CreateTestAccounts() {
       // Utiliser la logique de redirection cohérente avec le reste de l'app
       const dashboardPath = await getDashboardPathForUser(data.user.id);
       navigate(dashboardPath);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erreur",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive",
       });
     } finally {
