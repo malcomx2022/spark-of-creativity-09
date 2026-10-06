@@ -34,7 +34,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
             {/* Connexion Patient */}
             <Card className="shadow-elegant hover:shadow-glow transition-all duration-300 border-patient/20 hover:border-patient/40 cursor-pointer group">
               <CardHeader className="text-center pb-6">

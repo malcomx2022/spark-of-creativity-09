@@ -81,8 +81,8 @@ export default function SessionsTab({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between sm:items-center">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold">Mes séances de groupe</h2>
           <CardDescription>Gérez et créez vos séances de coaching</CardDescription>
         </div>

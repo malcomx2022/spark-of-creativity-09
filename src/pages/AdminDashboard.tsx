@@ -120,14 +120,14 @@ export default function AdminDashboard() {
         <div className="mb-8">
           <Card className="shadow-medical border-destructive/20">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <div className="w-12 h-12 bg-destructive rounded-full flex items-center justify-center">
                     <Shield className="h-6 w-6 text-white" />
                   </div>
                   <div>
                     <CardTitle className="text-2xl">Tableau de bord administrateur</CardTitle>
-                    <CardDescription>
+                    <CardDescription className="break-all">
                       Bienvenue, {user?.email || 'administrateur'}
                     </CardDescription>
                   </div>
