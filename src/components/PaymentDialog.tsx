@@ -117,6 +117,7 @@ export function PaymentDialog({
     console.warn('[PaymentDialog] sessionDetails manquant pour context=group_session');
   }
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn');
+  const paymentOwnerRef = useRef(auth.getUser()?.id);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [payerName, setPayerName] = useState('');
   const [payerEmail, setPayerEmail] = useState('');
@@ -980,6 +981,7 @@ export function PaymentDialog({
   // ✅ CORRECTION P1-6: Poll payment status avec cleanup robuste et timeout appropriés
   useEffect(() => {
     // Cleanup immédiat si pas de paiement en cours
+    if (paymentOwnerRef.current !== auth.getUser()?.id) return;
     if (!paymentId || paymentStatus !== 'pending') {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -1162,7 +1164,7 @@ export function PaymentDialog({
       payerName,
       payerEmail,
       lastUpdated: Date.now(),
-    });
+    }, paymentOwnerRef.current);
   }, [
     open,
     appointmentId,
@@ -1197,7 +1199,6 @@ export function PaymentDialog({
       return;
     }
 
-    console.log('🔄 Réhydratation du paiement:', persisted);
     
     // Valider que la méthode de paiement est supportée (mtn ou moov)
     const validMethod = persisted.paymentMethod === 'mtn' || persisted.paymentMethod === 'moov' ? persisted.paymentMethod : 'mtn';

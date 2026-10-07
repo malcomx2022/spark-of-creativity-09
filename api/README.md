@@ -19,6 +19,11 @@ moyens de paiement, statistiques** livrées.
 
 ## Ce qui est implémenté
 
+Correctif du 7 octobre : `POST /api/contact` (public, 5 tentatives/IP/heure) transmet
+un message à `CONTACT_RECIPIENT_EMAIL` via Resend ; succès après acceptation du fournisseur,
+503 si non configuré ou indisponible. `GET /api/conversations/:appointmentId` ouvre
+une conversation autorisée sans parcourir toutes les pages de liste. Voir le document 14.
+
 | Route | Remplace |
 |---|---|
 | `POST /api/auth/register` | `supabase.auth.signUp` (métadonnées `user_type`, `practitioner_type`, `pending_onboarding` conservées) |

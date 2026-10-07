@@ -1,4 +1,6 @@
 import { getOwnPractitionerProfile } from "@/lib/api/practitioner-profile";
+import { useDashboardTab } from '@/hooks/useDashboardTab';
+import { PractitionerMessagesSection } from '@/components/dashboard/practitioner/PractitionerMessagesSection';
 import { useState, useMemo, lazy, Suspense } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +46,10 @@ const SupportTab = lazy(() => import("@/components/dashboard/coach/tabs/SupportT
 const CoachPayoutsSection = lazy(() => import("@/components/dashboard/coach/CoachPayoutsSection"));
 const PaymentInfoSection = lazy(() => import("@/components/dashboard/practitioner/PaymentInfoSection").then(m => ({ default: m.PaymentInfoSection })));
 
+const COACH_TABS = ['sessions', 'appointments', 'revenue', 'availability', 'profile', 'notifications', 'support', 'messages'] as const;
+
 export default function CoachDashboard() {
+  const [activeTab, setActiveTab] = useDashboardTab(COACH_TABS, 'sessions');
   const { data: user, isLoading: isLoadingUser } = useAuthUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -345,7 +350,7 @@ export default function CoachDashboard() {
             </Card>
           </div>
 
-          <Tabs defaultValue="sessions" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <div className="overflow-x-auto">
             <TabsList className="inline-flex min-w-max min-h-12 h-auto justify-start">
               <TabsTrigger value="sessions" className="gap-2">
@@ -383,9 +388,11 @@ export default function CoachDashboard() {
                 <span className="sm:hidden">Aide</span>
                 <span className="hidden sm:inline">Support</span>
               </TabsTrigger>
+              <TabsTrigger value="messages">Messages</TabsTrigger>
             </TabsList>
             </div>
 
+            <TabsContent value="messages"><PractitionerMessagesSection /></TabsContent>
             <TabsContent value="sessions">
               <Suspense fallback={
                 <div className="flex items-center justify-center py-12">

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Phone, Mail, MapPin, Clock } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { api, errorMessage } from '@/lib/api';
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -15,18 +16,31 @@ export default function Contact() {
     email: '',
     phone: '',
     subject: '',
-    message: ''
+    message: '',
+    website: '',
   });
   const { toast } = useToast();
+  const [isSending, setIsSending] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
+  const [submissionSuccess, setSubmissionSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simuler l'envoi du formulaire
-    toast({
-      title: "Message envoyé",
-      description: "Nous vous répondrons dans les plus brefs délais.",
-    });
-    setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
+    if (isSending) return;
+    setIsSending(true);
+    setSubmissionError('');
+    setSubmissionSuccess(false);
+    try {
+      const result = await api.post<{ accepted: boolean }>('/contact', formData, { auth: false });
+      if (!result.accepted) throw new Error('Votre message n’a pas été accepté.');
+      setSubmissionSuccess(true);
+      toast({ title: 'Message transmis', description: 'Votre demande a été transmise à notre équipe.' });
+      setFormData({ name: '', email: '', phone: '', subject: '', message: '', website: '' });
+    } catch (error) {
+      setSubmissionError(errorMessage(error, 'Votre message n’a pas pu être transmis. Réessayez plus tard.'));
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -145,6 +159,10 @@ export default function Contact() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
+                <fieldset disabled={isSending} className="space-y-4">
+                <div hidden aria-hidden="true"><label htmlFor="website">Site web</label><input id="website" name="website" value={formData.website} onChange={handleChange} tabIndex={-1} autoComplete="off" /></div>
+                {submissionError && <p role="alert">{submissionError}</p>}
+                {submissionSuccess && <p role="status">Votre message a été transmis à notre équipe.</p>}
                 <div>
                   <Label htmlFor="name">Nom complet</Label>
                   <Input
@@ -153,6 +171,8 @@ export default function Contact() {
                     value={formData.name}
                     onChange={handleChange}
                     required
+                    minLength={2}
+                    maxLength={100}
                   />
                 </div>
                 <div>
@@ -161,6 +181,7 @@ export default function Contact() {
                     id="email"
                     name="email"
                     type="email"
+                    maxLength={254}
                     value={formData.email}
                     onChange={handleChange}
                     required
@@ -172,6 +193,7 @@ export default function Contact() {
                     id="phone"
                     name="phone"
                     type="tel"
+                    maxLength={40}
                     value={formData.phone}
                     onChange={handleChange}
                   />
@@ -180,6 +202,8 @@ export default function Contact() {
                   <Label htmlFor="subject">Sujet</Label>
                   <Input
                     id="subject"
+                    minLength={2}
+                    maxLength={150}
                     name="subject"
                     value={formData.subject}
                     onChange={handleChange}
@@ -190,6 +214,8 @@ export default function Contact() {
                   <Label htmlFor="message">Message</Label>
                   <Textarea
                     id="message"
+                    minLength={10}
+                    maxLength={5000}
                     name="message"
                     value={formData.message}
                     onChange={handleChange}
@@ -197,9 +223,10 @@ export default function Contact() {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full">
-                  Envoyer le message
+                <Button type="submit" className="w-full" disabled={isSending}>
+                  {isSending ? 'Envoi en cours…' : 'Envoyer le message'}
                 </Button>
+                </fieldset>
               </form>
             </CardContent>
           </Card>

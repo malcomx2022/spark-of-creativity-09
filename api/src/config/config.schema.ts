@@ -27,6 +27,7 @@ export const configSchema = z.object({
   EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default('noreply@domicares.life'),
+  CONTACT_RECIPIENT_EMAIL: z.preprocess(value => value === '' ? undefined : value, z.string().email().optional()),
 
   OTP_PROVIDER: z.enum(['twilio', 'fake']).default('fake'),
   TWILIO_ACCOUNT_SID: z.string().optional(),

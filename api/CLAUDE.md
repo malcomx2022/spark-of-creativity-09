@@ -2,7 +2,13 @@
 
 Les consignes de `../CLAUDE.md` s'appliquent. Voir `README.md` pour la configuration
 de la base locale et les routes ; plan actif :
-`../docs/migration-postgresql/11-CORRECTIONS-FONCTIONNEL-SECURITE-PWA.md`.
+`../docs/migration-postgresql/14-CORRECTIONS-TROIS-PARCOURS.md`.
+
+- Contact : CONTACT_RECIPIENT_EMAIL choisit le destinataire fixe côté serveur ;
+  absent = HTTP 503, sans bloquer le démarrage. Valider les champs, échapper le HTML,
+  limiter à 5 POST/IP/heure et attendre le fournisseur avant accepted=true.
+- Notifications de message : destination selon le participant (patient/praticien/coach).
+  GET /conversations/:appointmentId exige l'appartenance, sans exception admin implicite.
 
 ## Conventions à conserver
 

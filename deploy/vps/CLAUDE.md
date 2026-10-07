@@ -22,6 +22,10 @@ Les consignes de `../../CLAUDE.md` s'appliquent. Références :
 
 Le workflow déploie désormais le SHA exact de son lancement (`github.sha`).
 Le chantier applicatif du 6 octobre 2026 ne nécessite aucune migration SQL.
+Le correctif des trois parcours du 7 octobre ne nécessite pas non plus de migration.
+Configurer CONTACT_RECIPIENT_EMAIL dans le .env du VPS pour activer le contact public,
+avec EMAIL_PROVIDER=resend et un expéditeur validé. Sans cette boîte, seul le contact
+est indisponible (HTTP 503). Voir le document 14 pour les vérifications après livraison.
 Le suivi du document 10 doit préciser le résultat réel du workflow de déploiement.
 
 La PR #82 initiale a été fusionnée sur `main` (`4dbc588`). Suivi actif :

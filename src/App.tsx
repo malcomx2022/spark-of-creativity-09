@@ -47,6 +47,7 @@ const CompleteRegistration = lazy(() => import("./pages/CompleteRegistration"));
 
 // Lazy loading pour ProtectedRoute
 const ProtectedRoute = lazy(() => import("./components/ProtectedRoute"));
+const DashboardRedirect = lazy(() => import("./components/DashboardRedirect"));
 
 // Skeleton de chargement optimisé
 function PageLoadingSkeleton() {
@@ -139,6 +140,7 @@ const App = () => (
                 <Route path="/payment/callback" element={<PaymentCallback />} />
                 
                 {/* Routes protégées */}
+                <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
                 <Route path="/dashboard/patient" element={
                   <ProtectedRoute allowedRoles={['patient']}>
                     <PatientDashboard />

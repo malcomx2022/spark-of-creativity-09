@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -27,6 +27,11 @@ export class MessagingController {
   @Get(':appointmentId/messages')
   messages(@CurrentUser() user: AuthenticatedUser, @Param('appointmentId') appointmentId: string, @Query(new ZodValidationPipe(messagesQuerySchema)) q: MessagesQuery) {
     return this.messaging.listMessages(user.id, appointmentId, q);
+  }
+
+  @Get(':appointmentId')
+  conversation(@CurrentUser() user: AuthenticatedUser, @Param('appointmentId', ParseUUIDPipe) appointmentId: string) {
+    return this.messaging.getConversation(user.id, appointmentId);
   }
 
   @Post(':appointmentId/messages')

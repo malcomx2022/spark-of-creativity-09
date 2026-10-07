@@ -1,7 +1,17 @@
 # Front — consignes complémentaires
 
 Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
-`../docs/migration-postgresql/12-CORRECTIONS-LINT-SAFARI-IOS.md`.
+`../docs/migration-postgresql/14-CORRECTIONS-TROIS-PARCOURS.md`.
+
+- Paiement persistant : enveloppe versionnée avec propriétaire ; purge au logout,
+  changement de compte et événement storage. Conserver la progression à la rotation
+  du même compte, refuser les callbacks d'un ancien compte et les états historiques sans propriétaire.
+- Les onglets patient/praticien/coach suivent les paramètres URL. Une conversation
+  absente de la première page se charge par GET /conversations/:appointmentId ;
+  un refus d'accès ne doit pas ouvrir une autre conversation. Conserver /dashboard
+  comme redirection des anciennes notifications et ouvrir le chat mobile ciblé.
+- Contact public : POST /contact sans authentification ; succès après accepted=true,
+  champs conservés en erreur, bouton bloqué pendant l'envoi. Ne jamais simuler un succès.
 
 - Garder le socle `lib/api/`, les hooks TanStack Query, les composants et les parcours
   patient, praticien, coach, administrateur. Les droits et montants restent décidés par l'API.

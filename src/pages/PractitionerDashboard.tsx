@@ -1,4 +1,5 @@
 import { getOwnPractitionerProfile } from "@/lib/api/practitioner-profile";
+import { useDashboardTab } from '@/hooks/useDashboardTab';
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { AppointmentCard } from '@/components/AppointmentCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,7 +44,10 @@ const ConsultationReportSection = lazy(() => import('@/components/dashboard/prac
 const LocationSection = lazy(() => import('@/components/dashboard/practitioner/LocationSection').then(m => ({ default: m.LocationSection })));
 const DocumentsSection = lazy(() => import('@/components/dashboard/practitioner/DocumentsSection').then(m => ({ default: m.DocumentsSection })));
 
+const PRACTITIONER_TABS = ['appointments', 'profile', 'availability', 'payment-info', 'payouts', 'reports', 'messages', 'reviews', 'notifications', 'support'] as const;
+
 export default function PractitionerDashboard() {
+  const [activeTab, setActiveTab] = useDashboardTab(PRACTITIONER_TABS, 'appointments');
   const { data: user, isLoading: isLoadingUser } = useAuthUser();
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
@@ -379,7 +383,7 @@ export default function PractitionerDashboard() {
           </Card>
         </div>
 
-        <Tabs defaultValue="appointments" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="border-b">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
               <TabsList className="inline-flex h-auto w-full min-w-max justify-start bg-transparent p-0 gap-0">

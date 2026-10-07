@@ -5,7 +5,8 @@
 Lire `README.md`, puis les consignes du dossier modifié : `api/CLAUDE.md`,
 `src/CLAUDE.md`, `deploy/vps/CLAUDE.md`.
 Le chantier actif est décrit dans
-`docs/migration-postgresql/12-CORRECTIONS-LINT-SAFARI-IOS.md` (6 octobre 2026).
+`docs/migration-postgresql/14-CORRECTIONS-TROIS-PARCOURS.md` (7 octobre 2026).
+Le document 12 conserve les validations lint et Safari/iOS.
 Le document 11 conserve les corrections fonctionnelles, sécurité, responsive et PWA.
 Le document 10 conserve le suivi des protections initiales et des travaux d'exploitation.
 Les lots applicatifs 1 à 5 sont implémentés et validés localement. Le suivi du
