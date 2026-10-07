@@ -18,6 +18,7 @@ import { MedicalSection } from '@/components/dashboard/MedicalSection';
 import { PaymentsSection } from '@/components/dashboard/PaymentsSection';
 import { NotificationsSection } from '@/components/dashboard/NotificationsSection';
 import { MessagesSection } from '@/components/dashboard/MessagesSection';
+import { useDashboardTab } from '@/hooks/useDashboardTab';
 import { ReviewsSection } from '@/components/dashboard/ReviewsSection';
 import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
@@ -52,8 +53,10 @@ interface PatientStats {
   awaitingConfirmation: number;
 }
 
+const PATIENT_TABS = ['appointments', 'group-sessions', 'triage', 'reports', 'profile', 'medical', 'payments', 'messages', 'notifications', 'reviews', 'support'] as const;
+
 export default function PatientDashboard() {
-  const [activeTab, setActiveTab] = useState("appointments");
+  const [activeTab, setActiveTab] = useDashboardTab(PATIENT_TABS, 'appointments');
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [appointmentIdForPayment, setAppointmentIdForPayment] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);

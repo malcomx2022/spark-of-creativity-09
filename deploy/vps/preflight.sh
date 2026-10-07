@@ -53,6 +53,7 @@ else
     else ok "$k=$val"; fi
   done
   if [[ "$(env_get EMAIL_PROVIDER)" == "resend" ]]; then placeholder "$(env_get RESEND_API_KEY)" && ko "RESEND_API_KEY requis avec EMAIL_PROVIDER=resend"; fi
+  [[ -n "$(env_get CONTACT_RECIPIENT_EMAIL)" ]] || warn "CONTACT_RECIPIENT_EMAIL absent : le formulaire public de contact répondra 503 (les autres services restent disponibles)"
   if [[ "$(env_get OTP_PROVIDER)" == "twilio" ]]; then for v in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_VERIFY_SERVICE_SID; do placeholder "$(env_get $v)" && ko "$v requis avec OTP_PROVIDER=twilio"; done; fi
   if [[ "$(env_get SMS_PROVIDER)" == "twilio" ]]; then placeholder "$(env_get TWILIO_PHONE_NUMBER)" && ko "TWILIO_PHONE_NUMBER requis avec SMS_PROVIDER=twilio"; fi
   if [[ "$(env_get PUSH_PROVIDER)" == "webpush" ]]; then for v in WEB_PUSH_PUBLIC_KEY WEB_PUSH_PRIVATE_KEY; do placeholder "$(env_get $v)" && ko "$v requis avec PUSH_PROVIDER=webpush (clés VAPID identiques à Supabase, sinon re-souscription push)"; done; fi

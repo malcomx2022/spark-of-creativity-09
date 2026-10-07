@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import type { DB } from '../database/types';
 import { DispatchService } from '../notifications/dispatch.service';
 import type { ConversationsQuery, MessagesQuery, SendMessageDto } from './messaging.dto';
+import { messageLink } from './message-link';
 
 const CONVERSATION_STATUSES = ['confirmed', 'completed'] as const;
 
@@ -16,6 +17,7 @@ export interface Participant {
   practitionerUserId: string | null;
   isPatient: boolean;
   isPractitioner: boolean;
+  practitionerType?: string | null;
 }
 
 /** Messagerie patient ↔ praticien liée à un rendez-vous (ex useConversations / useMessages). */
@@ -27,14 +29,14 @@ export class MessagingService {
   async participant(trx: Transaction<DB>, userId: string, appointmentId: string, allowAdmin = true): Promise<Participant> {
     const a = await trx.selectFrom('appointments').select(['id', 'patient_id', 'patient_name', 'practitioner_id', 'practitioner_name']).where('id', '=', appointmentId).executeTakeFirst();
     if (!a) throw new NotFoundException('Rendez-vous introuvable');
-    const pr = await trx.selectFrom('practitioners').select('user_id').where('id', '=', a.practitioner_id).executeTakeFirst();
+    const pr = await trx.selectFrom('practitioners').select(['user_id', 'practitioner_type']).where('id', '=', a.practitioner_id).executeTakeFirst();
     const isPatient = a.patient_id === userId;
     const isPractitioner = pr?.user_id === userId;
     if (!isPatient && !isPractitioner) {
       const admin = allowAdmin && (await trx.selectFrom('user_roles').select('id').where('user_id', '=', userId).executeTakeFirst());
       if (!admin) throw new ForbiddenException('Accès non autorisé à cette conversation');
     }
-    return { appointmentId: a.id, patientId: a.patient_id, patientName: a.patient_name, practitionerId: a.practitioner_id, practitionerName: a.practitioner_name, practitionerUserId: pr?.user_id ?? null, isPatient, isPractitioner };
+    return { appointmentId: a.id, patientId: a.patient_id, patientName: a.patient_name, practitionerId: a.practitioner_id, practitionerName: a.practitioner_name, practitionerUserId: pr?.user_id ?? null, isPatient, isPractitioner, practitionerType: pr?.practitioner_type };
   }
 
   async canAccess(userId: string, appointmentId: string): Promise<boolean> {
@@ -73,6 +75,17 @@ export class MessagingService {
     });
   }
 
+  async getConversation(userId: string, appointmentId: string) {
+    return this.database.runAs({ role: 'service_role', userId }, async trx => {
+      const participant = await this.participant(trx, userId, appointmentId, false);
+      const appointment = await trx.selectFrom('appointments').select(['date', 'time', 'status', 'created_at']).where('id', '=', appointmentId).executeTakeFirstOrThrow();
+      if (!(CONVERSATION_STATUSES as readonly string[]).includes(appointment.status)) throw new NotFoundException('Conversation indisponible');
+      const last = await trx.selectFrom('messages').select(['content', 'created_at']).where('appointment_id', '=', appointmentId).orderBy('created_at', 'desc').orderBy('id', 'desc').executeTakeFirst();
+      const unread = await trx.selectFrom('messages').select(eb => eb.fn.countAll<string>().as('count')).where('appointment_id', '=', appointmentId).where('sender_id', '!=', userId).where('is_read', '=', false).executeTakeFirstOrThrow();
+      return { appointment_id: appointmentId, patient_id: participant.patientId, patient_name: participant.patientName, practitioner_id: participant.practitionerId, practitioner_name: participant.practitionerName, last_message: last?.content || 'Aucun message', last_message_at: last?.created_at ?? appointment.created_at, unread_count: Number(unread.count), appointment_date: appointment.date, appointment_time: appointment.time, appointment_status: appointment.status };
+    });
+  }
+
   async listMessages(userId: string, appointmentId: string, q: MessagesQuery) {
     return this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       await this.participant(trx, userId, appointmentId);
@@ -84,7 +97,7 @@ export class MessagingService {
   }
 
   async send(userId: string, appointmentId: string, dto: SendMessageDto) {
-    const { message, recipientId, senderName } = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
+    const { message, recipientId, senderName, link } = await this.database.runAs({ role: 'service_role', userId }, async (trx) => {
       const p = await this.participant(trx, userId, appointmentId, false);
       if (dto.attachment && !dto.attachment.filePath.startsWith(`message-attachments/${userId}/`) && !/^https?:\/\//.test(dto.attachment.filePath)) {
         throw new ForbiddenException("La pièce jointe doit avoir été envoyée dans votre dossier message-attachments");
@@ -99,12 +112,12 @@ export class MessagingService {
         .executeTakeFirstOrThrow();
       const recipientId = p.isPatient ? p.practitionerUserId : p.patientId;
       const senderName = p.isPatient ? p.patientName : p.practitionerName;
-      return { message, recipientId, senderName };
+      return { message, recipientId, senderName, link: messageLink(appointmentId, !p.isPatient, p.practitionerType) };
     });
     if (recipientId) {
       // In-app + push uniquement (pas d'e-mail/SMS par message, comme le comportement Supabase temps réel).
       await this.dispatch
-        .dispatch({ userId: recipientId, title: `Nouveau message de ${senderName}`, message: dto.content || 'Pièce jointe', type: 'message', link: `/dashboard?tab=messages&appointment=${appointmentId}`, channels: ['push'] })
+        .dispatch({ userId: recipientId, title: `Nouveau message de ${senderName}`, message: dto.content || 'Pièce jointe', type: 'message', link, channels: ['push'] })
         .catch(() => undefined);
     }
     return message;

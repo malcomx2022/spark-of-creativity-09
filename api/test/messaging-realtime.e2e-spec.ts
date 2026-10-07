@@ -127,6 +127,19 @@ describe('Messaging, notifications & realtime (e2e)', () => {
     expect(anonymous.statusCode).toBe(401);
   });
 
+  it('ouvre directement une conversation autorisée sans dépendre de la page de liste', async () => {
+    const page = await app.inject({ method: 'GET', url: '/api/conversations?page=99', headers: auth('patient') });
+    expect(page.json().conversations).toEqual([]);
+    for (const participant of ['patient', 'practitioner']) {
+      const response = await app.inject({ method: 'GET', url: `/api/conversations/${appointmentId}`, headers: auth(participant) });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ appointment_id: appointmentId, last_message: 'Aucun message', unread_count: 0 });
+    }
+    expect((await app.inject({ method: 'GET', url: `/api/conversations/${appointmentId}`, headers: auth('other') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `/api/conversations/${appointmentId}` })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/conversations/not-a-uuid', headers: auth('patient') })).statusCode).toBe(400);
+  });
+
   it('envoi d’un message → non-lu chez le destinataire, notification push in-app, puis lecture', async () => {
     const empty = await app.inject({ method: 'POST', url: `/api/conversations/${appointmentId}/messages`, headers: auth('patient'), payload: { content: '   ' } });
     expect(empty.statusCode).toBe(400);

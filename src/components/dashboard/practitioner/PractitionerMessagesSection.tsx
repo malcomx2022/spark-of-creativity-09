@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useConversations } from '@/hooks/useConversations';
 import { ConversationsList } from '@/components/messaging/ConversationsList';
 import { ChatInterface } from '@/components/messaging/ChatInterface';
-import type { Conversation } from '@/hooks/useConversations';
+import { useConversationSelection } from '@/hooks/useConversationSelection';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,13 +26,14 @@ export function PractitionerMessagesSection() {
     fetchNextPage,
     refetch,
   } = useConversations(user?.id, 'practitioner');
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread'>('all');
 
   // Aplatir les pages de conversations
   const allConversations = data?.pages.flatMap(page => page.conversations) || [];
+
+  const { selectedConversation, selectConversation: setSelectedConversation, linkedError } = useConversationSelection(allConversations, user?.id);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -69,13 +70,6 @@ export function PractitionerMessagesSection() {
     await refetch();
     setIsRefreshing(false);
   };
-
-  // Auto-select first conversation when loaded (only once)
-  useEffect(() => {
-    if (!selectedConversation && filteredConversations.length > 0) {
-      setSelectedConversation(filteredConversations[0]);
-    }
-  }, [filteredConversations.length, selectedConversation]);
 
   // Skeleton loading
   if (isLoading) {
@@ -137,6 +131,7 @@ export function PractitionerMessagesSection() {
         {/* Global Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
+            {linkedError && <p role="alert">Cette conversation est indisponible ou son accès a été retiré.</p>}
             <h2 className="text-2xl font-bold flex items-center gap-2">
               <MessageSquare className="h-6 w-6" />
               Messages

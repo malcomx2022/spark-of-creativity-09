@@ -1,4 +1,7 @@
-const STORAGE_KEY = 'patient-payment-progress';
+import { getCurrentUser } from './api/session';
+import { PAYMENT_STORAGE_KEY as STORAGE_KEY, clearPersistedPaymentState } from './payment-storage-key';
+export { clearPersistedPaymentState } from './payment-storage-key';
+
 
 type PaymentStatus = 'idle' | 'pending' | 'success' | 'error';
 
@@ -66,9 +69,13 @@ export function getPersistedPaymentState(): PersistedPaymentState | null {
     }
 
     const parsed = JSON.parse(raw);
-    if (isPersistedPaymentState(parsed)) {
-      return parsed;
+    const ownerId = getCurrentUser()?.id;
+    const storedOwner = JSON.parse(window.localStorage.getItem('domicares.session') || 'null')?.user?.id;
+    if (ownerId && storedOwner === ownerId && parsed?.ownerId === ownerId && parsed.version === 2 && isPersistedPaymentState(parsed.state)) {
+      return parsed.state;
     }
+    // Les anciens états sans propriétaire ne peuvent pas être réattribués.
+    clearPersistedPaymentState();
   } catch (error) {
     console.error('Unable to parse persisted payment state', error);
   }
@@ -76,26 +83,20 @@ export function getPersistedPaymentState(): PersistedPaymentState | null {
   return null;
 }
 
-export function setPersistedPaymentState(state: PersistedPaymentState) {
+export function setPersistedPaymentState(state: PersistedPaymentState, ownerId = getCurrentUser()?.id) {
   if (typeof window === 'undefined') {
     return;
   }
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (!ownerId) {
+      clearPersistedPaymentState();
+      return;
+    }
+    if (ownerId !== getCurrentUser()?.id) return;
+    if (JSON.parse(window.localStorage.getItem('domicares.session') || 'null')?.user?.id !== ownerId) return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, ownerId, state }));
   } catch (error) {
     console.error('Unable to persist payment state', error);
-  }
-}
-
-export function clearPersistedPaymentState() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    console.error('Unable to clear persisted payment state', error);
   }
 }

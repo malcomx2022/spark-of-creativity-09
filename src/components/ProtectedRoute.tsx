@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { auth, type AuthSession } from '@/lib/api';
@@ -126,5 +126,5 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to={redirectForRole()} replace state={{ from: location }} />;
   }
 
-  return <>{children}</>;
+  return <Fragment key={session?.user.id}>{children}</Fragment>;
 }

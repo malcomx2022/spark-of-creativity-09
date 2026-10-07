@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useConversations } from '@/hooks/useConversations';
 import { ConversationsList } from '@/components/messaging/ConversationsList';
@@ -13,6 +13,7 @@ import {
   Mail, MailOpen, Users
 } from 'lucide-react';
 import type { Conversation } from '@/hooks/useConversations';
+import { useConversationSelection } from '@/hooks/useConversationSelection';
 
 export function MessagesSection() {
   const { data: user } = useAuthUser();
@@ -25,13 +26,13 @@ export function MessagesSection() {
     isFetchingNextPage,
     fetchNextPage,
   } = useConversations(user?.id, 'patient');
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [showMobileChat, setShowMobileChat] = useState(false);
-  const hasAutoSelected = useRef(false);
 
   // Aplatir les pages de conversations
   const allConversations = data?.pages.flatMap(page => page.conversations) || [];
+
+  const { selectedConversation, selectConversation: setSelectedConversation, requested, linkedError } = useConversationSelection(allConversations, user?.id);
 
   // Filtrer par recherche
   const conversations = useMemo(() => {
@@ -54,13 +55,9 @@ export function MessagesSection() {
     };
   }, [allConversations]);
 
-  // Auto-select first conversation when loaded (only once)
   useEffect(() => {
-    if (!hasAutoSelected.current && !selectedConversation && conversations.length > 0) {
-      setSelectedConversation(conversations[0]);
-      hasAutoSelected.current = true;
-    }
-  }, [conversations, selectedConversation]);
+    if (requested && selectedConversation) setShowMobileChat(true);
+  }, [requested, selectedConversation]);
 
   // Handle conversation selection with mobile view
   const handleSelectConversation = (conversation: Conversation) => {
@@ -132,6 +129,7 @@ export function MessagesSection() {
 
   return (
     <div className="space-y-6">
+      {linkedError && <p role="alert">Cette conversation est indisponible ou son accès a été retiré.</p>}
       {/* En-tête avec refresh */}
       <div className="flex items-center justify-between">
         <div>

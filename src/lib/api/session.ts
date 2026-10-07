@@ -4,6 +4,7 @@
  * WebSocket et à la reprise de session au rechargement (ex `persistSession` de supabase-js).
  */
 import { API_BASE_URL } from './config';
+import { clearPersistedPaymentState } from '../payment-storage-key';
 
 export interface AuthUser {
   id: string;
@@ -87,6 +88,7 @@ export const sessionExpiresSoon = (): boolean => {
 };
 
 export function setSession(response: SessionResponse, event: AuthEvent = 'SIGNED_IN'): AuthSession {
+  if (getSession()?.user.id !== response.user.id) clearPersistedPaymentState();
   const session: AuthSession = {
     accessToken: response.accessToken,
     refreshToken: response.refreshToken ?? getSession()?.refreshToken ?? null,
@@ -108,6 +110,7 @@ export function updateSessionUser(user: AuthUser) {
 }
 
 export function clearSession(silent = false) {
+  clearPersistedPaymentState();
   const had = getSession() !== null;
   current = null;
   write(null);
@@ -164,6 +167,7 @@ if (typeof window !== 'undefined') {
     if (e.key !== STORAGE_KEY) return;
     const next = read();
     const previous = current;
+    if (!next || previous?.user.id !== next.user.id) clearPersistedPaymentState();
     current = next;
     if (next && (!previous || previous.user.id !== next.user.id)) emit('SIGNED_IN', next);
     else if (!next && previous) emit('SIGNED_OUT', null);
