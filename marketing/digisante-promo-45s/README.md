@@ -1,6 +1,7 @@
-# Vidéo promotionnelle DigiSanté Mobile — 45 s, 9:16
+# Vidéo promotionnelle DigiSanté Mobile — 45 s et 15 s, 9:16
 
-Montage reproductible de `DigiSante_promo_45s.mp4` à partir du kit
+Montage reproductible de `DigiSante_promo_45s.mp4` et de sa version courte
+`DigiSante_promo_15s.mp4` à partir du kit
 `Kit_Promo_DigiSante_45s_9x16` (images, `scenario.json`, `Sous_titres_45s.srt`,
 logo officiel, manifeste SHA-256). Le kit n'est pas versionné ici ; le script le lit
 sans jamais le modifier.
@@ -15,6 +16,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python montage_digisante.py \
   --kit /chemin/vers/Kit_Promo_DigiSante_45s_9x16.zip \
   --sortie sortie
+# version courte de 15 s (bloc « short15s » du scénario)
+.venv/bin/python montage_digisante.py \
+  --kit /chemin/vers/Kit_Promo_DigiSante_45s_9x16.zip \
+  --version 15 --sortie sortie
 ```
 
 `--kit` accepte l'archive `.zip` ou le dossier décompressé. Sorties dans `sortie/` :
@@ -31,6 +36,9 @@ ffprobe -v error -count_frames -show_entries \
   stream=codec_name,profile,width,height,r_frame_rate,pix_fmt,nb_read_frames,duration:format=duration \
   -of compact sortie/DigiSante_promo_45s.mp4
 ```
+
+Version courte : mêmes caractéristiques, 450 images (15,000 s), fichiers
+`DigiSante_promo_15s.mp4` et `DigiSante_promo_15s.srt`.
 
 Le script exécute lui-même ces contrôles et échoue si l'un d'eux n'est pas conforme.
 
@@ -54,6 +62,19 @@ Le script exécute lui-même ces contrôles et échoue si l'un d'eux n'est pas c
    x = 48 et x = 930 et au-dessus de y = 1480 : hors de la colonne de boutons à
    droite et de la zone légende/pseudo en bas des réseaux sociaux.
 7. Encode avec FFmpeg puis contrôle le fichier avec ffprobe et revérifie le kit.
+
+## Version courte (15 s)
+
+- Plans du bloc `short15s` : documents 0–4 s, professionnel 4–7 s, pharmacie
+  7–10 s, signature 10–15 s ; coupes franches puis fondu de 0,5 s vers la signature.
+- Chaque plan reprend le titre et le mouvement de son plan source, à la même
+  vitesse que dans la version longue.
+- Le kit ne fournit pas de `.srt` de 15 s : les sous-titres sont tirés de
+  `short15s.voiceover` (une phrase par repère, durée au prorata du texte, de 0,3 à
+  14,7 s). L'ordre du texte (documents, ordonnances, professionnels) diffère de
+  celui des images (documents, professionnel, pharmacie) : il est conservé tel
+  qu'écrit dans le scénario.
+- Voix off attendue : `voix_off_15s.wav` ou `voix_off_15s.mp3` (15 s maximum).
 
 ## Voix off et musique
 

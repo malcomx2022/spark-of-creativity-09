@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Montage reproductible de la vidéo promotionnelle DigiSanté Mobile (45 s, 9:16).
+"""Montage reproductible de la vidéo promotionnelle DigiSanté Mobile (9:16).
 
 Entrée : le kit « Kit_Promo_DigiSante_45s_9x16 » (dossier ou archive .zip).
-Sortie : DigiSante_promo_45s.mp4 (1080 × 1920, 30 i/s, H.264) et le fichier .srt
-utilisé pour l'incrustation.
+Sortie : DigiSante_promo_45s.mp4 (version longue, par défaut) ou, avec
+--version 15, DigiSante_promo_15s.mp4 (bloc « short15s » du scénario), en
+1080 × 1920, 30 i/s, H.264, avec le fichier .srt utilisé pour l'incrustation.
 
 Le kit n'est jamais modifié : les empreintes SHA-256 du manifeste sont vérifiées
 avant et après le montage. Les images sont générées image par image (zoom et
 panoramique à échelle uniforme, sans déformation), puis encodées par FFmpeg.
 
-Voix off : si voix_off.wav ou voix_off.mp3 est présent à la racine du kit, il est
-intégré et les sous-titres sont recalés sur les plages de parole détectées.
+Voix off : si voix_off.wav ou voix_off.mp3 (voix_off_15s.wav ou voix_off_15s.mp3
+pour la version courte) est présent à la racine du kit, il est intégré et les
+sous-titres sont recalés sur les plages de parole détectées.
 Sinon la vidéo est une prévisualisation muette.
 Musique : uniquement si --musique et --licence-musique sont fournis.
 """
@@ -33,8 +35,10 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H, FPS = 1080, 1920, 30
-DUREE = 45
-PLANS_ATTENDUS = [(0, 7), (7, 15), (15, 23), (23, 31), (31, 38), (38, 45)]
+PLANS_ATTENDUS = {
+    45: [(0, 7), (7, 15), (15, 23), (23, 31), (31, 38), (38, 45)],
+    15: [(0, 4), (4, 7), (7, 10), (10, 15)],
+}
 
 # Charte « Wax & Terre » (scenario.json, notes de production)
 VERT_FORET = (0x1F, 0x70, 0x40)
@@ -71,8 +75,12 @@ MOUVEMENTS = {
 }
 
 # Transitions aux frontières de plans (colonne « transition » du scénario) :
-# durée du fondu enchaîné centré sur la frontière, 0 = coupe franche.
-TRANSITIONS = {7: 0.30, 15: 0.0, 23: 0.0, 31: 0.40, 38: 0.80}
+# durée du fondu enchaîné centré sur la frontière, 0 = coupe franche. La version
+# courte reprend les coupes franches 2→3 et 3→4, puis un fondu vers la signature.
+TRANSITIONS = {
+    45: {7: 0.30, 15: 0.0, 23: 0.0, 31: 0.40, 38: 0.80},
+    15: {4: 0.0, 7: 0.0, 10: 0.50},
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -150,12 +158,44 @@ def ecrire_srt(reperes: list[Repere], chemin: Path) -> None:
     chemin.write_text("\n\n".join(blocs) + "\n", encoding="utf-8")
 
 
-def verifier_scenario(scenario: dict) -> list[dict]:
-    plans = scenario["scenes"]
+def verifier_scenario(scenario: dict, duree: int) -> list[dict]:
+    """Plans de la version demandée. Chaque plan garde la durée de son plan
+    source (« duree_mouvement ») pour que zooms et panoramiques aient la même
+    vitesse dans les deux versions."""
+    for p in scenario["scenes"]:
+        p["duree_mouvement"] = p["end"] - p["start"]
+    if duree == 45:
+        bloc, plans = scenario, scenario["scenes"]
+    else:
+        bloc = scenario["short15s"]
+        sources = {p["id"]: p for p in scenario["scenes"]}
+        plans = [dict(sources[c["sourceScene"]], start=c["start"], end=c["end"]) for c in bloc["scenes"]]
+        if plans[-1]["id"] != scenario["scenes"][-1]["id"]:
+            sys.exit("La version courte doit se terminer sur la signature.")
     bornes = [(p["start"], p["end"]) for p in plans]
-    if scenario.get("durationSeconds") != DUREE or bornes != PLANS_ATTENDUS:
-        sys.exit(f"Découpage inattendu : {bornes} (attendu {PLANS_ATTENDUS}).")
+    if bloc.get("durationSeconds") != duree or bornes != PLANS_ATTENDUS[duree]:
+        sys.exit(f"Découpage inattendu : {bornes} (attendu {PLANS_ATTENDUS[duree]}).")
     return plans
+
+
+def reperes_depuis_texte(texte: str, debut: float, fin: float) -> list[Repere]:
+    """Sous-titres d'un texte sans .srt fourni : une phrase par repère, durée au
+    prorata du nombre de caractères ; coupure à la virgule des phrases longues."""
+    phrases = re.findall(r"[^.!?]+[.!?]", texte)
+    poids = [len(ph.strip()) for ph in phrases]
+    reperes, t = [], debut
+    for phrase, n in zip(phrases, poids):
+        duree = (fin - debut) * n / sum(poids)
+        phrase = phrase.strip()
+        if len(phrase) > 40 and ", " in phrase:
+            milieu = len(phrase) / 2
+            coupe = min((m.end() for m in re.finditer(r", ", phrase)), key=lambda k: abs(k - milieu))
+            lignes = [phrase[:coupe].rstrip(), phrase[coupe:]]
+        else:
+            lignes = [phrase]
+        reperes.append(Repere(round(t, 3), round(t + duree, 3), lignes))
+        t += duree
+    return reperes
 
 
 # --------------------------------------------------------------------------- #
@@ -188,7 +228,7 @@ def plages_de_parole(voix: Path, duree: float) -> list[tuple[float, float]]:
     return plages or [(0.0, duree)]
 
 
-def recaler_sous_titres(reperes: list[Repere], plages: list[tuple[float, float]]) -> list[Repere]:
+def recaler_sous_titres(reperes: list[Repere], plages: list[tuple[float, float]], duree: int) -> list[Repere]:
     """Répartit les repères sur le temps de parole au prorata du nombre de
     caractères, puis cale chaque frontière sur le silence le plus proche."""
     poids = [len(" ".join(r.lignes)) for r in reperes]
@@ -209,11 +249,11 @@ def recaler_sous_titres(reperes: list[Repere], plages: list[tuple[float, float]]
         proche = min(silences, key=lambda s: abs(s - cible), default=cible)
         frontieres.append(proche if abs(proche - cible) <= 0.8 else cible)
     debut_parole, fin_parole = plages[0][0], plages[-1][1]
-    bornes = [max(0.0, debut_parole - 0.1)] + sorted(frontieres) + [min(DUREE, fin_parole + 0.4)]
+    bornes = [max(0.0, debut_parole - 0.1)] + sorted(frontieres) + [min(duree, fin_parole + 0.4)]
     recales = []
     for i, r in enumerate(reperes):
         debut, fin = bornes[i], max(bornes[i + 1], bornes[i] + 0.8)
-        recales.append(Repere(round(debut, 3), round(min(fin, DUREE), 3), r.lignes))
+        recales.append(Repere(round(debut, 3), round(min(fin, duree), 3), r.lignes))
     return recales
 
 
@@ -373,7 +413,8 @@ def coller(fond: Image.Image, calque: Image.Image, xy: tuple[int, int], opacite:
     fond.alpha_composite(calque, (int(xy[0]), int(xy[1])))
 
 
-def rendre(kit: Path, plans: list[dict], reperes: list[Repere], encodeur: subprocess.Popen) -> None:
+def rendre(kit: Path, plans: list[dict], reperes: list[Repere], duree_totale: int,
+           encodeur: subprocess.Popen) -> None:
     sources = {p["id"]: Image.open(kit / p["image"]).convert("RGB") for p in plans}
     svg = kit / "Logo_DigiSante_Officiel.svg"
     petit_logo = logo(svg, 104)
@@ -383,14 +424,14 @@ def rendre(kit: Path, plans: list[dict], reperes: list[Repere], encodeur: subpro
 
     def image_plan(index: int, t: float) -> Image.Image:
         p = plans[index]
-        return cadre(sources[p["id"]], p["id"], (t - p["start"]) / (p["end"] - p["start"]))
+        return cadre(sources[p["id"]], p["id"], (t - p["start"]) / p["duree_mouvement"])
 
-    for n in range(DUREE * FPS):
+    for n in range(duree_totale * FPS):
         t = n / FPS
         i = next(k for k, p in enumerate(plans) if p["start"] <= t < p["end"])
         image = image_plan(i, t)
         # Fondu enchaîné centré sur la frontière la plus proche, si prévu.
-        for frontiere, duree in TRANSITIONS.items():
+        for frontiere, duree in TRANSITIONS[duree_totale].items():
             if duree and abs(t - frontiere) < duree / 2:
                 j = i - 1 if t >= frontiere else i + 1
                 autre = image_plan(j, t)
@@ -419,7 +460,7 @@ def rendre(kit: Path, plans: list[dict], reperes: list[Repere], encodeur: subpro
 
         encodeur.stdin.write(image.convert("RGB").tobytes())
         if n % FPS == 0:
-            print(f"\r  rendu {t:4.0f} s / {DUREE} s", end="", flush=True)
+            print(f"\r  rendu {t:4.0f} s / {duree_totale} s", end="", flush=True)
     print()
 
 
@@ -427,7 +468,7 @@ def rendre(kit: Path, plans: list[dict], reperes: list[Repere], encodeur: subpro
 # Encodage et vérification
 # --------------------------------------------------------------------------- #
 
-def commande_ffmpeg(sortie: Path, voix: Path | None, musique: Path | None) -> list[str]:
+def commande_ffmpeg(sortie: Path, duree: int, voix: Path | None, musique: Path | None) -> list[str]:
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-"]
     audio = []
@@ -439,26 +480,26 @@ def commande_ffmpeg(sortie: Path, voix: Path | None, musique: Path | None) -> li
         cmd += ["-i", str(musique)]
         audio.append(f"[{len(audio) + 1}:a]aformat=sample_rates=48000:channel_layouts=stereo,"
                      f"volume={0.12 if voix else 0.5},afade=t=in:d=1,"
-                     f"afade=t=out:st={DUREE - 2}:d=2[musique]")
+                     f"afade=t=out:st={duree - 2}:d=2[musique]")
     filtres = ["[0:v]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v]"]
     if audio:
         etiquettes = "".join(f"[{n}]" for n in (["voix"] if voix else []) + (["musique"] if musique else []))
         filtres += audio
         filtres.append(f"{etiquettes}amix=inputs={len(audio)}:normalize=0,"
-                       f"apad,atrim=0:{DUREE},asetpts=N/SR/TB[a]")
+                       f"apad,atrim=0:{duree},asetpts=N/SR/TB[a]")
     cmd += ["-filter_complex", ";".join(filtres), "-map", "[v]"]
     if audio:
         cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
     cmd += ["-c:v", "libx264", "-preset", "slow", "-crf", "18", "-profile:v", "high",
             "-level:v", "4.1", "-g", str(FPS * 2), "-bf", "2",
             "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-            "-color_range", "tv", "-frames:v", str(DUREE * FPS), "-t", str(DUREE),
+            "-color_range", "tv", "-frames:v", str(duree * FPS), "-t", str(duree),
             "-movflags", "+faststart", "-metadata", "title=DigiSanté Mobile — Votre santé, plus proche de vous.",
             str(sortie)]
     return cmd
 
 
-def verifier_sortie(sortie: Path, avec_audio: bool) -> dict:
+def verifier_sortie(sortie: Path, duree: int, avec_audio: bool) -> dict:
     sonde = json.loads(subprocess.run(
         ["ffprobe", "-v", "error", "-count_frames", "-show_entries",
          "format=duration,format_name:stream=codec_type,codec_name,profile,width,height,"
@@ -470,9 +511,9 @@ def verifier_sortie(sortie: Path, avec_audio: bool) -> dict:
         "1080 × 1920": (video["width"], video["height"]) == (W, H),
         "30 i/s": video["r_frame_rate"] == f"{FPS}/1",
         "yuv420p": video["pix_fmt"] == "yuv420p",
-        "1350 images": int(video["nb_read_frames"]) == DUREE * FPS,
-        "durée vidéo 45,000 s": abs(float(video["duration"]) - DUREE) < 0.001,
-        "durée totale 45 s": abs(float(sonde["format"]["duration"]) - DUREE) < 0.03,
+        f"{duree * FPS} images": int(video["nb_read_frames"]) == duree * FPS,
+        f"durée vidéo {duree},000 s": abs(float(video["duration"]) - duree) < 0.001,
+        f"durée totale {duree} s": abs(float(sonde["format"]["duration"]) - duree) < 0.03,
         "piste audio": avec_audio == any(s["codec_type"] == "audio" for s in sonde["streams"]),
     }
     print(json.dumps(sonde, indent=2, ensure_ascii=False))
@@ -486,6 +527,8 @@ def verifier_sortie(sortie: Path, avec_audio: bool) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--kit", required=True, type=Path, help="dossier du kit ou archive .zip")
+    parser.add_argument("--version", type=int, choices=(45, 15), default=45,
+                        help="45 : film complet ; 15 : version courte (short15s)")
     parser.add_argument("--sortie", type=Path, default=Path("sortie"), help="dossier de sortie")
     parser.add_argument("--musique", type=Path, help="fichier musical dont la licence est acquise")
     parser.add_argument("--licence-musique", help="référence de la licence (obligatoire avec --musique)")
@@ -507,32 +550,38 @@ def main() -> None:
         manifeste = json.loads((kit / "manifest.json").read_text(encoding="utf-8"))
         verifier_empreintes(kit, manifeste)
         scenario = json.loads((kit / "scenario.json").read_text(encoding="utf-8"))
-        plans = verifier_scenario(scenario)
-        reperes = lire_srt(kit / "Sous_titres_45s.srt")
+        duree = args.version
+        plans = verifier_scenario(scenario, duree)
+        if duree == 45:
+            reperes = lire_srt(kit / "Sous_titres_45s.srt")
+            noms_voix = ("voix_off.wav", "voix_off.mp3")
+        else:
+            reperes = reperes_depuis_texte(scenario["short15s"]["voiceover"], 0.3, duree - 0.3)
+            noms_voix = ("voix_off_15s.wav", "voix_off_15s.mp3")
 
-        voix = next((kit / n for n in ("voix_off.wav", "voix_off.mp3") if (kit / n).is_file()), None)
+        voix = next((kit / n for n in noms_voix if (kit / n).is_file()), None)
         if voix:
             duree_voix = duree_media(voix)
-            if duree_voix > DUREE:
-                sys.exit(f"Voix off trop longue ({duree_voix:.2f} s > {DUREE} s) : réenregistrer.")
-            reperes = recaler_sous_titres(reperes, plages_de_parole(voix, duree_voix))
+            if duree_voix > duree:
+                sys.exit(f"Voix off trop longue ({duree_voix:.2f} s > {duree} s) : réenregistrer.")
+            reperes = recaler_sous_titres(reperes, plages_de_parole(voix, duree_voix), duree)
             print(f"Voix off intégrée : {voix.name} ({duree_voix:.2f} s), sous-titres recalés.")
         else:
-            print("Aucune voix off (voix_off.wav / voix_off.mp3) : prévisualisation muette.")
+            print(f"Aucune voix off ({' / '.join(noms_voix)}) : prévisualisation muette.")
         if args.musique:
             print(f"Musique : {args.musique.name} — licence : {args.licence_musique}")
 
-        mp4 = sortie_dir / "DigiSante_promo_45s.mp4"
-        ecrire_srt(reperes, sortie_dir / "DigiSante_promo_45s.srt")
-        encodeur = subprocess.Popen(commande_ffmpeg(mp4, voix, args.musique), stdin=subprocess.PIPE)
+        mp4 = sortie_dir / f"DigiSante_promo_{duree}s.mp4"
+        ecrire_srt(reperes, mp4.with_suffix(".srt"))
+        encodeur = subprocess.Popen(commande_ffmpeg(mp4, duree, voix, args.musique), stdin=subprocess.PIPE)
         try:
-            rendre(kit, plans, reperes, encodeur)
+            rendre(kit, plans, reperes, duree, encodeur)
         finally:
             encodeur.stdin.close()
         if encodeur.wait() != 0:
             sys.exit("Échec de l'encodage FFmpeg.")
 
-        verifier_sortie(mp4, avec_audio=bool(voix or args.musique))
+        verifier_sortie(mp4, duree, avec_audio=bool(voix or args.musique))
         verifier_empreintes(kit, manifeste)
         print(f"Kit intact (empreintes SHA-256 conformes). Vidéo : {mp4}")
 

@@ -1,4 +1,4 @@
-# Voix off à enregistrer — DigiSanté Mobile (45 s)
+# Voix off à enregistrer — DigiSanté Mobile (45 s et 15 s)
 
 Texte issu de `scenario.json` (97 mots, environ 130 mots par minute). Ne pas
 modifier le texte sans validation du porteur : les sous-titres reprennent ce texte
@@ -45,3 +45,16 @@ Pour soi, pour sa famille, ici comme à distance : la santé se vit aussi ensemb
 
 DigiSanté Mobile. Votre santé, plus proche de vous. Découvrez le projet et suivez
 son lancement.
+
+## Version courte (15 s)
+
+Texte de `short15s.voiceover` (30 mots). Fichier à déposer à la racine du kit :
+`voix_off_15s.wav` (ou `voix_off_15s.mp3`), durée inférieure ou égale à 15 s, en
+visant 14 s. Mêmes consignes de ton, de respirations et de format que ci-dessus.
+
+| Repère indicatif | Texte à dire |
+|---|---|
+| 0 – 4 s | Vos documents de santé. Vos ordonnances. |
+| 4 – 7 s | Vos échanges avec les professionnels. |
+| 7 – 10 s | Avec DigiSanté Mobile, gardez le fil de votre parcours. |
+| 10 – 15 s | Votre santé, plus proche de vous. Découvrez le projet. |
