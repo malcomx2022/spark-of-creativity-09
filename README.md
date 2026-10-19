@@ -56,3 +56,5 @@ CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml
   `07-INSTALLATION-VPS.md` (installation et déploiement du VPS pas à pas).
 - `api/README.md` : table des routes de l'API (et ce qu'elles remplacent), jobs, configuration.
 - `docs/archive/` : documents de l'ère Lovable / Supabase, conservés pour l'historique.
+- `promo/digisante-mobile/README.md` : vidéo promotionnelle DigiSanté Mobile (45 s, verticale),
+  scénario, sous-titres et script de montage FFmpeg reproductible.
