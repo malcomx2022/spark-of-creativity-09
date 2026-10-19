@@ -48,7 +48,7 @@ son lancement.
 
 ## Version courte (15 s)
 
-Texte de `short15s.voiceover` (30 mots). Fichier à déposer à la racine du kit :
+Texte de `short15s.voiceover` (29 mots). Fichier à déposer à la racine du kit :
 `voix_off_15s.wav` (ou `voix_off_15s.mp3`), durée inférieure ou égale à 15 s, en
 visant 14 s. Mêmes consignes de ton, de respirations et de format que ci-dessus.
 
