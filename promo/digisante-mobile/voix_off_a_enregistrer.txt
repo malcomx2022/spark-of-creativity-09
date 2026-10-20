@@ -1,0 +1,27 @@
+DigiSanté Mobile — texte de voix off à enregistrer (durée totale 45 s)
+
+Plan 1 (0–7 s, 7 s, 19 mots) — Accroche
+    Un médecin, un infirmier ou un kiné à la maison ? Avec DigiSanté Mobile, c'est possible en quelques clics.
+
+Plan 2 (7–15 s, 8 s, 18 mots) — Recherche d'un praticien
+    Choisissez le professionnel de santé qu'il vous faut, près de chez vous, selon ses disponibilités et ses avis.
+
+Plan 3 (15–23 s, 8 s, 16 mots) — Réservation du rendez-vous
+    Réservez votre rendez-vous à domicile en un instant, à l'heure qui vous arrange, avec confirmation immédiate.
+
+Plan 4 (23–31 s, 8 s, 14 mots) — Paiement mobile sécurisé
+    Réglez en toute sécurité par Mobile Money ou par carte, directement depuis votre téléphone.
+
+Plan 5 (31–38 s, 7 s, 12 mots) — Suivi et messagerie
+    Messagerie, dossier médical, rappels : votre suivi reste accessible à tout moment.
+
+Plan 6 (38–45 s, 7 s, 11 mots) — Signature et appel à l'action
+    DigiSanté Mobile. La santé à domicile, simplement. Installez l'application dès aujourd'hui.
+
+Total : 90 mots pour 45 s (environ 120 mots/min).
+Chaque phrase doit tenir dans la fenêtre de son plan ; marquer une courte pause entre les plans.
+
+Enregistrement : WAV 48 kHz mono (ou MP3 ≥ 192 kb/s), pièce calme, micro à 15–20 cm, niveau de crête vers -6 dBFS.
+Déposer le fichier sous le nom voix_off.wav (ou voix_off.mp3) dans digisante-mobile/ puis relancer :
+    python3 promo/digisante-mobile/montage.py
+Les sous-titres seront recalés automatiquement sur l'enregistrement.

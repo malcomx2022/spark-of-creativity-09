@@ -1,0 +1,128 @@
+{
+  "projet": "DigiSanté Mobile — vidéo promotionnelle verticale 45 s",
+  "statut": "BROUILLON du 2026-10-19 : le scenario.json d'origine n'était pas présent dans le dépôt ; textes rédigés à partir du README et des métadonnées du site (domicares.life). À valider avant diffusion.",
+  "sortie": {
+    "fichier": "DigiSante_promo_45s.mp4",
+    "largeur": 1080,
+    "hauteur": 1920,
+    "fps": 30,
+    "duree_s": 45
+  },
+  "marque": {
+    "nom": "DigiSanté Mobile",
+    "logo": "logo.png",
+    "logo_secours": "../../src/assets/logo.png",
+    "couleurs": {
+      "primaire": "#0284C7",
+      "primaire_fonce": "#063B5C",
+      "fond_sombre": "#0B1B2B",
+      "secondaire": "#8CEDC6",
+      "texte": "#FFFFFF"
+    }
+  },
+  "audio": {
+    "voix_off": ["voix_off.wav", "voix_off.mp3"],
+    "musique": ["musique.mp3", "musique.wav", "musique.m4a", "musique.ogg"],
+    "musique_autorisation": "musique.autorisation.txt",
+    "volume_musique_db": -18,
+    "recalage_sous_titres": "auto"
+  },
+  "sous_titres": {
+    "fichier": "Sous_titres_45s.srt",
+    "police_taille_px": 50,
+    "marge_bas_px": 470,
+    "marge_gauche_px": 100,
+    "marge_droite_px": 180
+  },
+  "plans": [
+    {
+      "numero": 1,
+      "nom": "Accroche",
+      "debut_s": 0,
+      "fin_s": 7,
+      "visuel": {
+        "type": "photo",
+        "fichier": "images/plan1_soignants.jpg",
+        "secours": "../../src/assets/hero-medical.jpg",
+        "cadrage": "auto",
+        "point_focal": [0.55, 0.5]
+      },
+      "mouvement": { "type": "zoom_avant", "amplitude": 0.08 },
+      "surtitre": "SOINS À DOMICILE",
+      "titre": "Un soignant certifié,\nchez vous.",
+      "voix_off": "Un médecin, un infirmier ou un kiné à la maison ? Avec DigiSanté Mobile, c'est possible en quelques clics."
+    },
+    {
+      "numero": 2,
+      "nom": "Recherche d'un praticien",
+      "debut_s": 7,
+      "fin_s": 15,
+      "visuel": {
+        "type": "ecran_app",
+        "capture": "captures/plan2_recherche.png",
+        "note": "Écran laissé vierge tant qu'aucune capture réelle n'est fournie."
+      },
+      "mouvement": { "type": "pan_gauche_droite", "amplitude": 0.06 },
+      "surtitre": "RECHERCHE",
+      "titre": "Trouvez le bon\npraticien",
+      "voix_off": "Choisissez le professionnel de santé qu'il vous faut, près de chez vous, selon ses disponibilités et ses avis."
+    },
+    {
+      "numero": 3,
+      "nom": "Réservation du rendez-vous",
+      "debut_s": 15,
+      "fin_s": 23,
+      "visuel": {
+        "type": "ecran_app",
+        "capture": "captures/plan3_reservation.png"
+      },
+      "mouvement": { "type": "zoom_arriere", "amplitude": 0.07 },
+      "surtitre": "RENDEZ-VOUS",
+      "titre": "Réservez en\nquelques clics",
+      "voix_off": "Réservez votre rendez-vous à domicile en un instant, à l'heure qui vous arrange, avec confirmation immédiate."
+    },
+    {
+      "numero": 4,
+      "nom": "Paiement mobile sécurisé",
+      "debut_s": 23,
+      "fin_s": 31,
+      "visuel": {
+        "type": "ecran_app",
+        "capture": "captures/plan4_paiement.png"
+      },
+      "mouvement": { "type": "pan_haut_bas", "amplitude": 0.06 },
+      "surtitre": "PAIEMENT",
+      "titre": "Payez par Mobile Money,\nen toute sécurité",
+      "voix_off": "Réglez en toute sécurité par Mobile Money ou par carte, directement depuis votre téléphone."
+    },
+    {
+      "numero": 5,
+      "nom": "Suivi et messagerie",
+      "debut_s": 31,
+      "fin_s": 38,
+      "visuel": {
+        "type": "photo",
+        "fichier": "images/plan5_suivi.jpg",
+        "secours": "../../src/assets/hero-medical.jpg",
+        "cadrage": "couvrir",
+        "point_focal": [0.70, 0.5]
+      },
+      "mouvement": { "type": "zoom_avant", "amplitude": 0.07 },
+      "surtitre": "SUIVI",
+      "titre": "Votre suivi santé,\ntoujours avec vous",
+      "voix_off": "Messagerie, dossier médical, rappels : votre suivi reste accessible à tout moment."
+    },
+    {
+      "numero": 6,
+      "nom": "Signature et appel à l'action",
+      "debut_s": 38,
+      "fin_s": 45,
+      "visuel": { "type": "logo" },
+      "mouvement": { "type": "zoom_avant", "amplitude": 0.04 },
+      "titre": "DigiSanté Mobile",
+      "sous_titre": "La santé à domicile, simplement.",
+      "cta": "domicares.life",
+      "voix_off": "DigiSanté Mobile. La santé à domicile, simplement. Installez l'application dès aujourd'hui."
+    }
+  ]
+}

@@ -43,3 +43,7 @@ work/
 # Résultats des tests navigateur
 playwright-report/
 test-results/
+
+# Python (script de montage promo)
+__pycache__/
+*.pyc
