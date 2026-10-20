@@ -69,11 +69,11 @@ Le script exécute lui-même ces contrôles et échoue si l'un d'eux n'est pas c
   7–10 s, signature 10–15 s ; coupes franches puis fondu de 0,5 s vers la signature.
 - Chaque plan reprend le titre et le mouvement de son plan source, à la même
   vitesse que dans la version longue.
-- Le kit ne fournit pas de `.srt` de 15 s : les sous-titres sont tirés de
-  `short15s.voiceover` (une phrase par repère, durée au prorata du texte, de 0,3 à
-  14,7 s). L'ordre du texte (documents, ordonnances, professionnels) diffère de
-  celui des images (documents, professionnel, pharmacie) : il est conservé tel
-  qu'écrit dans le scénario.
+- Le kit ne fournit pas de `.srt` de 15 s : les sous-titres reprennent les phrases
+  de `short15s.voiceover`, **réordonnées selon les images** (documents,
+  professionnels, ordonnances) et calées sur leur plan (`VOIX_OFF_15S` dans le
+  script). Le script refuse de monter si ces phrases ne correspondent plus au
+  scénario.
 - Voix off attendue : `voix_off_15s.wav` ou `voix_off_15s.mp3` (15 s maximum).
 
 ## Voix off et musique
