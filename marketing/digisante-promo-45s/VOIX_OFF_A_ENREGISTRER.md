@@ -48,13 +48,22 @@ son lancement.
 
 ## Version courte (15 s)
 
-Texte de `short15s.voiceover` (29 mots). Fichier à déposer à la racine du kit :
-`voix_off_15s.wav` (ou `voix_off_15s.mp3`), durée inférieure ou égale à 15 s, en
-visant 14 s. Mêmes consignes de ton, de respirations et de format que ci-dessus.
+Phrases de `short15s.voiceover` (29 mots), **réordonnées selon les images** :
+documents, puis professionnel, puis pharmacie (ordonnances). Fichier à déposer à
+la racine du kit : `voix_off_15s.wav` (ou `voix_off_15s.mp3`), durée inférieure ou
+égale à 15 s, en visant 14 s. Mêmes consignes de ton, de respirations et de format
+que ci-dessus.
 
-| Repère indicatif | Texte à dire |
-|---|---|
-| 0 – 4 s | Vos documents de santé. Vos ordonnances. |
-| 4 – 7 s | Vos échanges avec les professionnels. |
-| 7 – 10 s | Avec DigiSanté Mobile, gardez le fil de votre parcours. |
-| 10 – 15 s | Votre santé, plus proche de vous. Découvrez le projet. |
+| Plan | Repère | Texte à dire |
+|---|---|---|
+| Documents | 0 – 4 s | Vos documents de santé. |
+| Professionnel | 4 – 7 s | Vos échanges avec les professionnels. |
+| Pharmacie | 7 – 10 s | Vos ordonnances. Avec DigiSanté Mobile, gardez le fil de votre parcours. |
+| Signature | 10 – 15 s | Votre santé, plus proche de vous. Découvrez le projet. |
+
+« Avec DigiSanté Mobile, gardez le fil de votre parcours » peut déborder d'environ
+une seconde sur la signature.
+
+Texte continu : Vos documents de santé. Vos échanges avec les professionnels. Vos
+ordonnances. Avec DigiSanté Mobile, gardez le fil de votre parcours. Votre santé,
+plus proche de vous. Découvrez le projet.

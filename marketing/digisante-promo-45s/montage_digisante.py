@@ -178,23 +178,37 @@ def verifier_scenario(scenario: dict, duree: int) -> list[dict]:
     return plans
 
 
-def reperes_depuis_texte(texte: str, debut: float, fin: float) -> list[Repere]:
-    """Sous-titres d'un texte sans .srt fourni : une phrase par repère, durée au
-    prorata du nombre de caractères ; coupure à la virgule des phrases longues."""
-    phrases = re.findall(r"[^.!?]+[.!?]", texte)
-    poids = [len(ph.strip()) for ph in phrases]
-    reperes, t = [], debut
-    for phrase, n in zip(phrases, poids):
-        duree = (fin - debut) * n / sum(poids)
-        phrase = phrase.strip()
+# Voix off 15 s réordonnée selon les images (décision du porteur) : mêmes phrases
+# que short15s.voiceover, chacune calée sur le plan qu'elle décrit — documents
+# 0–4 s, professionnel 4–7 s, pharmacie 7–10 s, signature 10–15 s.
+VOIX_OFF_15S = [
+    (0.3, 3.7, "Vos documents de santé."),
+    (4.0, 6.8, "Vos échanges avec les professionnels."),
+    (7.0, 8.2, "Vos ordonnances."),
+    (8.2, 11.4, "Avec DigiSanté Mobile, gardez le fil de votre parcours."),
+    (11.4, 13.4, "Votre santé, plus proche de vous."),
+    (13.4, 14.7, "Découvrez le projet."),
+]
+
+
+def phrases(texte: str) -> list[str]:
+    return [ph.strip() for ph in re.findall(r"[^.!?]+[.!?]", texte)]
+
+
+def reperes_version_courte(scenario: dict) -> list[Repere]:
+    """Sous-titres de la version courte (aucun .srt fourni dans le kit) ; coupure
+    à la virgule des phrases longues."""
+    if sorted(t for _, _, t in VOIX_OFF_15S) != sorted(phrases(scenario["short15s"]["voiceover"])):
+        sys.exit("VOIX_OFF_15S ne reprend plus les phrases de short15s.voiceover.")
+    reperes = []
+    for debut, fin, phrase in VOIX_OFF_15S:
         if len(phrase) > 40 and ", " in phrase:
             milieu = len(phrase) / 2
             coupe = min((m.end() for m in re.finditer(r", ", phrase)), key=lambda k: abs(k - milieu))
             lignes = [phrase[:coupe].rstrip(), phrase[coupe:]]
         else:
             lignes = [phrase]
-        reperes.append(Repere(round(t, 3), round(t + duree, 3), lignes))
-        t += duree
+        reperes.append(Repere(debut, fin, lignes))
     return reperes
 
 
@@ -556,7 +570,7 @@ def main() -> None:
             reperes = lire_srt(kit / "Sous_titres_45s.srt")
             noms_voix = ("voix_off.wav", "voix_off.mp3")
         else:
-            reperes = reperes_depuis_texte(scenario["short15s"]["voiceover"], 0.3, duree - 0.3)
+            reperes = reperes_version_courte(scenario)
             noms_voix = ("voix_off_15s.wav", "voix_off_15s.mp3")
 
         voix = next((kit / n for n in noms_voix if (kit / n).is_file()), None)
