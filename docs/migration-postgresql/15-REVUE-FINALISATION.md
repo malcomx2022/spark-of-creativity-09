@@ -197,7 +197,8 @@ supprimée après exécution).
 2. ~~Correction du P1 et tests d'intégration des 29 routes~~ : faits (§6).
 3. **Valider les prérequis non exécutés ici** : suite `storage-s3` contre MinIO
    (`S3_TEST_ENDPOINT`), projets Playwright WebKit en CI, essai Safari physique.
-4. **Campagne FedaPay sandbox** du document 09 avant tout paiement réel.
+4. **Campagne FedaPay sandbox** du document 09 avant tout paiement réel : script automatisé
+   prêt (§15), exécution contre le vrai sandbox à faire avec les clés `sk_sandbox_`/`pk_sandbox_`.
 5. **Exploitation (lot 6, document 10)** : sauvegarde complète, copie hors site,
    restauration testée, objectifs RPO/RTO.
 6. **Recette post-livraison du document 14** : déconnexion entre deux comptes,
@@ -579,3 +580,40 @@ Reste à l'exploitant : configurer `BACKUP_OFFSITE_REMOTE`, `BACKUP_AGE_RECIPIEN
 hors du VPS) et `BACKUP_ALERT_URL`, confirmer RPO et RTO, et lancer puis consigner le premier
 `./restore-drill.sh` sur une vraie sauvegarde.
 
+## 15. Campagne FedaPay sandbox automatisée — 22 octobre 2026
+
+La campagne du document 09 exigeait une bascule du VPS en sandbox et une demi-journée manuelle.
+Le script `api/test/campaign/fedapay-sandbox.campaign.ts` (`npm run campaign:fedapay`, configuration
+`jest.campaign.config.cjs`, hors `npm test` et `test:e2e`) joue désormais S1 à S12 depuis une API
+locale contre le vrai FedaPay sandbox, puis écrit le tableau du §4 dans `api/campaign-reports/`.
+Mode opératoire, variables et limites : document 09, §4 bis.
+
+Validation du harnais (`FEDAPAY_CAMPAIGN=fake`, PostgreSQL 16 local, base `domicares_test`), deux
+passages consécutifs sur la même base :
+
+| # | Résultat | Domicares | FedaPay (factice) |
+|---|---|---|---|
+| S1 | ok | paiement `paid`/`held`, rendez-vous `confirmed`, 14 250 retenus | approved |
+| S2 | ok | paiement `paid`/`held`, inscription `paid` | approved |
+| S3 | ok | paiement `failed`, rendez-vous `pending_payment` | declined |
+| S4 | ok | paiement `canceled` (job `payments.cleanup` 200) | canceled |
+| S5 | ok | nouveau paiement `paid`, ancien `canceled` | approved |
+| S9 | ok | HTTP 201, `completed`, paiement `partially_refunded` | — |
+| S10 | ok | HTTP 201, paiement `refunded` | — |
+| S11 | sans objet | S9 rendu `completed` | — |
+| S6 | ok | job 200, payout `ready` (rendez-vous et séance) | — |
+| S7 | ok | création 201, reversement `completed` | sent |
+| S8 | ok | création 201, reversement `failed`, paiement relibéré `ready` | — |
+| S12 | ok | HTTP 201, 5 rapprochées, 1 écart expliqué (S1 remboursé hors FedaPay en S10) | — |
+| S13 | non couvert | exige une URL publique | — |
+
+Défauts du harnais trouvés et corrigés pendant la validation (le code applicatif est inchangé) :
+une seconde exécution échouait (numéros de test déjà portés par les comptes de la première, y
+compris dans `profiles`, que `handle_new_user_safe` ne renseigne alors pas). La réconciliation
+comptait aussi les paiements d'autres exécutions ; elle est désormais jugée sur ceux de la
+campagne en cours.
+
+**Non exécuté ici** : la campagne contre le vrai sandbox. Les clés `sk_sandbox_…` et
+`pk_sandbox_…` ne sont pas disponibles dans cette session. Elles doivent être fournies comme
+variables d'environnement (`FEDAPAY_SANDBOX_SECRET_KEY`, `FEDAPAY_SANDBOX_PUBLIC_KEY`), jamais
+dans un fichier versionné. Le rapport produit remplacera le tableau vide du document 09, §4.

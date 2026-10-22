@@ -47,3 +47,6 @@ test-results/
 # Python (script de montage promo)
 __pycache__/
 *.pyc
+
+# Rapports de la campagne FedaPay (npm run campaign:fedapay)
+api/campaign-reports/

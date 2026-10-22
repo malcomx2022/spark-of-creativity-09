@@ -115,6 +115,48 @@ détecté ?), S1 et S7 (numéro `+229…` accepté ?) et S9 (endpoint de rembour
 réponses, à ajuster dans `api/src/payments/fedapay.client.ts` (`FEDAPAY_MODES`, `startPayout`) et
 dans `08-REVUE-FEDAPAY.md` §6.
 
+## 4 bis. Variante automatisée, sans VPS (`npm run campaign:fedapay`)
+
+Ajout du 22 octobre 2026. Le script `api/test/campaign/fedapay-sandbox.campaign.ts` joue S1 à S12
+contre le **vrai FedaPay sandbox** depuis une API Domicares **locale** : pas de bascule du VPS
+(§1 inutile), pas de `fedapay-mode.sh`, aucune donnée de production. Il produit le tableau du §4
+dans `api/campaign-reports/fedapay-sandbox-<date>.md`, avec les statuts et codes HTTP seulement
+(numéros et adresses retirés). Ce dossier est ignoré par git.
+
+```bash
+cd api
+FEDAPAY_CAMPAIGN=sandbox \
+DATABASE_URL=<base de développement dédiée, schéma natif appliqué> \
+JWT_ACCESS_SECRET=<secret de test, 32 caractères minimum> \
+npm run campaign:fedapay
+```
+
+`FEDAPAY_SANDBOX_SECRET_KEY` (`sk_sandbox_…`) et `FEDAPAY_SANDBOX_PUBLIC_KEY` (`pk_sandbox_…`) sont
+lues dans l'environnement. Ne jamais les écrire dans un fichier versionné. Le script refuse
+toute autre clé, donc jamais de mode live. `FEDAPAY_CAMPAIGN=fake` rejoue la même campagne
+contre le client factice : cette variante valide le harnais.
+
+Fonctionnement et limites :
+
+- Le « patient » paie sans redirection : `POST /v1/transactions/{mtn_open|moov}` avec le jeton de
+  la transaction et un numéro de test (`+22966000001` / `+22964000001` approuvés, `+22966000000`
+  refusé). Le reversement refusé (S8) vise ce dernier numéro.
+- Aucun webhook n'atteint une API locale. L'état final est lu par le job `payments.sync`, relancé
+  toutes les 5 s pendant une minute au plus. **S13 n'est pas couvert** : le rejeu d'un webhook
+  exige l'environnement de recette public (§2).
+- Si le compte sandbox a une URL de webhook configurée vers la production, FedaPay y enverra les
+  événements de la campagne. La production les rejette : signature sandbox, transaction inconnue.
+  Il vaut mieux retirer cette URL du compte sandbox pendant la campagne.
+- S10 n'enregistre que le canal manuel : le remboursement réel du reste se fait dans le tableau
+  de bord FedaPay. Sans ce geste, S12 signale sur S1 un écart `approved` / `refunded`. Le script
+  le classe « expliqué » et ne retient que les anomalies des paiements de la campagne en cours.
+- S6 avance `hold_until` des deux paiements (base de test seulement) pour ne pas attendre la retenue.
+- La campagne est rejouable sur la même base : au démarrage, les numéros de test sont retirés
+  des comptes `campagne-*@domicares.test` précédents.
+
+Le rapport tranche les trois points ouverts comme au §4 : corps de `/payouts/start` et `mode` (S7),
+numéro `+229…` (S1, S7) et endpoint de remboursement (S9).
+
 ## 5. Retour en live
 
 ```bash
