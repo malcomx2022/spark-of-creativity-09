@@ -326,4 +326,21 @@ describe('Practitioners, files, KYC (e2e)', () => {
     expect(rates.json().some((r: { id: string }) => r.id === rate.json().id)).toBe(false);
     expect((await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/exceptions?from=2031-01-01` })).json()).toEqual([]);
   });
+
+  it('exceptions publiques : le motif n’est visible que du praticien propriétaire', async () => {
+    const exc = await app.inject({ method: 'POST', url: '/api/practitioners/me/exceptions', headers: auth('practitioner'), payload: { date: '2032-05-04', reason: 'Hospitalisation', isAvailable: false } });
+    expect(exc.statusCode).toBe(201);
+    expect(exc.json().reason).toBe('Hospitalisation');
+    const url = `/api/practitioners/${practitionerId}/exceptions?from=2032-01-01`;
+    const find = (res: { json: () => { id: string; reason: string | null; date: string; is_available: boolean }[] }) => res.json().find((e) => e.id === exc.json().id);
+    for (const headers of [undefined, auth('patient'), auth('coach'), auth('admin'), { authorization: 'Bearer jeton-invalide' }]) {
+      const res = await app.inject({ method: 'GET', url, headers });
+      expect(res.statusCode).toBe(200);
+      expect(find(res)).toMatchObject({ date: '2032-05-04', is_available: false, reason: null });
+    }
+    const own = await app.inject({ method: 'GET', url, headers: auth('practitioner') });
+    expect(find(own)).toMatchObject({ date: '2032-05-04', reason: 'Hospitalisation' });
+    expect((await app.inject({ method: 'DELETE', url: `/api/practitioners/me/exceptions/${exc.json().id}`, headers: auth('practitioner') })).statusCode).toBe(200);
+  });
 });
+

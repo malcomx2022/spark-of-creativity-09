@@ -270,9 +270,8 @@ de la suite `auth` n'avait pas d'effet. Ces accès passent désormais par
 | `npm run lint` (racine) | 0 erreur, 45 avertissements hérités |
 | Couverture e2e des routes (analyse statique) | 212/216 ; les 4 restantes sont couvertes par une boucle `${kind}` (3 suppressions de planning) et par le test unitaire Fastify du contact |
 
-Observation nouvelle (P3, non modifiée) : `GET /api/practitioners/:id/exceptions`
-est public et renvoie le champ `reason` saisi par le praticien. Si ce motif peut
-contenir une information personnelle, le retirer de la réponse publique.
+Observation nouvelle (P3) : `GET /api/practitioners/:id/exceptions` est public et
+renvoyait le champ `reason` saisi par le praticien. Corrigée au §11.
 
 ## 7. Correction des deux P2 — 22 octobre 2026
 
@@ -310,14 +309,10 @@ révocation de l'autre appareil, révocation totale sans session identifiable).
 Avant correction : `Expected 401, Received 200` sur la session de l'autre appareil.
 Vitest : le client envoie le refresh token courant.
 
-Limite connue : une rotation de refresh token d'un autre appareil exactement
-concurrente au changement peut, dans une fenêtre de quelques millisecondes,
-produire un jeton non révoqué (READ COMMITTED). La fermer exigerait un verrou
-partagé avec `refresh` ; non retenu pour ce lot.
+Limite constatée alors : une rotation de refresh token d'un autre appareil
+concurrente au changement pouvait produire un jeton non révoqué. Corrigée au §9.
 
-Observation (non modifiée, même famille de défaut) : `MedicalService.notifyCareNoteShared`
-insère un message avec `.catch()` dans la transaction du partage ; si cette
-insertion échouait, la transaction serait annulée malgré le `catch`.
+Observation : même famille de défaut dans `MedicalService.notifyCareNoteShared`, corrigée au §8.
 
 ### 7.3 Résultats
 
@@ -328,4 +323,121 @@ insertion échouait, la transaction serait annulée malgré le `catch`.
 | Lint (racine) | 0 erreur, 45 avertissements hérités |
 | API : typecheck, build ; tests unitaires | OK ; 42/42 |
 | Intégration API (PostgreSQL 16 local) | **114 réussis, 4 ignorés (MinIO)** ; rejouée une seconde fois sur la même base : identique |
+
+## 8. Partage d'une note de soin — 22 octobre 2026
+
+Défaut : `notifyCareNoteShared` insérait le message de conversation avec un
+`.catch()` dans la transaction du partage. Reproduit sur PostgreSQL réel, il est
+plus grave qu'annoncé au §7 : si l'insertion échoue, la transaction est annulée,
+mais le `catch` laisse la requête continuer. PostgreSQL transforme alors le
+`COMMIT` en `ROLLBACK` sans erreur. L'API répondait **200, note partagée**, alors
+que ni le partage, ni son journal (`care_notes_sharing_log`), ni la notification
+du patient n'étaient enregistrés.
+
+Correction : le message, facultatif, est inséré dans un point de sauvegarde
+(`care_note_message`). Son échec est journalisé et annulé seul ; le partage, son
+journal et la notification sont validés.
+
+Test e2e (`medical`) : seule l'insertion du message est redirigée vers un
+rendez-vous inexistant, ce qui provoque une vraie violation de clé étrangère
+PostgreSQL au milieu du partage. Le test vérifie ensuite en base que la note est
+partagée, journalisée et notifiée, et qu'aucun message n'a été créé. Avant
+correction : `shared_with_patient` restait `false` malgré la réponse 200 ;
+après : réussi.
+
+Recherche du même schéma dans l'API : les autres `catch` relancent l'erreur ou
+sont situés hors transaction. Il ne reste aucune requête SQL dont l'échec serait
+capturé dans une transaction sans point de sauvegarde.
+
+Résultats : API typecheck et build OK, 42/42 unitaires, **e2e 115 réussis,
+4 ignorés (MinIO)**, lint 0 erreur.
+
+## 9. Fenêtre de concurrence des révocations globales — 22 octobre 2026
+
+Note de livraison : la PR malcomx2022/spark-of-creativity-09#89 a été fusionnée
+sans le commit du §8 (`08ce150`, partage de note de soin), poussé quelques instants
+après la fusion. Il est repris dans la PR de ce lot.
+
+Défaut : en READ COMMITTED, une rotation de refresh token d'un autre appareil
+dont la transaction n'est pas encore validée échappe à la révocation. La révocation
+attend le verrou de ligne de l'ancien jeton, puis l'ignore car il est déjà révoqué.
+Le nouveau jeton, inséré hors de son instantané, reste actif. Trois chemins sont
+touchés : changement de mot de passe, réinitialisation et déconnexion de toutes
+les sessions.
+
+Correction (`AuthService`) : verrou transactionnel par utilisateur
+(`pg_advisory_xact_lock`, clé `refresh_tokens:user:<id>`), pris par `refresh`
+après le verrou de famille, et par chaque révocation globale juste avant la
+requête de révocation. La révocation attend donc le COMMIT de la rotation, et son
+instruction de révocation, démarrée après le verrou, voit le jeton émis. Dans
+l'autre ordre, la rotation attend et détecte le jeton révoqué (révocation de la
+famille). Ordre des verrous : famille puis utilisateur dans `refresh`,
+utilisateur seul ailleurs ; aucun cycle n'est possible, donc pas d'interblocage.
+Un jeton courant déjà révoqué ne désigne pas de famille à conserver : il peut
+appartenir à une famille dont un tiers détient le jeton actif (vol puis rotation).
+Dans ce cas, toutes les sessions sont révoquées et le client doit se reconnecter.
+
+Tests e2e (`auth`), avec un recouvrement réel des transactions : la rotation de
+l'autre appareil est suspendue après l'émission de son jeton, avant COMMIT ; la
+révocation démarre et le test attend, via `pg_stat_activity`, qu'elle soit
+bloquée sur un verrou ; la rotation est ensuite libérée. Un test par chemin
+(changement, déconnexion partout, réinitialisation). Avant correction : les trois
+échouent (`Expected 401, Received 200`) ; après : réussis, et stables sur
+5 exécutions complètes de la suite. Un quatrième test vérifie qu'un jeton déjà
+tourné par un tiers ne protège pas la session de ce tiers (il échoue si le filtre
+`revoked_at` est retiré).
+
+Observation : la déconnexion simple présentait la même fenêtre ; corrigée au §10.
+
+Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 119 réussis,
+4 ignorés (MinIO)**, identique sur 3 exécutions complètes ; front 63/63 ; lint 0 erreur.
+
+## 10. Déconnexion simple — 22 octobre 2026
+
+Défaut : `POST /api/auth/logout` révoquait le seul jeton transmis. Si ce même
+appareil tournait son jeton au même moment, la déconnexion attendait le verrou de
+ligne puis ignorait le jeton, devenu révoqué. Le jeton enfant restait actif : la
+session survivait à la déconnexion.
+
+Correction (`AuthService.logout`) : la déconnexion d'un appareil révoque toute la
+**famille** du jeton (la chaîne de sessions de cet appareil), sous le même verrou
+de famille que `refresh`. Dans l'ordre inverse, la rotation attend puis détecte
+le jeton révoqué. En usage normal, seul le dernier jeton d'une famille est actif :
+le résultat est identique à l'ancien comportement, hors concurrence. Un jeton
+inconnu ou appartenant à un autre compte ne révoque rien. La déconnexion sans jeton
+identifiable (ni corps ni cookie) révoquait déjà toutes les sessions ; elle prend
+désormais le verrou par utilisateur, comme les autres révocations globales.
+Verrous : famille seule pour la déconnexion d'un appareil ; aucun cycle n'est
+possible avec `refresh` (famille puis utilisateur).
+
+Tests e2e (`auth`) : rotation de l'appareil suspendue avant COMMIT, déconnexion
+bloquée sur le verrou (constatée via `pg_stat_activity`), puis libération ; le
+jeton enfant est révoqué. Avant correction : `Expected 401, Received 200` ; après :
+réussi, stable sur 5 exécutions complètes de la suite. Un test vérifie aussi
+qu'une déconnexion, par corps ou par cookie, ne ferme que la session de cet appareil.
+
+Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 121 réussis,
+4 ignorés (MinIO)** ; front 63/63 ; lint 0 erreur.
+
+## 11. Motif des exceptions publiques — 22 octobre 2026
+
+Défaut : `GET /api/practitioners/:id/exceptions`, sans authentification, renvoyait
+le motif saisi par le praticien (par exemple « Hospitalisation »), donnée
+personnelle possible, à tout visiteur.
+
+Correction : la route utilise `OptionalJwtAuthGuard` et `ScheduleService.listExceptions`
+renvoie `reason: null` sauf au praticien propriétaire (compte lié à `practitioners.user_id`).
+La forme de la réponse est inchangée ; la date et `is_available` restent publiques,
+car elles servent à la prise de rendez-vous. Front : le tableau de bord du
+praticien (`AvailabilitySection`), authentifié, voit toujours ses motifs ; la prise
+de rendez-vous (`NewAppointmentDialog`) n'ajoute le motif que s'il est présent et
+affiche désormais « n'est pas disponible ce jour », sans détail.
+`POST /practitioners/me/exceptions` renvoie toujours le motif à son auteur.
+
+Test e2e (`practitioners`) : motif `null` pour un visiteur anonyme, un patient, un
+autre praticien, un administrateur et un jeton invalide ; motif visible pour le
+propriétaire. Avant correction : motif renvoyé à tous ; après : réussi.
+
+Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 122 réussis,
+4 ignorés (MinIO)** ; front typecheck OK, 63/63 ; lint 0 erreur.
 

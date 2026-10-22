@@ -56,10 +56,15 @@ export class ScheduleService {
   }
 
   // --- Exceptions ---
-  listExceptions(practitionerId: string, from?: string) {
+  /** Route publique : le motif (donnée personnelle possible) n'est renvoyé qu'au praticien propriétaire. */
+  async listExceptions(practitionerId: string, from?: string, viewerId?: string) {
     let q = this.database.db.selectFrom('practitioner_exceptions').selectAll().where('practitioner_id', '=', practitionerId);
     if (from) q = q.where('date', '>=', from);
-    return q.orderBy('date').execute().then((rows) => rows.map((r) => withDateOnly(r, 'date')));
+    const [rows, owner] = await Promise.all([
+      q.orderBy('date').execute(),
+      viewerId ? this.database.db.selectFrom('practitioners').select('id').where('id', '=', practitionerId).where('user_id', '=', viewerId).executeTakeFirst() : undefined,
+    ]);
+    return rows.map((r) => withDateOnly(owner ? r : { ...r, reason: null }, 'date'));
   }
 
   addException(userId: string, practitionerId: string, dto: ExceptionDto) {

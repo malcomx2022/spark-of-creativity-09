@@ -262,7 +262,17 @@ export class MedicalService {
   private async notifyCareNoteShared(trx: Transaction<DB>, senderId: string, practitionerName: string, a: { id: string; patient_id: string; date: Date | string }) {
     const date = new Date(String(a.date).slice(0, 10)).toLocaleDateString('fr-FR');
     await this.inApp.notifyUser(trx, a.patient_id, { title: 'Nouvelle note de soin', message: `Votre praticien ${practitionerName} a partagé une note de soin pour votre rendez-vous du ${date}.`, type: 'care_note', link: `/patient/appointments/${a.id}` });
-    await trx.insertInto('messages').values({ appointment_id: a.id, sender_id: senderId, content: 'Une nouvelle note de soin est disponible dans votre dossier patient.', is_read: false }).execute().catch((e) => this.logger.warn(`message note de soin : ${e}`));
+    // Message facultatif : sans point de sauvegarde, son échec annulerait la transaction et le COMMIT
+    // deviendrait un ROLLBACK silencieux (partage annoncé mais jamais enregistré).
+    await sql`savepoint care_note_message`.execute(trx);
+    try {
+      await trx.insertInto('messages').values({ appointment_id: a.id, sender_id: senderId, content: 'Une nouvelle note de soin est disponible dans votre dossier patient.', is_read: false }).execute();
+      await sql`release savepoint care_note_message`.execute(trx);
+    } catch (e) {
+      await sql`rollback to savepoint care_note_message`.execute(trx);
+      await sql`release savepoint care_note_message`.execute(trx);
+      this.logger.warn(`message note de soin : ${e}`);
+    }
   }
 
   shareCareNote(userId: string, id: string) {

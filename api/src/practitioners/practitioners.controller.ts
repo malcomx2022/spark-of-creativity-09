@@ -130,8 +130,10 @@ export class PractitionersController {
   }
 
   @Get(':id/exceptions')
-  listExceptions(@Param('id', ParseUUIDPipe) id: string, @Query('from') from?: string) {
-    return this.schedule.listExceptions(id, from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : undefined);
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Exceptions de planning ; le motif n’est renvoyé qu’au praticien propriétaire' })
+  listExceptions(@CurrentUser() user: AuthenticatedUser | undefined, @Param('id', ParseUUIDPipe) id: string, @Query('from') from?: string) {
+    return this.schedule.listExceptions(id, from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : undefined, user?.id);
   }
 
   @Get(':id/rates')
