@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -34,6 +35,7 @@ import {
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { errorMessage } from '@/lib/api';
+import { notificationPath } from '@/lib/notification-link';
 import { toast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -62,6 +64,7 @@ const NOTIFICATION_COLORS: Record<string, string> = {
 
 export function NotificationsSection() {
   const { data: user } = useAuthUser();
+  const navigate = useNavigate();
   const { data: notifications = [], isLoading, isFetching, refetch } = useNotifications(user?.id);
   const { data: preferences } = useNotificationPreferences(user?.id);
   const markAsRead = useMarkNotificationAsRead();
@@ -170,10 +173,13 @@ export function NotificationsSection() {
     };
   }, []);
 
-  const handleNotificationClick = (notificationId: string, isRead: boolean) => {
+  const handleNotificationClick = (notificationId: string, isRead: boolean, link?: string | null) => {
     if (!isRead && user?.id) {
       markAsRead.mutate({ notificationId, userId: user.id });
     }
+    // Ouvre la conversation ou l'onglet ciblé (liens /dashboard/<rôle>?tab=… du document 14).
+    const path = notificationPath(link);
+    if (path) navigate(path);
   };
 
   const handleMarkAllAsRead = () => {
@@ -401,15 +407,23 @@ export function NotificationsSection() {
             <div className="space-y-3">
               {filteredNotifications.map((notification) => {
                 const isNew = 'isNew' in notification && notification.isNew === true;
+                const opensLink = notificationPath(notification.link) !== null;
                 return (
                   <div
                     key={notification.id}
+                    {...(opensLink ? { role: 'link', tabIndex: 0, 'aria-label': `${notification.title} : ouvrir` } : {})}
+                    onKeyDown={(e) => {
+                      if (opensLink && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        handleNotificationClick(notification.id, notification.is_read, notification.link);
+                      }
+                    }}
                     className={`p-4 border rounded-lg cursor-pointer transition-all duration-300 group ${
                       !notification.is_read ? 'bg-primary/5 border-primary/20' : ''
                     } ${
                       isNew ? 'animate-scale-in shadow-lg ring-2 ring-primary/50' : ''
                     }`}
-                    onClick={() => handleNotificationClick(notification.id, notification.is_read)}
+                    onClick={() => handleNotificationClick(notification.id, notification.is_read, notification.link)}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 mt-1">

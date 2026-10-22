@@ -75,6 +75,49 @@ patient/praticien/coach et ancienne notification ; chat mobile et rendez-vous an
 contact reçu dans la boîte choisie, erreur visible et champs conservés.
 Ne pas utiliser les suites PostgreSQL sur la base de production.
 
+### 4 bis. Recette automatisée (22 octobre 2026)
+
+`npm run test:recette` (`playwright.recette.config.ts`, `tests/recette/`) joue ces parcours
+dans Chromium sur une pile locale réelle, sans interception : API compilée (fournisseurs
+factices, `CONTACT_RECIPIENT_EMAIL` de test), front en preview et base PostgreSQL de
+développement. Le workflow `recette.yml` la relance sur chaque PR concernée.
+
+```bash
+RECETTE_DATABASE_URL=postgresql://domicares_app:…@localhost:5432/<base dédiée> npm run test:recette
+```
+
+La configuration refuse toute base qui n'est pas locale. Les données sont créées par l'API :
+inscriptions, KYC, puis messages, ce qui produit de vraies notifications et leurs liens. Seuls
+les rendez-vous confirmés sont insérés en SQL : 26 pour la patiente, dont le plus ancien est en
+page 2 des conversations, un avec le coach et un pour un second patient.
+
+| Parcours | Scénarios |
+|---|---|
+| Logout/login entre deux comptes | progression restaurée pour son propriétaire, purgée au logout ; le compte B ne voit ni la boîte de paiement ni les conversations de A ; déconnexion dans un autre onglet |
+| Notifications par rôle | clic sur la notification du praticien, du coach et du patient (rendez-vous hors première page) → bon espace, bon chat ; ancienne notification `/dashboard` redirigée ; un tiers n'ouvre pas la conversation |
+| Chat mobile | 390 px : la notification ouvre directement le chat du rendez-vous ancien ; envoi d'une réponse ; aucun débordement |
+| Contact | envoi accepté par l'API (201, succès affiché) ; échec 503 simulé côté navigateur : erreur visible, champs conservés, aucun succès |
+
+**Défaut trouvé et corrigé par cette recette** : le clic sur une notification de la liste ne faisait
+que la marquer comme lue. Aucun composant ne lisait `notification.link`, donc les liens par
+destinataire du §2 n'ouvraient rien. `NotificationsSection` suit désormais le lien, à la souris
+ou au clavier (`role="link"`), via `notificationPath` (`src/lib/notification-link.ts`). Seuls les
+chemins internes `/dashboard`, `/dashboard/<patient|practitioner|coach>` et `/admin` sont suivis.
+Un lien externe (URL de paiement d'une séance) ou sans route laisse la notification simplement lue.
+Sans ce correctif, les cinq scénarios de notification de la recette échouent ; avec lui, ils
+réussissent tous.
+
+Laissés en l'état :
+- La notification push garde un contenu générique et ouvre `/login` (document 11, test
+  `push.service.spec.ts`), comme décidé pour la confidentialité.
+- Le lien des notes de soin (`/patient/appointments/:id`, `medical.service.ts`) ne correspond
+  à aucune route. Il n'est donc pas suivi, et vise à corriger hors de ce lot (onglet `reports` du patient).
+
+Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
+`CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue
+sur un appareil. La recette automatisée tourne sous Chromium (émulation mobile pour le chat) :
+elle ne vaut pas recette WebKit ou Safari.
+
 ## 5. Preuves et limites
 
 Exécutés localement : **62 tests front**, **42 tests unitaires API**, builds front/API

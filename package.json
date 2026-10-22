@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:recette": "playwright test --config playwright.recette.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

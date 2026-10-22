@@ -10,6 +10,8 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   absente de la première page se charge par GET /conversations/:appointmentId ;
   un refus d'accès ne doit pas ouvrir une autre conversation. Conserver /dashboard
   comme redirection des anciennes notifications et ouvrir le chat mobile ciblé.
+  Le clic sur une notification suit `link` via `notificationPath` (chemins internes connus seulement).
+  `npm run test:recette` (API et PostgreSQL réels, `RECETTE_DATABASE_URL` locale) rejoue ces parcours.
 - Contact public : POST /contact sans authentification ; succès après accepted=true,
   champs conservés en erreur, bouton bloqué pendant l'envoi. Ne jamais simuler un succès.
 

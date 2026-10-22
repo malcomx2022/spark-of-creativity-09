@@ -201,9 +201,8 @@ supprimée après exécution).
    prêt (§15), exécution contre le vrai sandbox à faire avec les clés `sk_sandbox_`/`pk_sandbox_`.
 5. **Exploitation (lot 6, document 10)** : sauvegarde complète, copie hors site,
    restauration testée, objectifs RPO/RTO.
-6. **Recette post-livraison du document 14** : déconnexion entre deux comptes,
-   notifications par rôle, chat mobile, formulaire de contact avec
-   `CONTACT_RECIPIENT_EMAIL` configuré.
+6. ~~**Recette post-livraison du document 14**~~ : automatisée (§16), un défaut corrigé.
+   Restent manuelles sur le VPS : la réception réelle du contact et les essais Safari et push sur appareil.
 
 ## 5. Reproduire
 
@@ -617,3 +616,36 @@ campagne en cours.
 `pk_sandbox_…` ne sont pas disponibles dans cette session. Elles doivent être fournies comme
 variables d'environnement (`FEDAPAY_SANDBOX_SECRET_KEY`, `FEDAPAY_SANDBOX_PUBLIC_KEY`), jamais
 dans un fichier versionné. Le rapport produit remplacera le tableau vide du document 09, §4.
+
+## 16. Recette post-livraison du document 14 — 22 octobre 2026
+
+Les parcours du document 14 (§4) n'avaient jamais été joués de bout en bout dans un navigateur :
+les tests front simulaient l'API, et les tests API n'exerçaient pas l'interface. La recette
+`npm run test:recette` les joue désormais dans Chromium, sur l'API compilée et une base
+PostgreSQL réelles, sans aucune interception (sauf l'échec 503 simulé du contact). Le workflow
+`recette.yml` la relance sur chaque PR. Détail et périmètre : document 14, §4 bis.
+
+Résultat local (PostgreSQL 16, base `domicares_test`, Chromium 1194) : **10/10 scénarios**,
+en environ 1 min après les builds.
+
+| Parcours | Résultat |
+|---|---|
+| Logout/login entre deux comptes (2 scénarios) | ✔ |
+| Notifications praticien, coach, patient hors première page, ancienne notification, accès tiers refusé (5) | ✔ après correction |
+| Chat mobile 390 px sur un rendez-vous ancien (1) | ✔ après correction |
+| Contact accepté par l'API / échec avec champs conservés (2) | ✔ |
+
+**Défaut trouvé** : un clic sur une notification de la liste ne suivait jamais son lien, car le
+champ `link` n'était lu par aucun composant. Les liens par destinataire et la redirection
+`/dashboard` étaient donc inaccessibles depuis l'application. Correction : `NotificationsSection`
+et `src/lib/notification-link.ts`, qui ne suit que les chemins internes connus. Tests : 16 cas
+sur le filtre des liens et 3 sur le composant (souris, clavier, lien externe ou inconnu). Front :
+82 tests, typecheck, build et lint (0 erreur, 45 avertissements hérités). Preuve
+inverse : sans le correctif, 5 scénarios de la recette échouent.
+
+Constat hors périmètre, laissé en l'état : le lien des notes de soin (`/patient/appointments/:id`)
+n'a pas de route.
+
+Non exécuté ici : la réception réelle d'un e-mail de contact (Resend et vraie boîte), WebKit et
+Safari sur appareil, et la notification push sur appareil. Ces points restent à vérifier sur
+l'environnement livré.
