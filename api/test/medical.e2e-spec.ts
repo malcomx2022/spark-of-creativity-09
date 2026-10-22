@@ -3,9 +3,10 @@
  * triage, consentements, export RGPD ; avis et note moyenne ; moyens de paiement chiffrés.
  */
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { sql } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { createApp } from '../src/app.factory';
 import { DatabaseService } from '../src/database/database.service';
+import type { DB } from '../src/database/types';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-secret-test-secret-test-secret-123456';
@@ -398,4 +399,42 @@ describe('Medical record, reviews & payment methods (e2e)', () => {
     const remaining = await app.inject({ method: 'GET', url: '/api/payment-methods', headers: auth('patient') });
     expect(remaining.json()).toEqual([expect.objectContaining({ id: m2.json().id, is_default: true })]);
   });
+
+  it('partage d’une note de soin : l’échec du message de conversation n’annule ni le partage, ni son journal, ni la notification', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/care-notes', headers: auth('nurse'), payload: { appointmentId: appointments['completed2'], subjective: 'Suivi', plan: 'Contrôle' } });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    const notifBefore = (await notificationsOf('patient')).filter((n) => n.type === 'care_note').length;
+    // Seule l'insertion du message est redirigée vers un rendez-vous inexistant : PostgreSQL lève une vraie
+    // violation de clé étrangère au milieu de la transaction du partage.
+    const original = db.runAs.bind(db);
+    const spy = jest.spyOn(db, 'runAs').mockImplementation(<T>(ctx: Parameters<DatabaseService['runAs']>[0], fn: (trx: Transaction<DB>) => Promise<T>) =>
+      original(ctx, (trx) => fn(new Proxy(trx, {
+        get(target, prop) {
+          if (prop === 'insertInto') {
+            return (table: keyof DB) => table === 'messages'
+              ? { values: (v: Record<string, unknown>) => target.insertInto('messages').values({ ...v, appointment_id: `rdv-inexistant-${tag}` } as never) }
+              : target.insertInto(table);
+          }
+          const value = Reflect.get(target, prop, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      }))));
+    let shared;
+    try {
+      shared = await app.inject({ method: 'POST', url: `/api/care-notes/${id}/share`, headers: auth('nurse') });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(shared.statusCode).toBe(200);
+    expect(shared.json()).toMatchObject({ id, shared_with_patient: true });
+    const stored = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('care_notes').select('shared_with_patient').where('id', '=', id).executeTakeFirstOrThrow());
+    expect(stored.shared_with_patient).toBe(true);
+    const log = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('care_notes_sharing_log').select('new_shared_value').where('care_note_id', '=', id).execute());
+    expect(log).toEqual([{ new_shared_value: true }]);
+    expect((await notificationsOf('patient')).filter((n) => n.type === 'care_note')).toHaveLength(notifBefore + 1);
+    const messages = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('messages').select('id').where('appointment_id', '=', appointments['completed2']).where('content', 'like', '%note de soin%').execute());
+    expect(messages).toHaveLength(0);
+  });
 });
+

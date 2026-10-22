@@ -315,9 +315,7 @@ concurrente au changement peut, dans une fenêtre de quelques millisecondes,
 produire un jeton non révoqué (READ COMMITTED). La fermer exigerait un verrou
 partagé avec `refresh` ; non retenu pour ce lot.
 
-Observation (non modifiée, même famille de défaut) : `MedicalService.notifyCareNoteShared`
-insère un message avec `.catch()` dans la transaction du partage ; si cette
-insertion échouait, la transaction serait annulée malgré le `catch`.
+Observation : même famille de défaut dans `MedicalService.notifyCareNoteShared`, corrigée au §8.
 
 ### 7.3 Résultats
 
@@ -328,4 +326,32 @@ insertion échouait, la transaction serait annulée malgré le `catch`.
 | Lint (racine) | 0 erreur, 45 avertissements hérités |
 | API : typecheck, build ; tests unitaires | OK ; 42/42 |
 | Intégration API (PostgreSQL 16 local) | **114 réussis, 4 ignorés (MinIO)** ; rejouée une seconde fois sur la même base : identique |
+
+## 8. Partage d'une note de soin — 22 octobre 2026
+
+Défaut : `notifyCareNoteShared` insérait le message de conversation avec un
+`.catch()` dans la transaction du partage. Reproduit sur PostgreSQL réel, il est
+plus grave qu'annoncé au §7 : si l'insertion échoue, la transaction est annulée,
+mais le `catch` laisse la requête continuer. PostgreSQL transforme alors le
+`COMMIT` en `ROLLBACK` sans erreur. L'API répondait **200, note partagée**, alors
+que ni le partage, ni son journal (`care_notes_sharing_log`), ni la notification
+du patient n'étaient enregistrés.
+
+Correction : le message, facultatif, est inséré dans un point de sauvegarde
+(`care_note_message`). Son échec est journalisé et annulé seul ; le partage, son
+journal et la notification sont validés.
+
+Test e2e (`medical`) : seule l'insertion du message est redirigée vers un
+rendez-vous inexistant, ce qui provoque une vraie violation de clé étrangère
+PostgreSQL au milieu du partage. Le test vérifie ensuite en base que la note est
+partagée, journalisée et notifiée, et qu'aucun message n'a été créé. Avant
+correction : `shared_with_patient` restait `false` malgré la réponse 200 ;
+après : réussi.
+
+Recherche du même schéma dans l'API : les autres `catch` relancent l'erreur ou
+sont situés hors transaction. Il ne reste aucune requête SQL dont l'échec serait
+capturé dans une transaction sans point de sauvegarde.
+
+Résultats : API typecheck et build OK, 42/42 unitaires, **e2e 115 réussis,
+4 ignorés (MinIO)**, lint 0 erreur.
 

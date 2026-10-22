@@ -41,12 +41,13 @@ de la base locale et les routes ; plan actif :
 - Push : autoriser les destinations à l'inscription ET avant envoi des anciennes lignes,
   avec contenu générique sans données médicales.
 - Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
-- Validation courante : 42 tests unitaires et 118 tests d'intégration, dont 4 essais MinIO réels
-  (document 15 : 114 réussis sur PostgreSQL 16 local, MinIO non exécuté).
+- Validation courante : 42 tests unitaires et 119 tests d'intégration, dont 4 essais MinIO réels
+  (document 15 : 115 réussis sur PostgreSQL 16 local, MinIO non exécuté).
 - Nettoyage des comptes hors test : refusé en production (403) dans `AdminService` ; ne pas retirer cette garde.
   Chaque compte est purgé dans un point de sauvegarde : un échec SQL ne doit pas annuler les autres.
 - Changement de mot de passe : révoque les autres sessions, conserve la famille du refresh token
-  courant (corps ou cookie). Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint.
+  courant (corps ou cookie). Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint :
+  PostgreSQL convertit alors le COMMIT en ROLLBACK silencieux (cas corrigé du partage de note de soin).
 
 Étendre les suites existantes dans `test/` pour les règles d'accès et les transactions
 réelles. Les tests de concurrence créés dans `test/security-regressions.e2e-spec.ts` et les
