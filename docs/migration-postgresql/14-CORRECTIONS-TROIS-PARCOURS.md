@@ -169,6 +169,27 @@ Tests :
   volontaire), 15/15 au total ;
 - sans la mémorisation, le scénario du lien profond échoue.
 
+**Retour vers la page notifiée (22 octobre 2026).** Trois chemins ne ramenaient pas à la page
+d'une notification :
+- **Administrateurs** : `AdminLogin` et la branche admin de `PractitionerLogin` renvoyaient
+  toujours vers `/admin`. Ils utilisent désormais `postLoginPath('/admin')`. De plus,
+  `AdminDashboard` gardait son onglet en état local, donc `/admin?tab=kyc|finance|operations…`
+  ouvrait la vue d'ensemble. Il suit maintenant `?tab=` via `useDashboardTab`, comme les autres
+  espaces (« admins » reste réservé au super-admin).
+- **Lien de paiement admin** : `/admin?tab=payments`, onglet inexistant, devient `/admin?tab=finance`.
+- **E-mails de notification** : le lien était relatif (`/dashboard/…`), donc inutilisable depuis
+  une messagerie, et le message était inséré sans échappement dans le HTML. Ils contiennent
+  désormais `FRONTEND_URL` + le chemin interne autorisé (`notificationEmail`, `push-target.ts`),
+  et le message est échappé. Un lien externe ou inconnu n'est pas repris. Ouvert hors session,
+  le lien passe par la connexion puis ramène à la page.
+
+Tests :
+- `push.service.spec.ts` : e-mail absolu et échappé, liens refusés ;
+- recette : 16/16, avec le scénario administrateur `/admin?tab=kyc`, qui arrive sur `/admin`
+  sans la correction ;
+- API : 56 tests unitaires et e2e 122/122 (deux passages ; un premier passage a échoué sur un
+  test non identifié, pendant que PostgreSQL était arrêté par l'environnement).
+
 Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
 `CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue
 sur un appareil. La recette automatisée tourne sous Chromium (émulation mobile pour le chat) :

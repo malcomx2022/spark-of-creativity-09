@@ -92,6 +92,17 @@ test.describe('1 bis. Retour à la page après connexion', () => {
     await expect(page).toHaveURL(/\/dashboard\/patient$/);
   });
 
+  test('administrateur : la notification /admin?tab=kyc ouvre l’onglet KYC après connexion', async ({ page }) => {
+    await page.goto('/admin?tab=kyc');
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto('/admin/login');
+    await page.locator('input[type="email"]').fill(state.accounts.admin.email);
+    await page.locator('input[type="password"]').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Connexion administrateur' }).click();
+    await expect(page).toHaveURL(/\/admin\?tab=kyc$/);
+    await expect(page.getByRole('tab', { name: /KYC/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('déconnexion volontaire : la reconnexion ne rouvre pas l’ancienne page', async ({ page }) => {
     await login(page, 'patientA');
     await page.goto('/dashboard/patient?tab=reports');

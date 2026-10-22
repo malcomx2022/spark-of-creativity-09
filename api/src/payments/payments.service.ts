@@ -636,7 +636,7 @@ export class PaymentsService {
     return n;
   }
 
-  async notifyFinanceAdmins(trx: Transaction<DB>, title: string, message: string, link = '/admin?tab=payments') {
+  async notifyFinanceAdmins(trx: Transaction<DB>, title: string, message: string, link = '/admin?tab=finance') {
     const admins = await trx.selectFrom('user_roles').select('user_id').distinct().where('role', 'in', ['ops', 'finance', 'super_admin']).execute();
     for (const a of admins) await this.inApp.notifyUser(trx, a.user_id, { title, message, type: 'payment', link });
   }

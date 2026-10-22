@@ -7,7 +7,7 @@ export const PASSWORD = 'Recette#2026';
 
 export interface RecetteState {
   tag: string;
-  accounts: Record<'patientA' | 'patientB' | 'practitioner' | 'coach', { email: string; id: string; name: string }>;
+  accounts: Record<'patientA' | 'patientB' | 'practitioner' | 'coach' | 'admin', { email: string; id: string; name: string }>;
   /** Rendez-vous patient A ↔ praticien : le plus ancien est hors de la première page des conversations. */
   oldAppointmentId: string;
   /** Rendez-vous individuel patient A ↔ coach. */

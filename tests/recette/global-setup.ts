@@ -93,6 +93,7 @@ export default async function globalSetup() {
         patientB: { email: email('patientb'), id: patientB.user.id, name: `Patient Beta ${n}` },
         practitioner: { email: email('praticien'), id: practitioner.user.id, name: `Docteur Gamma ${n}` },
         coach: { email: email('coach'), id: coach.user.id, name: `Coach Delta ${n}` },
+        admin: { email: email('admin'), id: admin.user.id, name: `Admin ${n}` },
       },
       oldAppointmentId: ids[0],
       recentAppointmentId: ids[ids.length - 1],
