@@ -732,3 +732,13 @@ Contrôles :
 
 **Non exécuté ici** : l'envoi réel, faute de clé Resend et de boîte dans cette session. Ce
 contrôle reste à lancer sur le VPS (document 07, §9).
+
+### Essais Safari sur iPhone
+
+Aucun iPhone ni service d'appareils n'est disponible dans cette session : la recette physique du
+document 12 reste à faire. En attendant, la recette post-livraison, sur API et base réelles, tourne
+aussi en WebKit iPhone en CI, et en Chromium au gabarit iPhone. Le harnais passe par le menu mobile
+pour la déconnexion, et cible chaque notification par son texte. Localement : 32/32 en Chromium
+bureau et iPhone.
+
+Le document 12 contient désormais une grille de résultats à remplir sur appareil.

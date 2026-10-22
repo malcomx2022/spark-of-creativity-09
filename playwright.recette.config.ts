@@ -8,6 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
  * La suite tests/browser reste isolée des services ; celle-ci, au contraire, n'intercepte rien.
  */
 const API_PORT = 3100;
+const chromiumLaunch = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {};
 const WEB_PORT = 4174;
 const databaseUrl = process.env.RECETTE_DATABASE_URL ?? '';
 // Garde avant tout démarrage de serveur : base explicite et locale (ou service « postgres » de CI).
@@ -26,8 +27,13 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: 'playwright-report/recette' }]] : 'list',
   use: { baseURL: `http://127.0.0.1:${WEB_PORT}`, serviceWorkers: 'block', trace: 'retain-on-failure', locale: 'fr-FR' },
+  // Projets joués l'un après l'autre sur les mêmes données. webkit-iphone (moteur de Safari, émulation
+  // iPhone 13) tourne en CI ; chromium-iphone donne le même gabarit là où WebKit n'est pas installable.
+  // Ni l'un ni l'autre ne remplace la recette sur iPhone physique (document 12).
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {} } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: chromiumLaunch } },
+    { name: 'chromium-iphone', use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: chromiumLaunch } },
+    { name: 'webkit-iphone', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
   ],
   webServer: [
     {

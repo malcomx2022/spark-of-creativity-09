@@ -86,7 +86,9 @@ développement. Le workflow `recette.yml` la relance sur chaque PR concernée.
 RECETTE_DATABASE_URL=postgresql://domicares_app:…@localhost:5432/<base dédiée> npm run test:recette
 ```
 
-La configuration refuse toute base qui n'est pas locale. Les données sont créées par l'API :
+La configuration refuse toute base qui n'est pas locale. Les scénarios tournent dans trois projets
+successifs : `chromium`, `chromium-iphone` et `webkit-iphone` (moteur de Safari, en CI). Le
+document 12 en détaille la portée. Les données sont créées par l'API :
 inscriptions, KYC, puis messages, ce qui produit de vraies notifications et leurs liens. Seuls
 les rendez-vous confirmés sont insérés en SQL : 26 pour la patiente, dont le plus ancien est en
 page 2 des conversations, un avec le coach et un pour un second patient.

@@ -14,7 +14,8 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   Push : texte générique ; `public/sw.js` n'ouvre que le chemin revérifié (`notificationTarget`), sinon /login.
   Retour après connexion : `return-path.ts` (sessionStorage, 15 min, espace du rôle, effacé au logout volontaire),
   y compris connexions admin ; l'espace admin suit aussi `?tab=` (`useDashboardTab`).
-  `npm run test:recette` (API et PostgreSQL réels, `RECETTE_DATABASE_URL` locale) rejoue ces parcours.
+  `npm run test:recette` (API et PostgreSQL réels, `RECETTE_DATABASE_URL` locale) rejoue ces parcours
+  en Chromium bureau, Chromium iPhone et WebKit iPhone (CI) ; localement : `--project chromium --project chromium-iphone`.
 - Contact public : POST /contact sans authentification ; succès après accepted=true,
   champs conservés en erreur, bouton bloqué pendant l'envoi. Ne jamais simuler un succès.
 
