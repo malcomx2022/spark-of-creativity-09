@@ -16,7 +16,8 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   Retour après connexion : `return-path.ts` (sessionStorage, 15 min, espace du rôle, effacé au logout volontaire),
   y compris connexions admin ; l'espace admin suit aussi `?tab=` (`useDashboardTab`).
   `npm run test:recette` (API et PostgreSQL réels, `RECETTE_DATABASE_URL` locale) rejoue ces parcours
-  en Chromium bureau, Chromium iPhone et WebKit iPhone (CI) ; localement : `--project chromium --project chromium-iphone`.
+  en Chromium bureau, Chromium iPhone et WebKit iPhone (CI) ; localement : `--project chromium --project chromium-iphone`,
+  et WebKit par `npm run test:recette:webkit` (Docker, voir ci-dessous).
 - Contact public : POST /contact sans authentification ; succès après accepted=true,
   champs conservés en erreur, bouton bloqué pendant l'envoi. Ne jamais simuler un succès.
 
@@ -47,6 +48,9 @@ ses déclencheurs. Variants, hooks et contextes vivent hors des fichiers de comp
 - Réserver la hauteur du bandeau PWA pour garder les actions de bas de page accessibles.
 - Exécuter `npm run build` puis `npm run test:browser` après installation des navigateurs
   Playwright. Les 114 scénarios simulent les services et utilisent WebKit/Chromium.
+  Sans WebKit installable sur l'hôte : `npm run test:webkit` (`scripts/webkit-docker.sh`) lance
+  le navigateur dans l'image Docker Playwright de même version (`run-server`, `PW_WEBKIT_WS_ENDPOINT`,
+  `exposeNetwork: '<loopback>'`) ; tests et serveurs restent sur l'hôte. Ne pas lancer `playwright install`.
 - Ne jamais assimiler les résultats WebKit automatisés à une recette Safari sur appareil
   physique. Suivre la checklist du document 12 et enregistrer les preuves réelles.
 

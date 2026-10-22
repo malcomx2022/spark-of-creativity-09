@@ -847,3 +847,29 @@ n'a été assouplie et aucun commentaire de désactivation n'a été ajouté.
 
 Contrôles : lint (0 erreur, 0 avertissement), typecheck, 118 tests Vitest (23 fichiers), build,
 38 scénarios navigateur Chromium en local (WebKit en CI).
+
+### Tests WebKit en local
+
+En local, les projets WebKit échouaient : `Executable doesn't exist at …/webkit-2359/pw_run.sh`.
+WebKit n'y est pas installé, et `playwright install` est exclu. Il exigerait en plus les bibliothèques
+système de WebKit sur l'hôte.
+
+Deux commandes Docker les remplacent :
+- `npm run test:webkit` lance la suite `tests/browser` sur `webkit-iphone` et `webkit-ipad` ;
+- `npm run test:recette:webkit` lance la recette réelle sur `webkit-iphone`.
+
+`scripts/webkit-docker.sh` démarre `playwright run-server` dans `mcr.microsoft.com/playwright:v<version>-noble`.
+La version est lue dans `node_modules/playwright-core`, qui est monté en lecture seule : rien n'est
+téléchargé hors de l'image. Le script attend le serveur, puis lance `playwright test` sur l'hôte avec
+`PW_WEBKIT_WS_ENDPOINT` et arrête le conteneur à la fin.
+
+Les deux configurations Playwright connectent alors leurs projets WebKit au serveur. Avec
+`exposeNetwork: '<loopback>'`, le navigateur atteint `127.0.0.1` de l'hôte (preview, API de recette),
+avec un port publié et sans `--network host`. Le script fonctionne donc aussi avec Docker Desktop.
+Les tests, `vite preview` et l'API restent sous Node 22, comme l'exigent les consignes ; l'image
+fournit Node 24. Si la variable est absente, comme en CI, rien ne change. Si Docker est absent ou
+arrêté, le script s'arrête avec un message explicite (code 2).
+
+Contrôles locaux : `npm run test:webkit` 76/76 (WebKit iPhone et iPad), `npm run test:recette:webkit`
+16/16 (API et PostgreSQL 16 réels), lint et typecheck. Ce sont des résultats d'émulation WebKit, pas
+une recette sur iPhone physique (document 12).

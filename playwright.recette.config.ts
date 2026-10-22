@@ -10,6 +10,9 @@ import { defineConfig, devices } from '@playwright/test';
 const API_PORT = 3100;
 const chromiumLaunch = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {};
 const WEB_PORT = 4174;
+// WebKit local sans installation : `npm run test:webkit` lance le navigateur dans l'image Docker
+// Playwright de même version et expose son adresse ; tests et serveurs restent sur l'hôte (Node 22).
+const webkitRemote = process.env.PW_WEBKIT_WS_ENDPOINT ? { connectOptions: { wsEndpoint: process.env.PW_WEBKIT_WS_ENDPOINT, exposeNetwork: '<loopback>' } } : {};
 const databaseUrl = process.env.RECETTE_DATABASE_URL ?? '';
 // Garde avant tout démarrage de serveur : base explicite et locale (ou service « postgres » de CI).
 const databaseHost = (() => { try { return new URL(databaseUrl).hostname; } catch { return ''; } })();
@@ -33,7 +36,7 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: chromiumLaunch } },
     { name: 'chromium-iphone', use: { ...devices['iPhone 13'], browserName: 'chromium', launchOptions: chromiumLaunch } },
-    { name: 'webkit-iphone', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
+    { name: 'webkit-iphone', use: { ...devices['iPhone 13'], browserName: 'webkit', ...webkitRemote } },
   ],
   webServer: [
     {

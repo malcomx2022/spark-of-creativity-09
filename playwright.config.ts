@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// WebKit local sans installation : `npm run test:webkit` lance le navigateur dans l'image Docker
+// Playwright de même version et expose son adresse ; tests et serveurs restent sur l'hôte (Node 22).
+const webkitRemote = process.env.PW_WEBKIT_WS_ENDPOINT ? { connectOptions: { wsEndpoint: process.env.PW_WEBKIT_WS_ENDPOINT, exposeNetwork: '<loopback>' } } : {};
+
 export default defineConfig({
   testDir: './tests/browser',
   fullyParallel: true,
@@ -9,8 +13,8 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: 'http://127.0.0.1:4173', serviceWorkers: 'block', trace: 'retain-on-failure' },
   projects: [
-    { name: 'webkit-iphone', use: { ...devices['iPhone 13'], browserName: 'webkit' } },
-    { name: 'webkit-ipad', use: { ...devices['iPad Pro 11'], browserName: 'webkit' } },
+    { name: 'webkit-iphone', use: { ...devices['iPhone 13'], browserName: 'webkit', ...webkitRemote } },
+    { name: 'webkit-ipad', use: { ...devices['iPad Pro 11'], browserName: 'webkit', ...webkitRemote } },
     { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {} } },
   ],
   webServer: { command: 'npm run preview -- --host 127.0.0.1 --port 4173 --strictPort', port: 4173, env: { DOMICARES_BROWSER_TEST: '1' }, reuseExistingServer: !process.env.CI },
