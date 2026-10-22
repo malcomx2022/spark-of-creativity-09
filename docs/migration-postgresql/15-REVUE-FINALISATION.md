@@ -388,11 +388,35 @@ bloquée sur un verrou ; la rotation est ensuite libérée. Un test par chemin
 tourné par un tiers ne protège pas la session de ce tiers (il échoue si le filtre
 `revoked_at` est retiré).
 
-Observation (non modifiée) : une déconnexion simple (`POST /auth/logout`, un seul
-jeton) concurrente à la rotation de ce même jeton laisse le jeton enfant actif.
-La rotation l'emporte : il faudrait révoquer la famille du jeton plutôt que le
-jeton seul.
+Observation : la déconnexion simple présentait la même fenêtre ; corrigée au §10.
 
 Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 119 réussis,
 4 ignorés (MinIO)**, identique sur 3 exécutions complètes ; front 63/63 ; lint 0 erreur.
+
+## 10. Déconnexion simple — 22 octobre 2026
+
+Défaut : `POST /api/auth/logout` révoquait le seul jeton transmis. Si ce même
+appareil tournait son jeton au même moment, la déconnexion attendait le verrou de
+ligne puis ignorait le jeton, devenu révoqué. Le jeton enfant restait actif : la
+session survivait à la déconnexion.
+
+Correction (`AuthService.logout`) : la déconnexion d'un appareil révoque toute la
+**famille** du jeton (la chaîne de sessions de cet appareil), sous le même verrou
+de famille que `refresh`. Dans l'ordre inverse, la rotation attend puis détecte
+le jeton révoqué. En usage normal, seul le dernier jeton d'une famille est actif :
+le résultat est identique à l'ancien comportement, hors concurrence. Un jeton
+inconnu ou appartenant à un autre compte ne révoque rien. La déconnexion sans jeton
+identifiable (ni corps ni cookie) révoquait déjà toutes les sessions ; elle prend
+désormais le verrou par utilisateur, comme les autres révocations globales.
+Verrous : famille seule pour la déconnexion d'un appareil ; aucun cycle n'est
+possible avec `refresh` (famille puis utilisateur).
+
+Tests e2e (`auth`) : rotation de l'appareil suspendue avant COMMIT, déconnexion
+bloquée sur le verrou (constatée via `pg_stat_activity`), puis libération ; le
+jeton enfant est révoqué. Avant correction : `Expected 401, Received 200` ; après :
+réussi, stable sur 5 exécutions complètes de la suite. Un test vérifie aussi
+qu'une déconnexion, par corps ou par cookie, ne ferme que la session de cet appareil.
+
+Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 121 réussis,
+4 ignorés (MinIO)** ; front 63/63 ; lint 0 erreur.
 

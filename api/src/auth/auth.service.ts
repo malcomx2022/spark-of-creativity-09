@@ -224,7 +224,8 @@ export class AuthService {
 
   /**
    * Verrou transactionnel par utilisateur, pris par refresh (après celui de la famille) et par chaque
-   * révocation globale (reset, changement de mot de passe, déconnexion partout). Sans lui, un jeton
+   * révocation globale (reset, changement de mot de passe, déconnexion partout ou sans jeton). La
+   * déconnexion d'un appareil prend seulement le verrou de sa famille. Sans eux, un jeton
    * émis par une rotation non encore validée échappe à la révocation (READ COMMITTED).
    */
   private async lockUserSessions(trx: Transaction<DB>, userId: string): Promise<void> {
@@ -233,10 +234,19 @@ export class AuthService {
 
   async logout(refreshToken: string | undefined, userId: string, everywhere: boolean): Promise<{ loggedOut: true }> {
     await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
-      if (everywhere) await this.lockUserSessions(trx, userId);
-      let q = trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null);
-      if (!everywhere && refreshToken) q = q.where('token_hash', '=', sha256(refreshToken));
-      await q.execute();
+      const revoke = trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null);
+      if (!everywhere && refreshToken) {
+        // Déconnexion de cet appareil : toute la famille du jeton, sous le verrou de famille de refresh.
+        // Révoquer le seul jeton laisserait actif l'enfant émis par une rotation concurrente.
+        const own = await trx.selectFrom('refresh_tokens').select('family_id').where('token_hash', '=', sha256(refreshToken)).where('user_id', '=', userId).executeTakeFirst();
+        if (!own) return;
+        await sql`select pg_advisory_xact_lock(hashtextextended(${own.family_id}::text, 0))`.execute(trx);
+        await revoke.where('family_id', '=', own.family_id).execute();
+        return;
+      }
+      // Sans jeton identifiable, comme partout : toutes les sessions.
+      await this.lockUserSessions(trx, userId);
+      await revoke.execute();
       if (everywhere) await trx.deleteFrom('push_subscriptions').where('user_id', '=', userId).execute();
     });
     return { loggedOut: true };

@@ -304,7 +304,7 @@ describe('Auth (e2e)', () => {
      * La révocation démarre, se bloque sur un verrou, puis la rotation est libérée : le jeton émis
      * pendant la révocation doit être révoqué lui aussi.
      */
-    async function raceRotation(revoke: () => Promise<{ statusCode: number }>) {
+    async function raceRotation(revoke: (device: { accessToken: string; refreshToken: string }) => Promise<{ statusCode: number }>) {
       const otherDevice = await login();
       const tokens = app.get(TokensService);
       const original = tokens.issueSession.bind(tokens);
@@ -321,7 +321,7 @@ describe('Auth (e2e)', () => {
       try {
         const rotating = refresh(otherDevice.refreshToken);
         await within(paused, 'point de suspension de la rotation');
-        const revoking = revoke();
+        const revoking = revoke(otherDevice);
         await waitForLockWaiter();
         release();
         const [rotated, revoked] = await Promise.all([rotating, revoking]);
@@ -357,6 +357,23 @@ describe('Auth (e2e)', () => {
         if (res.statusCode === 200) password = 'ResetMdp#2026';
         return res;
       });
+    });
+
+    it('déconnexion simple : le jeton tourné par ce même appareil pendant la déconnexion est révoqué', async () => {
+      await raceRotation((device) => app.inject({ method: 'POST', url: '/api/auth/logout', headers: { authorization: `Bearer ${device.accessToken}` }, payload: { refreshToken: device.refreshToken } }));
+    });
+
+    it('déconnexion simple : seule la session de cet appareil est fermée, par corps ou par cookie', async () => {
+      const kept = await login();
+      const byBody = await login();
+      const byCookie = await login();
+      const out = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { authorization: `Bearer ${byBody.accessToken}` }, payload: { refreshToken: byBody.refreshToken } });
+      expect(out.statusCode).toBe(200);
+      const outCookie = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { authorization: `Bearer ${byCookie.accessToken}`, cookie: `refresh_token=${byCookie.refreshToken}` }, payload: {} });
+      expect(outCookie.statusCode).toBe(200);
+      expect((await refresh(byBody.refreshToken)).statusCode).toBe(401);
+      expect((await refresh(byCookie.refreshToken)).statusCode).toBe(401);
+      expect((await refresh(kept.refreshToken)).statusCode).toBe(200);
     });
 
     it('changement de mot de passe avec un jeton déjà tourné par un tiers : la session du tiers est révoquée', async () => {
