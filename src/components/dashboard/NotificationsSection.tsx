@@ -33,6 +33,7 @@ import {
   type NotificationPreferencesUpdate,
 } from '@/hooks/useNotifications';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { describeTestPush, isIosWithoutInstall, sendTestPush } from '@/lib/push-notifications';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { errorMessage } from '@/lib/api';
 import { notificationPath } from '@/lib/notification-link';
@@ -74,6 +75,21 @@ export function NotificationsSection() {
   const { isSupported, isSubscribed, isLoading: isPushLoading, subscribe, unsubscribe } = usePushNotifications(user?.id);
 
   const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read'>('all');
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const iosInstallHint = useMemo(() => !isSupported && isIosWithoutInstall(), [isSupported]);
+
+  // Recette sur téléphone réel : le résultat affiché est celui de l'envoi serveur, jamais supposé.
+  const handleTestPush = async () => {
+    setIsSendingTest(true);
+    try {
+      const { ok, message } = describeTestPush(await sendTestPush());
+      toast({ title: ok ? 'Notification de test envoyée' : 'Notification de test non envoyée', description: message, variant: ok ? 'default' : 'destructive' });
+    } catch (error) {
+      toast({ title: 'Notification de test non envoyée', description: errorMessage(error, 'Réessayez dans quelques minutes.'), variant: 'destructive' });
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
   const [notificationToDelete, setNotificationToDelete] = useState<string | null>(null);
 
   const [localPrefs, setLocalPrefs] = useState({
@@ -619,10 +635,24 @@ export function NotificationsSection() {
                 }
               </Button>
               {isSubscribed && (
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  ✓ Les notifications push sont activées
-                </p>
+                <>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    ✓ Les notifications push sont activées
+                  </p>
+                  <Button onClick={handleTestPush} disabled={isSendingTest} variant="secondary" className="w-full mt-3">
+                    {isSendingTest ? 'Envoi…' : 'Envoyer une notification de test'}
+                  </Button>
+                </>
               )}
+            </div>
+          )}
+          {iosInstallHint && (
+            <div className="mt-6 p-4 border rounded-lg bg-muted/50" role="note">
+              <Label className="text-base">Notifications sur iPhone ou iPad</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Safari ne propose les notifications qu’à l’application installée : touchez Partager → « Sur l’écran
+                d’accueil », ouvrez DomiCares depuis l’icône, puis activez les notifications ici (iOS 16.4 ou plus récent).
+              </p>
             </div>
           )}
         </CardContent>

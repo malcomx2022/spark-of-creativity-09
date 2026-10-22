@@ -174,3 +174,27 @@ export async function isPushSubscribed(): Promise<boolean> {
     return false;
   }
 }
+
+/** iPhone/iPad hors application installée : Safari n'y propose le push qu'après « Sur l'écran d'accueil » (iOS 16.4+). */
+export function isIosWithoutInstall(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return ios && !standalone;
+}
+
+export interface PushTestResult { attempted: boolean; success: boolean; sent: number; removed: number; error?: string; provider: 'webpush' | 'console' }
+
+/** Push de test vers les appareils du compte connecté (recette sur téléphone réel). */
+export function sendTestPush(): Promise<PushTestResult> {
+  return api.post<PushTestResult>('/push/test', {});
+}
+
+/** Message affiché après un push de test, selon le résultat réel de l'envoi. */
+export function describeTestPush(r: PushTestResult): { ok: boolean; message: string } {
+  if (r.provider === 'console') return { ok: false, message: 'Serveur en mode console : aucun push réel n’est envoyé (PUSH_PROVIDER=webpush requis).' };
+  if (r.error === 'vapid_mismatch') return { ok: false, message: 'Clés VAPID du serveur incohérentes : push désactivé côté serveur.' };
+  if (r.error === 'no_subscription') return { ok: false, message: 'Aucun appareil abonné pour ce compte : réactivez les notifications push.' };
+  if (r.sent > 0) return { ok: true, message: `Notification envoyée à ${r.sent} appareil(s). Elle doit apparaître sur le téléphone dans quelques secondes.${r.removed ? ` ${r.removed} abonnement(s) expiré(s) supprimé(s).` : ''}` };
+  return { ok: false, message: r.removed ? 'Abonnements expirés supprimés : réactivez les notifications push sur cet appareil.' : 'Le service push n’a accepté aucun envoi.' };
+}

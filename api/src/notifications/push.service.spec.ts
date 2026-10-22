@@ -1,12 +1,14 @@
 import * as webpush from 'web-push';
-import { PushService } from './push.service';
+import { createECDH } from 'node:crypto';
+import { PushService, vapidKeyError } from './push.service';
 import type { AppConfig } from '../config/config.module';
 import type { DatabaseService } from '../database/database.service';
 jest.mock('web-push', () => ({ setVapidDetails: jest.fn(), sendNotification: jest.fn().mockResolvedValue({}) }));
+const vapid = (() => { const ecdh = createECDH('prime256v1'); ecdh.generateKeys(); return { WEB_PUSH_PUBLIC_KEY: ecdh.getPublicKey().toString('base64url'), WEB_PUSH_PRIVATE_KEY: ecdh.getPrivateKey().toString('base64url') }; })();
 it('sends generic authenticated notifications without medical details', async () => {
   const query = { selectAll: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), execute: jest.fn().mockResolvedValue([{ id: 'sub', endpoint: 'https://fcm.googleapis.com/id', p256dh: 'key', auth: 'key' }]) };
   const database = { runAs: (_ctx: unknown, callback: (trx: unknown) => unknown) => callback({ selectFrom: () => query }) } as unknown as DatabaseService;
-  const service = new PushService({ PUSH_PROVIDER: 'webpush', WEB_PUSH_EMAIL: 'mailto:test@audit.invalid', WEB_PUSH_PUBLIC_KEY: 'key', WEB_PUSH_PRIVATE_KEY: 'key' } as AppConfig, database);
+  const service = new PushService({ PUSH_PROVIDER: 'webpush', WEB_PUSH_EMAIL: 'mailto:test@audit.invalid', ...vapid } as AppConfig, database);
   await service.sendToUser('user', { title: 'PRIVATE_DIAGNOSIS', message: 'PRIVATE_PATIENT', url: 'https://untrusted.test' });
   const body = (webpush.sendNotification as jest.Mock).mock.calls[0][1] as string;
   expect(body).not.toContain('PRIVATE');
@@ -26,7 +28,7 @@ it.each([
   (webpush.sendNotification as jest.Mock).mockClear();
   const query = { selectAll: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), execute: jest.fn().mockResolvedValue([{ id: 'sub', endpoint: 'https://fcm.googleapis.com/id', p256dh: 'key', auth: 'key' }]) };
   const database = { runAs: (_ctx: unknown, callback: (trx: unknown) => unknown) => callback({ selectFrom: () => query }) } as unknown as DatabaseService;
-  const service = new PushService({ PUSH_PROVIDER: 'webpush', WEB_PUSH_EMAIL: 'mailto:test@audit.invalid', WEB_PUSH_PUBLIC_KEY: 'key', WEB_PUSH_PRIVATE_KEY: 'key' } as AppConfig, database);
+  const service = new PushService({ PUSH_PROVIDER: 'webpush', WEB_PUSH_EMAIL: 'mailto:test@audit.invalid', ...vapid } as AppConfig, database);
   await service.sendToUser('user', { title: 'Nouveau message de PRIVATE_NAME', message: 'PRIVATE_CONTENT', url: link });
   const body = JSON.parse((webpush.sendNotification as jest.Mock).mock.calls[0][1] as string);
   expect(body.url).toBe(expected);
@@ -42,5 +44,34 @@ describe('notificationEmail', () => {
   it.each(['https://checkout.fedapay.com/pay/1', '/patient/appointments/1', '"><script>', null])('omits an unsupported link %s', (link) => {
     const mail = notificationEmail('https://domicares.life', 'T', 'Bonjour', link);
     expect(mail).toEqual({ subject: 'T', text: 'Bonjour', html: '<p>Bonjour</p>' });
+  });
+});
+describe('VAPID keys and delivery options', () => {
+  const query = { selectAll: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), execute: jest.fn().mockResolvedValue([{ id: 'sub', endpoint: 'https://web.push.apple.com/abc', p256dh: 'key', auth: 'key' }]) };
+  const database = { runAs: (_ctx: unknown, callback: (trx: unknown) => unknown) => callback({ selectFrom: () => query }) } as unknown as DatabaseService;
+  beforeEach(() => (webpush.sendNotification as jest.Mock).mockClear());
+
+  it('detects a public key that does not belong to the private key', () => {
+    const other = createECDH('prime256v1'); other.generateKeys();
+    expect(vapidKeyError(vapid.WEB_PUSH_PUBLIC_KEY, vapid.WEB_PUSH_PRIVATE_KEY)).toBeNull();
+    expect(vapidKeyError(other.getPublicKey().toString('base64url'), vapid.WEB_PUSH_PRIVATE_KEY)).toMatch(/ne correspond pas/);
+    expect(vapidKeyError(vapid.WEB_PUSH_PUBLIC_KEY, 'pas-une-cle')).toMatch(/privée VAPID invalide/);
+    expect(vapidKeyError('BCourte', vapid.WEB_PUSH_PRIVATE_KEY)).toMatch(/publique VAPID invalide/);
+    expect(vapidKeyError(undefined, vapid.WEB_PUSH_PRIVATE_KEY)).toMatch(/absentes/);
+  });
+
+  it('disables push (no public key, no send) when the VAPID pair is inconsistent', async () => {
+    const other = createECDH('prime256v1'); other.generateKeys();
+    const service = new PushService({ PUSH_PROVIDER: 'webpush', WEB_PUSH_EMAIL: 'mailto:test@audit.invalid', WEB_PUSH_PUBLIC_KEY: other.getPublicKey().toString('base64url'), WEB_PUSH_PRIVATE_KEY: vapid.WEB_PUSH_PRIVATE_KEY } as AppConfig, database);
+    expect(service.publicKey).toBeNull();
+    expect(await service.sendToUser('user', { title: 'T', message: 'M' })).toMatchObject({ success: false, error: 'vapid_mismatch' });
+    expect(webpush.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('sends with high urgency so that phones in power saving mode receive it promptly', async () => {
+    const service = new PushService({ PUSH_PROVIDER: 'webpush', WEB_PUSH_EMAIL: 'mailto:test@audit.invalid', ...vapid } as AppConfig, database);
+    expect(service.publicKey).toBe(vapid.WEB_PUSH_PUBLIC_KEY);
+    expect(await service.sendToUser('user', { title: 'T', message: 'M' })).toMatchObject({ success: true, sent: 1 });
+    expect((webpush.sendNotification as jest.Mock).mock.calls[0][2]).toEqual({ TTL: 3600, urgency: 'high' });
   });
 });

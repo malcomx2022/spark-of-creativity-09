@@ -145,6 +145,11 @@ Sur une URL HTTPS de recette, sans données médicales réelles et avec FedaPay 
 7. Sur iOS/iPadOS 16.4+ installé, activer le push après un geste utilisateur,
    recevoir une notification de recette, suivre le lien et vérifier que la
    déconnexion désabonne l'appareil. Tester aussi un refus de permission.
+   Dans Safari non installé, l'onglet Notifications doit expliquer l'ajout à l'écran d'accueil.
+   Une fois abonné, « Envoyer une notification de test » (`POST /api/push/test`) affiche le
+   résultat réel de l'envoi : nombre d'appareils, mode console, clés VAPID incohérentes ou aucun
+   abonnement. La notification doit apparaître écran verrouillé avec le texte générique ; un appui
+   doit ouvrir l'onglet Notifications, ou passer par la connexion puis y revenir.
 8. Réaliser la campagne FedaPay sandbox du document 09, notamment ouverture/fermeture
    du widget et retour depuis Mobile Money. Ne pas effectuer de paiement réel.
 

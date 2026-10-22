@@ -742,3 +742,24 @@ pour la déconnexion, et cible chaque notification par son texte. Localement : 3
 bureau et iPhone.
 
 Le document 12 contient désormais une grille de résultats à remplir sur appareil.
+
+### Notification push sur un vrai téléphone
+
+Aucun téléphone n'est joignable depuis cette session. J'ai donc corrigé les causes d'échec propres
+aux appareils réels, et ajouté de quoi tester en un geste :
+- **Service worker** : il affiche toujours une notification (iOS révoque les abonnements après des
+  push silencieux) ;
+- **Clés VAPID** : la paire est vérifiée au démarrage, et le push est coupé proprement si elle est
+  incohérente ;
+- **Urgence** : `urgency: high` ;
+- **Envoi de test** : route `POST /api/push/test` et bouton dans l'onglet Notifications, avec le
+  résultat réel de l'envoi ;
+- **iPhone** : l'interface indique l'installation nécessaire dans Safari.
+
+Contrôles :
+- API : 63 tests unitaires, e2e 122/122 ;
+- front : 116 tests, typecheck, build, lint (0 erreur) ;
+- 38 scénarios navigateur ;
+- recette 32/32.
+
+Reste à faire sur un appareil réel : document 12, point 7.

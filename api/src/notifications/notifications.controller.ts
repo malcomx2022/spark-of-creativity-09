@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { RouteConfig } from '@nestjs/platform-fastify';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { AuthenticatedUser, CurrentUser } from '../common/decorators/current-user.decorator';
@@ -71,6 +72,18 @@ export class PushController {
   @ApiOperation({ summary: 'Enregistre (upsert) un abonnement push du navigateur' })
   subscribe(@CurrentUser() user: AuthenticatedUser, @Body(new ZodValidationPipe(pushSubscriptionSchema)) dto: PushSubscriptionDto, @Req() req: FastifyRequest) {
     return this.notifications.savePushSubscription(user.id, dto, dto.userAgent ?? req.headers['user-agent']);
+  }
+
+  @Post('test')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @RouteConfig({ rateLimit: { max: 5, timeWindow: 10 * 60 * 1000 } })
+  @ApiOperation({ summary: "Envoie un push de test aux seuls appareils de l'appelant (recette sur téléphone réel)" })
+  async test(@CurrentUser() user: AuthenticatedUser) {
+    // Même chaîne qu'une vraie notification : texte générique, clic vers l'onglet Notifications.
+    const result = await this.push.sendToUser(user.id, { title: 'Test', message: 'Test', url: '/dashboard?tab=notifications' });
+    return { ...result, provider: this.push.provider };
   }
 
   @Delete('subscriptions')

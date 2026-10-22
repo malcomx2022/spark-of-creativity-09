@@ -11,7 +11,8 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   un refus d'accès ne doit pas ouvrir une autre conversation. Conserver /dashboard
   comme redirection des anciennes notifications et ouvrir le chat mobile ciblé.
   Le clic sur une notification suit `link` via `notificationPath` (chemins internes connus seulement).
-  Push : texte générique ; `public/sw.js` n'ouvre que le chemin revérifié (`notificationTarget`), sinon /login.
+  Push : texte générique ; `public/sw.js` n'ouvre que le chemin revérifié (`notificationTarget`), sinon /login,
+  et affiche toujours une notification (jamais de push silencieux, révoqué par iOS). Bouton de test et aide iOS dans Notifications.
   Retour après connexion : `return-path.ts` (sessionStorage, 15 min, espace du rôle, effacé au logout volontaire),
   y compris connexions admin ; l'espace admin suit aussi `?tab=` (`useDashboardTab`).
   `npm run test:recette` (API et PostgreSQL réels, `RECETTE_DATABASE_URL` locale) rejoue ces parcours

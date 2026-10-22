@@ -234,6 +234,14 @@ describe('Messaging, notifications & realtime (e2e)', () => {
     expect(r.channels.push).toMatchObject({ attempted: true, success: true });
     expect(r.channels.email.skipped).toBe(true);
 
+    // Push de test (recette sur téléphone réel) : authentifié, vers les seuls appareils de l'appelant.
+    expect((await app.inject({ method: 'POST', url: '/api/push/test' })).statusCode).toBe(401);
+    const test = await app.inject({ method: 'POST', url: '/api/push/test', headers: auth('patient') });
+    expect(test.statusCode).toBe(200);
+    expect(test.json()).toMatchObject({ attempted: true, success: true, sent: 1, provider: 'console' });
+    const otherTest = await app.inject({ method: 'POST', url: '/api/push/test', headers: auth('practitioner') });
+    expect(otherTest.json()).toMatchObject({ attempted: false, sent: 0, error: 'no_subscription' });
+
     const unsub = await app.inject({ method: 'DELETE', url: '/api/push/subscriptions', headers: auth('patient'), payload: { endpoint } });
     expect(unsub.json()).toEqual({ deleted: 1 });
     expect((await app.inject({ method: 'DELETE', url: '/api/push/subscriptions', headers: auth('patient'), payload: { endpoint } })).json()).toEqual({ deleted: 0 });

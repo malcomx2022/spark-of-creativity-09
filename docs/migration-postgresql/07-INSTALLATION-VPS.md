@@ -303,6 +303,14 @@ prise de rendez-vous, message temps réel, notification push, et les écrans d'a
 (file KYC, finance, support). Le document 04 §4 demande la validation par un patient, un
 praticien, un coach et un administrateur réels.
 
+Notification push sur téléphone réel :
+- `PUSH_PROVIDER=webpush` avec la paire de clés VAPID. Si les clés ne correspondent pas, l'API le
+  journalise au démarrage (« Push désactivé ») et coupe le push au lieu d'échouer en silence.
+- Sur le téléphone, ouvrir l'application installée (obligatoire sur iPhone), puis
+  Notifications → Activer → « Envoyer une notification de test ». Le message affiché donne le
+  résultat réel de l'envoi.
+- Checklist complète : document 12, point 7.
+
 Formulaire de contact (réception réelle) : après avoir défini `CONTACT_RECIPIENT_EMAIL` dans
 `.env`, lancer `docker compose up -d api` (un simple restart ne recharge pas l'environnement),
 puis `./contact-check.sh --via-site`. Le script :
