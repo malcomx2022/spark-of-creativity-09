@@ -238,6 +238,59 @@ describe('Medical record, reviews & payment methods (e2e)', () => {
     expect(log.json()).toEqual([expect.objectContaining({ accessed_by: userIds['patient'], access_type: 'download' })]);
   });
 
+  it('lectures et modification praticien : liste des notes, note modifiée sans nouveau partage, compte rendu par rendez-vous', async () => {
+    const notes = await app.inject({ method: 'GET', url: '/api/care-notes', headers: auth('nurse') });
+    expect(notes.statusCode).toBe(200);
+    expect(notes.json()).toEqual([expect.objectContaining({ id: noteId, appointment_id: appointments['completed'], patient_name: 'User patient', practitioner_name: 'Infirmière Test' })]);
+    expect((await app.inject({ method: 'GET', url: '/api/care-notes', headers: auth('patient') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/care-notes' })).statusCode).toBe(401);
+
+    const notifBefore = (await notificationsOf('patient')).filter((n) => n.type === 'care_note').length;
+    expect((await app.inject({ method: 'PATCH', url: `/api/care-notes/${noteId}`, headers: auth('patient'), payload: { plan: 'Pirate' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: '/api/care-notes/00000000-0000-0000-0000-000000000000', headers: auth('nurse'), payload: { plan: 'x' } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'PATCH', url: '/api/care-notes/pas-un-uuid', headers: auth('nurse'), payload: { plan: 'x' } })).statusCode).toBe(400);
+    const updated = await app.inject({ method: 'PATCH', url: `/api/care-notes/${noteId}`, headers: auth('nurse'), payload: { plan: 'Pansement quotidien', objective: '' } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({ id: noteId, plan: 'Pansement quotidien', objective: null, subjective: 'Douleur au mollet', shared_with_patient: true });
+    expect((await notificationsOf('patient')).filter((n) => n.type === 'care_note')).toHaveLength(notifBefore);
+
+    const report = await app.inject({ method: 'GET', url: `/api/consultation-reports/appointment/${appointments['inProgress']}`, headers: auth('nurse') });
+    expect(report.statusCode).toBe(200);
+    expect(report.json()).toMatchObject({ id: reportId, appointment_id: appointments['inProgress'] });
+    const none = await app.inject({ method: 'GET', url: `/api/consultation-reports/appointment/${appointments['confirmed']}`, headers: auth('nurse') });
+    expect(none.statusCode).toBe(200);
+    expect(none.body === '' || none.json() === null).toBe(true);
+    expect((await app.inject({ method: 'GET', url: `/api/consultation-reports/appointment/${appointments['inProgress']}`, headers: auth('patient') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `/api/consultation-reports/appointment/${appointments['inProgress']}` })).statusCode).toBe(401);
+  });
+
+  it('contacts d’urgence et adresses : liste limitée au propriétaire, modification et suppression', async () => {
+    const own = await app.inject({ method: 'GET', url: '/api/medical/emergency-contacts', headers: auth('patient') });
+    expect(own.statusCode).toBe(200);
+    expect(own.json()).toEqual([expect.objectContaining({ id: contactId, name: 'Maman', relationship: 'Mère (urgence)' })]);
+    expect((await app.inject({ method: 'GET', url: '/api/medical/emergency-contacts', headers: auth('other') })).json()).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/api/medical/emergency-contacts' })).statusCode).toBe(401);
+    const extra = await app.inject({ method: 'POST', url: '/api/medical/emergency-contacts', headers: auth('patient'), payload: { name: 'Frère', phone: '+22961000002' } });
+    expect(extra.statusCode).toBe(201);
+    expect((await app.inject({ method: 'DELETE', url: `/api/medical/emergency-contacts/${extra.json().id}`, headers: auth('other') })).statusCode).toBe(404);
+    const removed = await app.inject({ method: 'DELETE', url: `/api/medical/emergency-contacts/${extra.json().id}`, headers: auth('patient') });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toEqual({ deleted: true });
+    expect((await app.inject({ method: 'DELETE', url: `/api/medical/emergency-contacts/${extra.json().id}`, headers: auth('patient') })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/medical/emergency-contacts', headers: auth('patient') })).json().map((c: { id: string }) => c.id)).toEqual([contactId]);
+
+    const addressId = addressIds[0];
+    expect((await app.inject({ method: 'PATCH', url: `/api/addresses/${addressId}`, headers: auth('other'), payload: { label: 'Pirate' } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'PATCH', url: `/api/addresses/${addressId}`, headers: auth('patient'), payload: { address: 'x' } })).statusCode).toBe(400);
+    const second = await app.inject({ method: 'POST', url: '/api/addresses', headers: auth('patient'), payload: { label: 'Clinique', address: 'Akpakpa, Cotonou' } });
+    addressIds.push(second.json().id);
+    const patched = await app.inject({ method: 'PATCH', url: `/api/addresses/${second.json().id}`, headers: auth('patient'), payload: { label: 'Cabinet', city: 'Cotonou', isDefault: true } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({ id: second.json().id, label: 'Cabinet', city: 'Cotonou', is_default: true, address: 'Akpakpa, Cotonou' });
+    const list = await app.inject({ method: 'GET', url: '/api/addresses', headers: auth('patient') });
+    expect(list.json().filter((a: { is_default: boolean }) => a.is_default).map((a: { id: string }) => a.id)).toEqual([second.json().id]);
+  });
+
   // ---------------------------------------------------------------------------
   // Triage, consentements, export
   // ---------------------------------------------------------------------------

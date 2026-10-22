@@ -168,6 +168,16 @@ describe('Support, disputes & stats (e2e)', () => {
     expect(practitioners.json().map((f: { id: string }) => f.id)).not.toContain(faqId);
     const audit = await db.db.selectFrom('admin_audit_logs').select('action').where('admin_id', '=', userIds['support']).where('entity_id', '=', faqId).execute();
     expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(['create_faq', 'publish_faq']));
+    const draft = await app.inject({ method: 'POST', url: '/api/admin/support/faqs', headers: auth('support'), payload: { question: `Brouillon interne ? ${tag}`, answer: 'Réponse non publiée.', category: 'Séances', targetAudience: 'patients' } });
+    expect((await app.inject({ method: 'GET', url: '/api/admin/support/faqs', headers: auth('patient') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/support/faqs', headers: auth('finance') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/support/faqs' })).statusCode).toBe(401);
+    const adminList = await app.inject({ method: 'GET', url: '/api/admin/support/faqs', headers: auth('support') });
+    expect(adminList.statusCode).toBe(200);
+    const listed = adminList.json().filter((f: { id: string }) => f.id === faqId || f.id === draft.json().id);
+    expect(listed).toEqual(expect.arrayContaining([expect.objectContaining({ id: faqId, is_published: true }), expect.objectContaining({ id: draft.json().id, is_published: false })]));
+    expect((await app.inject({ method: 'GET', url: '/api/faqs?audience=patients' })).json().map((f: { id: string }) => f.id)).not.toContain(draft.json().id);
+    expect((await app.inject({ method: 'DELETE', url: `/api/admin/support/faqs/${draft.json().id}`, headers: auth('support') })).statusCode).toBe(200);
     const deleted = await app.inject({ method: 'DELETE', url: `/api/admin/support/faqs/${faqId}`, headers: auth('support') });
     expect(deleted.statusCode).toBe(200);
   });

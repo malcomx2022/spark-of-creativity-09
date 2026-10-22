@@ -41,7 +41,9 @@ de la base locale et les routes ; plan actif :
 - Push : autoriser les destinations à l'inscription ET avant envoi des anciennes lignes,
   avec contenu générique sans données médicales.
 - Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
-- Validation courante : 31 tests unitaires et 105 tests d'intégration, dont 4 essais MinIO réels.
+- Validation courante : 42 tests unitaires et 117 tests d'intégration, dont 4 essais MinIO réels
+  (document 15 : 113 réussis sur PostgreSQL 16 local, MinIO non exécuté).
+- Nettoyage des comptes hors test : refusé en production (403) dans `AdminService` ; ne pas retirer cette garde.
 
 Étendre les suites existantes dans `test/` pour les règles d'accès et les transactions
 réelles. Les tests de concurrence créés dans `test/security-regressions.e2e-spec.ts` et les

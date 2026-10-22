@@ -444,6 +444,70 @@ describe('Group sessions & finance (e2e)', () => {
     expect(job.json().result.total_processed).toBeGreaterThanOrEqual(1);
   });
 
+  it('lectures finance : informations de reversement du praticien et listes admin filtrées, réservées aux rôles finance', async () => {
+    const info = await app.inject({ method: 'GET', url: '/api/finance/me/payment-info', headers: auth('coach') });
+    expect(info.statusCode).toBe(200);
+    expect(info.json()).toEqual([expect.objectContaining({ payment_method: 'mtn', phone_number: '+22997000009', is_verified: true })]);
+    expect((await app.inject({ method: 'GET', url: '/api/finance/me/payment-info', headers: auth('p1') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/finance/me/payment-info' })).statusCode).toBe(401);
+
+    const adminReads = ['payments', 'balances', 'payouts', 'payout-batches', 'reconciliation', 'payment-events'];
+    for (const path of adminReads) {
+      expect((await app.inject({ method: 'GET', url: `/api/admin/finance/${path}`, headers: auth('coach') })).statusCode).toBe(403);
+      expect((await app.inject({ method: 'GET', url: `/api/admin/finance/${path}` })).statusCode).toBe(401);
+    }
+
+    const payments = await app.inject({ method: 'GET', url: '/api/admin/finance/payments?limit=100', headers: auth('admin') });
+    expect(payments.statusCode).toBe(200);
+    expect(payments.json().count).toBeGreaterThanOrEqual(1);
+    expect(payments.json().data.find((p: { id: string }) => p.id === paymentIds['p1'])).toMatchObject({ payout_status: 'paid', group_session_name: expect.any(String), appointment_practitioner_name: 'Coach Fit' });
+    const paid = await app.inject({ method: 'GET', url: '/api/admin/finance/payments?payoutStatus=paid&limit=100', headers: auth('admin') });
+    expect(paid.json().data.every((p: { payout_status: string }) => p.payout_status === 'paid')).toBe(true);
+    const future = await app.inject({ method: 'GET', url: `/api/admin/finance/payments?from=${encodeURIComponent(new Date(Date.now() + 86_400_000).toISOString())}`, headers: auth('admin') });
+    expect(future.json()).toEqual({ data: [], count: 0 });
+    expect((await app.inject({ method: 'GET', url: '/api/admin/finance/payments?payoutStatus=inconnu', headers: auth('admin') })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/finance/payments?limit=1001', headers: auth('admin') })).statusCode).toBe(400);
+
+    const balances = await app.inject({ method: 'GET', url: '/api/admin/finance/balances', headers: auth('admin') });
+    expect(balances.statusCode).toBe(200);
+    expect(balances.json().find((b: { practitioner_id: string }) => b.practitioner_id === coachId)).toMatchObject({ name: 'Coach Fit', kyc_status: 'approved' });
+
+    const payouts = await app.inject({ method: 'GET', url: `/api/admin/finance/payouts?batchId=${batchId}`, headers: auth('admin') });
+    expect(payouts.json()).toMatchObject({ count: 1, data: [expect.objectContaining({ id: payoutId, practitioner_name: 'Coach Fit', status: 'completed' })] });
+    const coachPayouts = await app.inject({ method: 'GET', url: `/api/admin/finance/payouts?practitionerId=${coachId}&status=completed`, headers: auth('admin') });
+    expect(coachPayouts.json().data.every((p: { practitioner_id: string; status: string }) => p.practitioner_id === coachId && p.status === 'completed')).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/finance/payouts?practitionerId=pas-un-uuid', headers: auth('admin') })).statusCode).toBe(400);
+
+    const batches = await app.inject({ method: 'GET', url: '/api/admin/finance/payout-batches?limit=100', headers: auth('admin') });
+    expect(batches.json().count).toBeGreaterThanOrEqual(1);
+    expect(batches.json().data.find((b: { id: string }) => b.id === batchId)).toMatchObject({ batch_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+
+    const reports = await app.inject({ method: 'GET', url: '/api/admin/finance/reconciliation?limit=100', headers: auth('admin') });
+    expect(reports.statusCode).toBe(200);
+    expect(reports.json().some((r: { created_by: string; status: string }) => r.created_by === userIds['admin'] && r.status === 'completed')).toBe(true);
+
+    const events = await app.inject({ method: 'GET', url: '/api/admin/finance/payment-events?limit=100', headers: auth('admin') });
+    expect(events.statusCode).toBe(200);
+    expect(events.json().some((e: { payment_id: string; event_type: string }) => e.payment_id === paymentIds['p1'] && e.event_type === 'funds_released')).toBe(true);
+  });
+
+  it('clôture d’une séance passée par son coach ; séance future, autre compte et séance terminée refusés', async () => {
+    const pastDate = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+    const futureDate = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+    const [past, upcoming] = await db.runAs({ role: 'service_role' }, (trx) => trx.insertInto('group_sessions').values([
+      { coach_id: coachId, session_name: `Passée ${tag}`, session_type: 'groupe', scheduled_date: pastDate, start_time: '07:00', end_time: '08:00', price_per_person: PRICE, location: 'Cotonou', status: 'confirmee' },
+      { coach_id: coachId, session_name: `Future ${tag}`, session_type: 'groupe', scheduled_date: futureDate, start_time: '07:00', end_time: '08:00', price_per_person: PRICE, location: 'Cotonou', status: 'planifiee' },
+    ]).returning('id').execute());
+    expect((await app.inject({ method: 'POST', url: `/api/group-sessions/${past.id}/complete` })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: `/api/group-sessions/${past.id}/complete`, headers: auth('p1') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `/api/group-sessions/${upcoming.id}/complete`, headers: auth('coach') })).statusCode).toBe(400);
+    const done = await app.inject({ method: 'POST', url: `/api/group-sessions/${past.id}/complete`, headers: auth('coach') });
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toMatchObject({ id: past.id, status: 'terminee', scheduled_date: pastDate });
+    expect((await app.inject({ method: 'POST', url: `/api/group-sessions/${past.id}/complete`, headers: auth('coach') })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/api/group-sessions/00000000-0000-0000-0000-000000000000/complete', headers: auth('coach') })).statusCode).toBe(404);
+  });
+
   it('rappels de paiement (un par 24 h) et annulation de la séance par le coach', async () => {
     const r2 = await app.inject({ method: 'POST', url: `/api/group-sessions/${sessionId}/register`, headers: auth('p2'), payload: { paymentMethod: 'mtn', phoneNumber: '+22997000001' } });
     expect(r2.statusCode).toBe(201);

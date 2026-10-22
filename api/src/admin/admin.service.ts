@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { sql, type Transaction } from 'kysely';
 import { AuditService } from '../audit/audit.service';
+import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import type { AdminRole } from '../common/decorators/roles.decorator';
@@ -27,7 +28,7 @@ function tempPassword(): string {
  */
 @Injectable()
 export class AdminService {
-  constructor(private readonly database: DatabaseService, private readonly audit: AuditService, private readonly reviewsService: ReviewsService) {}
+  constructor(private readonly database: DatabaseService, private readonly audit: AuditService, private readonly reviewsService: ReviewsService, @Inject(APP_CONFIG) private readonly config: AppConfig) {}
 
   // ---------------------------------------------------------------------------
   // Statistiques
@@ -245,6 +246,8 @@ export class AdminService {
 
   /** Ex cleanup-non-test-accounts (super_admin) : supprime tous les comptes sans @test.com, sauf les administrateurs. */
   async cleanupNonTestAccounts(adminId: string, ip?: string) {
+    // Les patients n'ont pas de ligne user_roles : en production, ce nettoyage effacerait tous les comptes réels.
+    if (this.config.NODE_ENV === 'production') throw new ForbiddenException('Nettoyage des comptes hors test interdit en production');
     return this.database.runAs({ role: 'service_role', userId: adminId }, async (trx) => {
       const targets = await trx
         .selectFrom('users')

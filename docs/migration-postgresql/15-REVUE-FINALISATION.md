@@ -2,8 +2,9 @@
 
 Base : `main` / `c780429`. Branche : `claude/great-cray-xdeaqp`.
 Objet : faire l'état des tests unitaires et d'intégration, lister les modules
-et identifier ce qui reste à faire pour terminer Domicares. Cette revue ne modifie
-aucun code applicatif, aucun schéma SQL et aucun secret.
+et identifier ce qui reste à faire pour terminer Domicares. Les sections 1 à 5
+décrivent l'état initial de la revue ; la section 6 décrit la suite donnée
+(correction du P1 et tests d'intégration ajoutés). Aucun schéma SQL ni secret modifié.
 
 ## 1. Résultats des contrôles exécutés
 
@@ -117,7 +118,7 @@ construit l'application testée par les suites e2e.
 Classement : **P1** à traiter avant mise en production, **P2** à planifier,
 **P3** amélioration. Aucun constat ne justifie de modifier ce lot sans décision.
 
-### P1 — `POST /api/admin/users/cleanup-non-test` supprime tous les patients réels
+### P1 — `POST /api/admin/users/cleanup-non-test` supprime tous les patients réels — **corrigé (§6)**
 
 `AdminService.cleanupNonTestAccounts` (`api/src/admin/admin.service.ts:247`)
 supprime chaque compte dont l'e-mail ne finit pas par le domaine de test **et**
@@ -149,7 +150,7 @@ pas. Un appareil compromis conserve sa session après un changement de mot de
 passe. Recommandation : révoquer les autres familles de refresh tokens en
 conservant la session courante, avec un test e2e.
 
-### P2 — Routes sans test d'intégration (29 sur 216)
+### P2 — Routes sans test d'intégration (29 sur 216) — **couvertes (§6)**
 
 À couvrir en priorité (sécurité ou argent) :
 
@@ -192,9 +193,9 @@ supprimée après exécution).
 
 ## 4. Ce qui reste pour terminer
 
-1. **Décider et corriger les P1/P2** ci-dessus, chacun avec son test e2e.
-2. **Compléter les tests d'intégration** des 29 routes listées (finance admin et
-   authentification d'abord).
+1. **Décider et corriger les deux P2 restants** (décompte du nettoyage,
+   révocation des sessions au changement de mot de passe), chacun avec son test.
+2. ~~Correction du P1 et tests d'intégration des 29 routes~~ : faits (§6).
 3. **Valider les prérequis non exécutés ici** : suite `storage-s3` contre MinIO
    (`S3_TEST_ENDPOINT`), projets Playwright WebKit en CI, essai Safari physique.
 4. **Campagne FedaPay sandbox** du document 09 avant tout paiement réel.
@@ -213,3 +214,65 @@ cd api && npm ci && npm run typecheck && npm test -- --runInBand && npm run buil
 DATABASE_URL=postgresql://domicares_app:<mdp>@localhost:5432/domicares_test \
 JWT_ACCESS_SECRET=<secret-de-test-32-caracteres-minimum> npm run test:e2e
 ```
+
+## 6. Suite donnée — 22 octobre 2026
+
+### 6.1 Correction du P1
+
+`AdminService.cleanupNonTestAccounts` refuse désormais l'opération (HTTP 403,
+« interdit en production ») lorsque `NODE_ENV=production`, avant tout accès à la
+base. La garde est placée dans le service propriétaire : elle protège tout
+appelant, pas seulement le contrôleur. Hors production, le comportement est
+inchangé (super admin + confirmation `SUPPRIMER`).
+
+Test e2e (`admin`) : refus patient et rôle `finance` (403), confirmation invalide
+(400), puis refus en production avec vérification qu'un compte sans rôle existe
+toujours et qu'aucune entrée `cleanup_non_test_accounts` n'est journalisée.
+Le cas de succès n'est volontairement pas rejoué : il supprimerait les comptes
+sans rôle des autres suites partageant la base.
+
+Preuve de non-vacuité : la garde neutralisée, ce test échoue (`Expected 403,
+Received 200`) ; la garde rétablie, il réussit.
+
+### 6.2 Tests d’intégration ajoutés (11 nouveaux tests, 2 tests étendus, 29 routes)
+
+| Suite | Test ajouté | Routes couvertes |
+|---|---|---|
+| `auth` | renvoi de vérification (réponse neutre, jeton seulement si non vérifié) | `POST /auth/verify-email/resend` |
+| `auth` | changement de mot de passe (actuel exigé, nouveau appliqué) | `POST /auth/password/change` |
+| `auth` | révocation de toutes les sessions et des cookies | `DELETE /auth/sessions` |
+| `admin` | fiche praticien admin (détail, 404, 400, rôles) | `GET /admin/users/practitioners/:id` |
+| `admin` | nettoyage hors test (P1) | `POST /admin/users/cleanup-non-test` |
+| `admin` | désactivation d'une version de consentement (audit, version publique) | `POST /admin/consent-versions/:id/deactivate` |
+| `group-sessions-finance` | lectures finance et filtres, rôles | `GET /finance/me/payment-info`, `GET /admin/finance/{payments,balances,payouts,payout-batches,reconciliation,payment-events}` |
+| `group-sessions-finance` | clôture d'une séance passée | `POST /group-sessions/:id/complete` |
+| `medical` | liste/modification des notes, compte rendu par rendez-vous | `GET /care-notes`, `PATCH /care-notes/:id`, `GET /consultation-reports/appointment/:id` |
+| `medical` | contacts d'urgence et adresses | `GET` et `DELETE /medical/emergency-contacts`, `PATCH /addresses/:id` |
+| `practitioners` | planning : exceptions publiques, tarifs, suppressions entre praticiens | `GET /practitioners/:id/exceptions`, `PATCH`/`DELETE /me/rates/:id`, `DELETE /me/availability/:id`, `DELETE /me/exceptions/:id` |
+| `appointments-payments` | configuration publique et simulation de webhook | `GET /payments/config`, `POST /admin/payments/simulate-webhook` |
+| `support-disputes` | liste FAQ admin (brouillons inclus, rôles) | `GET /admin/support/faqs` |
+
+Chaque test vérifie l'appartenance ou le rôle (401/403/404 selon le cas) en plus
+du chemin nominal. Les tests du changement de mot de passe constatent le
+comportement actuel ; la révocation des autres sessions reste le P2 ouvert.
+
+Correction de tests existants : la table `users` est sous RLS, une lecture via
+`db.db` sans contexte ne voit aucune ligne. L'assertion « compte supprimé » de
+la suite `admin` était donc toujours vraie, et la remise à zéro du verrouillage
+de la suite `auth` n'avait pas d'effet. Ces accès passent désormais par
+`runAs({ role: 'service_role' })`.
+
+### 6.3 Résultats après modification
+
+| Contrôle | Résultat |
+|---|---|
+| `cd api && npm run typecheck`, `npm run lint`, `npm run build` | OK |
+| Tests unitaires API | 42/42 réussis |
+| Intégration API (PostgreSQL 16 local) | **9 suites, 113 tests réussis ; 4 ignorés (MinIO)** — auth 17, appointments-payments 15, security-regressions 14, practitioners 14, group-sessions-finance 14, admin 11, medical 11, messaging-realtime 11, support-disputes 6 |
+| `npm run lint` (racine) | 0 erreur, 45 avertissements hérités |
+| Couverture e2e des routes (analyse statique) | 212/216 ; les 4 restantes sont couvertes par une boucle `${kind}` (3 suppressions de planning) et par le test unitaire Fastify du contact |
+
+Observation nouvelle (P3, non modifiée) : `GET /api/practitioners/:id/exceptions`
+est public et renvoie le champ `reason` saisi par le praticien. Si ce motif peut
+contenir une information personnelle, le retirer de la réponse publique.
+
