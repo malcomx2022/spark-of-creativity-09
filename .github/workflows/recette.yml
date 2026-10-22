@@ -1,0 +1,64 @@
+name: Recette post-livraison
+
+# Document 14, §4 : déconnexion entre deux comptes, notifications par rôle (anciennes comprises),
+# chat mobile sur un rendez-vous ancien, contact public. Navigateur réel sur l'API compilée et une
+# base PostgreSQL jetable, sans interception (npm run test:recette).
+on:
+  pull_request:
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', '.github/workflows/recette.yml']
+  push:
+    branches: [main]
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', '.github/workflows/recette.yml']
+
+jobs:
+  recette:
+    name: Recette navigateur (API et PostgreSQL 16 réels)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: domicares
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+      - name: Charger le schéma natif
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 130_fixes_heritage.sql 020_grants.sql; do
+            psql -h localhost -U postgres -d domicares -v ON_ERROR_STOP=1 -q -f db/native/$f
+          done
+          psql -h localhost -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD 'ci'"
+      - run: npm ci
+      - run: npm ci
+        working-directory: api
+      - name: Navigateur Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Recette
+        env:
+          CI: 'true'
+          RECETTE_DATABASE_URL: postgresql://domicares_app:ci@localhost:5432/domicares
+        run: npm run test:recette
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: recette-post-livraison
+          path: |
+            playwright-report/recette/
+            test-results/
+          retention-days: 7
