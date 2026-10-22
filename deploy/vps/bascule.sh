@@ -109,8 +109,11 @@ if [[ "$SKIP_FILES" == "0" ]]; then
     MC_SCRIPT="$MC_SCRIPT; if [ -d /export/$src ]; then mc mirror --overwrite /export/$src local/$bucket; fi"
     MC_SCRIPT="$MC_SCRIPT; echo \"  $bucket : \$(mc ls -r local/$bucket | wc -l) objet(s)\""
   done
+  # Client mc compilé depuis sa release épinglée (minio.Dockerfile) : quay.io refuse le pull anonyme.
+  MC_IMAGE="domicares-minio-mc:RELEASE.2025-08-13T08-35-41Z"
+  docker image inspect "$MC_IMAGE" >/dev/null 2>&1 || run docker build -f "$HERE/minio.Dockerfile" --target mc -t "$MC_IMAGE" "$HERE"
   run docker run --rm --network "$NET" -e S3_ACCESS_KEY="$S3_ACCESS_KEY" -e S3_SECRET_KEY="$S3_SECRET_KEY" \
-    -v "$EXPORT/storage:/export:ro" --entrypoint sh quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z -c "$MC_SCRIPT"
+    -v "$EXPORT/storage:/export:ro" --entrypoint sh "$MC_IMAGE" -c "$MC_SCRIPT"
   if [[ "$DRY" != "1" ]]; then
     expected=$(python3 -c "import json,sys; print(len([f for f in json.load(open(sys.argv[1]))['files'] if not f.get('error')]))" "$EXPORT/storage/manifest.json" 2>/dev/null || echo "?")
     echo "  attendu d'après le manifeste : $expected objet(s) au total"

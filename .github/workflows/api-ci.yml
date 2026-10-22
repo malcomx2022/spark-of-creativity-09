@@ -56,7 +56,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.minio-bin
-          key: minio-RELEASE.2025-09-07T16-13-09Z-07c3a429bfed
+          key: minio-RELEASE.2025-09-07T16-13-09Z-07c3a429bfed-ldflags
       - uses: actions/setup-go@v5
         if: steps.minio-cache.outputs.cache-hit != 'true'
         with:
@@ -64,7 +64,12 @@ jobs:
           cache: false
       - name: Compiler MinIO RELEASE.2025-09-07T16-13-09Z
         if: steps.minio-cache.outputs.cache-hit != 'true'
-        run: GOBIN="$HOME/.minio-bin" CGO_ENABLED=0 go install -trimpath github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb
+        run: |
+          C=07c3a429bfed433e49018cb0f78a52145d4bedeb P=github.com/minio/minio/cmd
+          GOBIN="$HOME/.minio-bin" CGO_ENABLED=0 go install -trimpath \
+            -ldflags "-s -w -X $P.Version=2025-09-07T16:13:09Z -X $P.CopyrightYear=2025 -X $P.ReleaseTag=RELEASE.2025-09-07T16-13-09Z -X $P.CommitID=$C -X $P.ShortCommitID=${C:0:12}" \
+            github.com/minio/minio@$C
+          "$HOME/.minio-bin/minio" --version | grep -q RELEASE.2025-09-07T16-13-09Z
       - name: Démarrer MinIO (stockage isolé, identifiants jetables)
         run: |
           mkdir -p "$RUNNER_TEMP/minio-data"

@@ -474,7 +474,7 @@ validés, MIME falsifié rejeté, nettoyage de la quarantaine). Le script de dé
 de la CI a été rejoué à l'identique (santé en 2 s, 4/4 avec ses identifiants).
 Sans serveur S3 et avec `S3_TEST_REQUIRED=1`, la suite échoue avec un message explicite.
 
-### Risque d'exploitation (P1, non modifié)
+### Risque d'exploitation (P1) — corrigé au §13
 
 `deploy/vps/docker-compose.yml` utilise `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`.
 Un VPS qui a déjà cette image en cache continue de démarrer (`docker compose up`
@@ -487,4 +487,48 @@ MinIO**. Options à décider par l'exploitant :
 
 Avant toute intervention, vérifier sur le VPS que l'image est bien présente :
 `docker image ls quay.io/minio/minio`.
+
+## 13. Image MinIO de production — 22 octobre 2026
+
+Défaut (§12) : `docker-compose.yml` et `bascule.sh` reposaient sur
+`quay.io/minio/minio` et `quay.io/minio/mc`, dont le téléchargement anonyme est
+désormais refusé. Une installation neuve ou une reconstruction du VPS échouait.
+
+Correction (option 1 du §12) :
+
+- `deploy/vps/minio.Dockerfile` compile le serveur (`RELEASE.2025-09-07T16-13-09Z`,
+  commit `07c3a429…`) et le client `mc` (`RELEASE.2025-08-13T08-35-41Z`, commit
+  `7394ce0d…`) depuis leurs commits, sur `golang:1.24.7-alpine3.22`, puis les place dans
+  `alpine:3.22`. Les `-ldflags` reproduisent `buildscripts/gen-ldflags.go`. Sans eux, le
+  binaire se déclare `DEVELOPMENT.GOGET` et MinIO le traite comme un build non officiel
+  (`IsSourceBuild`, `globalVersionUnix` nul). Le build échoue si la version annoncée
+  n'est pas la release attendue.
+- Mêmes versions qu'auparavant : le volume `minio_data` est repris tel quel. Le conteneur
+  tourne en root, comme l'image officielle, pour garder les droits du volume.
+- `docker-compose.yml` : `image: domicares-minio:RELEASE.2025-09-07T16-13-09Z` et
+  `build: minio.Dockerfile`, avec les mêmes commande, variables, volume et réseau.
+- `deploy-vps.yml` : si l'image locale manque, l'image officielle de la même release
+  déjà présente sur le VPS est réétiquetée, sans compilation en production ; sinon,
+  `docker compose build minio`. Le conteneur `minio` est recréé une fois, ce qui
+  interrompt le stockage quelques secondes.
+- `bascule.sh` : le client `mc` est construit localement s'il manque.
+- `preflight.sh` : indique si l'image locale est présente, réétiquetable, ou à compiler.
+- Nouveau workflow `minio-image.yml` : construit les deux cibles, démarre le serveur
+  comme dans le compose, vérifie les versions annoncées, puis exécute les essais S3 réels
+  de l'API contre ce conteneur.
+- `api-ci.yml` : mêmes `-ldflags` pour le binaire de test, et nouvelle clé de cache.
+- Guide d'installation (document 07, §6 et dépannage) mis à jour.
+
+Validation locale (sans Docker, indisponible ici) :
+- les instructions `RUN` des deux étapes de compilation, rejouées à l'identique sous
+  un `sh` POSIX (`dash`), produisent des binaires annoncés
+  `RELEASE.2025-09-07T16-13-09Z (commit-id=07c3a429…)` et
+  `RELEASE.2025-08-13T08-35-41Z (commit-id=7394ce0d…)` ;
+- suite S3 réelle contre ce serveur : 4/4 ;
+- compilation à froid du serveur (cache Go vide, 4 cœurs) : 97 s, pic d'environ 1,5 Go
+  de mémoire cumulée (échantillonnage toutes les 0,5 s) ;
+- `bash -n` sur `bascule.sh` et `preflight.sh`, YAML des workflows et
+  `docker compose config` valides.
+La construction de l'image Docker elle-même est validée par le workflow
+`minio-image.yml` sur la PR.
 

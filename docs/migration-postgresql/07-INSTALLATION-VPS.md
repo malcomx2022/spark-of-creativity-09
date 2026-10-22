@@ -198,12 +198,22 @@ principal se fait au §11.
 
 ```bash
 cd ~/domicares/deploy/vps
+docker compose build minio                   # MinIO compilé depuis sa release épinglée (voir ci-dessous)
 docker compose up -d postgres minio          # la base se crée avec 010_roles + schema.native.sql
 docker compose logs -f postgres              # attendre « database system is ready », puis Ctrl-C
 docker compose build web api worker          # 5 à 10 min la première fois
 docker compose up -d
 docker compose ps
 ```
+
+MinIO ne publie plus d'images accessibles anonymement : `minio.Dockerfile` compile la release
+épinglée (`RELEASE.2025-09-07T16-13-09Z`) depuis son commit, avec les mêmes options que le build
+officiel. Mesure à froid sur 4 cœurs : 97 s et un pic d'environ 1,5 Go de mémoire ; prévoyez
+2 Go libres (swap compris) et davantage de temps sur 2 vCPU. Compilation faite une seule fois : l'image `domicares-minio:RELEASE.2025-09-07T16-13-09Z`
+est ensuite réutilisée. Sur un serveur qui possède déjà l'image officielle
+`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`, le workflow de déploiement la réétiquette
+au lieu de compiler. Le client `mc` de `bascule.sh` est construit de la même façon à sa
+première utilisation.
 
 Les buckets S3 sont créés automatiquement par `bascule.sh` (§8). Pour les créer sans
 importer de données :
@@ -373,7 +383,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | Build `web` tué (code 137) | mémoire insuffisante : vérifier le swap, ou construire avec `NODE_OPTIONS=--max-old-space-size=2048` |
 | `pg_restore: unsupported version` | client 16 utilisé : `PGBIN=/usr/lib/postgresql/17/bin` |
 | `backups/... : Permission denied` au lancement de `bascule.sh` | docker a créé `deploy/vps/backups` en root au premier `up` : `sudo chown -R deploy:deploy ~/domicares/deploy/vps/backups` |
-| `pull access denied for minio/minio` | MinIO ne publie plus sur Docker Hub : les images viennent de `quay.io/minio/…`, déjà référencées dans `docker-compose.yml` et `bascule.sh` (mettre le dépôt à jour) |
+| `pull access denied for minio/minio` ou `quay.io/minio/…` : `unauthorized` | MinIO ne publie plus d'images accessibles anonymement (Docker Hub comme quay.io) : mettre le dépôt à jour, puis `docker compose build minio` (image compilée depuis la release épinglée, §6) |
 | `set: pipefail: invalid option name` | script en CRLF (clone Windows) : `sed -i 's/\r$//' <script>`, et renormaliser le clone (§2) |
 | `Conflicting values set for option Signed-By` | dépôt déclaré deux fois : `rm -f /etc/apt/sources.list.d/docker.list`, puis `apt-get update` |
 | `ssh: Connection timed out` après l'installation | poste banni par `fail2ban` (essais ratés) : console du fournisseur, `fail2ban-client set sshd unbanip <IP>`, puis `ignoreip` dans `/etc/fail2ban/jail.local` |
