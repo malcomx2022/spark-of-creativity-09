@@ -14,7 +14,7 @@ jobs:
     name: Build et essais S3 de l'image MinIO
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Construire le serveur (cible par défaut)
         working-directory: deploy/vps
         run: docker build -f minio.Dockerfile -t domicares-minio:RELEASE.2025-09-07T16-13-09Z .
@@ -33,7 +33,7 @@ jobs:
         run: |
           docker exec minio minio --version | tee /dev/stderr | grep -q 'RELEASE.2025-09-07T16-13-09Z (commit-id=07c3a429bfed433e49018cb0f78a52145d4bedeb)'
           docker run --rm domicares-minio-mc:RELEASE.2025-08-13T08-35-41Z --version | tee /dev/stderr | grep -q 'RELEASE.2025-08-13T08-35-41Z'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm

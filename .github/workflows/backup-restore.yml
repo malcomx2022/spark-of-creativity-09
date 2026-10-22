@@ -18,7 +18,7 @@ jobs:
       BACKUP_IMAGE: domicares-backup:pg16-mc-RELEASE.2025-08-13T08-35-41Z
       MINIO_IMAGE: domicares-minio:RELEASE.2025-09-07T16-13-09Z
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Construire les images (serveur MinIO et sauvegarde)
         working-directory: deploy/vps
         run: |
