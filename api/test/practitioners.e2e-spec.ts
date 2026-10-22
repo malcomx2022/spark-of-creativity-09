@@ -286,4 +286,44 @@ describe('Practitioners, files, KYC (e2e)', () => {
     expect(attempts.statusCode).toBe(200);
     expect(attempts.json()).toEqual([]);
   });
+
+  it('planning : exceptions publiques filtrées par date, modification et suppressions limitées au praticien propriétaire', async () => {
+    // Un second praticien (créé directement) ne doit atteindre aucune ligne du premier.
+    await db.runAs({ role: 'service_role' }, (trx) => trx.insertInto('practitioners').values({ user_id: userIds['coach'], name: 'Coach Planning', specialty: 'Fitness' }).execute());
+    const slot = await app.inject({ method: 'POST', url: '/api/practitioners/me/availability', headers: auth('practitioner'), payload: { dayOfWeek: 3, startTime: '14:00', endTime: '16:00' } });
+    const exc = await app.inject({ method: 'POST', url: '/api/practitioners/me/exceptions', headers: auth('practitioner'), payload: { date: '2031-03-10', reason: 'Formation', isAvailable: false } });
+    const rate = await app.inject({ method: 'POST', url: '/api/practitioners/me/rates', headers: auth('practitioner'), payload: { serviceType: 'visite', basePrice: 20000 } });
+    expect([slot.statusCode, exc.statusCode, rate.statusCode]).toEqual([201, 201, 201]);
+
+    const all = await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/exceptions` });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().map((e: { date: string }) => e.date)).toEqual(expect.arrayContaining(['2030-01-07', '2031-03-10']));
+    const later = await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/exceptions?from=2031-01-01` });
+    expect(later.json()).toEqual([expect.objectContaining({ id: exc.json().id, date: '2031-03-10', is_available: false })]);
+    const ignoredFilter = await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/exceptions?from=demain` });
+    expect(ignoredFilter.json()).toHaveLength(all.json().length);
+    expect((await app.inject({ method: 'GET', url: '/api/practitioners/pas-un-uuid/exceptions' })).statusCode).toBe(400);
+
+    expect((await app.inject({ method: 'PATCH', url: `/api/practitioners/me/rates/${rate.json().id}`, headers: auth('patient'), payload: { basePrice: 1 } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: `/api/practitioners/me/rates/${rate.json().id}`, headers: auth('coach'), payload: { basePrice: 1 } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'PATCH', url: `/api/practitioners/me/rates/${rate.json().id}`, headers: auth('practitioner'), payload: { basePrice: -5 } })).statusCode).toBe(400);
+    const updated = await app.inject({ method: 'PATCH', url: `/api/practitioners/me/rates/${rate.json().id}`, headers: auth('practitioner'), payload: { basePrice: 25000, durationMinutes: 45 } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({ id: rate.json().id, service_type: 'visite', base_price: 25000, duration_minutes: 45 });
+
+    for (const [kind, id] of [['availability', slot.json().id], ['exceptions', exc.json().id], ['rates', rate.json().id]] as const) {
+      expect((await app.inject({ method: 'DELETE', url: `/api/practitioners/me/${kind}/${id}` })).statusCode).toBe(401);
+      expect((await app.inject({ method: 'DELETE', url: `/api/practitioners/me/${kind}/${id}`, headers: auth('patient') })).statusCode).toBe(403);
+      expect((await app.inject({ method: 'DELETE', url: `/api/practitioners/me/${kind}/${id}`, headers: auth('coach') })).statusCode).toBe(404);
+      const removed = await app.inject({ method: 'DELETE', url: `/api/practitioners/me/${kind}/${id}`, headers: auth('practitioner') });
+      expect(removed.statusCode).toBe(200);
+      expect(removed.json()).toEqual({ deleted: true });
+      expect((await app.inject({ method: 'DELETE', url: `/api/practitioners/me/${kind}/${id}`, headers: auth('practitioner') })).statusCode).toBe(404);
+    }
+    const availability = await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/availability` });
+    expect(availability.json().some((a: { id: string }) => a.id === slot.json().id)).toBe(false);
+    const rates = await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/rates` });
+    expect(rates.json().some((r: { id: string }) => r.id === rate.json().id)).toBe(false);
+    expect((await app.inject({ method: 'GET', url: `/api/practitioners/${practitionerId}/exceptions?from=2031-01-01` })).json()).toEqual([]);
+  });
 });

@@ -51,6 +51,8 @@ CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml
 - `docs/migration-postgresql/10-PLAN-CORRECTIONS-REVUE.md` : plan de correction
   de la revue du 6 octobre 2026, corrections applicatives validées localement,
   critères de validation et suivi de livraison.
+- `docs/migration-postgresql/15-REVUE-FINALISATION.md` : revue de finalisation du
+  22 octobre 2026 (résultats des tests, listing des modules, reste à faire).
 - `docs/migration-postgresql/` : état des lieux, récupération des données Supabase,
   rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement, et
   `07-INSTALLATION-VPS.md` (installation et déploiement du VPS pas à pas).

@@ -5,6 +5,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { sql } from 'kysely';
 import { createApp } from '../src/app.factory';
+import { APP_CONFIG, AppConfig } from '../src/config/config.module';
 import { DatabaseService } from '../src/database/database.service';
 
 process.env.NODE_ENV = 'test';
@@ -22,7 +23,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://domicares_a
 
 const tag = Date.now().toString(36);
 const suffix = String(Date.now()).slice(-6);
-const emails = { root: `adm-root-${tag}@domicares.test`, finance: `adm-fin-${tag}@domicares.test`, patient: `adm-pat-${tag}@domicares.test`, victim: `adm-del-${tag}@domicares.test`, testAccount: `adm-keep-${tag}@test.com`, newAdmin: `adm-new-${tag}@domicares.test` };
+const emails = { root: `adm-root-${tag}@domicares.test`, finance: `adm-fin-${tag}@domicares.test`, patient: `adm-pat-${tag}@domicares.test`, victim: `adm-del-${tag}@domicares.test`, testAccount: `adm-keep-${tag}@test.com`, newAdmin: `adm-new-${tag}@domicares.test`, doctor: `adm-doc-${tag}@domicares.test`, bystander: `adm-by-${tag}@domicares.test`, formerAdmin: `adm-former-${tag}@domicares.test`, purged: `adm-purged-${tag}@domicares.test` };
 const password = 'Motdepasse#2026';
 const otpPhone = `+2296${suffix}1`;
 
@@ -70,6 +71,7 @@ describe('Admin (e2e)', () => {
       await sql`delete from public.otp_attempts where phone_number = ${otpPhone}`.execute(trx);
       await sql`delete from public.otp_rate_limits where phone_number = ${otpPhone}`.execute(trx);
       await sql`delete from public.user_roles where user_id = any(${ids}::uuid[]) or created_by = any(${ids}::uuid[])`.execute(trx);
+      await sql`delete from public.practitioners where user_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.users where id = any(${ids}::uuid[])`.execute(trx);
     });
     await app.close();
@@ -142,7 +144,7 @@ describe('Admin (e2e)', () => {
     expect(testProtected.statusCode).toBe(403);
     const deleted = await app.inject({ method: 'DELETE', url: `/api/admin/users/${userIds['victim']}`, headers: auth('root'), payload: { confirm: 'SUPPRIMER', userType: 'patient' } });
     expect(deleted.statusCode).toBe(200);
-    expect(await db.db.selectFrom('users').select('id').where('id', '=', userIds['victim']).executeTakeFirst()).toBeUndefined();
+    expect(await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('id').where('id', '=', userIds['victim']).executeTakeFirst())).toBeUndefined();
     const audit = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('admin_audit_logs').select('details').where('action', '=', 'delete_patient').where('entity_id', '=', userIds['victim']).executeTakeFirst());
     expect(audit?.details).toMatchObject({ deleted_by: emails.root });
   });
@@ -201,6 +203,16 @@ describe('Admin (e2e)', () => {
     expect(stats.statusCode).toBe(200);
     const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-logs?entityType=consent_version&limit=10', headers: auth('root') });
     expect(audit.json().data.map((l: { action: string }) => l.action)).toEqual(expect.arrayContaining(['create_consent_version', 'activate_consent_version']));
+    const forbiddenDeactivate = await app.inject({ method: 'POST', url: `/api/admin/consent-versions/${v2.json().id}/deactivate`, headers: auth('patient') });
+    expect(forbiddenDeactivate.statusCode).toBe(403);
+    const deactivated = await app.inject({ method: 'POST', url: `/api/admin/consent-versions/${v2.json().id}/deactivate`, headers: auth('root') });
+    expect(deactivated.statusCode).toBe(200);
+    expect(deactivated.json()).toMatchObject({ id: v2.json().id, is_active: false, effective_date: null });
+    const afterDeactivate = await app.inject({ method: 'GET', url: '/api/consents/marketing/active' });
+    expect(afterDeactivate.body === '' || afterDeactivate.json()?.id !== v2.json().id).toBe(true);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/consent-versions/00000000-0000-0000-0000-000000000000/deactivate', headers: auth('root') })).statusCode).toBe(404);
+    const deactivateAudit = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('admin_audit_logs').select('admin_id').where('action', '=', 'deactivate_consent_version').where('entity_id', '=', v2.json().id).executeTakeFirst());
+    expect(deactivateAudit?.admin_id).toBe(userIds['root']);
     await sql`delete from public.consent_versions where id = ${v2.json().id}::uuid`.execute(db.db);
   });
 
@@ -226,4 +238,64 @@ describe('Admin (e2e)', () => {
     const usage = await app.inject({ method: 'GET', url: '/api/admin/api/usage', headers: auth('root') });
     expect(usage.json()).toMatchObject({ fedapay: expect.any(Object), twilio: expect.any(Object), storage: expect.any(Object) });
   });
+
+  it('fiche praticien admin : détail complet, 404 inconnu, réservée aux administrateurs', async () => {
+    await signup('doctor', emails.doctor, { userType: 'practitioner', practitionerType: 'medecin' });
+    const pr = await db.runAs({ role: 'service_role' }, (trx) => trx.insertInto('practitioners').values({ user_id: userIds['doctor'], name: 'Doc Admin', specialty: 'Généraliste', kyc_status: 'approved' }).returning('id').executeTakeFirstOrThrow());
+    expect((await app.inject({ method: 'GET', url: `/api/admin/users/practitioners/${pr.id}`, headers: auth('patient') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `/api/admin/users/practitioners/${pr.id}` })).statusCode).toBe(401);
+    const one = await app.inject({ method: 'GET', url: `/api/admin/users/practitioners/${pr.id}`, headers: auth('finance') });
+    expect(one.statusCode).toBe(200);
+    expect(one.json()).toMatchObject({ id: pr.id, name: 'Doc Admin', email: emails.doctor, appointments: [], payment_info: [], balance: null, group_sessions: [] });
+    expect((await app.inject({ method: 'GET', url: '/api/admin/users/practitioners/00000000-0000-0000-0000-000000000000', headers: auth('finance') })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/users/practitioners/pas-un-uuid', headers: auth('finance') })).statusCode).toBe(400);
+  });
+
+  it('nettoyage des comptes hors test : super admin, confirmation, et refus en production sans suppression', async () => {
+    // Le succès n'est pas rejoué : il supprimerait les comptes sans rôle des autres suites partageant la base.
+    await signup('bystander', emails.bystander);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/users/cleanup-non-test', headers: auth('patient'), payload: { confirm: 'SUPPRIMER' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/users/cleanup-non-test', headers: auth('finance'), payload: { confirm: 'SUPPRIMER' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/users/cleanup-non-test', headers: auth('root'), payload: { confirm: 'oui' } })).statusCode).toBe(400);
+    const config = app.get<AppConfig>(APP_CONFIG);
+    const previous = config.NODE_ENV;
+    config.NODE_ENV = 'production';
+    try {
+      const refused = await app.inject({ method: 'POST', url: '/api/admin/users/cleanup-non-test', headers: auth('root'), payload: { confirm: 'SUPPRIMER' } });
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json().message).toMatch(/production/);
+    } finally {
+      config.NODE_ENV = previous;
+    }
+    const kept = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('id').where('id', '=', userIds['bystander']).executeTakeFirst());
+    expect(kept?.id).toBe(userIds['bystander']);
+    const audit = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('admin_audit_logs').select('id').where('action', '=', 'cleanup_non_test_accounts').where('admin_id', '=', userIds['root']).executeTakeFirst());
+    expect(audit).toBeUndefined();
+  });
+
+  it('nettoyage hors production : un compte en échec (ancien administrateur journalisé) n’annule pas les autres suppressions', async () => {
+    // Un ancien administrateur n'a plus de rôle mais reste référencé par admin_audit_logs (clé sans cascade) :
+    // sa purge échoue. Chaque compte est isolé dans un point de sauvegarde pour que les autres soient supprimés.
+    await signup('formerAdmin', emails.formerAdmin);
+    await signup('purged', emails.purged);
+    await db.runAs({ role: 'service_role' }, (trx) => trx.insertInto('admin_audit_logs').values({ admin_id: userIds['formerAdmin'], action: 'e2e_former_admin', entity_type: 'users' }).execute());
+    // Garde-fou : ce test exécute réellement le nettoyage ; il refuse de tourner sur une base contenant d'autres comptes.
+    const targets = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('email')
+      .where((eb) => eb.or([eb('email', 'is', null), eb('email', 'not like', '%@test.com')]))
+      .where((eb) => eb.not(eb.exists(eb.selectFrom('user_roles').select('id').whereRef('user_roles.user_id', '=', 'users.id'))))
+      .execute());
+    const foreign = targets.filter((t) => !t.email?.endsWith('@domicares.test'));
+    if (foreign.length) throw new Error(`Base non dédiée aux tests : ${foreign.length} compte(s) hors e2e seraient supprimés`);
+    expect(targets.map((t) => t.email)).toEqual(expect.arrayContaining([emails.formerAdmin, emails.purged]));
+
+    const res = await app.inject({ method: 'POST', url: '/api/admin/users/cleanup-non-test', headers: auth('root'), payload: { confirm: 'SUPPRIMER' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().stats).toMatchObject({ deleted: targets.length - 1, failed: 1 });
+    expect(res.json().message).toContain('1 échecs');
+    const remaining = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('id').where('id', 'in', [userIds['formerAdmin'], userIds['purged'], userIds['testAccount'], userIds['root']]).execute());
+    expect(remaining.map((r) => r.id).sort()).toEqual([userIds['formerAdmin'], userIds['testAccount'], userIds['root']].sort());
+    const audit = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('admin_audit_logs').select('details').where('action', '=', 'cleanup_non_test_accounts').where('admin_id', '=', userIds['root']).executeTakeFirst());
+    expect(audit?.details).toMatchObject({ deleted: targets.length - 1, failed: 1, errors: [expect.stringContaining(emails.formerAdmin)] });
+  });
 });
+

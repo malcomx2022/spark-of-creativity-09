@@ -5,6 +5,7 @@ import { createHmac } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { sql } from 'kysely';
 import { createApp } from '../src/app.factory';
+import { APP_CONFIG, AppConfig } from '../src/config/config.module';
 import { DatabaseService } from '../src/database/database.service';
 import { FakeFedaPayClient } from '../src/payments/fedapay.client';
 import { PhoneCipher } from '../src/common/utils/phone-cipher';
@@ -381,5 +382,37 @@ describe('Appointments & payments (e2e)', () => {
     const cancel = await app.inject({ method: 'POST', url: `/api/appointments/${created2.json().id}/cancel`, headers: auth('patient'), payload: { reason: 'Empêchement' } });
     expect(cancel.statusCode).toBe(200);
     expect(cancel.json()).toMatchObject({ status: 'cancelled', refundRequired: false });
+  });
+
+  it('configuration publique FedaPay et simulation de webhook réservée à la finance avec le fournisseur factice', async () => {
+    const config = await app.inject({ method: 'GET', url: '/api/payments/config' });
+    expect(config.statusCode).toBe(200);
+    expect(config.json()).toEqual({ publicKey: expect.any(String), environment: expect.any(String), provider: 'fake' });
+    expect(JSON.stringify(config.json())).not.toMatch(/secret|sk_/i);
+
+    const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(15), time: '15:00', reason: 'Simulation webhook' } });
+    const accepted = await app.inject({ method: 'POST', url: `/api/appointments/${created.json().id}/respond`, headers: auth('practitioner'), payload: { action: 'accept' } });
+    const txId = accepted.json().transactionId as string;
+    const payload = { transactionId: txId, status: 'approved' };
+    expect((await app.inject({ method: 'POST', url: '/api/admin/payments/simulate-webhook', payload })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/payments/simulate-webhook', headers: auth('patient'), payload })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/payments/simulate-webhook', headers: auth('admin'), payload: { transactionId: txId, status: 'paid' } })).statusCode).toBe(400);
+
+    const appConfig = app.get<AppConfig>(APP_CONFIG);
+    appConfig.FEDAPAY_PROVIDER = 'fedapay';
+    try {
+      expect((await app.inject({ method: 'POST', url: '/api/admin/payments/simulate-webhook', headers: auth('admin'), payload })).statusCode).toBe(403);
+    } finally {
+      appConfig.FEDAPAY_PROVIDER = 'fake';
+    }
+    const pending = await app.inject({ method: 'GET', url: `/api/payments/${accepted.json().paymentId}`, headers: auth('patient') });
+    expect(pending.json().status).not.toBe('paid');
+
+    const simulated = await app.inject({ method: 'POST', url: '/api/admin/payments/simulate-webhook', headers: auth('admin'), payload });
+    expect(simulated.statusCode).toBe(200);
+    const paid = await app.inject({ method: 'GET', url: `/api/payments/${accepted.json().paymentId}`, headers: auth('patient') });
+    expect(paid.json().status).toBe('paid');
+    expect((await app.inject({ method: 'GET', url: `/api/appointments/${created.json().id}`, headers: auth('patient') })).json().status).toBe('confirmed');
+    await db.runAs({ role: 'service_role' }, (trx) => trx.deleteFrom('webhook_events').where('event_id', 'like', `sim-${txId}-%`).execute());
   });
 });

@@ -70,7 +70,7 @@ une conversation autorisée sans parcourir toutes les pages de liste. Voir le do
 | `GET /api/admin/finance/webhook-events`, `POST …/:id/retry` | `WebhooksSection` + Edge Function `retry-failed-webhooks` (filtres `status`, `eventType`, `from`, `to` ; `stats` et `eventTypes` dans la réponse ; `limit` jusqu'à 5000 pour l'export CSV) |
 | `GET /api/admin/stats`, `GET /api/admin/me/roles`, `GET /api/stats/public` | `useAdminStats`, `useAdminRole`, `usePublicStats` |
 | `GET/POST /api/admin/admins`, `POST …/:id/reset-password`, `DELETE …/:id` | Edge Function `admin-management` (`AdminManagement.tsx`, super_admin) |
-| `GET /api/admin/users/patients[/:id]`, `GET …/practitioners[/:id]`, `DELETE /api/admin/users/:id`, `POST …/cleanup-non-test` | `UsersManagementSection`, `PatientDetailsDialog`, `PractitionerDetailsDialog`, Edge Functions `delete-single-user`, `cleanup-non-test-accounts` |
+| `GET /api/admin/users/patients[/:id]`, `GET …/practitioners[/:id]`, `DELETE /api/admin/users/:id`, `POST …/cleanup-non-test` (403 en production) | `UsersManagementSection`, `PatientDetailsDialog`, `PractitionerDetailsDialog`, Edge Functions `delete-single-user`, `cleanup-non-test-accounts` |
 | `GET /api/admin/audit-logs[/filters]` | `AuditLogs.tsx` (IP partiellement masquées ; filtres `entityType`, `action`, `adminId`, `entityId`, `from`, `to`, `search` ≥ 3 caractères, `limit` jusqu'à 5000) |
 | `POST /api/search-activity`, `GET /api/admin/search-activity` | `useSearchActivityLog`, `SearchActivitySection` |
 | `GET /api/admin/otp/attempts`, `…/stats`, `…/blocked`, `POST …/reset`, `DELETE …/attempts/:id` | `OTPManagementSection` |

@@ -162,7 +162,7 @@ describe('Auth (e2e)', () => {
     for (let i = 0; i < 5; i++) await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'faux' } });
     const locked = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'NouveauMdp#2026' } });
     expect(locked.statusCode).toBe(423);
-    await db.db.updateTable('users').set({ failed_login_attempts: 0, locked_until: null }).where('id', '=', userId).execute();
+    await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ failed_login_attempts: 0, locked_until: null }).where('id', '=', userId).execute());
   });
 
   it('OTP : envoi (rate limit SQL) puis vérification connecte le compte existant par téléphone', async () => {
@@ -198,5 +198,80 @@ describe('Auth (e2e)', () => {
     expect(res.statusCode).toBe(200);
     const reuse = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken: rt } });
     expect(reuse.statusCode).toBe(401);
+  });
+
+  it('POST /api/auth/verify-email/resend : réponse neutre et jeton créé seulement pour un compte non vérifié', async () => {
+    const countTokens = () => db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('auth_tokens').select((eb) => eb.fn.countAll<string>().as('n')).where('identifier', '=', email).where('kind', '=', 'email_verification').executeTakeFirstOrThrow()).then((r) => Number(r.n));
+    expect((await app.inject({ method: 'POST', url: '/api/auth/verify-email/resend', payload: { email: 'pas-un-email' } })).statusCode).toBe(400);
+    const unknown = await app.inject({ method: 'POST', url: '/api/auth/verify-email/resend', payload: { email: `inconnu-${unique}@domicares.test` } });
+    expect(unknown.statusCode).toBe(200);
+    expect(unknown.json()).toEqual({ sent: true });
+    const original = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('email_verified_at').where('id', '=', userId).executeTakeFirstOrThrow());
+    await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ email_verified_at: new Date() }).where('id', '=', userId).execute());
+    const before = await countTokens();
+    expect((await app.inject({ method: 'POST', url: '/api/auth/verify-email/resend', payload: { email } })).json()).toEqual({ sent: true });
+    expect(await countTokens()).toBe(before);
+    await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ email_verified_at: null }).where('id', '=', userId).execute());
+    expect((await app.inject({ method: 'POST', url: '/api/auth/verify-email/resend', payload: { email } })).json()).toEqual({ sent: true });
+    expect(await countTokens()).toBe(before + 1);
+    await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ email_verified_at: original.email_verified_at }).where('id', '=', userId).execute());
+  });
+
+  it('POST /api/auth/password/change : mot de passe actuel exigé, session courante conservée, autres sessions révoquées', async () => {
+    const loginAs = async (pwd: string) => (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: pwd } })).json() as { accessToken: string; refreshToken: string };
+    const refresh = (refreshToken: string) => app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken } });
+    const current = await loginAs('NouveauMdp#2026');
+    const otherDevice = await loginAs('NouveauMdp#2026');
+    const headers = { authorization: `Bearer ${current.accessToken}` };
+    expect((await app.inject({ method: 'POST', url: '/api/auth/password/change', payload: { currentPassword: 'NouveauMdp#2026', newPassword: 'ChangeMdp#2026' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/password/change', headers, payload: { currentPassword: 'faux', newPassword: 'ChangeMdp#2026' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/password/change', headers, payload: { currentPassword: 'NouveauMdp#2026', newPassword: 'court' } })).statusCode).toBe(400);
+    // Les refus ne révoquent rien.
+    const stillValid = await refresh(otherDevice.refreshToken);
+    expect(stillValid.statusCode).toBe(200);
+    const otherRotated = stillValid.json().refreshToken as string;
+
+    // Client mobile : refresh token dans le corps.
+    const changed = await app.inject({ method: 'POST', url: '/api/auth/password/change', headers, payload: { currentPassword: 'NouveauMdp#2026', newPassword: 'ChangeMdp#2026', refreshToken: current.refreshToken } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json()).toEqual({ changed: true });
+    expect((await refresh(otherRotated)).statusCode).toBe(401);
+    const kept = await refresh(current.refreshToken);
+    expect(kept.statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'NouveauMdp#2026' } })).statusCode).toBe(401);
+
+    // Navigateur : refresh token lu dans le cookie httpOnly (chemin /api/auth).
+    const browser = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'ChangeMdp#2026' } }));
+    const browserRefresh = browser.json().refreshToken as string;
+    const another = await loginAs('ChangeMdp#2026');
+    const viaCookie = await app.inject({ method: 'POST', url: '/api/auth/password/change', headers: { authorization: `Bearer ${browser.json().accessToken}`, cookie: `refresh_token=${browserRefresh}` }, payload: { currentPassword: 'ChangeMdp#2026', newPassword: 'CookieMdp#2026' } });
+    expect(viaCookie.statusCode).toBe(200);
+    expect((await refresh(browserRefresh)).statusCode).toBe(200);
+    expect((await refresh(another.refreshToken)).statusCode).toBe(401);
+    expect((await refresh(kept.json().refreshToken)).statusCode).toBe(401);
+
+    // Sans session identifiable (ni corps ni cookie) : toutes les sessions sont révoquées.
+    const last = await loginAs('CookieMdp#2026');
+    const blind = await app.inject({ method: 'POST', url: '/api/auth/password/change', headers: { authorization: `Bearer ${last.accessToken}` }, payload: { currentPassword: 'CookieMdp#2026', newPassword: 'ChangeMdp#2026' } });
+    expect(blind.statusCode).toBe(200);
+    const active = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('refresh_tokens').select('id').where('user_id', '=', userId).where('revoked_at', 'is', null).execute());
+    expect(active).toHaveLength(0);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'ChangeMdp#2026' } })).statusCode).toBe(200);
+    await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('users').set({ failed_login_attempts: 0, locked_until: null }).where('id', '=', userId).execute());
+  });
+
+  it('DELETE /api/auth/sessions révoque toutes les sessions et vide les cookies', async () => {
+    const first = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'ChangeMdp#2026' } })).json();
+    const second = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'ChangeMdp#2026' } })).json();
+    expect((await app.inject({ method: 'DELETE', url: '/api/auth/sessions' })).statusCode).toBe(401);
+    const res = await app.inject({ method: 'DELETE', url: '/api/auth/sessions', headers: { authorization: `Bearer ${first.accessToken}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ loggedOut: true });
+    expect(String(res.headers['set-cookie'] ?? '')).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+    for (const rt of [first.refreshToken, second.refreshToken]) {
+      expect((await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken: rt } })).statusCode).toBe(401);
+    }
+    const active = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('refresh_tokens').select('id').where('user_id', '=', userId).where('revoked_at', 'is', null).execute());
+    expect(active).toHaveLength(0);
   });
 });

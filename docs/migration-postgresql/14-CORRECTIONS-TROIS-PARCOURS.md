@@ -87,3 +87,7 @@ Runtime local : Node 24.19.0 ; cible CI et déploiement : Node 22.12+.
 PostgreSQL, MinIO, Playwright et Safari physique ne sont pas déclarés validés dans
 cette campagne. Les demandes d'accès réseau de la campagne précédente ont expiré
 et n'ont pas accordé l'accès. Les suites CI restent nécessaires avant fusion.
+
+Mise à jour du 22 octobre 2026 (document 15) : le test PostgreSQL de
+`GET /api/conversations/:appointmentId` a été exécuté sur PostgreSQL 16 local
+(`npm run test:e2e` : 9 suites, 102 tests réussis, 4 tests MinIO ignorés) et réussit.

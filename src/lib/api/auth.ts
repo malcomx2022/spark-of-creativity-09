@@ -105,7 +105,11 @@ export const auth = {
   resendVerification: (email: string) => api.post<{ sent: boolean }>('/auth/verify-email/resend', { email }, { auth: false }),
   forgotPassword: (email: string) => api.post<{ sent: boolean }>('/auth/password/forgot', { email }, { auth: false }),
   resetPassword: (token: string, password: string) => api.post<{ reset: boolean }>('/auth/password/reset', { token, password }, { auth: false }),
-  changePassword: (currentPassword: string, newPassword: string) => api.post<{ changed: boolean }>('/auth/password/change', { currentPassword, newPassword }),
+  /** Le refresh token identifie la session à conserver : l'API révoque toutes les autres. */
+  changePassword: (currentPassword: string, newPassword: string) => {
+    const refreshToken = getSession()?.refreshToken;
+    return api.post<{ changed: boolean }>('/auth/password/change', refreshToken ? { currentPassword, newPassword, refreshToken } : { currentPassword, newPassword });
+  },
 
   sendOtp: (phoneNumber: string, channel: 'sms' | 'whatsapp' | 'call' = 'sms') =>
     api.post<{ success: boolean; message?: string; status?: string }>('/auth/otp/send', { phoneNumber, channel }, { auth: false }),

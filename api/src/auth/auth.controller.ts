@@ -133,8 +133,9 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  changePassword(@CurrentUser() user: AuthenticatedUser, @Body(new ZodValidationPipe(changePasswordSchema)) dto: { currentPassword: string; newPassword: string }) {
-    return this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword);
+  changePassword(@CurrentUser() user: AuthenticatedUser, @Body(new ZodValidationPipe(changePasswordSchema)) dto: { currentPassword: string; newPassword: string; refreshToken?: string }, @Req() req: FastifyRequest) {
+    const token = dto.refreshToken ?? (req.cookies?.[REFRESH_COOKIE] as string | undefined);
+    return this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword, token);
   }
 
   @Post('otp/send')
