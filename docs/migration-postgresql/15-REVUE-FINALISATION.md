@@ -270,9 +270,8 @@ de la suite `auth` n'avait pas d'effet. Ces accès passent désormais par
 | `npm run lint` (racine) | 0 erreur, 45 avertissements hérités |
 | Couverture e2e des routes (analyse statique) | 212/216 ; les 4 restantes sont couvertes par une boucle `${kind}` (3 suppressions de planning) et par le test unitaire Fastify du contact |
 
-Observation nouvelle (P3, non modifiée) : `GET /api/practitioners/:id/exceptions`
-est public et renvoie le champ `reason` saisi par le praticien. Si ce motif peut
-contenir une information personnelle, le retirer de la réponse publique.
+Observation nouvelle (P3) : `GET /api/practitioners/:id/exceptions` est public et
+renvoyait le champ `reason` saisi par le praticien. Corrigée au §11.
 
 ## 7. Correction des deux P2 — 22 octobre 2026
 
@@ -419,4 +418,26 @@ qu'une déconnexion, par corps ou par cookie, ne ferme que la session de cet app
 
 Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 121 réussis,
 4 ignorés (MinIO)** ; front 63/63 ; lint 0 erreur.
+
+## 11. Motif des exceptions publiques — 22 octobre 2026
+
+Défaut : `GET /api/practitioners/:id/exceptions`, sans authentification, renvoyait
+le motif saisi par le praticien (par exemple « Hospitalisation »), donnée
+personnelle possible, à tout visiteur.
+
+Correction : la route utilise `OptionalJwtAuthGuard` et `ScheduleService.listExceptions`
+renvoie `reason: null` sauf au praticien propriétaire (compte lié à `practitioners.user_id`).
+La forme de la réponse est inchangée ; la date et `is_available` restent publiques,
+car elles servent à la prise de rendez-vous. Front : le tableau de bord du
+praticien (`AvailabilitySection`), authentifié, voit toujours ses motifs ; la prise
+de rendez-vous (`NewAppointmentDialog`) n'ajoute le motif que s'il est présent et
+affiche désormais « n'est pas disponible ce jour », sans détail.
+`POST /practitioners/me/exceptions` renvoie toujours le motif à son auteur.
+
+Test e2e (`practitioners`) : motif `null` pour un visiteur anonyme, un patient, un
+autre praticien, un administrateur et un jeton invalide ; motif visible pour le
+propriétaire. Avant correction : motif renvoyé à tous ; après : réussi.
+
+Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 122 réussis,
+4 ignorés (MinIO)** ; front typecheck OK, 63/63 ; lint 0 erreur.
 

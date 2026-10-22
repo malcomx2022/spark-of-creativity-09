@@ -41,8 +41,8 @@ de la base locale et les routes ; plan actif :
 - Push : autoriser les destinations à l'inscription ET avant envoi des anciennes lignes,
   avec contenu générique sans données médicales.
 - Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
-- Validation courante : 42 tests unitaires et 125 tests d'intégration, dont 4 essais MinIO réels
-  (document 15 : 121 réussis sur PostgreSQL 16 local, MinIO non exécuté).
+- Validation courante : 42 tests unitaires et 126 tests d'intégration, dont 4 essais MinIO réels
+  (document 15 : 122 réussis sur PostgreSQL 16 local, MinIO non exécuté).
 - Nettoyage des comptes hors test : refusé en production (403) dans `AdminService` ; ne pas retirer cette garde.
   Chaque compte est purgé dans un point de sauvegarde : un échec SQL ne doit pas annuler les autres.
 - Changement de mot de passe : révoque les autres sessions, conserve la famille du refresh token
@@ -50,6 +50,7 @@ de la base locale et les routes ; plan actif :
   Toute révocation globale prend `lockUserSessions` (verrou par utilisateur, aussi pris par refresh
   après le verrou de famille) ; ne pas inverser cet ordre.
   La déconnexion d'un appareil révoque la famille du jeton sous le verrou de famille de refresh.
+- Exceptions de planning publiques : `reason` réservé au praticien propriétaire (null sinon).
 - Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint :
   PostgreSQL convertit alors le COMMIT en ROLLBACK silencieux (cas corrigé du partage de note de soin).
 
