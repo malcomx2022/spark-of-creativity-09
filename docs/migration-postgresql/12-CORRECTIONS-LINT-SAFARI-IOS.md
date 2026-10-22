@@ -55,6 +55,17 @@ npm run test:browser
 Sur un environnement avec Chromium système :
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser -- --project=chromium`.
 
+WebKit sans installation sur l'hôte (22 octobre 2026), avec Docker :
+- `npm run test:webkit` lance la suite sur les projets `webkit-iphone` et `webkit-ipad` ;
+- `npm run test:recette:webkit` lance la recette réelle sur `webkit-iphone`, avec `RECETTE_DATABASE_URL` locale.
+
+`scripts/webkit-docker.sh` démarre `playwright run-server` dans l'image officielle
+`mcr.microsoft.com/playwright:v<version>-noble`, de la version de `@playwright/test`. Il réutilise le
+`playwright-core` du projet, monté en lecture seule. Les projets WebKit s'y connectent par
+`PW_WEBKIT_WS_ENDPOINT`. Avec `exposeNetwork: '<loopback>'`, le navigateur atteint le preview et l'API
+de l'hôte. Les tests et les serveurs restent sur l'hôte (Node 22), sans `--network host`. Sans cette
+variable, comme en CI, rien ne change. C'est toujours de l'émulation WebKit, pas un iPhone physique.
+
 La suite comporte **114 scénarios** (38 par projet : WebKit iPhone, WebKit iPad,
 Chromium). Elle vérifie huit écrans publics à 320/390/768/1280 px, les espaces
 patient/praticien/coach/admin en portrait et paysage, un formulaire avec focus et

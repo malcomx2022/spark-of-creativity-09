@@ -87,7 +87,8 @@ RECETTE_DATABASE_URL=postgresql://domicares_app:…@localhost:5432/<base dédié
 ```
 
 La configuration refuse toute base qui n'est pas locale. Les scénarios tournent dans trois projets
-successifs : `chromium`, `chromium-iphone` et `webkit-iphone` (moteur de Safari, en CI). Le
+successifs : `chromium`, `chromium-iphone` et `webkit-iphone` (moteur de Safari, en CI ; en local
+par `npm run test:recette:webkit`, navigateur dans Docker, document 12). Le
 document 12 en détaille la portée. Les données sont créées par l'API :
 inscriptions, KYC, puis messages, ce qui produit de vraies notifications et leurs liens. Seuls
 les rendez-vous confirmés sont insérés en SQL : 26 pour la patiente, dont le plus ancien est en

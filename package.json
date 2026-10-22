@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "test:recette": "playwright test --config playwright.recette.config.ts"
+    "test:recette": "playwright test --config playwright.recette.config.ts",
+    "test:webkit": "sh scripts/webkit-docker.sh --project webkit-iphone --project webkit-ipad",
+    "test:recette:webkit": "sh scripts/webkit-docker.sh --config playwright.recette.config.ts --project webkit-iphone"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
