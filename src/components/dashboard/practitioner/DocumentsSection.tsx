@@ -2,7 +2,7 @@ import type { PractitionerProfile } from "@/types/practitioner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileText, Download, Eye, Upload, CheckCircle2, AlertCircle, Loader2, RefreshCw, HelpCircle, Filter, FolderCheck, FolderX, Clock, ExternalLink } from "lucide-react";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { getSignedFileUrl, uploadUserDocument, isPdfFile, isImageFile } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +114,14 @@ interface DocumentUrls {
   image: string | null;
 }
 
+// Document type descriptions for tooltips
+const documentDescriptions: Record<string, string> = {
+  'image': 'Photo professionnelle de bonne qualité pour votre profil public',
+  'id_document_url': 'Carte d\'identité, passeport ou titre de séjour en cours de validité',
+  'license_document_url': 'Document officiel autorisant l\'exercice de votre profession',
+  'insurance_document_url': 'Diplôme, certification ou attestation de formation',
+};
+
 export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
   const queryClient = useQueryClient();
   const [documentUrls, setDocumentUrls] = useState<DocumentUrls>({
@@ -132,16 +140,8 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
   const [selectedDocumentType, setSelectedDocumentType] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  // Document type descriptions for tooltips
-  const documentDescriptions: Record<string, string> = {
-    'image': 'Photo professionnelle de bonne qualité pour votre profil public',
-    'id_document_url': 'Carte d\'identité, passeport ou titre de séjour en cours de validité',
-    'license_document_url': 'Document officiel autorisant l\'exercice de votre profession',
-    'insurance_document_url': 'Diplôme, certification ou attestation de formation',
-  };
-
   // Load document URLs function (reusable for refresh)
-  const loadDocumentUrls = async (showRefreshing = false) => {
+  const loadDocumentUrls = useCallback(async (showRefreshing = false) => {
     if (!practitionerData) return;
 
     if (showRefreshing) {
@@ -191,11 +191,11 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
       setLoadingUrls(false);
       setIsRefreshing(false);
     }
-  };
+  }, [practitionerData]);
 
   useEffect(() => {
     loadDocumentUrls();
-  }, [practitionerData]);
+  }, [loadDocumentUrls]);
 
   // Handle refresh
   const handleRefresh = async () => {
@@ -346,7 +346,7 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
     }
   };
 
-  const documents = [
+  const documents = useMemo(() => [
     {
       key: 'image',
       label: 'Photo de profil',
@@ -375,7 +375,7 @@ export function DocumentsSection({ practitionerData }: DocumentsSectionProps) {
       icon: <FileText className="h-4 w-4" />,
       description: documentDescriptions['insurance_document_url'],
     },
-  ];
+  ], [documentUrls]);
 
   // Calculate statistics
   const stats = useMemo(() => {

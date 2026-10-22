@@ -91,7 +91,7 @@ export default function CoachDashboard() {
     isLoading: isLoadingAppointments,
   } = usePractitionerAppointments(coach?.id, 0, 100);
   
-  const appointments = appointmentsResult?.data || [];
+  const appointments = useMemo(() => appointmentsResult?.data || [], [appointmentsResult?.data]);
 
   const mutateAppointment = useMutateAppointment();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);

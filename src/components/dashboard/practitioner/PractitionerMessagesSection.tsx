@@ -31,7 +31,7 @@ export function PractitionerMessagesSection() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread'>('all');
 
   // Aplatir les pages de conversations
-  const allConversations = data?.pages.flatMap(page => page.conversations) || [];
+  const allConversations = useMemo(() => data?.pages.flatMap(page => page.conversations) || [], [data]);
 
   const { selectedConversation, selectConversation: setSelectedConversation, linkedError } = useConversationSelection(allConversations, user?.id);
 

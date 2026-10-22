@@ -176,6 +176,20 @@ interface NewAppointmentDialogProps {
   preselectedPractitioner?: PreselectedPractitioner;
 }
 
+const allTimeSlots = [
+  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+  '11:00', '11:30', '12:00', '14:00', '14:30', '15:00',
+  '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
+];
+
+// Fonction pour comparer les heures
+const compareTime = (time1: string, time2: string): number => {
+  const [h1, m1] = time1.split(':').map(Number);
+  const [h2, m2] = time2.split(':').map(Number);
+  if (h1 !== h2) return h1 - h2;
+  return m1 - m2;
+};
+
 export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChange, preselectedPractitioner }: NewAppointmentDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
@@ -879,12 +893,6 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const allTimeSlots = [
-    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-    '11:00', '11:30', '12:00', '14:00', '14:30', '15:00',
-    '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
-  ];
-
   // Récupérer les disponibilités du praticien pré-sélectionné
   const { data: practitionerAvailability = [], isLoading: isLoadingAvailability } = usePractitionerAvailability(
     preselectedPractitioner?.id
@@ -895,17 +903,10 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     preselectedPractitioner?.id
   );
 
-  // Fonction pour comparer les heures
-  const compareTime = (time1: string, time2: string): number => {
-    const [h1, m1] = time1.split(':').map(Number);
-    const [h2, m2] = time2.split(':').map(Number);
-    if (h1 !== h2) return h1 - h2;
-    return m1 - m2;
-  };
-
   // Calculer les créneaux disponibles en fonction de la date et des disponibilités du praticien
+  const watchedDate = form.watch('date');
   const getAvailableTimeSlots = useMemo(() => {
-    const selectedDate = form.watch('date');
+    const selectedDate = watchedDate;
     
     // Si pas de date sélectionnée
     if (!selectedDate) {
@@ -1010,7 +1011,7 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     }
 
     return { slots: filteredSlots, message: null };
-  }, [form.watch('date'), preselectedPractitioner, practitionerAvailability, practitionerExceptions]);
+  }, [watchedDate, preselectedPractitioner, practitionerAvailability, practitionerExceptions]);
 
   // Si open est contrôlé de l'extérieur, ne pas afficher le bouton trigger
   const isControlled = externalOpen !== undefined;

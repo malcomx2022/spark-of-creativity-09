@@ -22,7 +22,8 @@ import { savePendingRegistration, clearPendingRegistration } from "@/lib/registr
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 import { z } from "zod";
-import { TermsDialog, useTermsDialogs } from "@/components/TermsDialog";
+import { TermsDialog } from "@/components/TermsDialog";
+import { useTermsDialogs } from "@/hooks/useTermsDialogs";
 
 // Schéma de validation Zod
 const patientSignupSchema = z.object({

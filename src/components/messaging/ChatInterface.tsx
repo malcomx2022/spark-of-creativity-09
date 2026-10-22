@@ -48,7 +48,8 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
   const { data: messages = [], isLoading: isLoadingMessages } = useConversationMessages(conversation.appointment_id, currentUserId);
   const sendMessage = useSendMessage();
-  const markAsRead = useMarkMessagesAsRead();
+  // `mutate` est stable (TanStack Query) : seul le nombre de non-lus redéclenche le marquage.
+  const { mutate: markAsRead } = useMarkMessagesAsRead();
   const { isOtherUserTyping, setTyping } = useTypingIndicator(conversation.appointment_id, currentUserId);
 
   const otherUserName = userType === 'patient' 
@@ -60,15 +61,15 @@ export function ChatInterface({ conversation, currentUserId, userType }: ChatInt
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Mark messages as read when conversation is opened
+  // Mark messages as read when conversation is opened (and when unread messages arrive while it is open)
   useEffect(() => {
     if (conversation.unread_count > 0) {
-      markAsRead.mutate({
+      markAsRead({
         appointment_id: conversation.appointment_id,
         user_id: currentUserId,
       });
     }
-  }, [conversation.appointment_id, currentUserId]);
+  }, [conversation.appointment_id, conversation.unread_count, currentUserId, markAsRead]);
 
   const handleSendMessage = async () => {
     if (!message.trim() && !attachment) return;

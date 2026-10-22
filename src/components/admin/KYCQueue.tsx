@@ -17,7 +17,7 @@ import {
   History,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getSignedFileUrl } from "@/lib/file-upload";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -69,6 +69,8 @@ export function KYCQueue() {
   const [selectedPractitioner, setSelectedPractitioner] = useState<KycPractitioner | null>(null);
   const [comment, setComment] = useState("");
   const [documentUrls, setDocumentUrls] = useState<Record<string, DocumentUrls>>({});
+  // Praticiens dont les URL sont chargées ou en cours : évite un second chargement pendant le premier.
+  const requestedUrls = useRef(new Set<string>());
   const [loadingUrls, setLoadingUrls] = useState<Record<string, boolean>>({});
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
   const [historyPractitionerId, setHistoryPractitionerId] = useState<string | null>(null);
@@ -184,8 +186,9 @@ export function KYCQueue() {
 
       // Ne charger que les URLs qui manquent, en parallèle
       const pendingLoads = practitioners
-        .filter(p => !documentUrls[p.id])
+        .filter(p => !requestedUrls.current.has(p.id))
         .map(async (practitioner) => {
+          requestedUrls.current.add(practitioner.id);
           setLoadingUrls(prev => ({ ...prev, [practitioner.id]: true }));
 
           try {
@@ -204,6 +207,8 @@ export function KYCQueue() {
               },
             }));
           } catch (error) {
+            // Nouvel essai au prochain rafraîchissement de la liste.
+            requestedUrls.current.delete(practitioner.id);
             if (import.meta.env.DEV) {
               console.error(`Error loading documents for ${practitioner.id}:`, error);
             }

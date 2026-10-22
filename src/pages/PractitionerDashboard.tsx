@@ -87,7 +87,7 @@ export default function PractitionerDashboard() {
     isError,
   } = usePractitionerAppointments(practitionerId, 0, 200);
   
-  const appointments = appointmentsResult?.data || [];
+  const appointments = useMemo(() => appointmentsResult?.data || [], [appointmentsResult?.data]);
 
   const mutateAppointment = useMutateAppointment();
 

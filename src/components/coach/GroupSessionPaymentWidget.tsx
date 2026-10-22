@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useLatest } from '@/hooks/useLatest';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -74,6 +75,8 @@ export function GroupSessionPaymentWidget({
 
   const queryClient = useQueryClient();
   const { addPaymentMethod } = useSavedPaymentMethods();
+  // Lues par le rappel FedaPay au moment où il se déclenche : le widget n'est initialisé qu'une fois.
+  const completion = useLatest({ onSuccess, onComplete, onOpenChange, addPaymentMethod, queryClient, saveMethod, paymentMethod });
 
   // ✅ Bug #2 FIX: Vérifier si le script FedaPay est chargé avec timeout
   useEffect(() => {
@@ -168,7 +171,7 @@ export function GroupSessionPaymentWidget({
             description: `Cette séance est ${currentSession.status === 'annulee' ? 'annulée' : 'terminée'}.`,
             variant: 'destructive',
           });
-          onOpenChange(false);
+          completion.current.onOpenChange(false);
           return;
         }
 
@@ -179,7 +182,7 @@ export function GroupSessionPaymentWidget({
             description: 'Le coach n\'est pas encore vérifié. Veuillez réessayer plus tard.',
             variant: 'destructive',
           });
-          onOpenChange(false);
+          completion.current.onOpenChange(false);
           return;
         }
 
@@ -212,7 +215,7 @@ export function GroupSessionPaymentWidget({
     };
 
     checkSessionAndRegistration();
-  }, [open, session.id]);
+  }, [open, session.id, completion]);
 
   // Load FedaPay configuration
   useEffect(() => {
@@ -488,6 +491,7 @@ export function GroupSessionPaymentWidget({
             },
             container: '#fedapay-group-container',
             onComplete: async (data: import("@/lib/fedapay-widget").FedaPayCompletePayload) => {
+              const { onSuccess, onComplete, onOpenChange, addPaymentMethod, queryClient, saveMethod, paymentMethod } = completion.current;
               console.log('FedaPay onComplete:', data);
               
               const isSuccess = data.reason === "CHECKOUT COMPLETE" || 
@@ -585,7 +589,7 @@ export function GroupSessionPaymentWidget({
         });
       }
     }
-  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, fedapayScriptLoaded, fedapayLoadError, phoneNumber, payerName, payerEmail, session]);
+  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, fedapayScriptLoaded, fedapayLoadError, phoneNumber, payerName, payerEmail, session, completion]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>

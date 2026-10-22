@@ -2,7 +2,7 @@ import { useNavigate, Link } from "react-router-dom";
 import logo from "@/assets/logo.png";
 import { Phone, Mail } from "lucide-react";
 import { useAuthUser } from "@/hooks/useAuthUser";
-import { useUserType } from "@/contexts/UserTypeContext";
+import { useUserType } from "@/contexts/user-type";
 import { ROUTES } from "@/lib/routes";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
