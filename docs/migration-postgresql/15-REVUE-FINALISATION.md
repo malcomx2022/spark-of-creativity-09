@@ -519,7 +519,16 @@ Correction (option 1 du §12) :
 - `api-ci.yml` : mêmes `-ldflags` pour le binaire de test, et nouvelle clé de cache.
 - Guide d'installation (document 07, §6 et dépannage) mis à jour.
 
-Validation : voir les résultats ci-dessous. Docker n'est pas disponible dans cet
-environnement de travail : la construction de l'image elle-même est validée par le
-workflow `minio-image.yml` sur la PR.
+Validation locale (sans Docker, indisponible ici) :
+- les instructions `RUN` des deux étapes de compilation, rejouées à l'identique sous
+  un `sh` POSIX (`dash`), produisent des binaires annoncés
+  `RELEASE.2025-09-07T16-13-09Z (commit-id=07c3a429…)` et
+  `RELEASE.2025-08-13T08-35-41Z (commit-id=7394ce0d…)` ;
+- suite S3 réelle contre ce serveur : 4/4 ;
+- compilation à froid du serveur (cache Go vide, 4 cœurs) : 97 s, pic d'environ 1,5 Go
+  de mémoire cumulée (échantillonnage toutes les 0,5 s) ;
+- `bash -n` sur `bascule.sh` et `preflight.sh`, YAML des workflows et
+  `docker compose config` valides.
+La construction de l'image Docker elle-même est validée par le workflow
+`minio-image.yml` sur la PR.
 

@@ -208,8 +208,8 @@ docker compose ps
 
 MinIO ne publie plus d'images accessibles anonymement : `minio.Dockerfile` compile la release
 épinglée (`RELEASE.2025-09-07T16-13-09Z`) depuis son commit, avec les mêmes options que le build
-officiel. Comptez quelques minutes et environ 2 Go de RAM libre (swap compris) pour cette
-compilation, faite une seule fois : l'image `domicares-minio:RELEASE.2025-09-07T16-13-09Z`
+officiel. Mesure à froid sur 4 cœurs : 97 s et un pic d'environ 1,5 Go de mémoire ; prévoyez
+2 Go libres (swap compris) et davantage de temps sur 2 vCPU. Compilation faite une seule fois : l'image `domicares-minio:RELEASE.2025-09-07T16-13-09Z`
 est ensuite réutilisée. Sur un serveur qui possède déjà l'image officielle
 `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`, le workflow de déploiement la réétiquette
 au lieu de compiler. Le client `mc` de `bascule.sh` est construit de la même façon à sa
