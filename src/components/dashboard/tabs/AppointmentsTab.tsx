@@ -47,7 +47,7 @@ export default function AppointmentsTab({ onPaymentRequired }: AppointmentsTabPr
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { data: appointmentsResult, isLoading, refetch, isFetching } = usePatientAppointments(patientId, currentPage, pageSize);
-  const appointments = appointmentsResult?.data || [];
+  const appointments = useMemo(() => appointmentsResult?.data || [], [appointmentsResult?.data]);
   const mutateAppointment = useMutateAppointment();
   const createAppointment = useCreateAppointment(patientId, patientName);
 

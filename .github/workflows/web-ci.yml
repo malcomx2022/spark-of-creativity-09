@@ -12,8 +12,8 @@ jobs:
     name: Typecheck, tests, build (Vite)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -36,7 +36,7 @@ jobs:
         run: npx playwright install --with-deps webkit chromium
       - name: Compatibilité Safari simulée et PWA
         run: npm run test:browser
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: browser-test-report

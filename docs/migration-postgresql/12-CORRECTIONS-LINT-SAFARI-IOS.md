@@ -18,6 +18,8 @@ Code applicatif initial : commit `8391d32` ; complément de normalisation des co
   (37 dépendances de hooks React, 9 exports Fast Refresh) restent visibles ; il ne
   s'agit pas d'erreurs. Modifier aveuglément les dépendances des effets de paiement
   risque de relancer leurs traitements : ce travail nécessite une revue dédiée.
+  *Mise à jour du 22 octobre 2026 :* les 45 avertissements restants sont corrigés et le
+  lint refuse désormais tout avertissement (document 15, « Avertissements lint »).
 - **Zod 4 :** le formulaire de coordonnées de paiement utilise `ZodError.issues`,
   plutôt que l'ancien attribut `errors`. Les validateurs de séances utilisent le
   contrat Zod installé, sans casts non contrôlés.

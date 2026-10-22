@@ -23,7 +23,8 @@ import { navigateToHome, navigateToEmailConfirmation, navigateToDashboard } from
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AddressSearchInput } from "@/components/AddressSearchInput";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
-import { TermsDialog, useTermsDialogs } from "@/components/TermsDialog";
+import { TermsDialog } from "@/components/TermsDialog";
+import { useTermsDialogs } from "@/hooks/useTermsDialogs";
 import {
   savePendingRegistration,
   getPendingRegistration,

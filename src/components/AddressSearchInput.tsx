@@ -75,9 +75,8 @@ export function AddressSearchInput({
 
   // Synchroniser avec la valeur externe
   useEffect(() => {
-    if (value !== searchValue) {
-      setSearchValue(value);
-    }
+    // Sans effet si la valeur affichée est déjà la même (React ignore un état identique).
+    setSearchValue(value);
   }, [value]);
 
   // Sauvegarder une recherche récente
@@ -136,7 +135,7 @@ export function AddressSearchInput({
   }, []);
 
   // Recherche Mapbox avec debounce
-  const performSearch = async (query: string) => {
+  const performSearch = useCallback(async (query: string) => {
     // Validation de la longueur minimale
     if (!query || query.trim().length === 0) {
       setResults([]);
@@ -226,7 +225,7 @@ export function AddressSearchInput({
     } finally {
       setLoading(false);
     }
-  };
+  }, [mapboxToken, tokenError]);
 
   // Debounce de la recherche
   useEffect(() => {
@@ -245,7 +244,7 @@ export function AddressSearchInput({
         clearTimeout(debounceRef.current);
       }
     };
-  }, [searchValue, mapboxToken]);
+  }, [searchValue, mapboxToken, performSearch]);
 
   const handleSelectLocation = (feature: MapboxFeature) => {
     // Extraire la ville depuis le contexte

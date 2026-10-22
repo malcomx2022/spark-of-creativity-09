@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLatest } from '@/hooks/useLatest';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -150,6 +151,31 @@ export function PaymentDialog({
   
   const { paymentMethods, addPaymentMethod, getDecryptedPhone } = useSavedPaymentMethods();
 
+  const resetPaymentState = useCallback(() => {
+    setIsProcessing(false);
+    setPaymentStatus('idle');
+    setPaymentUrl(null);
+    setPaymentId(null);
+    setTransactionId(null);
+    setExpiresAt(null);
+    setPollCount(0);
+    setPhoneNumber('');
+    setPayerName('');
+    setPayerEmail('');
+    setSaveMethod(false);
+    setUseSavedMethod(false);
+    setSelectedSavedMethod('');
+    setAutoPrefilled(false);
+    setAttemptNumber(0);
+    setNetworkErrorCount(0);
+    setShowNetworkWarning(false);
+    hasRehydratedRef.current = false;
+    clearPersistedPaymentState();
+  }, []);
+
+  // Lues par la vérification du paiement en cours (effet plus bas) et par le rappel du widget FedaPay.
+  const existingPaymentProps = useLatest({ amount, context, contextId, fedapayConfig, onSuccess, onComplete, onOpenChange, resetPaymentState });
+
   // ✅ CORRECTION CRITIQUE #1: Charger la configuration FedaPay
   useEffect(() => {
     const loadFedaPayConfig = async () => {
@@ -199,17 +225,18 @@ export function PaymentDialog({
       const profile = await api.get<{ full_name?: string | null; phone?: string | null }>('/profile').catch(() => null);
 
       if (profile) {
-        if (profile.full_name && !payerName) {
-          setPayerName(profile.full_name);
+        // Préremplissage sans écraser une saisie (valeur courante, même arrivée pendant la requête).
+        if (profile.full_name) {
+          setPayerName((current) => current || profile.full_name || '');
         }
-        if (profile.phone && !phoneNumber) {
-          setPhoneNumber(profile.phone);
+        if (profile.phone) {
+          setPhoneNumber((current) => current || profile.phone || '');
         }
       }
 
       // Essayer de récupérer l'email depuis auth
-      if (user.email && !payerEmail) {
-        setPayerEmail(user.email);
+      if (user.email) {
+        setPayerEmail((current) => current || user.email || '');
       }
     };
 
@@ -223,6 +250,8 @@ export function PaymentDialog({
     if (!open || existingPaymentChecked) return;
 
     const checkExistingPayment = async () => {
+      // Déclenchée par open / appointmentId / existingPaymentChecked seulement : le reste est lu à jour.
+      const { amount, context, contextId, onOpenChange } = existingPaymentProps.current;
       // ✅ CORRECTION P2-7: Activer l'indicateur de chargement
       setIsCheckingExistingPayment(true);
       console.log(`Vérification d'un paiement existant pour ${context}:`, contextId);
@@ -324,11 +353,12 @@ export function PaymentDialog({
           // Attendre que la configuration FedaPay soit chargée
           const waitForConfig = async () => {
             let attempts = 0;
-            while (!fedapayConfig && attempts < 10) {
+            // Configuration relue à chaque tour (elle arrive par un autre effet pendant l'attente).
+            while (!existingPaymentProps.current.fedapayConfig && attempts < 10) {
               await new Promise(resolve => setTimeout(resolve, 300));
               attempts++;
             }
-            return fedapayConfig;
+            return existingPaymentProps.current.fedapayConfig;
           };
 
           const config = await waitForConfig();
@@ -353,6 +383,7 @@ export function PaymentDialog({
               },
               locale: 'fr',
               onComplete: async (payload) => {
+                const { onSuccess, onComplete, onOpenChange, resetPaymentState } = existingPaymentProps.current;
                 console.log('Existing payment completed:', payload);
                 
                 if (payload.reason === CHECKOUT_COMPLETED) {
@@ -444,7 +475,7 @@ export function PaymentDialog({
     };
 
     checkExistingPayment();
-  }, [open, appointmentId, existingPaymentChecked]);
+  }, [open, appointmentId, existingPaymentChecked, existingPaymentProps]);
 
   // Réinitialiser l'état lors de la fermeture
   useEffect(() => {
@@ -950,28 +981,6 @@ export function PaymentDialog({
       }
     }
   };
-
-  const resetPaymentState = useCallback(() => {
-    setIsProcessing(false);
-    setPaymentStatus('idle');
-    setPaymentUrl(null);
-    setPaymentId(null);
-    setTransactionId(null);
-    setExpiresAt(null);
-    setPollCount(0);
-    setPhoneNumber('');
-    setPayerName('');
-    setPayerEmail('');
-    setSaveMethod(false);
-    setUseSavedMethod(false);
-    setSelectedSavedMethod('');
-    setAutoPrefilled(false);
-    setAttemptNumber(0);
-    setNetworkErrorCount(0);
-    setShowNetworkWarning(false);
-    hasRehydratedRef.current = false;
-    clearPersistedPaymentState();
-  }, []);
 
   const closeDialog = useCallback(() => {
     resetPaymentState();

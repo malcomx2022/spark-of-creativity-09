@@ -13,10 +13,10 @@ import { RefreshCcw, CheckCircle2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /**
- * Canal du remboursement. FedaPay ne documente le remboursement que depuis son tableau de bord (MTN
- * uniquement) : le canal « manuel » enregistre ici, avec sa référence, un remboursement déjà effectué
- * là-bas ; le canal API tente l'appel et laisse le remboursement « en attente » tant que FedaPay ne
- * l'a pas confirmé.
+ * Canal du remboursement. Le canal API passe par POST /v1/refunds (MTN Mobile Money uniquement chez
+ * FedaPay) et laisse le remboursement « en attente » tant que FedaPay ne l'a pas confirmé ; le canal
+ * « manuel » enregistre ici, avec sa référence, un remboursement déjà effectué ailleurs (tableau de
+ * bord FedaPay, virement).
  */
 type RefundChannel = 'fedapay' | 'manual';
 
@@ -52,8 +52,7 @@ export function RefundsSection() {
   const [selectedPayment, setSelectedPayment] = useState<RefundablePayment | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
-  // FedaPay ne propose le remboursement que depuis son tableau de bord (MTN) : canal manuel par défaut.
-  const [channel, setChannel] = useState<RefundChannel>('manual');
+  const [channel, setChannel] = useState<RefundChannel>('fedapay');
   const [providerReference, setProviderReference] = useState("");
   const [confirmRef, setConfirmRef] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
@@ -114,7 +113,7 @@ export function RefundsSection() {
     },
     onSuccess: (data) => {
       if (data?.status === 'pending') {
-        toast.info('Remboursement enregistré, en attente de confirmation par FedaPay. Confirmez-le ci-dessous une fois vérifié sur le tableau de bord FedaPay.');
+        toast.info('Remboursement demandé à FedaPay, en attente de sa confirmation. Il sera comptabilisé automatiquement à sa confirmation, ou confirmez-le ci-dessous une fois vérifié sur le tableau de bord FedaPay.');
       } else {
         toast.success('Remboursement traité avec succès');
       }
@@ -122,7 +121,7 @@ export function RefundsSection() {
       setRefundAmount("");
       setRefundReason("");
       setProviderReference("");
-      setChannel('manual');
+      setChannel('fedapay');
       queryClient.invalidateQueries({ queryKey: ['refundable-payments'] });
       queryClient.invalidateQueries({ queryKey: ['payment-refunds'] });
     },
@@ -256,14 +255,14 @@ export function RefundsSection() {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="manual">Déjà effectué sur le tableau de bord FedaPay</SelectItem>
-                                  <SelectItem value="fedapay">Par l'API FedaPay (non proposé par FedaPay à ce jour)</SelectItem>
+                                  <SelectItem value="fedapay">Par l'API FedaPay (MTN Mobile Money)</SelectItem>
+                                  <SelectItem value="manual">Déjà effectué (tableau de bord FedaPay, virement)</SelectItem>
                                 </SelectContent>
                               </Select>
                               <p className="text-xs text-muted-foreground">
                                 {channel === 'manual'
                                   ? "Le remboursement a été fait chez FedaPay (MTN uniquement) ou par virement : indiquez sa référence, Domicares enregistre les écritures et prévient le patient."
-                                  : "FedaPay ne propose pas encore le remboursement par API : la demande sera refusée (502) et vous serez invité à utiliser le tableau de bord. Si FedaPay l'accepte un jour et qu'il reste « en attente », confirmez-le ci-dessous."}
+                                  : "FedaPay rembourse le numéro payeur, pour MTN Mobile Money uniquement. Un refus est affiché sans rien enregistrer : utilisez alors un autre canal. Un remboursement « en attente » est comptabilisé dès que FedaPay le confirme."}
                               </p>
                             </div>
                             {channel === 'manual' && (

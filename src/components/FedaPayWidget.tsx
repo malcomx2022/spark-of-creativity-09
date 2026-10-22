@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useLatest } from '@/hooks/useLatest';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -46,6 +47,8 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
   const queryClient = useQueryClient();
   const { paymentMethods, addPaymentMethod } = useSavedPaymentMethods();
+  // Lues par le rappel FedaPay au moment où il se déclenche : le widget n'est initialisé qu'une fois.
+  const completion = useLatest({ onSuccess, onComplete, onOpenChange, addPaymentMethod, queryClient, saveMethod, paymentMethod });
 
   // Vérifier si le script FedaPay est chargé avec timeout
   useEffect(() => {
@@ -424,6 +427,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
             },
             container: '#fedapay-container',
             onComplete: async (data: import("@/lib/fedapay-widget").FedaPayCompletePayload) => {
+              const { onSuccess, onComplete, onOpenChange, addPaymentMethod, queryClient, saveMethod, paymentMethod } = completion.current;
               console.log('FedaPay onComplete:', data);
               
               // Check for successful payment - FedaPay returns "CHECKOUT COMPLETE" as string
@@ -538,7 +542,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         });
       }
     }
-  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, fedapayScriptLoaded, fedapayLoadError, phoneNumber, payerName, payerEmail, amount, appointmentId]);
+  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, fedapayScriptLoaded, fedapayLoadError, phoneNumber, payerName, payerEmail, amount, appointmentId, completion]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>

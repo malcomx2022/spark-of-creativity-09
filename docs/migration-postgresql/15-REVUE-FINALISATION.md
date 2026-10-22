@@ -793,3 +793,57 @@ Contrôles :
 - API : 72 tests unitaires, e2e 123/123 (le nouveau test échoue sans la correction, paiement annulé) ;
 - front : 116 tests, lint (0 erreur), build ;
 - campagne factice verte.
+
+### Remboursement via `/v1/refunds`
+
+Le tableau de bord FedaPay rembourse lui-même par `POST /v1/refunds` : son code public
+(`RefundService.create`) envoie `{ transaction_id, amount, phone_number, description }` ; le
+remboursement se relit par `GET /v1/refunds/{id}`. Les deux routes répondent 401 sans clé sur le
+sandbox (route présente). Le client FedaPay les utilise désormais (document 08, §6) :
+- `refundTransaction` : `POST /v1/refunds` avec la transaction, le montant et le motif ; numéro payeur ;
+- refus HTTP ou statut `failed` immédiat : 502 `FEDAPAY_REFUND` avec le motif FedaPay, rien d'enregistré ;
+- `pending` : `payouts.sync` relit le remboursement lui-même. Il confirme aussi un partiel, que la
+  transaction ne montre pas, et clôt un `failed` sans écriture, avec notification à la finance ;
+- 404 : `FEDAPAY_REFUND_UNAVAILABLE` et canal manuel, inchangé.
+
+L'écran Remboursements repasse par défaut au canal API (« MTN Mobile Money ») ; le canal manuel reste.
+La campagne vérifie ces routes en S0, exige en S9 un remboursement `completed` ou `pending` relu chez
+FedaPay, et le confirme en S11 par le job, ou à défaut par l'administrateur.
+
+Contrat relevé dans le tableau de bord, non publié : **non validé sur le vrai sandbox** (aucune clé
+`FEDAPAY_SANDBOX_*` dans cette session). La campagne `FEDAPAY_CAMPAIGN=sandbox` doit passer S9 et S11
+avant le premier remboursement réel.
+
+Contrôles :
+- API : 76 tests unitaires (dont 4 nouveaux pour le client HTTP) ; e2e 123/123, 4 essais MinIO sautés.
+  Le test des remboursements couvre le refus immédiat, l'attente suivie de `sent` (confirmée par le
+  job) et l'attente suivie de `failed`. L'ancienne logique du job laissait le partiel en attente ;
+- front : 116 tests, lint (0 erreur, 45 avertissements), build ;
+- campagne factice verte (S9 `completed`, S11 sans objet).
+
+### Avertissements lint
+
+Les 45 avertissements hérités (document 12) sont corrigés et `npm run lint` passe à
+`eslint . --max-warnings 0`, de sorte que la CI refuse tout nouvel avertissement. Aucune règle
+n'a été assouplie et aucun commentaire de désactivation n'a été ajouté.
+
+- **Fast Refresh (9)** : les variants (`button`, `badge`, `toggle`, `navigation-menu`), les
+  contextes et hooks (`form`, `sidebar`, type d'utilisateur) et `useTermsDialogs` passent dans
+  des fichiers `.ts` voisins. `toast` n'est plus réexporté par `ui/sonner`.
+- **`?? []` instables (16)** : chaque liste est stabilisée par `useMemo`. Pour `DocumentsSection`,
+  les descriptions passent au niveau du module et le chargement des URL est stabilisé par `useCallback`.
+- **Dépendances d'effets (20)** : chaque effet garde ses déclencheurs.
+  - Widgets FedaPay (rendez-vous, séance de groupe, nouvel essai, reprise dans `PaymentDialog`) :
+    le rappel du widget, qui se déclenche après l'initialisation unique, lit les dernières props
+    par `useLatest` (ref mis à jour en effet de layout, avec deux tests Vitest).
+  - Correctif pendant ce travail : la reprise d'un paiement en cours attendait la configuration
+    FedaPay sur une valeur figée (10 essais pour rien). Elle la relit maintenant à chaque tour.
+  - Préremplissage du payeur : mises à jour fonctionnelles, sans écraser une saisie.
+  - KYC : un ref des praticiens déjà demandés évite de recharger des URL en cours de chargement.
+  - Messagerie : le marquage « lu » se relance aussi quand des non-lus arrivent pendant que la
+    conversation est ouverte.
+  - Carte : le centre initial est lu à la création ; la carte n'est recréée qu'au changement de jeton.
+  - Recherche d'adresse : `performSearch` passe en `useCallback` sur le jeton.
+
+Contrôles : lint (0 erreur, 0 avertissement), typecheck, 118 tests Vitest (23 fichiers), build,
+38 scénarios navigateur Chromium en local (WebKit en CI).

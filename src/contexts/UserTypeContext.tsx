@@ -1,19 +1,8 @@
-import { createContext, useContext, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { auth } from '@/lib/api';
 import { useAuthUser } from '@/hooks/useAuthUser';
-
-interface UserTypeContextValue {
-  isPractitioner: boolean | undefined;
-  isLoading: boolean;
-  error: Error | null;
-}
-
-const UserTypeContext = createContext<UserTypeContextValue>({
-  isPractitioner: undefined,
-  isLoading: false,
-  error: null
-});
+import { UserTypeContext } from '@/contexts/user-type';
 
 export function UserTypeProvider({ children }: { children: ReactNode }) {
   const { data: user } = useAuthUser();
@@ -37,5 +26,3 @@ export function UserTypeProvider({ children }: { children: ReactNode }) {
     </UserTypeContext.Provider>
   );
 }
-
-export const useUserType = () => useContext(UserTypeContext);

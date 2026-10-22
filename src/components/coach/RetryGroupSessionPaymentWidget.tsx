@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useLatest } from '@/hooks/useLatest';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -52,6 +53,8 @@ export function RetryGroupSessionPaymentWidget({
   const containerRef = useRef<HTMLDivElement>(null);
   
   const queryClient = useQueryClient();
+  // Lues par le rappel FedaPay au moment où il se déclenche : le widget n'est initialisé qu'une fois.
+  const completion = useLatest({ onSuccess, onComplete, onOpenChange, queryClient });
   const { retryPayment, isRetrying } = useRetryGroupSessionPayment();
 
   // Load FedaPay configuration
@@ -208,6 +211,7 @@ export function RetryGroupSessionPaymentWidget({
             },
             container: '#fedapay-retry-container',
             onComplete: async (data: import("@/lib/fedapay-widget").FedaPayCompletePayload) => {
+              const { onSuccess, onComplete, onOpenChange, queryClient } = completion.current;
               console.log('FedaPay onComplete:', data);
               
               const isSuccess = data.reason === "CHECKOUT COMPLETE" || 
@@ -252,7 +256,7 @@ export function RetryGroupSessionPaymentWidget({
         }
       }
     }
-  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, phoneNumber, payerName, session]);
+  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, phoneNumber, payerName, session, completion]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>

@@ -28,8 +28,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -54,7 +54,7 @@ jobs:
           CI: 'true'
           RECETTE_DATABASE_URL: postgresql://domicares_app:ci@localhost:5432/domicares
         run: npm run test:recette
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: recette-post-livraison

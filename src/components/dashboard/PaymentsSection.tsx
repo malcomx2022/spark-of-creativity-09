@@ -115,7 +115,7 @@ export function PaymentsSection() {
     enabled: !!user?.id,
   });
 
-  const payments = paymentsResult?.data || [];
+  const payments = useMemo(() => paymentsResult?.data || [], [paymentsResult?.data]);
   const totalCount = paymentsResult?.count || 0;
   const totalPages = Math.ceil(totalCount / pageSize);
 

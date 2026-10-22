@@ -54,10 +54,10 @@ export const ConsultationReportSection = ({ practitionerId }: ConsultationReport
   const { data: result, isLoading, refetch } = useConsultationReports(practitionerId, page, pageSize);
   const { data: appointmentsResult } = usePractitionerAppointments(practitionerId, 0, 100);
 
-  const reports = result?.data || [];
+  const reports = useMemo(() => result?.data || [], [result?.data]);
   const totalCount = result?.count || 0;
   const totalPages = Math.ceil(totalCount / pageSize);
-  const appointments = appointmentsResult?.data || [];
+  const appointments = useMemo(() => appointmentsResult?.data || [], [appointmentsResult?.data]);
 
   // Statistiques
   const stats = useMemo(() => {

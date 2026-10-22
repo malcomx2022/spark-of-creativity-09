@@ -27,7 +27,7 @@ export function PatientGroupSessionsSection() {
   const { data: user } = useAuthUser();
   const [page, setPage] = useState(0);
   const { data: sessionsResult, isLoading, isFetching, refetch } = usePatientGroupSessions(user?.id, page, 20);
-  const sessions = sessionsResult?.data || [];
+  const sessions = useMemo(() => sessionsResult?.data || [], [sessionsResult?.data]);
   const totalCount = sessionsResult?.count || 0;
   const totalPages = Math.ceil(totalCount / 20);
   const [selectedParticipation, setSelectedParticipation] = useState<PatientGroupSession>(null);

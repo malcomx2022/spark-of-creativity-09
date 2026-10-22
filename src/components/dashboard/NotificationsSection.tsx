@@ -184,8 +184,10 @@ export function NotificationsSection() {
 
   // Nettoyer les timers au démontage
   useEffect(() => {
+    // Même objet que le ref (seules ses clés changent) : capturé pour le nettoyage.
+    const timers = debounceTimers.current;
     return () => {
-      Object.values(debounceTimers.current).forEach(timer => clearTimeout(timer));
+      Object.values(timers).forEach(timer => clearTimeout(timer));
     };
   }, []);
 

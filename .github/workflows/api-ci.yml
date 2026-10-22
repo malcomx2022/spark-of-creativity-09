@@ -28,8 +28,8 @@ jobs:
       run:
         working-directory: api
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -53,11 +53,11 @@ jobs:
       # refusent le pull) : la release épinglée en production est compilée depuis son commit.
       - name: Cache MinIO (release de production)
         id: minio-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.minio-bin
           key: minio-RELEASE.2025-09-07T16-13-09Z-07c3a429bfed-ldflags
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         if: steps.minio-cache.outputs.cache-hit != 'true'
         with:
           go-version: '1.24.x'

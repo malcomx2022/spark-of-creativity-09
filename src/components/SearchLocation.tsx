@@ -82,6 +82,79 @@ export function SearchLocation({
     }
   }, [recentSearches]);
 
+  const performSearch = useCallback((searchQuery: string) => {
+    const run = async (query: string, retryCount: number): Promise<void> => {
+      if (!mapboxToken || mapboxToken.trim().length === 0) {
+        setError('Configuration Mapbox manquante. Veuillez contacter le support.');
+        toast({
+          variant: 'destructive',
+          title: 'Erreur de configuration',
+          description: 'Le service de recherche d\'adresse n\'est pas configuré. Contactez l\'administrateur.',
+        });
+        return;
+      }
+
+      // Vérifier que le token ressemble à un token Mapbox valide (commence par pk.)
+      if (!mapboxToken.startsWith('pk.')) {
+        setError('Token Mapbox invalide');
+        toast({
+          variant: 'destructive',
+          title: 'Configuration invalide',
+          description: 'Le token Mapbox est mal configuré.',
+        });
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const encodedQuery = encodeURIComponent(query);
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedQuery}.json?` +
+          `access_token=${mapboxToken}&` +
+          `country=BJ&` +
+          `types=address,place,poi&` +
+          `limit=5&` +
+          `language=fr`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Geocoding API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setResults(data.features || []);
+      } catch (err) {
+        console.error('Geocoding error:', err);
+      
+        // Retry logic avec délai exponentiel
+        if (retryCount < 2) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 secondes
+
+          if (import.meta.env.DEV) {
+            console.log(`Retrying search... (${retryCount + 1}/2) in ${delay}ms`);
+          }
+
+          setTimeout(() => {
+            run(query, retryCount + 1);
+          }, delay);
+          return;
+        }
+
+        setError('Erreur lors de la recherche. Veuillez réessayer.');
+        toast({
+          variant: 'destructive',
+          title: 'Erreur de recherche',
+          description: 'Impossible de rechercher l\'adresse. Vérifiez votre connexion.',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    return run(searchQuery, 0);
+  }, [mapboxToken]);
+
   // Debounced geocoding search
   useEffect(() => {
     if (!searchValue || searchValue.length < 3) {
@@ -94,78 +167,7 @@ export function SearchLocation({
     }, DEBOUNCE_DELAY);
 
     return () => clearTimeout(timeoutId);
-  }, [searchValue, mapboxToken]);
-
-  const performSearch = async (query: string, retryCount = 0) => {
-    if (!mapboxToken || mapboxToken.trim().length === 0) {
-      setError('Configuration Mapbox manquante. Veuillez contacter le support.');
-      toast({
-        variant: 'destructive',
-        title: 'Erreur de configuration',
-        description: 'Le service de recherche d\'adresse n\'est pas configuré. Contactez l\'administrateur.',
-      });
-      return;
-    }
-
-    // Vérifier que le token ressemble à un token Mapbox valide (commence par pk.)
-    if (!mapboxToken.startsWith('pk.')) {
-      setError('Token Mapbox invalide');
-      toast({
-        variant: 'destructive',
-        title: 'Configuration invalide',
-        description: 'Le token Mapbox est mal configuré.',
-      });
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const encodedQuery = encodeURIComponent(query);
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedQuery}.json?` +
-        `access_token=${mapboxToken}&` +
-        `country=BJ&` +
-        `types=address,place,poi&` +
-        `limit=5&` +
-        `language=fr`;
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Geocoding API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setResults(data.features || []);
-    } catch (err) {
-      console.error('Geocoding error:', err);
-      
-      // Retry logic avec délai exponentiel
-      if (retryCount < 2) {
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 secondes
-
-        if (import.meta.env.DEV) {
-          console.log(`Retrying search... (${retryCount + 1}/2) in ${delay}ms`);
-        }
-
-        setTimeout(() => {
-          performSearch(query, retryCount + 1);
-        }, delay);
-        return;
-      }
-
-      setError('Erreur lors de la recherche. Veuillez réessayer.');
-      toast({
-        variant: 'destructive',
-        title: 'Erreur de recherche',
-        description: 'Impossible de rechercher l\'adresse. Vérifiez votre connexion.',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  }, [searchValue, performSearch]);
   const handleSelectLocation = (feature: MapboxFeature) => {
     const location: Location = {
       lat: feature.center[1],

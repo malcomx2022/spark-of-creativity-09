@@ -372,7 +372,7 @@ describe('Group sessions & finance (e2e)', () => {
     expect(notified).toBeDefined();
   });
 
-  it('remboursements : API FedaPay confirmée ou en attente puis confirmée, canal manuel, écritures, inscription remboursée', async () => {
+  it('remboursements : POST /v1/refunds confirmé, refusé, en attente puis confirmé (admin ou job) ou refusé, canal manuel, écritures, inscription remboursée', async () => {
     // FedaPay répond « pending » : rien n'est comptabilisé tant que le remboursement n'est pas confirmé.
     fedapay.pendingNextRefund = true;
     const pending = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 2000, reason: 'Geste commercial' } });
@@ -391,6 +391,32 @@ describe('Group sessions & finance (e2e)', () => {
     const twice = await app.inject({ method: 'POST', url: `/api/admin/finance/refunds/${pending.json().refundId}/confirm`, headers: auth('admin'), payload: {} });
     expect(twice.statusCode).toBe(400);
 
+    // POST /v1/refunds refusé d'emblée (« failed ») : 502, rien n'est enregistré, le paiement reste remboursable.
+    const refundRows = async () => (await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_refunds').select('id').where('payment_id', '=', paymentIds['p1']).execute())).length;
+    const before = await refundRows();
+    fedapay.failNextRefund = true;
+    const refused = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 1000, reason: 'Refus MTN' } });
+    expect(refused.statusCode).toBe(502);
+    expect(refused.json()).toMatchObject({ error: 'FEDAPAY_REFUND' });
+    expect(await refundRows()).toBe(before);
+    // En attente puis refusé par FedaPay : le job lit GET /v1/refunds/{id}, clôt en « failed » sans écriture.
+    const providerId = async (refundId: string) => (await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_refunds').select(['provider_refund_id', 'status']).where('id', '=', refundId).executeTakeFirstOrThrow()));
+    fedapay.pendingNextRefund = true;
+    const willFail = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 1000, reason: 'Test échec' } });
+    expect(willFail.json()).toMatchObject({ status: 'pending' });
+    fedapay.setRefundStatus((await providerId(willFail.json().refundId)).provider_refund_id!, 'failed');
+    const failJob = await app.inject({ method: 'POST', url: '/api/admin/jobs/payouts.sync/run', headers: auth('admin') });
+    expect(failJob.json().result.refunds.failed).toBeGreaterThanOrEqual(1);
+    expect((await providerId(willFail.json().refundId)).status).toBe('failed');
+    // En attente puis « sent » : le job confirme ce partiel d'après l'état du remboursement lui-même.
+    fedapay.pendingNextRefund = true;
+    const willSend = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 2000, reason: 'Geste commercial' } });
+    expect(willSend.json()).toMatchObject({ status: 'pending' });
+    fedapay.setRefundStatus((await providerId(willSend.json().refundId)).provider_refund_id!, 'sent');
+    const sendJob = await app.inject({ method: 'POST', url: '/api/admin/jobs/payouts.sync/run', headers: auth('admin') });
+    expect(sendJob.json().result.refunds.confirmed).toBeGreaterThanOrEqual(1);
+    expect((await providerId(willSend.json().refundId)).status).toBe('completed');
+
     // FedaPay confirme dans la réponse : comptabilisé immédiatement.
     const partial = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 2000, reason: 'Geste commercial' } });
     expect(partial.statusCode).toBe(201);
@@ -398,15 +424,15 @@ describe('Group sessions & finance (e2e)', () => {
     // Un webhook « refunded » reçu après un remboursement partiel ne passe pas le paiement en remboursement intégral.
     const refundedEvt = await webhook({ id: `evt-${tag}-refunded-partial`, name: 'transaction.refunded', entity: { id: transactions['p1'], status: 'refunded' } });
     expect(refundedEvt.json()).toMatchObject({ status: 'partially_refunded', changed: false });
-    const tooMuch = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 7000, reason: 'x' } });
+    const tooMuch = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], refundAmount: 5000, reason: 'x' } });
     expect(tooMuch.statusCode).toBe(400);
     // Canal manuel (remboursement fait depuis le tableau de bord FedaPay) : référence obligatoire, aucun appel API.
     const noRef = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], reason: 'Séance annulée', channel: 'manual' } });
     expect(noRef.statusCode).toBe(400);
     const rest = await app.inject({ method: 'POST', url: '/api/admin/finance/refunds', headers: auth('admin'), payload: { paymentId: paymentIds['p1'], reason: 'Séance annulée', channel: 'manual', providerReference: 'FP-DASH-4242' } });
     expect(rest.statusCode).toBe(201);
-    expect(rest.json()).toMatchObject({ refundAmount: 6000, status: 'completed', paymentStatus: 'refunded' });
-    expect(fedapay.transactions.get(transactions['p1'])?.refunded).toBe(4000);
+    expect(rest.json()).toMatchObject({ refundAmount: 4000, status: 'completed', paymentStatus: 'refunded' });
+    expect(fedapay.transactions.get(transactions['p1'])?.refunded).toBe(6000);
     const manualRow = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_refunds').select(['provider_refund_id', 'status']).where('id', '=', rest.json().refundId).executeTakeFirstOrThrow());
     expect(manualRow).toMatchObject({ provider_refund_id: 'FP-DASH-4242', status: 'completed' });
     const participant = await db.db.selectFrom('group_session_participants').select('payment_status').where('id', '=', participants['p1']).executeTakeFirstOrThrow();
@@ -416,9 +442,9 @@ describe('Group sessions & finance (e2e)', () => {
     const entries = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('ledger_entries').select(['debit', 'credit']).where('reference_type', '=', 'refund').where('reference_id', '=', rest.json().refundId).execute());
     expect(entries.reduce((s, e) => s + e.debit, 0)).toBe(entries.reduce((s, e) => s + e.credit, 0));
     const list = await app.inject({ method: 'GET', url: '/api/admin/finance/refunds', headers: auth('admin') });
-    expect(list.json().count).toBeGreaterThanOrEqual(3);
+    expect(list.json().count).toBeGreaterThanOrEqual(5);
     const notif = await db.db.selectFrom('notifications').select('message').where('user_id', '=', userIds['p1']).where('title', '=', 'Remboursement effectué').execute();
-    expect(notif.length).toBe(3);
+    expect(notif.length).toBe(4);
   });
 
   it('réconciliation FedaPay, réparation des soldes, rejeu d’un webhook échoué', async () => {

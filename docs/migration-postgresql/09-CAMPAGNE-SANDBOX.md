@@ -65,9 +65,9 @@ Noter tout écart dans le tableau de la section 4.
 | S6 | **Libération des fonds** | Admin : `POST /api/admin/jobs/funds.release/run` après avoir avancé `hold_until` (voir §3) | paiements `ready`, solde praticien `dispo` = net | — |
 | S7 | **Reversement** ⚠ point clé | Admin finance → Reversements → reversement individuel vers le praticien | reversement `sent` avec `fedapay = started` (ou `processing`), paiements `paid`, notification « Reversement en cours » ; puis, au passage suivant de `payouts.sync` (10 min, ou lancer le job), `completed` et notification « Reversement effectué » | dépôt **démarré** dans Dépôts (statut `started` → `sent`), pas seulement créé. Relever la réponse brute de `PUT /payouts/start` dans les journaux `api` |
 | S8 | **Reversement refusé** | Praticien avec numéro `+22966000000` en reversement, puis reversement | `failed`, fonds relibérés (solde `dispo` restauré, paiement `ready`), dépôt supprimé ou `failed` chez FedaPay | dépôt `failed` ou absent |
-| S9 | **Remboursement par l'API** | Admin finance → Remboursements → canal « Par l'API FedaPay », partiel (par ex. la moitié) sur le paiement de S1 | soit `completed` (FedaPay a répondu approuvé) : paiement `partially_refunded`, écritures équilibrées (`ecart = 0`) ; soit `pending` : ligne « en attente » avec bouton Confirmer ; soit 502 `FEDAPAY_REFUND_UNAVAILABLE` : **l'API n'a pas d'endpoint de remboursement**, passer au canal manuel | remboursement visible dans Remboursements, ou erreur 404 relevée dans les journaux |
+| S9 | **Remboursement par l'API** (`POST /v1/refunds`) | Admin finance → Remboursements → canal « Par l'API FedaPay (MTN Mobile Money) », partiel (par ex. la moitié) sur le paiement MTN de S1 | soit `completed` (FedaPay a répondu approuvé ou envoyé) : paiement `partially_refunded`, écritures équilibrées (`ecart = 0`) ; soit `pending` : ligne « en attente », confirmée en S11. Un 502 `FEDAPAY_REFUND` (motif FedaPay) ou `FEDAPAY_REFUND_UNAVAILABLE` est un **écart** : le contrat relevé dans le tableau de bord est à revoir | remboursement visible dans Remboursements, ou erreur 404 relevée dans les journaux |
 | S10 | **Remboursement manuel** | Rembourser le reste depuis le tableau de bord FedaPay (transaction → Rembourser), puis canal « Déjà effectué… » avec la référence FedaPay | paiement `refunded`, écritures équilibrées, notification patient, `provider_refund_id` = référence saisie | — |
-| S11 | **Confirmation d'un remboursement en attente** | Si S9 a donné `pending` : vérifier chez FedaPay, puis bouton Confirmer avec la référence | `completed`, écritures équilibrées ; un second Confirmer → 400 | — |
+| S11 | **Confirmation d'un remboursement en attente** | Si S9 a donné `pending` : lancer `payouts.sync` (relit `GET /v1/refunds/{id}`) ; s'il reste en attente, vérifier chez FedaPay puis bouton Confirmer avec la référence | `completed` par le job ou par Confirmer, écritures équilibrées ; un second Confirmer → 400 ; `failed` chez FedaPay → remboursement « Échoué », sans écriture | — |
 | S12 | **Réconciliation** | Admin finance → Réconciliation sur la journée | rapport `completed`, `matched_count` = nombre de transactions de la campagne, anomalies = 0 (ou expliquées) | — |
 | S13 | **Rejeu d'un webhook** | Renvoyer un événement depuis le tableau de bord FedaPay (Webhooks → événement → Renvoyer) | 200 `duplicate: true`, aucun changement d'état | — |
 
@@ -104,14 +104,14 @@ Compléter et transmettre ce tableau (statuts et codes HTTP, jamais de numéro n
 | S6 | | | | |
 | S7 | | | | réponse brute de `/payouts/start` (statut, `mode` renvoyé) |
 | S8 | | | | |
-| S9 | | | | 502 `FEDAPAY_REFUND_UNAVAILABLE` ou statut rendu |
+| S9 | | | | statut du remboursement (`GET /v1/refunds/{id}`) |
 | S10 | | | | |
 | S11 | | | | |
 | S12 | | | | |
 | S13 | | | | |
 
 Les trois points ouverts se lisent dans S7 (corps de `/payouts/start` accepté ? `mode` accepté ou
-détecté ?), S1 et S7 (numéro `+229…` accepté ?) et S9 (endpoint de remboursement ?). Selon les
+détecté ?), S1 et S7 (numéro `+229…` accepté ?) et S9 (contrat `/v1/refunds` accepté ? statut rendu ?). Selon les
 réponses, à ajuster dans `api/src/payments/fedapay.client.ts` (`FEDAPAY_MODES`, `startPayout`) et
 dans `08-REVUE-FEDAPAY.md` §6.
 
@@ -163,22 +163,21 @@ Sondes du vrai sandbox sans clé (22 octobre 2026). Une route existante répond 
   réponse « Le jeton de transaction est invalide » sans jeton valide. Le harnais visait
   `/v1/transactions/{mode}`, qui répond 404 : corrigé, sans quoi S1 à S5 auraient échoué ;
 - remboursement : `POST /v1/transactions/{id}/refund`, la route appelée par `fedapay.client.ts`,
-  répond **404**. Domicares renvoie alors `502 FEDAPAY_REFUND_UNAVAILABLE` et oriente vers le canal
-  manuel, comme prévu (document 08, §6). `POST /v1/refunds` **existe** (401) : en S9, la campagne en
-  consigne la réponse (`GET /v1/refunds`, code et clés seulement) pour décider d'un éventuel
-  remboursement par API.
+  répondait **404** ; `POST /v1/refunds` et `GET /v1/refunds/{id}` **existent** (401). Le client
+  appelle désormais `/v1/refunds`, avec le contrat relevé dans le tableau de bord FedaPay (document 08,
+  §6) ; S0 vérifie ces deux routes.
 
 Paiement sans redirection : la spécification OpenAPI de FedaPay documente `POST /transactions/{mode}`,
 mais le sandbox répond 404 sur cette route. Les SDK officiels (`sendNowWithToken`) envoient
-`POST /{mode}` avec `{ token, … }`, c'est la route retenue. Remboursement : aucune API, ni dans la
-référence ni dans les SDK (document 08, §6). En S9, le 502 est donc le résultat attendu ; S10 (canal
-manuel) est la voie réelle.
+`POST /{mode}` avec `{ token, … }`, c'est la route retenue. Remboursement : absent de la référence et
+des SDK, mais utilisé par le tableau de bord via `POST /v1/refunds` (document 08, §6). S9 l'exerce sur
+un paiement MTN et relit le remboursement ; S11 le confirme par le job ; S10 garde le canal manuel.
 
 La campagne commence par S0 « Routes du sandbox » : elle refait ces sondes et s'arrête si une route
 appelée a disparu.
 
 Le rapport tranche les trois points ouverts comme au §4 : corps de `/payouts/start` et `mode` (S7),
-numéro `+229…` (S1, S7) et endpoint de remboursement (S9).
+numéro `+229…` (S1, S7) et contrat `/v1/refunds` (S9, S11).
 
 ## 5. Retour en live
 

@@ -64,15 +64,21 @@ export default function PractitionerMap({
   
   const { position: geoPosition, requestPosition, loading: geoLoading } = useGeolocation();
 
+  // Centre initial : position de l'utilisateur > géolocalisation > Cotonou, Bénin. Lu à la création de
+  // la carte seulement (recréée au changement de jeton) ; les marqueurs suivent ensuite la position.
+  const initialCenterLat = userLocation?.latitude || geoPosition?.latitude || 6.3703;
+  const initialCenterLng = userLocation?.longitude || geoPosition?.longitude || 2.3912;
+  const initialCenter = useRef<[number, number]>([initialCenterLng, initialCenterLat]);
+  useEffect(() => {
+    initialCenter.current = [initialCenterLng, initialCenterLat];
+  }, [initialCenterLng, initialCenterLat]);
+
   useEffect(() => {
     if (!mapContainer.current || !mapboxToken) return;
 
     try {
       mapboxgl.accessToken = mapboxToken;
-      
-      // Determine initial center: user location > geolocation > Cotonou, Benin
-      const centerLat = userLocation?.latitude || geoPosition?.latitude || 6.3703;
-      const centerLng = userLocation?.longitude || geoPosition?.longitude || 2.3912;
+      const [centerLng, centerLat] = initialCenter.current;
 
       map.current = new mapboxgl.Map({
         container: mapContainer.current,

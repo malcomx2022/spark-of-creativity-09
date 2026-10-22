@@ -24,74 +24,74 @@ export default function CompleteRegistration() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null);
 
+  // Vérification unique à l'arrivée sur la page (navigate et toast ne changent pas tant qu'elle est affichée).
   useEffect(() => {
-    checkRegistrationStatus();
-  }, []);
+    const checkRegistrationStatus = async () => {
+      setStatus('checking');
 
-  const checkRegistrationStatus = async () => {
-    setStatus('checking');
-
-    try {
-      // 1. Vérifier s'il y a une inscription en attente
-      const pending = getPendingRegistration();
-
-      // 2. Vérifier si l'utilisateur est connecté
-      const user = auth.getUser();
-
-      if (!user) {
-        // Pas connecté - rediriger vers la connexion
-        if (pending) {
-          toast({
-            title: "Connexion requise",
-            description: "Veuillez vous connecter pour finaliser votre inscription.",
-          });
-          navigate('/login?recovery=true');
-        } else {
-          navigate('/');
-        }
-        return;
-      }
-
-      setCurrentUser({ id: user.id, email: user.email || '' });
-
-      // 3. Vérifier si le profil praticien existe déjà
-      let practitioner: { id: string } | null = null;
       try {
-        practitioner = await api.get<{ id: string }>('/practitioners/me');
-      } catch (e) {
-        if (!isApiError(e, 404)) throw e;
-      }
+        // 1. Vérifier s'il y a une inscription en attente
+        const pending = getPendingRegistration();
 
-      if (practitioner) {
-        // Profil existe déjà - tout va bien
-        clearPendingRegistration();
-        const dashboardPath = pending?.practitionerType === 'coach_sportif'
-          ? '/dashboard/coach'
-          : '/dashboard/practitioner';
-        navigate(dashboardPath, { replace: true });
-        return;
-      }
+        // 2. Vérifier si l'utilisateur est connecté
+        const user = auth.getUser();
 
-      // 4. Pas de profil praticien - vérifier si on a des données en attente
-      if (pending && pending.userId === user.id) {
-        setPendingRegistration(pending);
-        setStatus('ready');
-      } else if (pending && pending.email.toLowerCase() === user.email?.toLowerCase()) {
-        // L'email correspond mais pas le userId - données obsolètes
-        // Mettre à jour le userId dans les données en attente
-        const updatedPending = { ...pending, userId: user.id };
-        setPendingRegistration(updatedPending);
-        setStatus('ready');
-      } else {
-        // Pas de données en attente correspondantes
-        setStatus('no_pending');
+        if (!user) {
+          // Pas connecté - rediriger vers la connexion
+          if (pending) {
+            toast({
+              title: "Connexion requise",
+              description: "Veuillez vous connecter pour finaliser votre inscription.",
+            });
+            navigate('/login?recovery=true');
+          } else {
+            navigate('/');
+          }
+          return;
+        }
+
+        setCurrentUser({ id: user.id, email: user.email || '' });
+
+        // 3. Vérifier si le profil praticien existe déjà
+        let practitioner: { id: string } | null = null;
+        try {
+          practitioner = await api.get<{ id: string }>('/practitioners/me');
+        } catch (e) {
+          if (!isApiError(e, 404)) throw e;
+        }
+
+        if (practitioner) {
+          // Profil existe déjà - tout va bien
+          clearPendingRegistration();
+          const dashboardPath = pending?.practitionerType === 'coach_sportif'
+            ? '/dashboard/coach'
+            : '/dashboard/practitioner';
+          navigate(dashboardPath, { replace: true });
+          return;
+        }
+
+        // 4. Pas de profil praticien - vérifier si on a des données en attente
+        if (pending && pending.userId === user.id) {
+          setPendingRegistration(pending);
+          setStatus('ready');
+        } else if (pending && pending.email.toLowerCase() === user.email?.toLowerCase()) {
+          // L'email correspond mais pas le userId - données obsolètes
+          // Mettre à jour le userId dans les données en attente
+          const updatedPending = { ...pending, userId: user.id };
+          setPendingRegistration(updatedPending);
+          setStatus('ready');
+        } else {
+          // Pas de données en attente correspondantes
+          setStatus('no_pending');
+        }
+      } catch (error) {
+        console.error('Erreur vérification statut:', error);
+        setStatus('error');
+        setErrorMessage('Erreur lors de la vérification du statut');
       }
-    } catch (error) {
-      console.error('Erreur vérification statut:', error);
-      setStatus('error');
-      setErrorMessage('Erreur lors de la vérification du statut');
-    }
-  };
+    };
+    checkRegistrationStatus();
+  }, [navigate, toast]);
 
   const handleCompleteRegistration = async () => {
     if (!pendingRegistration || !currentUser) return;

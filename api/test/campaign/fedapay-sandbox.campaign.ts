@@ -115,7 +115,7 @@ describe(`Campagne FedaPay (${MODE})`, () => {
 
   /** Routes du sandbox appelées par la campagne et fedapay.client.ts : 404 = route absente (avant authentification). */
   async function sandboxRoutes(): Promise<string[]> {
-    const routes: [string, string][] = [['POST', '/transactions'], ['POST', '/transactions/0/token'], ['GET', '/transactions/0'], ['DELETE', '/transactions/0'], ['POST', '/mtn_open'], ['POST', '/moov'], ['POST', '/payouts'], ['PUT', '/payouts/start'], ['GET', '/payouts/0']];
+    const routes: [string, string][] = [['POST', '/transactions'], ['POST', '/transactions/0/token'], ['GET', '/transactions/0'], ['DELETE', '/transactions/0'], ['POST', '/mtn_open'], ['POST', '/moov'], ['POST', '/payouts'], ['PUT', '/payouts/start'], ['GET', '/payouts/0'], ['POST', '/refunds'], ['GET', '/refunds/0']];
     const missing: string[] = [];
     for (const [method, path] of routes) {
       // Sans clé : une route existante répond 401 (ou 400 pour /{mode}), une route absente 404.
@@ -287,22 +287,28 @@ describe(`Campagne FedaPay (${MODE})`, () => {
       expectThat(row, p.status === 'paid' && old.status === 'canceled', 'reprise incohérente');
     });
 
-    await scenario('S9', 'Remboursement partiel par l’API', async (row) => {
+    await scenario('S9', 'Remboursement partiel par l’API (POST /v1/refunds)', async (row) => {
       const p = await payment(ctx.s1Payment);
       const res = await call('POST', '/api/admin/finance/refunds', 'admin', { paymentId: ctx.s1Payment, refundAmount: Math.floor(Number(p.amount) / 2), reason: 'Recette remboursement partiel', channel: 'fedapay' });
       const body = res.json();
       ctx.s9Refund = body.refundId ?? body.refund?.id ?? body.id ?? '';
       ctx.s9Status = String(body.status ?? body.refund?.status ?? body.error ?? res.statusCode);
       row.domicares = `HTTP ${res.statusCode}, ${ctx.s9Status}, paiement ${(await payment(ctx.s1Payment)).status}`;
-      row.fedapay = res.statusCode === 502 ? 'endpoint de remboursement indisponible' : '';
-      row.note = res.statusCode === 502 ? 'canal manuel requis (document 08 §6)' : '';
-      if (SANDBOX && res.statusCode === 502) {
-        // /v1/transactions/{id}/refund n'existe pas, /v1/refunds existe : forme de sa réponse (lecture seule, sans données).
-        const r = await fetch(`${SANDBOX_API}/refunds?per_page=1`, { headers: { Authorization: `Bearer ${SECRET}` } });
-        const keys = Object.keys(((await r.json().catch(() => ({}))) as Record<string, unknown>) ?? {}).slice(0, 8).join(', ');
-        row.note += ` ; GET /v1/refunds → HTTP ${r.status}${keys ? ` (clés : ${scrub(keys)})` : ''}`;
+      if (res.statusCode >= 400) row.note = `motif : ${scrub(String(body.message ?? ''))}`;
+      if (ctx.s9Refund) {
+        // Contrat relevé dans le tableau de bord FedaPay : l'état se relit par GET /v1/refunds/{id}.
+        const ref = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_refunds').select('provider_refund_id').where('id', '=', ctx.s9Refund).executeTakeFirst());
+        if (SANDBOX && ref?.provider_refund_id) {
+          const r = await fetch(`${SANDBOX_API}/refunds/${ref.provider_refund_id}`, { headers: { Authorization: `Bearer ${SECRET}` } });
+          const json = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+          const rec = (json['v1/refund'] ?? json.refund ?? json) as Record<string, unknown>;
+          row.fedapay = `remboursement ${ref.provider_refund_id} : HTTP ${r.status}, ${String(rec.status ?? '?')}`;
+        } else {
+          row.fedapay = `remboursement ${ref?.provider_refund_id ?? '?'}`;
+        }
       }
-      expectThat(row, [200, 201, 502].includes(res.statusCode), `réponse inattendue : ${scrub(res.body)}`);
+      // 502 FEDAPAY_REFUND_UNAVAILABLE : /v1/refunds absent ; 502 FEDAPAY_REFUND : refus (motif ci-dessus, MTN uniquement).
+      expectThat(row, [200, 201].includes(res.statusCode) && ['completed', 'pending'].includes(ctx.s9Status), `réponse inattendue : ${scrub(res.body)}`);
     });
 
     await scenario('S10', 'Remboursement manuel du reste', async (row) => {
@@ -315,9 +321,20 @@ describe(`Campagne FedaPay (${MODE})`, () => {
 
     await scenario('S11', 'Confirmation d’un remboursement en attente', async (row) => {
       if (ctx.s9Status !== 'pending' || !ctx.s9Refund) { row.result = 'sans objet'; row.note = `S9 : ${ctx.s9Status}`; return; }
+      // Le job relit GET /v1/refunds/{id} ; à défaut de confirmation FedaPay, l'administrateur confirme.
+      const job = await runJob('payouts.sync');
+      const refunds = job.json()?.result?.refunds ?? {};
+      const state = async () => (await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_refunds').select('status').where('id', '=', ctx.s9Refund).executeTakeFirstOrThrow())).status;
+      const afterJob = await state();
+      row.fedapay = `job : confirmés ${refunds.confirmed ?? '?'}, refusés ${refunds.failed ?? '?'}, en attente ${refunds.still_pending ?? '?'}`;
+      if (afterJob !== 'pending') {
+        row.domicares = `remboursement ${afterJob} par le job`;
+        expectThat(row, afterJob === 'completed', `remboursement ${afterJob} chez FedaPay`);
+        return;
+      }
       const res = await call('POST', `/api/admin/finance/refunds/${ctx.s9Refund}/confirm`, 'admin', { providerReference: `RECETTE-${tag}-conf` });
       const again = await call('POST', `/api/admin/finance/refunds/${ctx.s9Refund}/confirm`, 'admin', {});
-      row.domicares = `confirmation HTTP ${res.statusCode}, seconde ${again.statusCode}`;
+      row.domicares = `toujours en attente après le job ; confirmation HTTP ${res.statusCode}, seconde ${again.statusCode}`;
       expectThat(row, res.statusCode < 300 && again.statusCode === 400, 'confirmation incohérente');
     });
 

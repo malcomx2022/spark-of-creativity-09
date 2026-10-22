@@ -74,8 +74,10 @@ export interface FedaPayClient {
   cancelTransaction(transactionId: string): Promise<boolean>;
   /** Transactions créées dans l'intervalle (réconciliation). */
   listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]>;
-  /** Remboursement total ou partiel d'une transaction approuvée. */
-  refundTransaction(transactionId: string, amount: number): Promise<{ id: string; status: string; amount?: number }>;
+  /** Remboursement total ou partiel d'une transaction approuvée (POST /v1/refunds, MTN uniquement chez FedaPay). */
+  refundTransaction(transactionId: string, amount: number, description?: string): Promise<{ id: string; status: string; amount?: number }>;
+  /** État d'un remboursement (GET /v1/refunds/{id}) : `pending`, `sent`… ou `failed`. */
+  getRefund(refundId: string): Promise<{ id: string; status: string; amount?: number }>;
   /** Crée un dépôt (POST /v1/payouts) : il reste `pending` chez FedaPay tant qu'il n'est pas démarré. */
   createPayout(input: CreatePayoutInput): Promise<FedaPayPayout>;
   /** Démarre l'envoi immédiat d'un dépôt (PUT /v1/payouts/start) ; renvoie son état après démarrage. */
@@ -113,6 +115,12 @@ function unwrapPayout(data: Record<string, unknown>): FedaPayPayout {
 function unwrap(data: Record<string, unknown>): FedaPayTransaction {
   const t = (data['v1/transaction'] ?? data.v1_transaction ?? (data.v1 as Record<string, unknown> | undefined)?.transaction ?? data.transaction ?? data) as Record<string, unknown>;
   return { id: String(t.id), status: String(t.status ?? 'pending') as FedaPayStatus, amount: t.amount as number | undefined, reference: t.reference as string | undefined };
+}
+
+/** Enregistrement Refund d'une réponse FedaPay (`v1/refund`, `v1.refund`, `refund` ou objet nu). */
+function refundOf(data: Record<string, unknown>, fallbackId: string) {
+  const r = (data['v1/refund'] ?? (data.v1 as Record<string, unknown> | undefined)?.refund ?? data.refund ?? data) as Record<string, unknown>;
+  return { id: String(r.id ?? fallbackId), status: String(r.status ?? 'pending'), amount: r.amount as number | undefined };
 }
 
 /** API HTTP FedaPay (sandbox ou live) — port de create-payment / sync-payment-status. */
@@ -206,14 +214,19 @@ export class HttpFedaPayClient implements FedaPayClient {
   }
 
   /**
-   * FedaPay ne documente aucun remboursement par API (référence OpenAPI, SDK officiels) : cette route répond
-   * 404 sur le sandbox (vérifié le 22 octobre 2026), d'où 502 FEDAPAY_REFUND_UNAVAILABLE et le canal manuel.
-   * Conservée pour le jour où l'API le proposera ; ne pas viser /v1/refunds sans contrat publié.
+   * Remboursement par POST /v1/refunds, la ressource qu'utilise le tableau de bord FedaPay (RefundService.create :
+   * corps Refund.toJson() = { transaction_id, amount, phone_number, description }). Non documentée dans la
+   * référence publique ni dans les SDK : contrat relevé dans le tableau de bord le 22 octobre 2026, à confirmer
+   * par la campagne sandbox (S9, S11). Sans montant, FedaPay rembourse l'intégralité ; le montant est toujours
+   * envoyé ici. Le numéro n'est pas transmis : FedaPay rembourse le numéro payeur. MTN uniquement.
    */
-  async refundTransaction(transactionId: string, amount: number) {
-    const data = await this.request(`/transactions/${transactionId}/refund`, { method: 'POST', body: JSON.stringify({ amount }) });
-    const r = (data['v1/refund'] ?? (data.v1 as Record<string, unknown> | undefined)?.refund ?? data.refund ?? data) as Record<string, unknown>;
-    return { id: String(r.id ?? transactionId), status: String(r.status ?? 'pending'), amount: r.amount as number | undefined };
+  async refundTransaction(transactionId: string, amount: number, description?: string) {
+    const data = await this.request('/refunds', { method: 'POST', body: JSON.stringify({ transaction_id: /^\d+$/.test(transactionId) ? Number(transactionId) : transactionId, amount, ...(description ? { description } : {}) }) });
+    return refundOf(data, transactionId);
+  }
+
+  async getRefund(refundId: string) {
+    return refundOf(await this.request(`/refunds/${refundId}`), refundId);
   }
 
   async createPayout(input: CreatePayoutInput): Promise<FedaPayPayout> {
@@ -281,6 +294,9 @@ export class FakeFedaPayClient implements FedaPayClient {
   failNextPayoutStart = false;
   /** Le prochain remboursement est rendu « pending » par FedaPay au lieu d'« approved » (tests). */
   pendingNextRefund = false;
+  /** Le prochain remboursement est refusé par FedaPay (statut « failed », tests). */
+  failNextRefund = false;
+  readonly refunds = new Map<string, { id: string; status: string; amount: number; transactionId: string }>();
   // Identifiants uniques entre exécutions (les tests e2e partagent une base).
   private seq = Number(String(Date.now()).slice(-9));
 
@@ -299,11 +315,37 @@ export class FakeFedaPayClient implements FedaPayClient {
     const t = this.transactions.get(transactionId);
     if (!t) throw new FedaPayError('Transaction inconnue', 404);
     if (t.status !== 'approved' && t.status !== 'transferred' && t.status !== 'refunded') throw new FedaPayError('Transaction non remboursable', 400);
+    const id = `rf_${transactionId}_${t.refunded + amount}`;
+    if (this.failNextRefund) {
+      this.failNextRefund = false;
+      this.refunds.set(id, { id, status: 'failed', amount, transactionId });
+      return { id, status: 'failed', amount };
+    }
     t.refunded += amount;
     if (t.refunded >= (t.amount ?? 0)) t.status = 'refunded';
     const status = this.pendingNextRefund ? 'pending' : 'approved';
     this.pendingNextRefund = false;
-    return { id: `rf_${transactionId}_${t.refunded}`, status, amount };
+    this.refunds.set(id, { id, status, amount, transactionId });
+    return { id, status, amount };
+  }
+
+  async getRefund(refundId: string) {
+    const r = this.refunds.get(refundId);
+    if (!r) throw new FedaPayError('Remboursement inconnu', 404);
+    return { id: r.id, status: r.status, amount: r.amount };
+  }
+
+  /** Fait évoluer un remboursement (« sent », « failed »…) comme le ferait FedaPay (tests). */
+  setRefundStatus(refundId: string, status: string): void {
+    const r = this.refunds.get(refundId);
+    if (!r) return;
+    const t = this.transactions.get(r.transactionId);
+    // Un remboursement refusé après coup rend le montant à la transaction.
+    if (t && status === 'failed' && r.status !== 'failed') {
+      t.refunded -= r.amount;
+      if (t.status === 'refunded' && t.refunded < (t.amount ?? 0)) t.status = 'approved';
+    }
+    r.status = status;
   }
 
   async createPayout(input: CreatePayoutInput): Promise<FedaPayPayout> {

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, Shield, X } from 'lucide-react';
 
-type TermsType = 'cgu' | 'charte' | 'privacy';
+export type TermsType = 'cgu' | 'charte' | 'privacy';
 
 interface TermsDialogProps {
   open: boolean;
@@ -396,18 +395,4 @@ export function TermsDialog({ open, onOpenChange, type, onAccept }: TermsDialogP
       </DialogContent>
     </Dialog>
   );
-}
-
-// Hook pour gérer l'état des dialogues de termes
-export function useTermsDialogs() {
-  const [openDialog, setOpenDialog] = useState<TermsType | null>(null);
-  
-  return {
-    openDialog,
-    openCGU: () => setOpenDialog('cgu'),
-    openCharte: () => setOpenDialog('charte'),
-    openPrivacy: () => setOpenDialog('privacy'),
-    closeDialog: () => setOpenDialog(null),
-    isOpen: (type: TermsType) => openDialog === type,
-  };
 }

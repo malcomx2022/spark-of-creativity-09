@@ -146,8 +146,8 @@ export function OperationsSection() {
     },
   });
 
-  const reviews = reviewsData?.reviews || [];
-  const disputes = disputesData?.disputes || [];
+  const reviews = useMemo(() => reviewsData?.reviews || [], [reviewsData?.reviews]);
+  const disputes = useMemo(() => disputesData?.disputes || [], [disputesData?.disputes]);
 
   const updateReviewMutation = useMutation({
     mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) => {
