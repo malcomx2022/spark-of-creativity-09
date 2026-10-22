@@ -39,7 +39,7 @@ it('ouvre au clavier une ancienne notification /dashboard sans la marquer deux f
 });
 
 it('reste sur place pour un lien externe ou inconnu', () => {
-  mocks.notifications = [notification('n3', 'https://checkout.fedapay.com/pay/1'), notification('n4', '/patient/appointments/1')];
+  mocks.notifications = [notification('n3', 'https://checkout.fedapay.com/pay/1'), notification('n4', '/page-inexistante')];
   mount();
   expect(screen.queryByRole('link')).toBeNull();
   fireEvent.click(screen.getByText('Notif n3'));

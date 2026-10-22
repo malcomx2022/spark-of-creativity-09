@@ -24,7 +24,7 @@ import { SupportSection } from '@/components/dashboard/SupportSection';
 import { TriageForm } from '@/components/TriageForm';
 import { PatientConsultationReportsSection } from '@/components/dashboard/PatientConsultationReportsSection';
 import { PatientGroupSessionsSection } from '@/components/dashboard/PatientGroupSessionsSection';
-// PatientCareNotesSection removed - using only PatientConsultationReportsSection
+import { PatientCareNotesSection } from '@/components/dashboard/PatientCareNotesSection';
 import { FedaPayWidget } from '@/components/FedaPayWidget';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -897,7 +897,11 @@ export default function PatientDashboard() {
                 <span className="text-sm text-muted-foreground">Chargement des rapports...</span>
               </div>
             }>
-              <PatientConsultationReportsSection />
+              <div className="space-y-8">
+                <PatientConsultationReportsSection />
+                {/* Notes de soin partagées par le praticien (cible des notifications « Nouvelle note de soin »). */}
+                <PatientCareNotesSection />
+              </div>
             </Suspense>
           </TabsContent>
 

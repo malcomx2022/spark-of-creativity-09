@@ -14,6 +14,8 @@ export interface RecetteState {
   coachAppointmentId: string;
   /** Rendez-vous patient A ↔ praticien le plus récent. */
   recentAppointmentId: string;
+  /** Consultation terminée A ↔ praticien, avec une note de soin partagée par l'API. */
+  careNoteAppointmentId: string;
   /** Rendez-vous du patient B (ne doit jamais apparaître chez A). */
   patientBAppointmentId: string;
 }

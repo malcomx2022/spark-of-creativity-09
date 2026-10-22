@@ -626,7 +626,7 @@ PostgreSQL réelles, sans aucune interception (sauf l'échec 503 simulé du cont
 `recette.yml` la relance sur chaque PR. Détail et périmètre : document 14, §4 bis.
 
 Résultat local (PostgreSQL 16, base `domicares_test`, Chromium 1194) : **10/10 scénarios**,
-en environ 1 min après les builds.
+en environ 1 min après les builds (12/12 après l'ajout des notes de soin).
 
 | Parcours | Résultat |
 |---|---|
@@ -643,9 +643,42 @@ sur le filtre des liens et 3 sur le composant (souris, clavier, lien externe ou 
 82 tests, typecheck, build et lint (0 erreur, 45 avertissements hérités). Preuve
 inverse : sans le correctif, 5 scénarios de la recette échouent.
 
-Constat hors périmètre, laissé en l'état : le lien des notes de soin (`/patient/appointments/:id`)
-n'a pas de route.
+Lien des notes de soin : corrigé dans la foulée (voir ci-dessous).
 
 Non exécuté ici : la réception réelle d'un e-mail de contact (Resend et vraie boîte), WebKit et
 Safari sur appareil, et la notification push sur appareil. Ces points restent à vérifier sur
 l'environnement livré.
+
+### Lien des notes de soin
+
+Le partage d'une note de soin notifiait le patient vers `/patient/appointments/:id`, une route
+inexistante. Le patient n'avait d'ailleurs aucun écran pour lire ses notes partagées :
+`PatientCareNotesSection` n'était plus montée, alors que `GET /care-notes/mine` existait.
+
+Correction :
+- lien `/dashboard/patient?tab=reports` côté API ;
+- section des notes montée dans l'onglet `reports`, sous les comptes rendus ;
+- anciennes notifications redirigées vers cet onglet par `notificationPath`.
+
+Contrôles :
+- e2e `medical` 12/12 ;
+- front : 85 tests, typecheck, build et lint (0 erreur) ;
+- API : 42 tests unitaires et build ;
+- recette 12/12 (2 scénarios ajoutés, en échec sans la correction).
+
+### Page ouverte par une notification push
+
+La notification push gardait un texte générique, mais ouvrait toujours `/login` : l'API et le
+service worker imposaient tous deux cette page. Désormais, la charge porte le chemin interne de
+la notification (`pushTargetPath`), revérifié par `public/sw.js` avant ouverture. Tout autre
+lien donne `/login`, et le texte reste générique. Le clic ouvre une fenêtre si l'onglet existant
+ne peut pas naviguer.
+
+Contrôles :
+- API : 51 tests unitaires, typecheck, build ;
+- front : 94 tests, typecheck, lint (0 erreur) ;
+- 38 scénarios navigateur Chromium ;
+- sans la correction, 9 tests échouent.
+
+Non validé : la réception sur un appareil réel (WebKit et Safari compris), ainsi que le retour
+à la page ciblée après une connexion.

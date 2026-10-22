@@ -8,6 +8,9 @@ import { calculateTriageScore, TRIAGE_MAX_SCORE } from './triage';
 import { withDateOnly } from '../common/utils/date-only';
 import { appointmentResponse } from '../appointments/appointment-response';
 
+/** Notes partagées : onglet « reports » du patient (PatientCareNotesSection). */
+export const CARE_NOTE_LINK = '/dashboard/patient?tab=reports';
+
 /**
  * Dossier médical — port de useProfile (profil médical, contacts d'urgence, adresses), useCareNotes /
  * usePatientCareNotes, useConsultationReports / usePatientConsultationReports, TriageForm / TriageHistory
@@ -261,7 +264,7 @@ export class MedicalService {
   /** Ex CareNotesSection.confirmShare : notification in-app + message dans la conversation du rendez-vous. */
   private async notifyCareNoteShared(trx: Transaction<DB>, senderId: string, practitionerName: string, a: { id: string; patient_id: string; date: Date | string }) {
     const date = new Date(String(a.date).slice(0, 10)).toLocaleDateString('fr-FR');
-    await this.inApp.notifyUser(trx, a.patient_id, { title: 'Nouvelle note de soin', message: `Votre praticien ${practitionerName} a partagé une note de soin pour votre rendez-vous du ${date}.`, type: 'care_note', link: `/patient/appointments/${a.id}` });
+    await this.inApp.notifyUser(trx, a.patient_id, { title: 'Nouvelle note de soin', message: `Votre praticien ${practitionerName} a partagé une note de soin pour votre rendez-vous du ${date}.`, type: 'care_note', link: CARE_NOTE_LINK });
     // Message facultatif : sans point de sauvegarde, son échec annulerait la transaction et le COMMIT
     // deviendrait un ROLLBACK silencieux (partage annoncé mais jamais enregistré).
     await sql`savepoint care_note_message`.execute(trx);
