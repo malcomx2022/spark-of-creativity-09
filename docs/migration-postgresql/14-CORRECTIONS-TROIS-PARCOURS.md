@@ -94,7 +94,7 @@ page 2 des conversations, un avec le coach et un pour un second patient.
 | Parcours | Scénarios |
 |---|---|
 | Logout/login entre deux comptes | progression restaurée pour son propriétaire, purgée au logout ; le compte B ne voit ni la boîte de paiement ni les conversations de A ; déconnexion dans un autre onglet |
-| Notifications par rôle | clic sur la notification du praticien, du coach et du patient (rendez-vous hors première page) → bon espace, bon chat ; ancienne notification `/dashboard` redirigée ; un tiers n'ouvre pas la conversation |
+| Notifications par rôle | clic sur la notification du praticien, du coach et du patient (rendez-vous hors première page) → bon espace, bon chat ; ancienne notification `/dashboard` redirigée ; un tiers n'ouvre pas la conversation ; note de soin (nouveau et ancien lien) → notes partagées et détail |
 | Chat mobile | 390 px : la notification ouvre directement le chat du rendez-vous ancien ; envoi d'une réponse ; aucun débordement |
 | Contact | envoi accepté par l'API (201, succès affiché) ; échec 503 simulé côté navigateur : erreur visible, champs conservés, aucun succès |
 
@@ -110,8 +110,20 @@ réussissent tous.
 Laissés en l'état :
 - La notification push garde un contenu générique et ouvre `/login` (document 11, test
   `push.service.spec.ts`), comme décidé pour la confidentialité.
-- Le lien des notes de soin (`/patient/appointments/:id`, `medical.service.ts`) ne correspond
-  à aucune route. Il n'est donc pas suivi, et vise à corriger hors de ce lot (onglet `reports` du patient).
+- Lien des notes de soin : corrigé à la suite (voir plus bas).
+
+**Notes de soin (22 octobre 2026).** Une note partagée notifiait le patient avec
+`/patient/appointments/:id`, une route inexistante. De plus, aucun écran patient n'affichait
+les notes : `PatientCareNotesSection` avait été retirée du tableau de bord, alors que l'API
+(`GET /care-notes/mine`) et le hook restaient en place. Correction :
+- le lien devient `/dashboard/patient?tab=reports` (`CARE_NOTE_LINK`, `medical.service.ts`) ;
+- l'onglet `reports` affiche les comptes rendus puis les notes partagées ;
+- `notificationPath` redirige les anciennes notifications `/patient/appointments/:id` vers ce même onglet.
+
+Preuves :
+- e2e `medical` : lien stocké vérifié, 12/12 ;
+- recette : 2 scénarios ajoutés (note partagée par l'API, ancien lien), avec ouverture du détail ;
+- sans la correction, ces 2 scénarios échouent.
 
 Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
 `CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue

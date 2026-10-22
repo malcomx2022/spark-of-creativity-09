@@ -71,18 +71,20 @@ export default async function globalSetup() {
 
     // 25 rendez-vous confirmés A ↔ praticien (le plus ancien créé en premier : dernier de la liste),
     // un rendez-vous A ↔ coach et un rendez-vous B ↔ praticien.
-    const appointment = (patientId: string, patientName: string, practitionerId: string, practitionerName: string, daysAgo: number) => asService(async () => {
+    const appointment = (patientId: string, patientName: string, practitionerId: string, practitionerName: string, daysAgo: number, status = 'confirmed') => asService(async () => {
       const date = new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
       const { rows } = await db.query<{ id: string }>(
         `insert into appointments (patient_id, patient_name, practitioner_id, practitioner_name, specialty, date, time, address, reason, status, payment_amount, created_at)
-         values ($1, $2, $3, $4, 'Généraliste', $5, '09:00', 'Cotonou', 'Recette post-livraison', 'confirmed', 15000, now() - make_interval(days => $6))
-         returning id`, [patientId, patientName, practitionerId, practitionerName, date, daysAgo]);
+         values ($1, $2, $3, $4, 'Généraliste', $5, '09:00', 'Cotonou', 'Recette post-livraison', $7, 15000, now() - make_interval(days => $6))
+         returning id`, [patientId, patientName, practitionerId, practitionerName, date, daysAgo, status]);
       return rows[0].id;
     });
     const ids: string[] = [];
     for (let i = 25; i >= 1; i--) ids.push(await appointment(patientA.user.id, `Patiente Alpha ${n}`, doc.practitioner.id, `Docteur Gamma ${n}`, i));
     const coachAppointmentId = await appointment(patientA.user.id, `Patiente Alpha ${n}`, coachPr.practitioner.id, `Coach Delta ${n}`, 2);
     const patientBAppointmentId = await appointment(patientB.user.id, `Patient Beta ${n}`, doc.practitioner.id, `Docteur Gamma ${n}`, 3);
+    // Consultation terminée la veille : le praticien y partagera une note de soin.
+    const careNoteAppointmentId = await appointment(patientA.user.id, `Patiente Alpha ${n}`, doc.practitioner.id, `Docteur Gamma ${n}`, 1, 'completed');
 
     const state: RecetteState = {
       tag,
@@ -95,6 +97,7 @@ export default async function globalSetup() {
       oldAppointmentId: ids[0],
       recentAppointmentId: ids[ids.length - 1],
       coachAppointmentId,
+      careNoteAppointmentId,
       patientBAppointmentId,
     };
 
@@ -102,6 +105,12 @@ export default async function globalSetup() {
     await post(`/conversations/${state.oldAppointmentId}/messages`, { content: `Message du praticien ${tag} (rendez-vous ancien)` }, practitioner.session.accessToken);
     await post(`/conversations/${state.recentAppointmentId}/messages`, { content: `Message de la patiente ${tag} au praticien` }, patientA.session.accessToken);
     await post(`/conversations/${coachAppointmentId}/messages`, { content: `Message de la patiente ${tag} au coach` }, patientA.session.accessToken);
+    // Note de soin partagée par l'API : notification « Nouvelle note de soin » avec son lien.
+    await post('/care-notes', { appointmentId: careNoteAppointmentId, subjective: `Douleur lombaire ${tag}`, assessment: `Analyse de recette ${tag}`, plan: 'Repos et contrôle', sharedWithPatient: true }, practitioner.session.accessToken);
+    // Ancienne notification de note de soin : lien /patient/appointments/:id (route inexistante).
+    await asService(() => db.query(
+      "insert into notifications (user_id, title, message, type, link) values ($1, $2, 'Ancien lien de note de soin', 'care_note', $3)",
+      [patientA.user.id, `Ancienne note de soin ${tag}`, `/patient/appointments/${careNoteAppointmentId}`]));
     // Ancienne notification (avant le document 14) : lien générique /dashboard.
     await asService(() => db.query(
       "insert into notifications (user_id, title, message, type, link) values ($1, $2, 'Ancien format de lien', 'message', $3)",

@@ -62,7 +62,7 @@ describe('Medical record, reviews & payment methods (e2e)', () => {
   }
   const notificationsOf = async (key: string) => {
     const res = await app.inject({ method: 'GET', url: '/api/notifications', headers: auth(key) });
-    return (Array.isArray(res.json()) ? res.json() : res.json().data) as { type: string; title: string }[];
+    return (Array.isArray(res.json()) ? res.json() : res.json().data) as { type: string; title: string; link: string | null }[];
   };
 
   beforeAll(async () => {
@@ -204,7 +204,8 @@ describe('Medical record, reviews & payment methods (e2e)', () => {
     expect(after.json().data[0]).toMatchObject({ id: noteId, practitioner_name: 'Infirmière Test' });
     const log = await db.db.selectFrom('care_notes_sharing_log').select(['old_shared_value', 'new_shared_value']).where('care_note_id', '=', noteId).execute();
     expect(log).toEqual([{ old_shared_value: false, new_shared_value: true }]);
-    expect((await notificationsOf('patient')).some((n) => n.type === 'care_note')).toBe(true);
+    // Le lien ouvre l'onglet où le patient lit ses notes partagées (route existante du front).
+    expect((await notificationsOf('patient')).find((n) => n.type === 'care_note')?.link).toBe('/dashboard/patient?tab=reports');
     const byAppointment = await app.inject({ method: 'GET', url: `/api/care-notes/appointment/${appointments['completed']}`, headers: auth('nurse') });
     expect(byAppointment.json().id).toBe(noteId);
   });

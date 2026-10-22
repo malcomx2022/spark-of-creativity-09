@@ -52,6 +52,7 @@ de la base locale et les routes ; plan actif :
   après le verrou de famille) ; ne pas inverser cet ordre.
   La déconnexion d'un appareil révoque la famille du jeton sous le verrou de famille de refresh.
 - Exceptions de planning publiques : `reason` réservé au praticien propriétaire (null sinon).
+- Liens de notification : chemins du front existants (`/dashboard/<rôle>?tab=…`) ; note de soin → `CARE_NOTE_LINK`.
 - Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint :
   PostgreSQL convertit alors le COMMIT en ROLLBACK silencieux (cas corrigé du partage de note de soin).
 

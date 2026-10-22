@@ -113,6 +113,19 @@ test.describe('2. Notifications de message par rôle', () => {
   });
 });
 
+test.describe('2 bis. Notification de note de soin', () => {
+  for (const [label, title] of [['nouvelle notification', /Nouvelle note de soin/], ['ancien lien /patient/appointments', /Ancienne note de soin/]] as const) {
+    test(`${label} : ouvre les notes partagées du patient`, async ({ page }) => {
+      const space = await login(page, 'patientA');
+      await openNotification(page, space, title);
+      await expect(page).toHaveURL(/\/dashboard\/patient\?tab=reports$/);
+      await expect(page.getByRole('heading', { name: 'Mes Notes de Soin' })).toBeVisible();
+      await page.getByText(`Analyse: Analyse de recette ${state.tag}`).click();
+      await expect(page.getByRole('dialog').getByText(`Douleur lombaire ${state.tag}`)).toBeVisible();
+    });
+  }
+});
+
 test.describe('3. Chat mobile', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
