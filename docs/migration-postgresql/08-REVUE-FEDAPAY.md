@@ -395,6 +395,24 @@ remboursement aboutit donc toujours à `502 FEDAPAY_REFUND_UNAVAILABLE`, puis au
 le comportement prévu. Une ressource `POST /v1/refunds` existe ; son contrat reste à lire avec une clé
 sandbox avant toute évolution du client.
 
+**Remboursement par l'API : vérification du 22 octobre 2026.** FedaPay ne propose pas de remboursement
+par API :
+- la spécification OpenAPI (22 chemins) n'en contient aucun ;
+- les SDK officiels PHP et Node n'ont pas de méthode de remboursement : ils lisent seulement les
+  statuts `refunded`, `approved_partially_refunded` et `transferred_partially_refunded` ;
+- la documentation ne décrit que le tableau de bord, et pour MTN seulement.
+
+`/v1/refunds`, non documenté, n'est donc pas utilisé. Le remboursement reste fait au tableau de bord,
+puis enregistré ici par le canal manuel, désormais proposé par défaut dans l'écran Remboursements.
+Le canal API reste disponible et annonce qu'il n'est pas proposé.
+
+Défaut corrigé, propre à cette voie : `normalizeStatus` traduisait les statuts `*_partially_refunded`
+en `pending`. Un paiement remboursé en partie au tableau de bord avant d'être vu ici était alors
+**annulé** par `payments.cleanup`, qui supprimait la transaction et libérait le rendez-vous, alors
+que l'argent avait été encaissé. Ces statuts deviennent `paid`, et la réconciliation signale un
+remboursement partiel non enregistré, en indiquant la marche à suivre. Le test e2e « remboursement
+partiel fait au tableau de bord FedaPay » échoue sans ce correctif (paiement `canceled`).
+
 ## 7. Lot 3 — ce qui a été livré
 
 | Constat | Correction | Garde-fou |

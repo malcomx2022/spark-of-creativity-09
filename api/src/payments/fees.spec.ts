@@ -1,4 +1,4 @@
-import { calculateFees, parseFeeConfig } from './fees';
+import { calculateFees, normalizeStatus, parseFeeConfig } from './fees';
 
 /** Configuration de production (06-INVENTAIRE-SUPABASE §2.5) : 5 % de commission, 2 % de frais de passerelle payés par la plateforme. */
 const PRODUCTION = { payment_commission_rate: { rate: 0.05 }, payment_gateway_fees: { fixed: 0, percentage: 0.02, paid_by: 'platform' } };
@@ -39,5 +39,16 @@ describe('calculateFees', () => {
     const fees = calculateFees(100.5, 'EUR', parseFeeConfig({ ...PRODUCTION, payment_rounding_mode: { decimals: 2 } }));
     expect(fees.commissionAmount).toBe(5.03);
     expect(fees.netAmount).toBe(95.47);
+  });
+});
+
+describe('normalizeStatus', () => {
+  it.each([
+    ['approved', 'paid'], ['transferred', 'paid'],
+    // Payé puis remboursé en partie au tableau de bord : encaissé, jamais « en attente » (le nettoyage l'annulerait).
+    ['approved_partially_refunded', 'paid'], ['transferred_partially_refunded', 'paid'],
+    ['refunded', 'refunded'], ['declined', 'failed'], ['expired', 'failed'], ['processing', 'pending'], ['inconnu', 'pending'],
+  ])('%s → %s', (fedapay, local) => {
+    expect(normalizeStatus(fedapay)).toBe(local);
   });
 });

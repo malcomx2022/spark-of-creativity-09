@@ -168,6 +168,12 @@ Sondes du vrai sandbox sans clé (22 octobre 2026). Une route existante répond 
   consigne la réponse (`GET /v1/refunds`, code et clés seulement) pour décider d'un éventuel
   remboursement par API.
 
+Paiement sans redirection : la spécification OpenAPI de FedaPay documente `POST /transactions/{mode}`,
+mais le sandbox répond 404 sur cette route. Les SDK officiels (`sendNowWithToken`) envoient
+`POST /{mode}` avec `{ token, … }`, c'est la route retenue. Remboursement : aucune API, ni dans la
+référence ni dans les SDK (document 08, §6). En S9, le 502 est donc le résultat attendu ; S10 (canal
+manuel) est la voie réelle.
+
 La campagne commence par S0 « Routes du sandbox » : elle refait ces sondes et s'arrête si une route
 appelée a disparu.
 

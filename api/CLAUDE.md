@@ -47,7 +47,7 @@ de la base locale et les routes ; plan actif :
   Paire VAPID vérifiée au démarrage (`vapidKeyError` : push coupé, pas de crash) ; envoi `urgency: high` ;
   `POST /api/push/test` (authentifié, 5/10 min) n'envoie qu'aux appareils de l'appelant.
 - Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
-- Validation courante : 63 tests unitaires et 126 tests d'intégration, dont 4 essais MinIO réels
+- Validation courante : 72 tests unitaires et 127 tests d'intégration, dont 4 essais MinIO réels
   (document 15 : 126/126 sur PostgreSQL 16 et MinIO locaux ; MinIO compilé depuis son commit en CI,
   `S3_TEST_REQUIRED=1` interdit le saut silencieux de la suite S3).
 - Nettoyage des comptes hors test : refusé en production (403) dans `AdminService` ; ne pas retirer cette garde.
@@ -59,6 +59,8 @@ de la base locale et les routes ; plan actif :
   La déconnexion d'un appareil révoque la famille du jeton sous le verrou de famille de refresh.
 - Exceptions de planning publiques : `reason` réservé au praticien propriétaire (null sinon).
 - Liens de notification : chemins du front existants (`/dashboard/<rôle>?tab=…`) ; note de soin → `CARE_NOTE_LINK`.
+- Remboursement : FedaPay n'en propose pas par API (OpenAPI, SDK) ; canal manuel par défaut, 404 → 502 conservé.
+  Statuts `*_partially_refunded` = `paid` (jamais `pending`, que `payments.cleanup` annulerait) ; la réconciliation signale l'oubli.
 - Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint :
   PostgreSQL convertit alors le COMMIT en ROLLBACK silencieux (cas corrigé du partage de note de soin).
 

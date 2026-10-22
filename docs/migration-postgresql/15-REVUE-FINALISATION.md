@@ -776,3 +776,20 @@ pas. Domicares bascule alors comme prévu sur le canal manuel (502). Une ressour
 existe : la campagne en lira la forme.
 
 Le contrôle S0 vérifie ces routes au démarrage. Campagne factice toujours verte (12 scénarios).
+
+### Remboursement par l'API FedaPay
+
+FedaPay n'offre pas de remboursement par API : la spécification OpenAPI et les SDK officiels PHP et
+Node n'en contiennent aucun, et seul le tableau de bord rembourse (MTN). `/v1/refunds`, non documenté,
+n'est pas utilisé. Le canal manuel devient le choix par défaut de l'écran Remboursements, et le
+canal API l'indique.
+
+Défaut corrigé sur la voie réelle. Après un remboursement partiel au tableau de bord, le statut
+FedaPay `approved_partially_refunded` était lu comme « en attente ». Le nettoyage annulait alors
+un paiement pourtant encaissé. Ce statut est désormais lu comme payé, et la réconciliation signale
+le remboursement à enregistrer.
+
+Contrôles :
+- API : 72 tests unitaires, e2e 123/123 (le nouveau test échoue sans la correction, paiement annulé) ;
+- front : 116 tests, lint (0 erreur), build ;
+- campagne factice verte.
