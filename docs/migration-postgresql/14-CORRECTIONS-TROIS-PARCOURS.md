@@ -107,10 +107,7 @@ Un lien externe (URL de paiement d'une séance) ou sans route laisse la notifica
 Sans ce correctif, les cinq scénarios de notification de la recette échouent ; avec lui, ils
 réussissent tous.
 
-Laissés en l'état :
-- La notification push garde un contenu générique et ouvre `/login` (document 11, test
-  `push.service.spec.ts`), comme décidé pour la confidentialité.
-- Lien des notes de soin : corrigé à la suite (voir plus bas).
+Corrigés à la suite (voir plus bas) : la page ouverte par une notification push et le lien des notes de soin.
 
 **Notes de soin (22 octobre 2026).** Une note partagée notifiait le patient avec
 `/patient/appointments/:id`, une route inexistante. De plus, aucun écran patient n'affichait
@@ -124,6 +121,30 @@ Preuves :
 - e2e `medical` : lien stocké vérifié, 12/12 ;
 - recette : 2 scénarios ajoutés (note partagée par l'API, ancien lien), avec ouverture du détail ;
 - sans la correction, ces 2 scénarios échouent.
+
+**Notification push (22 octobre 2026).** Le texte reste générique (document 11) : « Vous avez une
+nouvelle notification. Connectez-vous pour la consulter. », sans titre ni contenu métier. Mais
+l'API imposait `/login` comme cible, et `public/sw.js` l'imposait aussi au clic : la notification
+n'ouvrait jamais le chat ou l'onglet concerné. Désormais :
+- l'API joint le lien de la notification, s'il passe `pushTargetPath`
+  (`api/src/notifications/push-target.ts`) ;
+- le worker revérifie ce chemin avec la même règle avant d'ouvrir la page (`notificationTarget`).
+
+Règle commune : seuls `/dashboard`, `/dashboard/<patient|practitioner|coach>` et `/admin` sont
+acceptés, paramètres compris. Une URL externe, un chemin d'API ou une valeur invalide donne `/login`.
+Le clic tente de naviguer dans l'onglet ouvert. S'il échoue (onglet non contrôlé par le worker),
+il ouvre une fenêtre, alors qu'auparavant rien ne se passait.
+
+Limite : sans session, la page protégée renvoie vers `/login`, et la connexion mène à l'accueil
+de l'espace, pas à la page ciblée. Les pages de connexion n'utilisent pas `state.from`.
+
+Tests :
+- `push.service.spec.ts` : 9 cas, texte générique vérifié ;
+- `pwa-worker.test.ts` : 7 cibles, navigation dans l'onglet et repli sur une fenêtre ;
+- 38 scénarios navigateur Chromium, dont la PWA avec le worker réel.
+
+Sans la correction, 4 tests API et 5 tests worker échouent. La réception sur un appareil réel
+reste à vérifier.
 
 Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
 `CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue

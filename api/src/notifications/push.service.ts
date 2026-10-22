@@ -3,6 +3,7 @@ import * as webpush from 'web-push';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import { isTrustedPushEndpoint } from './push-endpoint';
+import { pushTargetPath } from './push-target';
 
 export interface PushPayload {
   title: string;
@@ -29,9 +30,10 @@ export class PushService {
   async sendToUser(userId: string, payload: PushPayload): Promise<{ attempted: boolean; success: boolean; sent: number; removed: number; error?: string }> {
     const subscriptions = await this.database.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('push_subscriptions').selectAll().where('user_id', '=', userId).execute());
     if (subscriptions.length === 0) return { attempted: false, success: false, sent: 0, removed: 0, error: 'no_subscription' };
-    // Notifications may appear on a locked/shared screen. Details stay behind authentication.
+    // Notifications may appear on a locked/shared screen. Details stay behind authentication :
+    // texte générique, seule la page cible (chemin interne, jamais affiché) suit la notification.
     const message = 'Vous avez une nouvelle notification. Connectez-vous pour la consulter.';
-    const body = JSON.stringify({ title: 'DomiCares', message, body: message, url: '/login', notificationId: payload.notificationId, tag: 'domicares-notification' });
+    const body = JSON.stringify({ title: 'DomiCares', message, body: message, url: pushTargetPath(payload.url), notificationId: payload.notificationId, tag: 'domicares-notification' });
     if (this.config.PUSH_PROVIDER === 'console') {
       this.logger.log(`[push:console] ${subscriptions.length} abonnement(s) de ${userId}`);
       return { attempted: true, success: true, sent: subscriptions.length, removed: 0 };

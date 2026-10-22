@@ -39,9 +39,10 @@ de la base locale et les routes ; plan actif :
 - Tentatives de connexion : incrémentation SQL atomique et verrouillage dans la même écriture ;
   conserver le limiteur IP des routes publiques d'authentification et ses réponses 429.
 - Push : autoriser les destinations à l'inscription ET avant envoi des anciennes lignes,
-  avec contenu générique sans données médicales.
+  avec contenu générique sans données médicales. Le clic ouvre la page de la notification
+  (`pushTargetPath` : /dashboard, /dashboard/<rôle>, /admin ; sinon /login), revérifiée par `public/sw.js`.
 - Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
-- Validation courante : 42 tests unitaires et 126 tests d'intégration, dont 4 essais MinIO réels
+- Validation courante : 51 tests unitaires et 126 tests d'intégration, dont 4 essais MinIO réels
   (document 15 : 126/126 sur PostgreSQL 16 et MinIO locaux ; MinIO compilé depuis son commit en CI,
   `S3_TEST_REQUIRED=1` interdit le saut silencieux de la suite S3).
 - Nettoyage des comptes hors test : refusé en production (403) dans `AdminService` ; ne pas retirer cette garde.

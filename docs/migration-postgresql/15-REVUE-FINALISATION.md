@@ -665,3 +665,20 @@ Contrôles :
 - front : 85 tests, typecheck, build et lint (0 erreur) ;
 - API : 42 tests unitaires et build ;
 - recette 12/12 (2 scénarios ajoutés, en échec sans la correction).
+
+### Page ouverte par une notification push
+
+La notification push gardait un texte générique, mais ouvrait toujours `/login` : l'API et le
+service worker imposaient tous deux cette page. Désormais, la charge porte le chemin interne de
+la notification (`pushTargetPath`), revérifié par `public/sw.js` avant ouverture. Tout autre
+lien donne `/login`, et le texte reste générique. Le clic ouvre une fenêtre si l'onglet existant
+ne peut pas naviguer.
+
+Contrôles :
+- API : 51 tests unitaires, typecheck, build ;
+- front : 94 tests, typecheck, lint (0 erreur) ;
+- 38 scénarios navigateur Chromium ;
+- sans la correction, 9 tests échouent.
+
+Non validé : la réception sur un appareil réel (WebKit et Safari compris), ainsi que le retour
+à la page ciblée après une connexion.
