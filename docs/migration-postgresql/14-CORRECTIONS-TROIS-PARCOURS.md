@@ -86,7 +86,9 @@ développement. Le workflow `recette.yml` la relance sur chaque PR concernée.
 RECETTE_DATABASE_URL=postgresql://domicares_app:…@localhost:5432/<base dédiée> npm run test:recette
 ```
 
-La configuration refuse toute base qui n'est pas locale. Les données sont créées par l'API :
+La configuration refuse toute base qui n'est pas locale. Les scénarios tournent dans trois projets
+successifs : `chromium`, `chromium-iphone` et `webkit-iphone` (moteur de Safari, en CI). Le
+document 12 en détaille la portée. Les données sont créées par l'API :
 inscriptions, KYC, puis messages, ce qui produit de vraies notifications et leurs liens. Seuls
 les rendez-vous confirmés sont insérés en SQL : 26 pour la patiente, dont le plus ancien est en
 page 2 des conversations, un avec le coach et un pour un second patient.
@@ -216,6 +218,30 @@ Tests :
 **Non exécuté** : l'envoi réel. Il faut la clé Resend et la boîte du VPS, absentes de cette
 session. Après `./contact-check.sh --via-site` sur le VPS, consigner ici l'identifiant Resend, le
 statut et la présence en boîte.
+
+**Push sur téléphone réel (22 octobre 2026).** Quatre causes d'échec n'apparaissent que sur appareil :
+- **Push silencieux** : le worker n'affichait rien pour un push sans données ou illisible. Or
+  Safari/iOS révoque l'abonnement après des push silencieux. Une notification générique est
+  désormais toujours affichée.
+- **Clés VAPID incohérentes** : rien ne les détectait, et Apple ou Google refusent alors chaque
+  envoi. `PushService` vérifie la paire au démarrage (`vapidKeyError`). En cas d'erreur, il
+  journalise, coupe le push (clé publique null, envoi refusé avec `vapid_mismatch`) sans bloquer le
+  reste de l'API.
+- **Urgence** : envoi avec `urgency: high`, pour une remise rapide en économie d'énergie.
+- **Recette impossible sans vrai message** : nouvelle route `POST /api/push/test` (authentifiée,
+  5 appels par 10 min, appareils de l'appelant seulement) et bouton « Envoyer une notification de
+  test » dans l'onglet Notifications. Le bouton affiche le résultat réel de l'envoi (`describeTestPush`).
+- **iPhone hors application installée** : la section push était masquée. Elle explique désormais
+  l'ajout à l'écran d'accueil (`isIosWithoutInstall`).
+
+Tests :
+- API : 63 tests unitaires (paire VAPID, coupure, urgence) ; e2e de la route de test (401,
+  envoi à l'appelant, aucun abonnement) ; e2e 122/122 ;
+- front : 116 tests (worker sans données ou illisible, bouton de test, mode console signalé,
+  indication iOS) ; 38 scénarios navigateur ; recette 32/32 ;
+- sans la correction du worker, ses 2 nouveaux tests échouent.
+
+**Non exécuté** : la réception sur un téléphone réel (document 12, point 7).
 
 Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
 `CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue

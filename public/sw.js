@@ -39,15 +39,14 @@ function notificationTarget(value) {
   } catch { return '/login'; }
 }
 self.addEventListener('push', event => {
-  if (!event.data) return;
-  try {
-    const data = event.data.json();
-    event.waitUntil(self.registration.showNotification('DomiCares', {
-      body: 'Vous avez une nouvelle notification. Connectez-vous pour la consulter.',
-      icon: '/pwa/icon-192.png', badge: '/pwa/icon-192.png',
-      data: { url: notificationTarget(data.url), notificationId: data.notificationId }, tag: 'domicares-notification',
-    }));
-  } catch { /* Ignore invalid notification payloads. */ }
+  // Toujours afficher une notification : Safari/iOS révoque l'abonnement après des push silencieux.
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { /* Charge illisible : notification générique. */ }
+  event.waitUntil(self.registration.showNotification('DomiCares', {
+    body: 'Vous avez une nouvelle notification. Connectez-vous pour la consulter.',
+    icon: '/pwa/icon-192.png', badge: '/pwa/icon-192.png',
+    data: { url: notificationTarget(data && data.url), notificationId: data && data.notificationId }, tag: 'domicares-notification',
+  }));
 });
 self.addEventListener('notificationclick', event => {
   event.notification.close();

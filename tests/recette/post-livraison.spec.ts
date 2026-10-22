@@ -28,7 +28,9 @@ async function logout(page: Page) {
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
   }
-  await page.getByRole('button', { name: /Déconnexion/ }).first().click();
+  // Sous 768 px (iPhone), le bouton du bureau est masqué : passer par le menu mobile.
+  if ((page.viewportSize()?.width ?? 1280) < 768) await page.getByRole('button', { name: 'Ouvrir le menu' }).click();
+  await page.getByRole('button', { name: /Déconnexion/ }).filter({ visible: true }).first().click();
   await expect.poll(() => new URL(page.url()).pathname).not.toMatch(/^\/dashboard/);
 }
 
@@ -37,9 +39,12 @@ const paymentState = (ownerId: string, appointmentId: string) => ({
   state: { appointmentId, amount: 15000, paymentMethod: 'mtn', phoneNumber: '+22900000000', paymentStatus: 'pending', paymentUrl: null, paymentId: null, transactionId: null, expiresAt: null, useSavedMethod: false, selectedSavedMethod: '', lastUpdated: Date.now() },
 });
 
-async function openNotification(page: Page, space: string, title: RegExp) {
+// Notification ciblée par son titre et, si besoin, par son texte : les projets se suivent sur les
+// mêmes données et la réponse du chat mobile crée une notification de même titre.
+async function openNotification(page: Page, space: string, title: RegExp, text?: string) {
   await page.goto(`/dashboard/${space}?tab=notifications`);
-  await page.getByRole('link', { name: title }).first().click();
+  const link = page.getByRole('link', { name: title });
+  await (text ? link.filter({ hasText: text }) : link).first().click();
 }
 
 test.describe('1. Déconnexion et connexion entre deux comptes', () => {
@@ -115,21 +120,21 @@ test.describe('1 bis. Retour à la page après connexion', () => {
 test.describe('2. Notifications de message par rôle', () => {
   test('praticien : la notification ouvre la conversation du patient', async ({ page }) => {
     const space = await login(page, 'practitioner');
-    await openNotification(page, space, /Nouveau message de Patiente Alpha/);
+    await openNotification(page, space, /Nouveau message de Patiente Alpha/, `Message de la patiente ${state.tag} au praticien`);
     await expect(page).toHaveURL(new RegExp(`/dashboard/practitioner\\?tab=messages&appointment=${state.recentAppointmentId}`));
     await expect(page.getByText(`Message de la patiente ${state.tag} au praticien`).last()).toBeVisible();
   });
 
   test('coach : la notification ouvre la conversation du rendez-vous individuel', async ({ page }) => {
     const space = await login(page, 'coach');
-    await openNotification(page, space, /Nouveau message de Patiente Alpha/);
+    await openNotification(page, space, /Nouveau message de Patiente Alpha/, `Message de la patiente ${state.tag} au coach`);
     await expect(page).toHaveURL(new RegExp(`/dashboard/coach\\?tab=messages&appointment=${state.coachAppointmentId}`));
     await expect(page.getByText(`Message de la patiente ${state.tag} au coach`).last()).toBeVisible();
   });
 
   test('patient : la notification ouvre un rendez-vous hors de la première page', async ({ page }) => {
     const space = await login(page, 'patientA');
-    await openNotification(page, space, /Nouveau message de Docteur Gamma/);
+    await openNotification(page, space, /Nouveau message de Docteur Gamma/, `Message du praticien ${state.tag} (rendez-vous ancien)`);
     await expect(page).toHaveURL(new RegExp(`/dashboard/patient\\?tab=messages&appointment=${state.oldAppointmentId}`));
     await expect(page.getByText(`Message du praticien ${state.tag} (rendez-vous ancien)`).last()).toBeVisible();
   });
@@ -167,7 +172,7 @@ test.describe('3. Chat mobile', () => {
 
   test('la notification ouvre directement le chat du rendez-vous ancien', async ({ page }) => {
     const space = await login(page, 'patientA');
-    await openNotification(page, space, /Nouveau message de Docteur Gamma/);
+    await openNotification(page, space, /Nouveau message de Docteur Gamma/, `Message du praticien ${state.tag} (rendez-vous ancien)`);
     await expect(page).toHaveURL(new RegExp(`appointment=${state.oldAppointmentId}`));
     await expect(page.getByText(`Message du praticien ${state.tag} (rendez-vous ancien)`).last()).toBeVisible();
     const input = page.getByRole('textbox').last();

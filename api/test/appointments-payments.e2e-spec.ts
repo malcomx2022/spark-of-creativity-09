@@ -91,6 +91,7 @@ describe('Appointments & payments (e2e)', () => {
       await sql`delete from public.files where user_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.practitioners where user_id = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.admin_audit_logs where admin_id = any(${ids}::uuid[])`.execute(trx);
+      await sql`delete from public.reconciliation_reports where created_by = any(${ids}::uuid[])`.execute(trx);
       await sql`delete from public.users where id = any(${ids}::uuid[])`.execute(trx);
     });
     await app.close();
@@ -414,5 +415,23 @@ describe('Appointments & payments (e2e)', () => {
     expect(paid.json().status).toBe('paid');
     expect((await app.inject({ method: 'GET', url: `/api/appointments/${created.json().id}`, headers: auth('patient') })).json().status).toBe('confirmed');
     await db.runAs({ role: 'service_role' }, (trx) => trx.deleteFrom('webhook_events').where('event_id', 'like', `sim-${txId}-%`).execute());
+  });
+  it('remboursement partiel fait au tableau de bord FedaPay : paiement encaissé (pas annulé par le nettoyage), oubli signalé par la réconciliation', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(15), time: '15:00', reason: 'Remboursement partiel' } });
+    const accepted = await app.inject({ method: 'POST', url: `/api/appointments/${created.json().id}/respond`, headers: auth('practitioner'), payload: { action: 'accept' } });
+    const { transactionId, paymentId } = accepted.json() as { transactionId: string; paymentId: string };
+    // FedaPay : payé puis remboursé en partie depuis le tableau de bord avant que Domicares ne l'ait vu.
+    fedapay.setStatus(transactionId, 'approved_partially_refunded');
+    const job = await app.inject({ method: 'POST', url: '/api/admin/jobs/payments.cleanup/run', headers: auth('admin'), payload: { expirationMinutes: 0 } });
+    expect(job.json().result.cleaned).toContainEqual(expect.objectContaining({ paymentId, newStatus: 'paid' }));
+    expect((await app.inject({ method: 'GET', url: `/api/payments/${paymentId}`, headers: auth('patient') })).json().status).toBe('paid');
+    expect((await fedapay.getTransaction(transactionId)).status).toBe('approved_partially_refunded');
+    expect((await app.inject({ method: 'GET', url: `/api/appointments/${created.json().id}`, headers: auth('patient') })).json().status).toBe('confirmed');
+
+    const rec = await app.inject({ method: 'POST', url: '/api/admin/finance/reconciliation', headers: auth('admin'), payload: {} });
+    expect(rec.statusCode).toBe(201);
+    const anomaly = rec.json().anomalies.find((a: { db_payment_id?: string }) => a.db_payment_id === paymentId);
+    expect(anomaly).toMatchObject({ type: 'status_mismatch', fedapay_status: 'approved_partially_refunded', db_status: 'paid', description: expect.stringContaining('Remboursement partiel') });
+    expect(anomaly.recommendation).toContain('Déjà effectué sur le tableau de bord FedaPay');
   });
 });

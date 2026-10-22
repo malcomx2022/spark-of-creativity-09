@@ -732,3 +732,64 @@ Contrôles :
 
 **Non exécuté ici** : l'envoi réel, faute de clé Resend et de boîte dans cette session. Ce
 contrôle reste à lancer sur le VPS (document 07, §9).
+
+### Essais Safari sur iPhone
+
+Aucun iPhone ni service d'appareils n'est disponible dans cette session : la recette physique du
+document 12 reste à faire. En attendant, la recette post-livraison, sur API et base réelles, tourne
+aussi en WebKit iPhone en CI, et en Chromium au gabarit iPhone. Le harnais passe par le menu mobile
+pour la déconnexion, et cible chaque notification par son texte. Localement : 32/32 en Chromium
+bureau et iPhone.
+
+Le document 12 contient désormais une grille de résultats à remplir sur appareil.
+
+### Notification push sur un vrai téléphone
+
+Aucun téléphone n'est joignable depuis cette session. J'ai donc corrigé les causes d'échec propres
+aux appareils réels, et ajouté de quoi tester en un geste :
+- **Service worker** : il affiche toujours une notification (iOS révoque les abonnements après des
+  push silencieux) ;
+- **Clés VAPID** : la paire est vérifiée au démarrage, et le push est coupé proprement si elle est
+  incohérente ;
+- **Urgence** : `urgency: high` ;
+- **Envoi de test** : route `POST /api/push/test` et bouton dans l'onglet Notifications, avec le
+  résultat réel de l'envoi ;
+- **iPhone** : l'interface indique l'installation nécessaire dans Safari.
+
+Contrôles :
+- API : 63 tests unitaires, e2e 122/122 ;
+- front : 116 tests, typecheck, build, lint (0 erreur) ;
+- 38 scénarios navigateur ;
+- recette 32/32.
+
+Reste à faire sur un appareil réel : document 12, point 7.
+
+### Campagne FedaPay sur le vrai sandbox
+
+Les clés `FEDAPAY_SANDBOX_*` ne sont pas présentes dans cette session : la campagne réelle reste
+non exécutée. Le réseau atteint cependant le sandbox. Des sondes sans clé ont révélé que la route de
+paiement sans redirection utilisée par le harnais (`/v1/transactions/{mode}`) n'existe pas. C'est
+`/v1/{mode}` : corrigé, sinon S1 à S5 échouaient dès le premier essai réel.
+
+Les sondes confirment aussi que le remboursement par API (`/v1/transactions/{id}/refund`) n'existe
+pas. Domicares bascule alors comme prévu sur le canal manuel (502). Une ressource `/v1/refunds`
+existe : la campagne en lira la forme.
+
+Le contrôle S0 vérifie ces routes au démarrage. Campagne factice toujours verte (12 scénarios).
+
+### Remboursement par l'API FedaPay
+
+FedaPay n'offre pas de remboursement par API : la spécification OpenAPI et les SDK officiels PHP et
+Node n'en contiennent aucun, et seul le tableau de bord rembourse (MTN). `/v1/refunds`, non documenté,
+n'est pas utilisé. Le canal manuel devient le choix par défaut de l'écran Remboursements, et le
+canal API l'indique.
+
+Défaut corrigé sur la voie réelle. Après un remboursement partiel au tableau de bord, le statut
+FedaPay `approved_partially_refunded` était lu comme « en attente ». Le nettoyage annulait alors
+un paiement pourtant encaissé. Ce statut est désormais lu comme payé, et la réconciliation signale
+le remboursement à enregistrer.
+
+Contrôles :
+- API : 72 tests unitaires, e2e 123/123 (le nouveau test échoue sans la correction, paiement annulé) ;
+- front : 116 tests, lint (0 erreur), build ;
+- campagne factice verte.

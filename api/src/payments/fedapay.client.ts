@@ -2,7 +2,9 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 
 /** Statuts renvoyés par FedaPay (transactions). */
-export type FedaPayStatus = 'pending' | 'processing' | 'authorized' | 'approved' | 'declined' | 'canceled' | 'refunded' | 'transferred' | 'expired' | 'timeout';
+// Les statuts *_partially_refunded sont ceux des SDK officiels (Transaction::PAID_STATUS) après un
+// remboursement partiel fait depuis le tableau de bord.
+export type FedaPayStatus = 'pending' | 'processing' | 'authorized' | 'approved' | 'declined' | 'canceled' | 'refunded' | 'transferred' | 'expired' | 'timeout' | 'approved_partially_refunded' | 'transferred_partially_refunded';
 
 /**
  * Identifiants de mode FedaPay pour le Bénin (page « Méthodes de paiement », modes sans redirection,
@@ -203,6 +205,11 @@ export class HttpFedaPayClient implements FedaPayClient {
     return out;
   }
 
+  /**
+   * FedaPay ne documente aucun remboursement par API (référence OpenAPI, SDK officiels) : cette route répond
+   * 404 sur le sandbox (vérifié le 22 octobre 2026), d'où 502 FEDAPAY_REFUND_UNAVAILABLE et le canal manuel.
+   * Conservée pour le jour où l'API le proposera ; ne pas viser /v1/refunds sans contrat publié.
+   */
   async refundTransaction(transactionId: string, amount: number) {
     const data = await this.request(`/transactions/${transactionId}/refund`, { method: 'POST', body: JSON.stringify({ amount }) });
     const r = (data['v1/refund'] ?? (data.v1 as Record<string, unknown> | undefined)?.refund ?? data.refund ?? data) as Record<string, unknown>;

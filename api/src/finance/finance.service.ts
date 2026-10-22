@@ -820,7 +820,7 @@ export class FinanceService implements OnModuleInit {
       const anomalies: Anomaly[] = [];
       let matched = 0;
       let discrepancy = 0;
-      const statusMap: Record<string, string> = { approved: 'paid', transferred: 'paid', pending: 'pending', processing: 'pending', declined: 'failed', failed: 'failed', canceled: 'canceled', refunded: 'refunded' };
+      const statusMap: Record<string, string> = { approved: 'paid', transferred: 'paid', approved_partially_refunded: 'paid', transferred_partially_refunded: 'paid', pending: 'pending', processing: 'pending', declined: 'failed', failed: 'failed', canceled: 'canceled', refunded: 'refunded' };
       for (const t of remote) {
         const p = localMap.get(t.id);
         if (!p) {
@@ -835,7 +835,10 @@ export class FinanceService implements OnModuleInit {
         }
         const expected = statusMap[t.status] ?? t.status;
         const localStatus = p.status === 'partially_refunded' ? 'paid' : p.status;
-        if (expected !== localStatus) {
+        if (t.status.endsWith('_partially_refunded') && p.status === 'paid') {
+          // Remboursement partiel fait depuis le tableau de bord FedaPay (seule voie disponible) mais absent d'ici.
+          anomalies.push({ type: 'status_mismatch', severity: 'medium', fedapay_transaction_id: t.id, db_payment_id: p.id, fedapay_status: t.status, db_status: p.status, description: `Remboursement partiel effectué chez FedaPay (${t.status}) non enregistré dans Domicares`, recommendation: 'Enregistrer le remboursement (Remboursements → canal « Déjà effectué sur le tableau de bord FedaPay », montant et référence du tableau de bord) pour mettre à jour écritures et soldes' });
+        } else if (expected !== localStatus) {
           anomalies.push({ type: 'status_mismatch', severity: 'medium', fedapay_transaction_id: t.id, db_payment_id: p.id, fedapay_status: t.status, db_status: p.status, description: `Incohérence de statut: FedaPay=${t.status}, DB=${p.status}`, recommendation: 'Mettre à jour le statut dans la base de données pour correspondre à FedaPay (POST /admin/payments/:id/sync)' });
         }
       }

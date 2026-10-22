@@ -12,7 +12,7 @@ on:
 
 jobs:
   recette:
-    name: Recette navigateur (API et PostgreSQL 16 réels)
+    name: Recette navigateur (API et PostgreSQL 16 réels, Chromium et WebKit iPhone)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -47,8 +47,8 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: api
-      - name: Navigateur Playwright
-        run: npx playwright install --with-deps chromium
+      - name: Navigateurs Playwright (Chromium, WebKit pour l'émulation iPhone)
+        run: npx playwright install --with-deps chromium webkit
       - name: Recette
         env:
           CI: 'true'

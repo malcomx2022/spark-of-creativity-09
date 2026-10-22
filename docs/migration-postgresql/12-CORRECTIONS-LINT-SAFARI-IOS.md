@@ -92,6 +92,35 @@ Le téléchargement local de WebKit retourne HTTP 403 « Domain forbidden » pou
 les domaines de distribution Playwright. WebKit est installé et testé sur le
 runner GitHub Actions ; aucune réussite locale WebKit n'est revendiquée.
 
+## Recette sur API réelle en WebKit iPhone (22 octobre 2026)
+
+La recette post-livraison (`npm run test:recette`, document 14, §4 bis) ne simule aucun service :
+API compilée, PostgreSQL et front en preview. Elle joue désormais ses 16 scénarios dans trois projets
+successifs, sur les mêmes données :
+- `chromium` (bureau) ;
+- `chromium-iphone` (gabarit iPhone 13) ;
+- `webkit-iphone` (moteur de Safari, émulation iPhone 13).
+
+Le workflow `recette.yml` installe WebKit et exécute les trois projets.
+
+Ce que ces scénarios couvrent en WebKit iPhone (points 2, 4 et une partie de 7 de la liste
+ci-dessous) :
+- changement de compte et purge de la progression de paiement, y compris depuis un autre onglet ;
+- déconnexion par le menu mobile ;
+- retour à la page demandée après connexion ;
+- ouverture des notifications vers le bon chat ou onglet, dont un rendez-vous hors première page ;
+- chat à 390 px avec envoi d'une réponse ;
+- formulaire de contact.
+
+Localement, `chromium` et `chromium-iphone` réussissent : 32/32. WebKit n'est pas téléchargeable dans
+cet environnement (voir plus haut). Le résultat `webkit-iphone` est donc celui de la CI :
+[recette sur `df8c5d1`](https://github.com/malcomx2022/spark-of-creativity-09/actions/runs/39818597215)
+**réussie** pour les trois projets, `webkit-iphone` compris, à la première exécution.
+
+Ces essais ne couvrent ni le clavier virtuel, ni l'encoche, ni le mode installé, ni le mode avion,
+ni la mise à jour du worker, ni le push Apple, ni FedaPay. Ils ne remplacent pas la recette physique
+ci-dessous.
+
 ## Recette obligatoire sur appareil Apple physique
 
 WebKit automatisé et émulation de viewport ne remplacent pas Safari/iOS réel.
@@ -116,8 +145,30 @@ Sur une URL HTTPS de recette, sans données médicales réelles et avec FedaPay 
 7. Sur iOS/iPadOS 16.4+ installé, activer le push après un geste utilisateur,
    recevoir une notification de recette, suivre le lien et vérifier que la
    déconnexion désabonne l'appareil. Tester aussi un refus de permission.
+   Dans Safari non installé, l'onglet Notifications doit expliquer l'ajout à l'écran d'accueil.
+   Une fois abonné, « Envoyer une notification de test » (`POST /api/push/test`) affiche le
+   résultat réel de l'envoi : nombre d'appareils, mode console, clés VAPID incohérentes ou aucun
+   abonnement. La notification doit apparaître écran verrouillé avec le texte générique ; un appui
+   doit ouvrir l'onglet Notifications, ou passer par la connexion puis y revenir.
 8. Réaliser la campagne FedaPay sandbox du document 09, notamment ouverture/fermeture
    du widget et retour depuis Mobile Money. Ne pas effectuer de paiement réel.
 
 Enregistrer les résultats et anomalies dans ce document avant de déclarer la
 recette Safari/iOS physique validée. Ne pas fermer ce point sur la seule base de CI.
+
+Grille à compléter (une ligne par appareil et par mode : Safari, puis application installée).
+Résultat : ok / anomalie / non testé. En cas d'anomalie, ajouter une capture et une description
+reproductible.
+
+| Appareil, iOS | Mode | Build | Date | 1 Identification | 2 Affichage | 3 Clavier | 4 Comptes | 5 Hors ligne | 6 Mise à jour | 7 Push | 8 FedaPay sandbox | Anomalies |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| | Safari | | | | | | | | | | | |
+| | Installée | | | | | | | | | | | |
+
+Repères utiles, déjà automatisés en WebKit (section précédente) :
+- **point 4** : après le changement de compte, aucune conversation ni boîte de paiement de l'ancien compte ;
+- **point 7** : le clic sur la notification ouvre le chat du rendez-vous, et non `/login` ; hors
+  session, il passe par la connexion puis revient au chat.
+
+Sur l'appareil, vérifier en plus ce que l'émulation ne voit pas : clavier, encoche, mode installé,
+réception réelle du push.

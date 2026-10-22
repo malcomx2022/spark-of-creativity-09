@@ -75,6 +75,11 @@ export const STATUS_MAP: Record<FedaPayStatus, PaymentStatus> = {
   // Collecte non finalisée dans le délai FedaPay : terminée, pas « en attente ».
   expired: 'failed',
   timeout: 'failed',
+  // Payé puis remboursé en partie depuis le tableau de bord : l'argent a été encaissé (jamais « en attente »,
+  // que le nettoyage annulerait). Le montant rendu n'est pas exposé : la finance l'enregistre (canal manuel),
+  // la réconciliation signale l'oubli.
+  approved_partially_refunded: 'paid',
+  transferred_partially_refunded: 'paid',
 };
 
 export function normalizeStatus(fedaPayStatus: string): PaymentStatus {

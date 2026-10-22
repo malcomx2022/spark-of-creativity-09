@@ -39,9 +39,9 @@ it('preloads only the public fallback, manifest and installation icons', async (
   await done;
   expect(addAll.mock.calls[0][0]).toEqual(['/offline.html', '/manifest.webmanifest', '/pwa/icon-192.png', '/pwa/icon-512.png', '/pwa/icon-maskable.png', '/pwa/apple-touch-icon.png']);
 });
-async function push(payload: unknown) {
+async function push(payload: unknown, data: unknown = { json: () => payload }) {
   let done!: Promise<void>;
-  handlers.get('push')!({ data: { json: () => payload }, waitUntil: (value: Promise<void>) => { done = value; } });
+  handlers.get('push')!({ data, waitUntil: (value: Promise<void>) => { done = value; } });
   await done;
   return showNotification.mock.calls[0][1] as { body: string; data: { url: string } };
 }
@@ -77,4 +77,12 @@ it('le clic ouvre une fenêtre si l’onglet ne peut pas naviguer, et revérifie
   matchAll.mockResolvedValue([]);
   await click('/dashboard/patient?tab=reports');
   expect(openWindow).toHaveBeenLastCalledWith('https://app.test/dashboard/patient?tab=reports');
+});
+it.each([
+  ['sans données', null],
+  ['avec une charge illisible', { json: () => { throw new SyntaxError('bad'); } }],
+])('push %s : une notification générique est quand même affichée (pas de push silencieux)', async (_label, data) => {
+  const options = await push(undefined, data);
+  expect(showNotification).toHaveBeenCalledTimes(1);
+  expect(options.data.url).toBe('/login');
 });

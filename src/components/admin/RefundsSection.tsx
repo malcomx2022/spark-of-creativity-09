@@ -52,7 +52,8 @@ export function RefundsSection() {
   const [selectedPayment, setSelectedPayment] = useState<RefundablePayment | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
-  const [channel, setChannel] = useState<RefundChannel>('fedapay');
+  // FedaPay ne propose le remboursement que depuis son tableau de bord (MTN) : canal manuel par défaut.
+  const [channel, setChannel] = useState<RefundChannel>('manual');
   const [providerReference, setProviderReference] = useState("");
   const [confirmRef, setConfirmRef] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
@@ -121,7 +122,7 @@ export function RefundsSection() {
       setRefundAmount("");
       setRefundReason("");
       setProviderReference("");
-      setChannel('fedapay');
+      setChannel('manual');
       queryClient.invalidateQueries({ queryKey: ['refundable-payments'] });
       queryClient.invalidateQueries({ queryKey: ['payment-refunds'] });
     },
@@ -255,14 +256,14 @@ export function RefundsSection() {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="fedapay">Par l'API FedaPay</SelectItem>
                                   <SelectItem value="manual">Déjà effectué sur le tableau de bord FedaPay</SelectItem>
+                                  <SelectItem value="fedapay">Par l'API FedaPay (non proposé par FedaPay à ce jour)</SelectItem>
                                 </SelectContent>
                               </Select>
                               <p className="text-xs text-muted-foreground">
                                 {channel === 'manual'
                                   ? "Le remboursement a été fait chez FedaPay (MTN uniquement) ou par virement : indiquez sa référence, Domicares enregistre les écritures et prévient le patient."
-                                  : "Domicares demande le remboursement à FedaPay. S'il reste « en attente », confirmez-le ci-dessous après vérification."}
+                                  : "FedaPay ne propose pas encore le remboursement par API : la demande sera refusée (502) et vous serez invité à utiliser le tableau de bord. Si FedaPay l'accepte un jour et qu'il reste « en attente », confirmez-le ci-dessous."}
                               </p>
                             </div>
                             {channel === 'manual' && (
