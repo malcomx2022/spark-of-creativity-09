@@ -6,6 +6,7 @@
 # « DEVELOPMENT.GOGET » (build non officiel) au lieu de sa release.
 #   docker build -f minio.Dockerfile -t domicares-minio:RELEASE.2025-09-07T16-13-09Z .
 #   docker build -f minio.Dockerfile --target mc -t domicares-minio-mc:RELEASE.2025-08-13T08-35-41Z .
+#   docker build -f minio.Dockerfile --target backup -t domicares-backup:pg16-mc-RELEASE.2025-08-13T08-35-41Z .
 FROM golang:1.24.7-alpine3.22 AS build-minio
 ARG MINIO_RELEASE=RELEASE.2025-09-07T16-13-09Z
 ARG MINIO_VERSION=2025-09-07T16:13:09Z
@@ -29,6 +30,11 @@ FROM alpine:3.22 AS mc
 RUN apk add --no-cache ca-certificates
 COPY --from=build-mc /out/mc /usr/bin/mc
 ENTRYPOINT ["mc"]
+
+# Sauvegarde (service backup, backup.sh / restore-check.sh) : pg_dump 16, mc épinglé, age, rclone.
+FROM postgres:16-alpine AS backup
+RUN apk add --no-cache age rclone curl ca-certificates
+COPY --from=build-mc /out/mc /usr/bin/mc
 
 # Serveur (cible par défaut) : root comme l'image officielle, pour les droits du volume existant.
 FROM alpine:3.22

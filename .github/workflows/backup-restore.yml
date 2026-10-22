@@ -1,0 +1,88 @@
+name: Backup / restore
+
+# Cycle complet en conteneurs : pile type production (schéma natif + MinIO) alimentée, sauvegarde
+# par l'image backup (copie hors site chiffrée), exercices isolés sur la sauvegarde locale et sur
+# l'archive hors site déchiffrée, puis cas négatif (objet référencé supprimé → échec attendu).
+on:
+  pull_request:
+    paths: ['deploy/vps/backup.sh', 'deploy/vps/restore-check.sh', 'deploy/vps/restore-drill.sh', 'deploy/vps/minio.Dockerfile', 'deploy/vps/docker-compose.yml', 'db/native/**', '.github/workflows/backup-restore.yml']
+  push:
+    branches: [main]
+    paths: ['deploy/vps/backup.sh', 'deploy/vps/restore-check.sh', 'deploy/vps/restore-drill.sh', 'deploy/vps/minio.Dockerfile', 'deploy/vps/docker-compose.yml', 'db/native/**', '.github/workflows/backup-restore.yml']
+
+jobs:
+  cycle:
+    name: Sauvegarde, copie hors site et restauration isolée
+    runs-on: ubuntu-latest
+    env:
+      BACKUP_IMAGE: domicares-backup:pg16-mc-RELEASE.2025-08-13T08-35-41Z
+      MINIO_IMAGE: domicares-minio:RELEASE.2025-09-07T16-13-09Z
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construire les images (serveur MinIO et sauvegarde)
+        working-directory: deploy/vps
+        run: |
+          docker build -f minio.Dockerfile -t "$MINIO_IMAGE" .
+          docker build -f minio.Dockerfile --target backup -t "$BACKUP_IMAGE" .
+          docker run --rm --entrypoint sh "$BACKUP_IMAGE" -c 'pg_dump --version && mc --version | head -1 && age --version && rclone version | head -1'
+      - name: Pile source (schéma natif, buckets, données référencées)
+        run: |
+          docker network create prod
+          docker run -d --name postgres --network prod -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=domicares -v "$PWD/db/native:/native:ro" postgres:16-alpine
+          docker run -d --name minio --network prod -e MINIO_ROOT_USER=ci-minio -e MINIO_ROOT_PASSWORD=ci-minio-password "$MINIO_IMAGE" server /data
+          for i in $(seq 1 30); do docker exec postgres pg_isready -U postgres -d domicares -q && break; sleep 1; done
+          sleep 2
+          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 130_fixes_heritage.sql 020_grants.sql; do
+            docker exec postgres psql -U postgres -d domicares -v ON_ERROR_STOP=1 -q -f "/native/$f" >/dev/null
+          done
+          docker exec -i postgres psql -U postgres -d domicares -v ON_ERROR_STOP=1 -q <<'SQL'
+          insert into users (id, email) values ('11111111-1111-1111-1111-111111111111', 'pat@domicares.test'), ('22222222-2222-2222-2222-222222222222', 'doc@domicares.test');
+          update profiles set avatar_url = 'avatars/11111111-1111-1111-1111-111111111111/a-photo.png' where id = '11111111-1111-1111-1111-111111111111';
+          insert into practitioners (user_id, name, specialty, id_document_url) values ('22222222-2222-2222-2222-222222222222', 'Doc', 'Généraliste', 'documents/22222222-2222-2222-2222-222222222222/b-cni.pdf');
+          insert into files (user_id, file_name, file_path, file_size, folder) values
+            ('11111111-1111-1111-1111-111111111111', 'a-photo.png', 'avatars/11111111-1111-1111-1111-111111111111/a-photo.png', 10, 'avatars'),
+            ('22222222-2222-2222-2222-222222222222', 'b-cni.pdf', 'documents/22222222-2222-2222-2222-222222222222/b-cni.pdf', 12, 'documents');
+          SQL
+          docker run --rm --network prod --entrypoint sh "$BACKUP_IMAGE" -c '
+            set -e
+            for i in $(seq 1 30); do mc alias set p http://minio:9000 ci-minio ci-minio-password >/dev/null 2>&1 && break; sleep 1; done
+            mc mb p/documents p/avatars p/message-attachments >/dev/null
+            printf "photo" | mc pipe p/avatars/11111111-1111-1111-1111-111111111111/a-photo.png >/dev/null
+            printf "%%PDF-1.4 cni" | mc pipe p/documents/22222222-2222-2222-2222-222222222222/b-cni.pdf >/dev/null
+            printf "%%PDF-1.4 en attente" | mc pipe p/documents/_pending/22222222-2222-2222-2222-222222222222/tmp.pdf >/dev/null'
+      - name: Sauvegarde (image backup, copie hors site chiffrée)
+        run: |
+          mkdir -p backups offsite keys
+          docker run --rm -v "$PWD/keys:/keys" --entrypoint sh "$BACKUP_IMAGE" -c 'age-keygen -o /keys/key.txt 2>/dev/null && age-keygen -y /keys/key.txt > /keys/recipient.txt'
+          echo "ci-sha" > backups/.app-version
+          docker run --rm --network prod \
+            -v "$PWD/backups:/backups" -v "$PWD/offsite:/offsite" -v "$PWD/deploy/vps/backup.sh:/backup.sh:ro" \
+            -e PGHOST=postgres -e PGUSER=postgres -e PGPASSWORD=ci -e PGDATABASE=domicares \
+            -e S3_ENDPOINT=http://minio:9000 -e S3_ACCESS_KEY=ci-minio -e S3_SECRET_KEY=ci-minio-password \
+            -e BACKUP_AGE_RECIPIENT="$(cat keys/recipient.txt)" -e BACKUP_OFFSITE_REMOTE=/offsite \
+            --entrypoint sh "$BACKUP_IMAGE" /backup.sh
+          cat backups/last-status.json
+          stamp=$(ls backups | grep -E '^20.*Z$')
+          cat "backups/$stamp/manifest.json"
+          grep -q '"count": 2' "backups/$stamp/manifest.json"
+          if grep -q _pending "backups/$stamp/objects.sha256"; then echo "objet _pending sauvegardé"; exit 1; fi
+          test -s "offsite/domicares-$stamp.tar.age"
+      - name: Exercice isolé sur la sauvegarde locale
+        run: sudo chown -R "$USER" backups && deploy/vps/restore-drill.sh "backups/$(ls backups | grep -E '^20.*Z$')"
+      - name: Exercice isolé sur l'archive hors site déchiffrée
+        run: |
+          mkdir -p from-offsite
+          docker run --rm -v "$PWD/keys:/keys:ro" -v "$PWD/offsite:/offsite:ro" -v "$PWD/from-offsite:/out" --entrypoint sh "$BACKUP_IMAGE" \
+            -c 'age -d -i /keys/key.txt /offsite/domicares-*.tar.age | tar -C /out -xf -'
+          sudo chown -R "$USER" from-offsite
+          deploy/vps/restore-drill.sh "from-offsite/$(ls from-offsite)"
+      - name: Cas négatif — objet référencé absent, l'exercice doit échouer
+        run: |
+          stamp=$(ls backups | grep -E '^20.*Z$')
+          cp -r "backups/$stamp" broken
+          rm broken/objects/documents/22222222-2222-2222-2222-222222222222/b-cni.pdf
+          grep -v 'b-cni.pdf' broken/objects.sha256 > broken/objects.tmp && mv broken/objects.tmp broken/objects.sha256
+          (cd broken && sha256sum postgres.dump roles.sql objects.sha256 manifest.json > SHA256SUMS)
+          if deploy/vps/restore-drill.sh broken > negative.log 2>&1; then cat negative.log; echo "l'exercice aurait dû échouer"; exit 1; fi
+          cat negative.log
+          grep -q 'référence(s) sans objet' negative.log

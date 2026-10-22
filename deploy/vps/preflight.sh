@@ -98,6 +98,17 @@ else
   ko "démon docker injoignable"
 fi
 
+echo "▶ 3b. Sauvegardes"
+if [[ -f "$HERE/.env" ]]; then
+  if [[ -n "$(env_get BACKUP_OFFSITE_REMOTE)" ]]; then
+    [[ "$(env_get BACKUP_AGE_RECIPIENT)" == age1* ]] && ok "copie hors site chiffrée configurée" || ko "BACKUP_OFFSITE_REMOTE sans BACKUP_AGE_RECIPIENT (age1…) : sauvegarde refusée"
+  else warn "aucune copie hors site (BACKUP_OFFSITE_REMOTE) : une perte du VPS emporte les sauvegardes"; fi
+  [[ -n "$(env_get BACKUP_ALERT_URL)" ]] && ok "alerte d'échec configurée" || warn "aucune alerte d'échec (BACKUP_ALERT_URL)"
+fi
+if [[ -f "$HERE/backups/last-success" ]]; then
+  age_h=$(( ( $(date +%s) - $(cat "$HERE/backups/last-success") ) / 3600 ))
+  (( age_h <= 26 )) && ok "dernière sauvegarde réussie il y a ${age_h} h" || ko "dernière sauvegarde réussie il y a ${age_h} h (voir backups/last-status.json)"
+else warn "aucune sauvegarde réussie à ce jour (backups/last-success)"; fi
 echo "▶ 4. Ressources"
 avail=$(df -BG --output=avail "$HERE" 2>/dev/null | tail -1 | tr -dc 0-9); [[ -n "$avail" ]] && { [[ "$avail" -ge 15 ]] && ok "disque : ${avail} Go libres" || ko "disque : ${avail} Go libres (< 15 Go : images + base + fichiers + sauvegardes)"; }
 mem=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null); [[ -n "$mem" ]] && { [[ "$mem" -ge 4 ]] && ok "RAM : ${mem} Go" || warn "RAM : ${mem} Go (< 4 Go : réduire PG_SHARED_BUFFERS)"; }

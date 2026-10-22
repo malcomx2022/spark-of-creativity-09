@@ -532,3 +532,50 @@ Validation locale (sans Docker, indisponible ici) :
 La construction de l'image Docker elle-même est validée par le workflow
 `minio-image.yml` sur la PR.
 
+## 14. Sauvegarde et restauration (lot 6) — 22 octobre 2026
+
+Avant : `backup.sh` ne faisait qu'un `pg_dump` quotidien. Pas de fichiers S3, pas de manifeste,
+pas de copie hors site, pas d'alerte ni de restauration testée. Le guide conseillait une copie
+hors site non chiffrée et une restauration par `pg_restore` seul.
+
+Livré :
+
+- `backup.sh` (POSIX, image `domicares-backup` = cible `backup` de `minio.Dockerfile` :
+  `postgres:16-alpine`, `mc` épinglé, `age`, `rclone`, `curl`) : objets des trois buckets copiés
+  avant et après le `pg_dump`, quarantaine `_pending/` exclue, rôles sans mots de passe,
+  `objects.sha256`, `manifest.json` (version applicative, empreintes du dump et du schéma,
+  décomptes), `SHA256SUMS`. Copie hors site chiffrée avec `age` vers un remote `rclone`, avec
+  contrôle de taille et rétention. Refus de toute copie hors site non chiffrée. Statut
+  `last-status.json`, alerte HTTP en cas d'échec, aucun dossier partiel conservé.
+- Service `backup` : intervalle configurable (RPO), healthcheck `unhealthy` après 26 h sans réussite.
+- `restore-check.sh` : empreintes, puis gardes « base vide et buckets vides » **avant toute
+  écriture**, rôles, `pg_restore --exit-on-error`, objets, puis contrôle de chaque chemin de
+  stockage référencé en SQL (fichiers, documents KYC, avatars, pièces jointes, anciens chemins
+  `practitioner-documents/`) et relecture de son empreinte dans le S3 restauré.
+- `restore-drill.sh` : exercice isolé (PostgreSQL et MinIO jetables, réseau docker interne).
+- `preflight.sh` (copie hors site, chiffrement, alerte, ancienneté), `.env.example`,
+  `deploy-vps.yml` (version applicative du manifeste), document 07 §13 (RPO 24 h, RTO 4 h,
+  configuration, exercice mensuel, restauration de sinistre), document 10 (lot 6).
+- Workflow `backup-restore.yml` : cycle complet en conteneurs, avec exercices sur la sauvegarde
+  locale et sur l'archive hors site déchiffrée, et un cas négatif.
+
+Validation locale (PostgreSQL 16 et MinIO réels, `mc`/`rclone` aux versions de l'image,
+scripts exécutés sous `dash`) :
+
+| Cas | Résultat |
+|---|---|
+| Sauvegarde complète + copie hors site chiffrée | ✔ 5 objets (dont un nom avec espace), `_pending/` exclu, archive `.tar.age` déposée et taille vérifiée |
+| Restauration depuis l'archive hors site déchiffrée | ✔ 7 références résolues, 0 manquante, 1 URL externe signalée, empreintes relues identiques |
+| Base cible non vide | ✔ refus |
+| Bucket cible non vide | ✔ refus **avant** écriture en base (défaut d'ordre trouvé puis corrigé) |
+| Objet ou dump altéré dans la sauvegarde | ✔ refus (`objects.sha256`, `SHA256SUMS`) |
+| Objet référencé disparu de la source | ✔ exercice en échec, références listées |
+| Copie hors site sans clé `age` / S3 injoignable / base injoignable | ✔ échec, statut `failed` avec l'étape, alerte reçue, `last-success` inchangé |
+| Commandes de restauration de production du document 07 | ✔ rejouées telles qu'écrites |
+
+Non validé ici, faute de Docker : construction de l'image `backup`, `restore-drill.sh` et
+healthcheck en conteneur. Ces points sont couverts par `backup-restore.yml` sur la PR.
+Reste à l'exploitant : configurer `BACKUP_OFFSITE_REMOTE`, `BACKUP_AGE_RECIPIENT` (clé privée
+hors du VPS) et `BACKUP_ALERT_URL`, confirmer RPO et RTO, et lancer puis consigner le premier
+`./restore-drill.sh` sur une vraie sauvegarde.
+

@@ -13,6 +13,9 @@ Les consignes de `../../CLAUDE.md` s'appliquent. Références :
   Un dump PostgreSQL ne sauvegarde pas le volume MinIO.
 - Documenter une stratégie de reprise cohérente entre références SQL et objets ;
   vérifier les trois buckets, les chemins, les tailles et les empreintes.
+  Implémenté (document 15, §14) : backup.sh, restore-check.sh, restore-drill.sh, image backup
+  (minio.Dockerfile --target backup), workflow backup-restore.yml. restore-check.sh vérifie les
+  gardes « cible vide » avant toute écriture ; ne jamais affaiblir ce refus.
 - Documenter la validation après déploiement et la compatibilité du rollback avec
   les éventuelles migrations. `/api/health` seul ne valide pas les parcours métier.
 - Mettre à jour les exemples de configuration, `preflight.sh`, les workflows et le

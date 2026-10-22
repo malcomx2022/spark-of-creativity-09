@@ -362,9 +362,9 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 |---|---|
 | Journaux | `docker compose logs -f api` (ou `web`, `worker`, `caddy`, `postgres`) |
 | État | `docker compose ps` ; `curl -s https://<domaine>/api/health` |
-| Sauvegardes | quotidiennes dans `deploy/vps/backups/` (service `backup`, rétention 14 jours) |
-| Copie hors site | `rclone copy ~/domicares/deploy/vps/backups s3:domicares-backups` en cron |
-| Restauration | `pg_restore -d domicares -c backups/domicares-<h>.dump` |
+| Sauvegardes | base + fichiers, quotidiennes dans `deploy/vps/backups/<horodatage>/` (service `backup`, §13) |
+| État des sauvegardes | `docker compose ps backup` (healthy/unhealthy) ; `cat backups/last-status.json` |
+| Exercice de restauration | `./restore-drill.sh` (isolé, mensuel, §13) |
 | Accès psql | `docker compose exec postgres psql -U postgres -d domicares` |
 | Redémarrage | `docker compose restart api worker` |
 | Espace disque | `docker system prune -f` (images orphelines) |
@@ -391,3 +391,72 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | `scp: stat local ... No such file or directory` | chemin relatif à la racine du dépôt : `cd` à la racine avant le `scp` |
 | `preflight.sh` : « port 80/443 occupé » alors que seul Caddy écoute | `ss -p` ne montre le propriétaire qu'aux sockets de l'utilisateur courant : lancé en `deploy`, un service root apparaît anonyme. Le script interroge maintenant docker ; s'il reste un doute, `sudo ss -ltnp "sport = :80"` nomme le tenant |
 | `git pull` refusé sur le VPS | clé de déploiement absente ou révoquée (§3) |
+
+## 13. Sauvegardes et restauration
+
+**Objectifs retenus.** RPO 24 h : une sauvegarde par jour (`BACKUP_INTERVAL_SECONDS`), donc au
+plus une journée de données perdue. RTO 4 h : réinstallation du VPS (§1 à §6), récupération de
+l'archive hors site, restauration vérifiée et recette. La durée réelle de restauration est
+affichée par chaque exercice ; consignez-la et révisez l'objectif si elle dérive.
+
+**Contenu.** Le service `backup` (`backup.sh`) produit chaque jour `backups/<horodatage>/` :
+`postgres.dump` (pg_dump), `roles.sql` (rôles, sans mots de passe), `objects/<bucket>/…`
+(trois buckets, quarantaine `_pending/` exclue), `objects.sha256`, `manifest.json` (version
+applicative, empreinte du schéma, décomptes) et `SHA256SUMS`. Les objets sont copiés avant et
+après le dump : tout fichier référencé par le dump est dans la sauvegarde. Rétention locale :
+`BACKUP_KEEP_DAYS`. Chaque passage écrit `backups/last-status.json` ; un échec envoie une
+alerte à `BACKUP_ALERT_URL`, et le service passe `unhealthy` après 26 h sans réussite.
+
+**Copie hors site chiffrée (à configurer).** Sans elle, une perte du VPS emporte les sauvegardes.
+
+```bash
+age-keygen -o domicares-backup.key     # SUR VOTRE POSTE, pas sur le VPS
+# Conserver domicares-backup.key hors du VPS (coffre-fort de mots de passe + copie hors ligne).
+# Dans deploy/vps/.env :
+BACKUP_AGE_RECIPIENT=age1…              # ligne « public key » affichée par age-keygen
+BACKUP_OFFSITE_REMOTE=:s3,provider=Wasabi,access_key_id=…,secret_access_key=…,endpoint=s3.eu-central-1.wasabisys.com:domicares-backups
+BACKUP_ALERT_URL=https://…              # webhook recevant {"text": "…"}
+docker compose up -d backup             # recharge l'environnement (un restart ne suffit pas)
+```
+
+Chaque archive `domicares-<horodatage>.tar.age` est chiffrée pour cette clé publique : le VPS
+ne peut pas la relire, seule la clé privée le peut. Rétention distante : `BACKUP_OFFSITE_KEEP_DAYS`.
+Une valeur rclone contenant `,` ou `:` se met entre apostrophes dans la chaîne de connexion.
+`preflight.sh` contrôle cette configuration et l'ancienneté de la dernière sauvegarde réussie.
+
+**Exercice mensuel (isolé).** Restaure la dernière sauvegarde dans un PostgreSQL et un MinIO
+jetables, sur un réseau docker interne, puis supprime tout. La production n'est pas touchée.
+
+```bash
+cd ~/domicares/deploy/vps && ./restore-drill.sh            # ou ./restore-drill.sh backups/<horodatage>
+```
+
+Contrôles : empreintes, `pg_restore --exit-on-error`, décomptes, objets restaurés, et chaque
+chemin de stockage référencé en SQL (`files.file_path`, documents KYC, avatars, pièces jointes)
+présent avec la même empreinte dans le S3 restauré. Une référence sans objet fait échouer
+l'exercice : elle révèle un fichier perdu en production, à traiter. Pour tester la copie hors
+site, téléchargez une archive, déchiffrez-la sur votre poste
+(`age -d -i domicares-backup.key domicares-<h>.tar.age | tar -x`), copiez le dossier dans
+`backups/` puis lancez l'exercice sur ce dossier.
+
+**Restauration de production (sinistre).** Sur un VPS réinstallé (§1 à §6), sans trafic :
+
+```bash
+cd ~/domicares/deploy/vps
+docker compose stop api worker backup
+# 1. Récupérer la sauvegarde : archive hors site déchiffrée sur votre poste puis copiée dans backups/<horodatage>/
+# 2. Base vide : l'initialisation d'un volume neuf charge le schéma, que restore-check.sh refuse d'écraser.
+#    DESTRUCTIF — uniquement sur ce serveur réinstallé :
+docker compose exec postgres sh -c 'dropdb -U postgres --force "$POSTGRES_DB" && createdb -U postgres "$POSTGRES_DB"'
+# 3. Restauration vérifiée vers la base et le MinIO de ce serveur (buckets neufs, donc vides) ;
+#    les identifiants sont ceux du service backup (lus dans le conteneur, pas sur l'hôte) :
+docker compose run --rm --no-deps -v "$PWD/backups/<horodatage>:/restore:ro" --entrypoint sh backup -c \
+  'RESTORE_S3_ENDPOINT="$S3_ENDPOINT" RESTORE_S3_ACCESS_KEY="$S3_ACCESS_KEY" RESTORE_S3_SECRET_KEY="$S3_SECRET_KEY" sh /restore-check.sh /restore'
+# 4. Mots de passe : roles.sql n'en contient pas ; les rôles du cluster gardent ceux de l'installation.
+#    Vérifier la connexion de l'API, puis redémarrer :
+docker compose up -d
+```
+
+Puis la recette du §9. `restore-check.sh` refuse toute base contenant des tables et tout bucket
+non vide : il ne peut pas écraser des données existantes par erreur.
+
