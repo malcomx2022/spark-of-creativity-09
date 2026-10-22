@@ -7,6 +7,7 @@ import { sql } from 'kysely';
 import { createApp } from '../src/app.factory';
 import { DatabaseService } from '../src/database/database.service';
 import { FakeOtpProvider } from '../src/notifications/otp.provider';
+import { TokensService } from '../src/auth/tokens.service';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-secret-test-secret-test-secret-123456';
@@ -274,4 +275,99 @@ describe('Auth (e2e)', () => {
     const active = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('refresh_tokens').select('id').where('user_id', '=', userId).where('revoked_at', 'is', null).execute());
     expect(active).toHaveLength(0);
   });
+
+  // ---------------------------------------------------------------------------
+  // Concurrence : rotation d'un autre appareil pendant une révocation globale
+  // ---------------------------------------------------------------------------
+  describe('rotation concurrente d’un autre appareil pendant une révocation', () => {
+    let password = 'ChangeMdp#2026';
+    const login = async () => {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
+      expect(res.statusCode).toBe(200);
+      return res.json() as { accessToken: string; refreshToken: string };
+    };
+    const within = <T>(promise: Promise<T>, label: string) => Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} non atteint`)), 5000))]);
+    const refresh = (refreshToken: string) => app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken } });
+
+    /** Attend qu'une connexion PostgreSQL soit bloquée sur un verrou (recouvrement réel des transactions). */
+    async function waitForLockWaiter() {
+      for (let i = 0; i < 250; i++) {
+        const r = await sql<{ n: number }>`select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`.execute(db.db);
+        if (r.rows[0].n > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      throw new Error('aucune transaction en attente de verrou');
+    }
+
+    /**
+     * La rotation de l'autre appareil est suspendue après l'émission de son nouveau jeton, avant COMMIT.
+     * La révocation démarre, se bloque sur un verrou, puis la rotation est libérée : le jeton émis
+     * pendant la révocation doit être révoqué lui aussi.
+     */
+    async function raceRotation(revoke: () => Promise<{ statusCode: number }>) {
+      const otherDevice = await login();
+      const tokens = app.get(TokensService);
+      const original = tokens.issueSession.bind(tokens);
+      let release!: () => void;
+      let reached!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const paused = new Promise<void>((resolve) => { reached = resolve; });
+      const spy = jest.spyOn(tokens, 'issueSession').mockImplementationOnce(async (...args: Parameters<TokensService['issueSession']>) => {
+        const session = await original(...args);
+        reached();
+        await gate;
+        return session;
+      });
+      try {
+        const rotating = refresh(otherDevice.refreshToken);
+        await within(paused, 'point de suspension de la rotation');
+        const revoking = revoke();
+        await waitForLockWaiter();
+        release();
+        const [rotated, revoked] = await Promise.all([rotating, revoking]);
+        expect(revoked.statusCode).toBe(200);
+        expect(rotated.statusCode).toBe(200);
+        expect((await refresh(rotated.json().refreshToken)).statusCode).toBe(401);
+      } finally {
+        release();
+        spy.mockRestore();
+      }
+    }
+
+    it('changement de mot de passe : le jeton tourné pendant le changement est révoqué, la session courante conservée', async () => {
+      const current = await login();
+      await raceRotation(async () => {
+        const res = await app.inject({ method: 'POST', url: '/api/auth/password/change', headers: { authorization: `Bearer ${current.accessToken}` }, payload: { currentPassword: password, newPassword: 'RaceMdp#2026', refreshToken: current.refreshToken } });
+        if (res.statusCode === 200) password = 'RaceMdp#2026';
+        return res;
+      });
+      expect((await refresh(current.refreshToken)).statusCode).toBe(200);
+    });
+
+    it('révocation de toutes les sessions : le jeton tourné pendant la révocation est révoqué', async () => {
+      const current = await login();
+      await raceRotation(() => app.inject({ method: 'DELETE', url: '/api/auth/sessions', headers: { authorization: `Bearer ${current.accessToken}` } }));
+    });
+
+    it('réinitialisation du mot de passe : le jeton tourné pendant la réinitialisation est révoqué', async () => {
+      const tokens = app.get(TokensService);
+      const known = await db.runAs({ role: 'service_role' }, (trx) => tokens.createOneTimeToken(trx, { userId, identifier: email, kind: 'password_reset', ttlSeconds: 60 }));
+      await raceRotation(async () => {
+        const res = await app.inject({ method: 'POST', url: '/api/auth/password/reset', payload: { token: known, password: 'ResetMdp#2026' } });
+        if (res.statusCode === 200) password = 'ResetMdp#2026';
+        return res;
+      });
+    });
+
+    it('changement de mot de passe avec un jeton déjà tourné par un tiers : la session du tiers est révoquée', async () => {
+      const victim = await login();
+      const stolen = await refresh(victim.refreshToken);
+      expect(stolen.statusCode).toBe(200);
+      const res = await app.inject({ method: 'POST', url: '/api/auth/password/change', headers: { authorization: `Bearer ${victim.accessToken}` }, payload: { currentPassword: password, newPassword: 'VolMdp#2026', refreshToken: victim.refreshToken } });
+      expect(res.statusCode).toBe(200);
+      password = 'VolMdp#2026';
+      expect((await refresh(stolen.json().refreshToken)).statusCode).toBe(401);
+    });
+  });
 });
+

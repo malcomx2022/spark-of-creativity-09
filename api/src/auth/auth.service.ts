@@ -196,11 +196,13 @@ export class AuthService {
   // ---------------------------------------------------------------------------
   async refresh(refreshToken: string, meta: RequestMeta): Promise<SessionResponse> {
     const result = await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
-      const initial = await trx.selectFrom('refresh_tokens').select('family_id').where('token_hash', '=', sha256(refreshToken)).executeTakeFirst();
+      const initial = await trx.selectFrom('refresh_tokens').select(['family_id', 'user_id']).where('token_hash', '=', sha256(refreshToken)).executeTakeFirst();
       if (!initial) throw new UnauthorizedException('Session invalide');
       // Sérialiser toute la famille, y compris une rotation du jeton enfant concurrente
       // à la détection de réutilisation du parent. Aucun verrou hors de cette transaction.
       await sql`select pg_advisory_xact_lock(hashtextextended(${initial.family_id}::text, 0))`.execute(trx);
+      // Puis l'utilisateur : une révocation globale concurrente attend ce COMMIT et voit le jeton émis ici.
+      await this.lockUserSessions(trx, initial.user_id);
       const row = await trx.selectFrom('refresh_tokens').selectAll().where('token_hash', '=', sha256(refreshToken)).forUpdate().executeTakeFirstOrThrow();
       if (row.revoked_at) {
         await trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('family_id', '=', row.family_id).where('revoked_at', 'is', null).execute();
@@ -220,8 +222,18 @@ export class AuthService {
     return result.session;
   }
 
+  /**
+   * Verrou transactionnel par utilisateur, pris par refresh (après celui de la famille) et par chaque
+   * révocation globale (reset, changement de mot de passe, déconnexion partout). Sans lui, un jeton
+   * émis par une rotation non encore validée échappe à la révocation (READ COMMITTED).
+   */
+  private async lockUserSessions(trx: Transaction<DB>, userId: string): Promise<void> {
+    await sql`select pg_advisory_xact_lock(hashtextextended(${`refresh_tokens:user:${userId}`}, 0))`.execute(trx);
+  }
+
   async logout(refreshToken: string | undefined, userId: string, everywhere: boolean): Promise<{ loggedOut: true }> {
     await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
+      if (everywhere) await this.lockUserSessions(trx, userId);
       let q = trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null);
       if (!everywhere && refreshToken) q = q.where('token_hash', '=', sha256(refreshToken));
       await q.execute();
@@ -285,6 +297,7 @@ export class AuthService {
         .where('id', '=', row.user_id)
         .execute();
       // Toutes les sessions sont fermées après un reset.
+      await this.lockUserSessions(trx, row.user_id);
       await trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', row.user_id).where('revoked_at', 'is', null).execute();
       return { reset: true as const };
     });
@@ -297,6 +310,9 @@ export class AuthService {
       if (!user) throw new NotFoundException('Compte introuvable');
       if (user.password_hash && !(await bcrypt.compare(currentPassword, user.password_hash))) throw new UnauthorizedException('Mot de passe actuel incorrect');
       await trx.updateTable('users').set({ password_hash: await bcrypt.hash(newPassword, BCRYPT_COST) }).where('id', '=', userId).execute();
+      await this.lockUserSessions(trx, userId);
+      // Un jeton déjà révoqué ne désigne pas de famille à conserver : il peut appartenir à une famille
+      // dont un tiers détient le jeton actif (vol puis rotation). Toutes les sessions sont alors révoquées.
       const current = currentRefreshToken
         ? await trx.selectFrom('refresh_tokens').select('family_id').where('token_hash', '=', sha256(currentRefreshToken)).where('user_id', '=', userId).where('revoked_at', 'is', null).where('expires_at', '>', new Date()).executeTakeFirst()
         : undefined;

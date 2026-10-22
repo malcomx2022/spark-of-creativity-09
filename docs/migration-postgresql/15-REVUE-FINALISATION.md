@@ -310,10 +310,8 @@ révocation de l'autre appareil, révocation totale sans session identifiable).
 Avant correction : `Expected 401, Received 200` sur la session de l'autre appareil.
 Vitest : le client envoie le refresh token courant.
 
-Limite connue : une rotation de refresh token d'un autre appareil exactement
-concurrente au changement peut, dans une fenêtre de quelques millisecondes,
-produire un jeton non révoqué (READ COMMITTED). La fermer exigerait un verrou
-partagé avec `refresh` ; non retenu pour ce lot.
+Limite constatée alors : une rotation de refresh token d'un autre appareil
+concurrente au changement pouvait produire un jeton non révoqué. Corrigée au §9.
 
 Observation : même famille de défaut dans `MedicalService.notifyCareNoteShared`, corrigée au §8.
 
@@ -354,4 +352,47 @@ capturé dans une transaction sans point de sauvegarde.
 
 Résultats : API typecheck et build OK, 42/42 unitaires, **e2e 115 réussis,
 4 ignorés (MinIO)**, lint 0 erreur.
+
+## 9. Fenêtre de concurrence des révocations globales — 22 octobre 2026
+
+Note de livraison : la PR malcomx2022/spark-of-creativity-09#89 a été fusionnée
+sans le commit du §8 (`08ce150`, partage de note de soin), poussé quelques instants
+après la fusion. Il est repris dans la PR de ce lot.
+
+Défaut : en READ COMMITTED, une rotation de refresh token d'un autre appareil
+dont la transaction n'est pas encore validée échappe à la révocation. La révocation
+attend le verrou de ligne de l'ancien jeton, puis l'ignore car il est déjà révoqué.
+Le nouveau jeton, inséré hors de son instantané, reste actif. Trois chemins sont
+touchés : changement de mot de passe, réinitialisation et déconnexion de toutes
+les sessions.
+
+Correction (`AuthService`) : verrou transactionnel par utilisateur
+(`pg_advisory_xact_lock`, clé `refresh_tokens:user:<id>`), pris par `refresh`
+après le verrou de famille, et par chaque révocation globale juste avant la
+requête de révocation. La révocation attend donc le COMMIT de la rotation, et son
+instruction de révocation, démarrée après le verrou, voit le jeton émis. Dans
+l'autre ordre, la rotation attend et détecte le jeton révoqué (révocation de la
+famille). Ordre des verrous : famille puis utilisateur dans `refresh`,
+utilisateur seul ailleurs ; aucun cycle n'est possible, donc pas d'interblocage.
+Un jeton courant déjà révoqué ne désigne pas de famille à conserver : il peut
+appartenir à une famille dont un tiers détient le jeton actif (vol puis rotation).
+Dans ce cas, toutes les sessions sont révoquées et le client doit se reconnecter.
+
+Tests e2e (`auth`), avec un recouvrement réel des transactions : la rotation de
+l'autre appareil est suspendue après l'émission de son jeton, avant COMMIT ; la
+révocation démarre et le test attend, via `pg_stat_activity`, qu'elle soit
+bloquée sur un verrou ; la rotation est ensuite libérée. Un test par chemin
+(changement, déconnexion partout, réinitialisation). Avant correction : les trois
+échouent (`Expected 401, Received 200`) ; après : réussis, et stables sur
+5 exécutions complètes de la suite. Un quatrième test vérifie qu'un jeton déjà
+tourné par un tiers ne protège pas la session de ce tiers (il échoue si le filtre
+`revoked_at` est retiré).
+
+Observation (non modifiée) : une déconnexion simple (`POST /auth/logout`, un seul
+jeton) concurrente à la rotation de ce même jeton laisse le jeton enfant actif.
+La rotation l'emporte : il faudrait révoquer la famille du jeton plutôt que le
+jeton seul.
+
+Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 119 réussis,
+4 ignorés (MinIO)**, identique sur 3 exécutions complètes ; front 63/63 ; lint 0 erreur.
 
