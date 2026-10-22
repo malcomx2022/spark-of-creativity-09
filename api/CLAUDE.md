@@ -49,7 +49,8 @@ de la base locale et les routes ; plan actif :
   courant (corps ou cookie).
   Toute révocation globale prend `lockUserSessions` (verrou par utilisateur, aussi pris par refresh
   après le verrou de famille) ; ne pas inverser cet ordre.
-  La déconnexion d'un appareil révoque la famille du jeton sous le verrou de famille de refresh. Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint :
+  La déconnexion d'un appareil révoque la famille du jeton sous le verrou de famille de refresh.
+- Aucune `.catch()` sur une requête SQL dans une transaction sans savepoint :
   PostgreSQL convertit alors le COMMIT en ROLLBACK silencieux (cas corrigé du partage de note de soin).
 
 Étendre les suites existantes dans `test/` pour les règles d'accès et les transactions
