@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
     "test:e2e": "jest --config jest.e2e.config.cjs --runInBand",
-    "start:worker:dev": "node --watch -r ts-node/register/transpile-only src/worker.ts"
+    "start:worker:dev": "node --watch -r ts-node/register/transpile-only src/worker.ts",
+    "campaign:fedapay": "jest --config jest.campaign.config.cjs --runInBand"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1124.0",
