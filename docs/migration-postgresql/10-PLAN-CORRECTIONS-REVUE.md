@@ -235,7 +235,7 @@ Un lot peut être implémenté sans être validé ; une recette sandbox n'est pa
 | 3 | Validé localement | Requêtes concurrentes PostgreSQL | Refresh : un succès, famille révoquée ; reset/email : un consommateur | Web Locks entre onglets lorsqu'il est disponible |
 | 4 | Validé localement | E2e Socket.IO + test unitaire LISTEN | Expiration, retrait de rôle, suspension, reconnexion ; aucun listener dupliqué | Réévaluation toutes les 5 s par défaut, hors durée des requêtes DB |
 | 5 | Validé localement | MinIO réel + tests API | Taille signée, quarantaine, validation, publication stable et purge | Droits HEAD/GET/PUT/DELETE/LIST nécessaires |
-| 6 | Partiel | CI unitaire et lint ciblé | Contrôles locaux réussis | Sauvegarde complète, copie hors site, restauration, RPO/RTO restent à faire |
+| 6 | Sauvegarde/restauration implémentées et validées localement (document 15, §14) ; workflow `backup-restore.yml` à exécuter en CI | `backup.sh`, `restore-check.sh`, `restore-drill.sh`, cible `backup` de `minio.Dockerfile` | Sauvegarde PostgreSQL 16 + MinIO réels, copie hors site chiffrée puis restaurée, 7 références résolues ; 8 cas d'échec vérifiés | Copie hors site et alerte à configurer sur le VPS (`.env`) ; premier exercice sur la vraie sauvegarde à consigner ; RPO 24 h / RTO 4 h à confirmer par l'exploitant |
 
 ## 6. Livraison applicative du 6 octobre 2026
 

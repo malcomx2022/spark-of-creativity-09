@@ -93,6 +93,8 @@ jobs:
               fi
             fi
             docker compose build --pull web api worker
+            # Version applicative inscrite dans le manifeste des sauvegardes (backup.sh).
+            echo "$DEPLOY_REVISION" > backups/.app-version 2>/dev/null || echo "version de sauvegarde non inscrite (droits de deploy/vps/backups)"
             docker compose up -d --remove-orphans
             docker compose ps
             docker image prune -f
