@@ -261,12 +261,17 @@ export class AdminService {
       let practitioners = 0;
       const failed: string[] = [];
       for (const t of targets) {
+        // Une erreur SQL annule toute la transaction : chaque compte est isolé dans un point de sauvegarde.
+        await sql`savepoint cleanup_user`.execute(trx);
         try {
           const r = await this.purgeUser(trx, t.id);
           await trx.deleteFrom('users').where('id', '=', t.id).execute();
+          await sql`release savepoint cleanup_user`.execute(trx);
           deleted++;
           if (r.practitioner_deleted) practitioners++;
         } catch (err) {
+          await sql`rollback to savepoint cleanup_user`.execute(trx);
+          await sql`release savepoint cleanup_user`.execute(trx);
           failed.push(`${t.email ?? t.id}: ${err instanceof Error ? err.message : err}`);
         }
       }

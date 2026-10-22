@@ -29,7 +29,8 @@ export const verifyEmailSchema = z.object({ token: z.string().min(20) });
 export const resendVerificationSchema = z.object({ email });
 export const forgotPasswordSchema = z.object({ email });
 export const resetPasswordSchema = z.object({ token: z.string().min(20), password });
-export const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: password });
+/** refreshToken (clients mobiles ; sinon cookie) : session conservée, toutes les autres révoquées. */
+export const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: password, refreshToken: z.string().min(20).optional() });
 
 export const updateMetadataSchema = z.object({ metadata: z.record(z.unknown()) });
 export type UpdateMetadataDto = z.infer<typeof updateMetadataSchema>;

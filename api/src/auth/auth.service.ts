@@ -290,12 +290,19 @@ export class AuthService {
     });
   }
 
-  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<{ changed: true }> {
+  /** Comme resetPassword, révoque les autres sessions ; la famille du refresh token courant (s'il est actif) est conservée. */
+  async changePassword(userId: string, currentPassword: string, newPassword: string, currentRefreshToken?: string): Promise<{ changed: true }> {
     return this.database.runAs(SERVICE_CONTEXT, async (trx) => {
       const user = await trx.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst();
       if (!user) throw new NotFoundException('Compte introuvable');
       if (user.password_hash && !(await bcrypt.compare(currentPassword, user.password_hash))) throw new UnauthorizedException('Mot de passe actuel incorrect');
       await trx.updateTable('users').set({ password_hash: await bcrypt.hash(newPassword, BCRYPT_COST) }).where('id', '=', userId).execute();
+      const current = currentRefreshToken
+        ? await trx.selectFrom('refresh_tokens').select('family_id').where('token_hash', '=', sha256(currentRefreshToken)).where('user_id', '=', userId).where('revoked_at', 'is', null).where('expires_at', '>', new Date()).executeTakeFirst()
+        : undefined;
+      let revoke = trx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null);
+      if (current) revoke = revoke.where('family_id', '<>', current.family_id);
+      await revoke.execute();
       return { changed: true as const };
     });
   }

@@ -23,7 +23,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://domicares_a
 
 const tag = Date.now().toString(36);
 const suffix = String(Date.now()).slice(-6);
-const emails = { root: `adm-root-${tag}@domicares.test`, finance: `adm-fin-${tag}@domicares.test`, patient: `adm-pat-${tag}@domicares.test`, victim: `adm-del-${tag}@domicares.test`, testAccount: `adm-keep-${tag}@test.com`, newAdmin: `adm-new-${tag}@domicares.test`, doctor: `adm-doc-${tag}@domicares.test`, bystander: `adm-by-${tag}@domicares.test` };
+const emails = { root: `adm-root-${tag}@domicares.test`, finance: `adm-fin-${tag}@domicares.test`, patient: `adm-pat-${tag}@domicares.test`, victim: `adm-del-${tag}@domicares.test`, testAccount: `adm-keep-${tag}@test.com`, newAdmin: `adm-new-${tag}@domicares.test`, doctor: `adm-doc-${tag}@domicares.test`, bystander: `adm-by-${tag}@domicares.test`, formerAdmin: `adm-former-${tag}@domicares.test`, purged: `adm-purged-${tag}@domicares.test` };
 const password = 'Motdepasse#2026';
 const otpPhone = `+2296${suffix}1`;
 
@@ -272,4 +272,30 @@ describe('Admin (e2e)', () => {
     const audit = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('admin_audit_logs').select('id').where('action', '=', 'cleanup_non_test_accounts').where('admin_id', '=', userIds['root']).executeTakeFirst());
     expect(audit).toBeUndefined();
   });
+
+  it('nettoyage hors production : un compte en échec (ancien administrateur journalisé) n’annule pas les autres suppressions', async () => {
+    // Un ancien administrateur n'a plus de rôle mais reste référencé par admin_audit_logs (clé sans cascade) :
+    // sa purge échoue. Chaque compte est isolé dans un point de sauvegarde pour que les autres soient supprimés.
+    await signup('formerAdmin', emails.formerAdmin);
+    await signup('purged', emails.purged);
+    await db.runAs({ role: 'service_role' }, (trx) => trx.insertInto('admin_audit_logs').values({ admin_id: userIds['formerAdmin'], action: 'e2e_former_admin', entity_type: 'users' }).execute());
+    // Garde-fou : ce test exécute réellement le nettoyage ; il refuse de tourner sur une base contenant d'autres comptes.
+    const targets = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('email')
+      .where((eb) => eb.or([eb('email', 'is', null), eb('email', 'not like', '%@test.com')]))
+      .where((eb) => eb.not(eb.exists(eb.selectFrom('user_roles').select('id').whereRef('user_roles.user_id', '=', 'users.id'))))
+      .execute());
+    const foreign = targets.filter((t) => !t.email?.endsWith('@domicares.test'));
+    if (foreign.length) throw new Error(`Base non dédiée aux tests : ${foreign.length} compte(s) hors e2e seraient supprimés`);
+    expect(targets.map((t) => t.email)).toEqual(expect.arrayContaining([emails.formerAdmin, emails.purged]));
+
+    const res = await app.inject({ method: 'POST', url: '/api/admin/users/cleanup-non-test', headers: auth('root'), payload: { confirm: 'SUPPRIMER' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().stats).toMatchObject({ deleted: targets.length - 1, failed: 1 });
+    expect(res.json().message).toContain('1 échecs');
+    const remaining = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('users').select('id').where('id', 'in', [userIds['formerAdmin'], userIds['purged'], userIds['testAccount'], userIds['root']]).execute());
+    expect(remaining.map((r) => r.id).sort()).toEqual([userIds['formerAdmin'], userIds['testAccount'], userIds['root']].sort());
+    const audit = await db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('admin_audit_logs').select('details').where('action', '=', 'cleanup_non_test_accounts').where('admin_id', '=', userIds['root']).executeTakeFirst());
+    expect(audit?.details).toMatchObject({ deleted: targets.length - 1, failed: 1, errors: [expect.stringContaining(emails.formerAdmin)] });
+  });
 });
+

@@ -133,7 +133,7 @@ Recommandation : refuser la route lorsque `NODE_ENV=production` (403), sur le
 modèle de `simulate-webhook`, et ajouter un test e2e. Évolution de comportement
 d'une route existante : à décider explicitement.
 
-### P2 — Le décompte des échecs de ce même nettoyage est inopérant
+### P2 — Le décompte des échecs de ce même nettoyage est inopérant — **corrigé (§7)**
 
 La boucle capture les erreurs de `purgeUser` dans une seule transaction `runAs`,
 sans point de sauvegarde. Dans PostgreSQL, une erreur SQL place la transaction
@@ -142,7 +142,7 @@ puis toute l'opération est annulée avec une erreur 500. Le résultat
 « N échecs » ne peut donc jamais être renvoyé. Constat issu de la lecture du
 code et de la sémantique PostgreSQL, non reproduit dans cette revue.
 
-### P2 — Le changement de mot de passe ne révoque pas les autres sessions
+### P2 — Le changement de mot de passe ne révoque pas les autres sessions — **corrigé (§7)**
 
 `AuthService.resetPassword` révoque les refresh tokens de l'utilisateur
 (`auth.service.ts:288`) ; `changePassword` (`auth.service.ts:293`) ne le fait
@@ -193,8 +193,7 @@ supprimée après exécution).
 
 ## 4. Ce qui reste pour terminer
 
-1. **Décider et corriger les deux P2 restants** (décompte du nettoyage,
-   révocation des sessions au changement de mot de passe), chacun avec son test.
+1. ~~Corriger les deux P2 restants~~ : faits (§7).
 2. ~~Correction du P1 et tests d'intégration des 29 routes~~ : faits (§6).
 3. **Valider les prérequis non exécutés ici** : suite `storage-s3` contre MinIO
    (`S3_TEST_ENDPOINT`), projets Playwright WebKit en CI, essai Safari physique.
@@ -253,8 +252,7 @@ Received 200`) ; la garde rétablie, il réussit.
 | `support-disputes` | liste FAQ admin (brouillons inclus, rôles) | `GET /admin/support/faqs` |
 
 Chaque test vérifie l'appartenance ou le rôle (401/403/404 selon le cas) en plus
-du chemin nominal. Les tests du changement de mot de passe constatent le
-comportement actuel ; la révocation des autres sessions reste le P2 ouvert.
+du chemin nominal. Le test du changement de mot de passe a été renforcé au §7.
 
 Correction de tests existants : la table `users` est sous RLS, une lecture via
 `db.db` sans contexte ne voit aucune ligne. L'assertion « compte supprimé » de
@@ -275,4 +273,59 @@ de la suite `auth` n'avait pas d'effet. Ces accès passent désormais par
 Observation nouvelle (P3, non modifiée) : `GET /api/practitioners/:id/exceptions`
 est public et renvoie le champ `reason` saisi par le praticien. Si ce motif peut
 contenir une information personnelle, le retirer de la réponse publique.
+
+## 7. Correction des deux P2 — 22 octobre 2026
+
+### 7.1 Nettoyage : un échec n'annule plus les autres suppressions
+
+Reproduction sur PostgreSQL réel : un ancien administrateur (rôles retirés, donc
+ciblé) reste référencé par `admin_audit_logs.admin_id`, clé sans cascade. Sa
+purge échouait, la transaction passait en état annulé (`current transaction is
+aborted`), la route répondait 500 et aucune suppression n'était conservée.
+
+Correction (`AdminService.cleanupNonTestAccounts`) : chaque compte est traité
+dans un point de sauvegarde (`savepoint` / `release` / `rollback to`). Un compte
+en échec est annulé seul, compté et détaillé dans le journal d'audit ; les autres
+suppressions et l'audit sont validés.
+
+Test e2e (`admin`) : l'ancien administrateur est conservé et signalé
+(`failed: 1`, erreur dans `details.errors`), un autre compte est supprimé, le
+compte `@test.com` et le super admin sont préservés. Ce test exécute réellement
+le nettoyage : un garde-fou le fait échouer, sans rien supprimer, si la base
+contient un compte ciblé qui n'a pas été créé par les e2e (`@domicares.test`).
+Avant correction : `Expected 200, Received 500` ; après : réussi.
+
+### 7.2 Changement de mot de passe : autres sessions révoquées
+
+`POST /api/auth/password/change` révoque désormais, comme la réinitialisation,
+tous les refresh tokens actifs de l'utilisateur, **sauf la famille de la session
+courante**. Celle-ci est identifiée par `refreshToken` dans le corps (clients
+mobiles) ou par le cookie httpOnly `refresh_token` (chemin `/api/auth`). Sans
+session identifiable, toutes les sessions sont révoquées. Le format de réponse
+`{ changed: true }` est inchangé ; le champ `refreshToken` est optionnel.
+Le client web (`src/lib/api/auth.ts`) transmet son refresh token.
+
+Tests : e2e `auth` (refus sans effet, conservation par corps et par cookie,
+révocation de l'autre appareil, révocation totale sans session identifiable).
+Avant correction : `Expected 401, Received 200` sur la session de l'autre appareil.
+Vitest : le client envoie le refresh token courant.
+
+Limite connue : une rotation de refresh token d'un autre appareil exactement
+concurrente au changement peut, dans une fenêtre de quelques millisecondes,
+produire un jeton non révoqué (READ COMMITTED). La fermer exigerait un verrou
+partagé avec `refresh` ; non retenu pour ce lot.
+
+Observation (non modifiée, même famille de défaut) : `MedicalService.notifyCareNoteShared`
+insère un message avec `.catch()` dans la transaction du partage ; si cette
+insertion échouait, la transaction serait annulée malgré le `catch`.
+
+### 7.3 Résultats
+
+| Contrôle | Résultat |
+|---|---|
+| Front : typecheck, build | OK |
+| Front : Vitest | 63/63 réussis |
+| Lint (racine) | 0 erreur, 45 avertissements hérités |
+| API : typecheck, build ; tests unitaires | OK ; 42/42 |
+| Intégration API (PostgreSQL 16 local) | **114 réussis, 4 ignorés (MinIO)** ; rejouée une seconde fois sur la même base : identique |
 
