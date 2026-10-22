@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { isValidE164, normalizePhoneNumber } from '../auth/phone.util';
+import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import { EmailService } from './email.service';
 import { PushService } from './push.service';
+import { notificationEmail } from './push-target';
 import { SmsService } from './sms.service';
 
 export type NotificationChannel = 'email' | 'sms' | 'push';
@@ -29,7 +31,10 @@ const DEFAULT_CHANNELS: NotificationChannel[] = ['email', 'sms', 'push'];
 export class DispatchService {
   private readonly logger = new Logger(DispatchService.name);
 
-  constructor(private readonly database: DatabaseService, private readonly email: EmailService, private readonly sms: SmsService, private readonly push: PushService) {}
+  constructor(
+    private readonly database: DatabaseService, private readonly email: EmailService, private readonly sms: SmsService, private readonly push: PushService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {}
 
   async dispatch(o: DispatchOptions): Promise<{ notificationId: string; channels: Record<NotificationChannel, ChannelResult> }> {
     const { notification, prefs, user, profile } = await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
@@ -51,7 +56,7 @@ export class DispatchService {
     if (wanted.has('email')) {
       if (user?.email) {
         results.email = await this.email
-          .send({ to: user.email, subject: o.title, text: `${o.message}${o.link ? `\n\n${o.link}` : ''}`, html: `<p>${o.message}</p>${o.link ? `<p><a href="${o.link}">${o.link}</a></p>` : ''}` })
+          .send({ to: user.email, ...notificationEmail(this.config.FRONTEND_URL, o.title, o.message, o.link) })
           .then(() => ({ attempted: true, success: true }))
           .catch((e) => ({ attempted: true, success: false, error: String(e) }));
       } else results.email = { attempted: false, success: false, skipped: true, error: 'missing_email' };

@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import { auth, errorMessage } from "@/lib/api";
+import { postLoginPath } from "@/lib/return-path";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -51,7 +52,7 @@ export default function AdminLogin() {
       title: "Connexion réussie !",
       description: "Bienvenue sur le tableau de bord administrateur.",
     });
-    navigate("/admin");
+    navigate(postLoginPath("/admin"), { replace: true });
 
     setIsSubmitting(false);
   };

@@ -5,7 +5,8 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { auth } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, lazy, Suspense } from "react";
+import { useDashboardTab } from "@/hooks/useDashboardTab";
 import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2, Webhook, Search } from "lucide-react";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { useAdminStats } from "@/hooks/useAdminStats";
@@ -29,6 +30,8 @@ const WebhookConfig = lazy(() => import("@/components/admin/WebhookConfig").then
 const SandboxPaymentTester = lazy(() => import("@/components/admin/SandboxPaymentTester").then(m => ({ default: m.SandboxPaymentTester })));
 const SearchActivitySection = lazy(() => import("@/components/admin/SearchActivitySection"));
 
+const ADMIN_TABS = ["dashboard", "admins", "kyc", "operations", "finance", "support", "otp", "api", "compliance", "audit", "webhooks", "search-activity"] as const;
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { isAdmin, isLoading, role } = useIsAdmin();
@@ -42,9 +45,11 @@ export default function AdminDashboard() {
     .filter(n => n.type === 'kyc_pending' || !n.is_read)
     .slice(0, 100);
   const markNotificationAsRead = useMarkNotificationAsRead();
-  const [activeTab, setActiveTab] = useState("dashboard");
   const processedKycNotifications = useRef(new Set<string>());
   const canManageAdmins = role === "super_admin";
+  // Onglet lié à l'URL (/admin?tab=kyc des notifications, retour après connexion, bouton Retour).
+  const adminTabs = useMemo(() => ADMIN_TABS.filter(tab => tab !== "admins" || canManageAdmins), [canManageAdmins]);
+  const [activeTab, setActiveTab] = useDashboardTab(adminTabs, "dashboard");
 
   const unreadKycNotifications = notifications.filter((notification) =>
     notification.type === 'kyc_pending' && !notification.is_read
@@ -65,12 +70,6 @@ export default function AdminDashboard() {
       markNotificationAsRead.mutate({ notificationId: notification.id, userId });
     });
   }, [activeTab, unreadKycNotifications, markNotificationAsRead, userId]);
-
-  useEffect(() => {
-    if (!canManageAdmins && activeTab === "admins") {
-      setActiveTab("dashboard");
-    }
-  }, [canManageAdmins, activeTab]);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {

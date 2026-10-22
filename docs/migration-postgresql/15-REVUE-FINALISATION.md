@@ -699,3 +699,17 @@ Contrôles :
 - 38 scénarios navigateur Chromium ;
 - recette 15/15 ;
 - sans la mémorisation, le scénario du lien profond échoue.
+
+### Retour vers la page notifiée (administrateurs et e-mails)
+
+- **Administrateurs** : les connexions admin ignoraient la page mémorisée, et l'espace admin ne
+  lisait pas `?tab=`. Les deux sont corrigés.
+- **Lien de paiement admin** : `/admin?tab=payments` vise désormais l'onglet `finance`.
+- **E-mails de notification** : le lien relatif est remplacé par une URL absolue vers la page
+  notifiée, et le message est échappé dans le HTML.
+
+Contrôles :
+- front : 104 tests, typecheck, build, lint (0 erreur) ;
+- 38 scénarios navigateur Chromium ;
+- recette 16/16 ;
+- API : 56 tests unitaires, build, e2e 122/122 (4 essais MinIO sautés, faute de MinIO local).

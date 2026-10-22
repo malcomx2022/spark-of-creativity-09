@@ -12,6 +12,7 @@ import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToHome, navigateToDashboard } from "@/lib/auth-navigation";
 import { withTimeout, NetworkTimeoutError } from "@/lib/network-timeout";
 import { z } from "zod";
+import { postLoginPath } from "@/lib/return-path";
 
 const loginSchema = z.object({
   email: z.string().email("Email invalide").max(255, "Email trop long"),
@@ -69,7 +70,7 @@ export default function PractitionerLogin() {
       // Si admin, autoriser la connexion
       if (isSuperAdmin) {
         toast(AUTH_MESSAGES.LOGIN_SUCCESS);
-        navigate('/admin', { replace: true });
+        navigate(postLoginPath('/admin'), { replace: true });
         setIsSubmitting(false);
         return;
       }

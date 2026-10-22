@@ -32,3 +32,15 @@ it.each([
   expect(body.url).toBe(expected);
   expect(JSON.stringify(body)).not.toContain('PRIVATE');
 });
+describe('notificationEmail', () => {
+  const { notificationEmail } = jest.requireActual('./push-target') as typeof import('./push-target');
+  it('links to the notified page with an absolute URL and escapes user content', () => {
+    const mail = notificationEmail('https://domicares.life/', 'Nouveau message', '<img src=x onerror=alert(1)> & co', '/dashboard/patient?tab=messages&appointment=a1');
+    expect(mail.text).toBe('<img src=x onerror=alert(1)> & co\n\nhttps://domicares.life/dashboard/patient?tab=messages&appointment=a1');
+    expect(mail.html).toBe('<p>&lt;img src=x onerror=alert(1)&gt; &amp; co</p><p><a href="https://domicares.life/dashboard/patient?tab=messages&amp;appointment=a1">Ouvrir dans DomiCares</a></p>');
+  });
+  it.each(['https://checkout.fedapay.com/pay/1', '/patient/appointments/1', '"><script>', null])('omits an unsupported link %s', (link) => {
+    const mail = notificationEmail('https://domicares.life', 'T', 'Bonjour', link);
+    expect(mail).toEqual({ subject: 'T', text: 'Bonjour', html: '<p>Bonjour</p>' });
+  });
+});
