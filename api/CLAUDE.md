@@ -7,6 +7,8 @@ de la base locale et les routes ; plan actif :
 - Contact : CONTACT_RECIPIENT_EMAIL choisit le destinataire fixe côté serveur ;
   absent = HTTP 503, sans bloquer le démarrage. Valider les champs, échapper le HTML,
   limiter à 5 POST/IP/heure et attendre le fournisseur avant accepted=true.
+  `reply_to` = visiteur, objet « DomiCares — contact : <sujet> » sur une ligne, identifiant Resend
+  journalisé (sans donnée du visiteur) ; réception réelle vérifiée par `deploy/vps/contact-check.sh`.
 - Notifications de message : destination selon le participant (patient/praticien/coach).
   GET /conversations/:appointmentId exige l'appartenance, sans exception admin implicite.
 
@@ -43,7 +45,7 @@ de la base locale et les routes ; plan actif :
   (`pushTargetPath` : /dashboard, /dashboard/<rôle>, /admin ; sinon /login), revérifiée par `public/sw.js`.
   E-mail de notification : `notificationEmail` (URL absolue FRONTEND_URL + chemin autorisé, message échappé).
 - Pagination : scope utilisateur/vue et masquage des notes, total sur le même périmètre.
-- Validation courante : 56 tests unitaires et 126 tests d'intégration, dont 4 essais MinIO réels
+- Validation courante : 60 tests unitaires et 126 tests d'intégration, dont 4 essais MinIO réels
   (document 15 : 126/126 sur PostgreSQL 16 et MinIO locaux ; MinIO compilé depuis son commit en CI,
   `S3_TEST_REQUIRED=1` interdit le saut silencieux de la suite S3).
 - Nettoyage des comptes hors test : refusé en production (403) dans `AdminService` ; ne pas retirer cette garde.

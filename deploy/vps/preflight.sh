@@ -53,7 +53,21 @@ else
     else ok "$k=$val"; fi
   done
   if [[ "$(env_get EMAIL_PROVIDER)" == "resend" ]]; then placeholder "$(env_get RESEND_API_KEY)" && ko "RESEND_API_KEY requis avec EMAIL_PROVIDER=resend"; fi
-  [[ -n "$(env_get CONTACT_RECIPIENT_EMAIL)" ]] || warn "CONTACT_RECIPIENT_EMAIL absent : le formulaire public de contact répondra 503 (les autres services restent disponibles)"
+  contact="$(env_get CONTACT_RECIPIENT_EMAIL)"; from="$(env_get RESEND_FROM_EMAIL)"
+  if [[ -z "$contact" ]]; then warn "CONTACT_RECIPIENT_EMAIL absent : le formulaire public de contact répondra 503 (les autres services restent disponibles)"
+  elif [[ "${contact,,}" == "${from,,}" ]]; then ko "CONTACT_RECIPIENT_EMAIL = RESEND_FROM_EMAIL ($from) : adresse d'envoi, les messages de contact n'arriveraient dans aucune boîte lue"
+  else ok "CONTACT_RECIPIENT_EMAIL=$contact (réception réelle : ./contact-check.sh)"; fi
+  # Domaine expéditeur vérifié chez Resend : sans lui, tout envoi (contact compris) est refusé.
+  if [[ "$(env_get EMAIL_PROVIDER)" == "resend" ]] && ! placeholder "$(env_get RESEND_API_KEY)" && command -v curl >/dev/null; then
+    sender_domain="${from##*@}"
+    domains="$(curl -sS -m 15 -w '\n%{http_code}' "${RESEND_API_URL:-https://api.resend.com}/domains" -H "Authorization: Bearer $(env_get RESEND_API_KEY)" 2>/dev/null)"
+    case "$(tail -1 <<<"$domains")" in
+      200) if sed '$d' <<<"$domains" | tr -d '[:space:]' | tr '{' '\n' | grep -F "\"name\":\"$sender_domain\"" | grep -q '"status":"verified"'; then ok "domaine expéditeur $sender_domain vérifié chez Resend"
+           else ko "domaine expéditeur $sender_domain non vérifié chez Resend (DNS SPF/DKIM) : e-mails et contact refusés"; fi ;;
+      401|403) warn "clé Resend à accès restreint : vérification du domaine impossible ici, lancer ./contact-check.sh" ;;
+      *) warn "API Resend injoignable : domaine expéditeur non vérifié par ce contrôle" ;;
+    esac
+  fi
   if [[ "$(env_get OTP_PROVIDER)" == "twilio" ]]; then for v in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_VERIFY_SERVICE_SID; do placeholder "$(env_get $v)" && ko "$v requis avec OTP_PROVIDER=twilio"; done; fi
   if [[ "$(env_get SMS_PROVIDER)" == "twilio" ]]; then placeholder "$(env_get TWILIO_PHONE_NUMBER)" && ko "TWILIO_PHONE_NUMBER requis avec SMS_PROVIDER=twilio"; fi
   if [[ "$(env_get PUSH_PROVIDER)" == "webpush" ]]; then for v in WEB_PUSH_PUBLIC_KEY WEB_PUSH_PRIVATE_KEY; do placeholder "$(env_get $v)" && ko "$v requis avec PUSH_PROVIDER=webpush (clés VAPID identiques à Supabase, sinon re-souscription push)"; done; fi

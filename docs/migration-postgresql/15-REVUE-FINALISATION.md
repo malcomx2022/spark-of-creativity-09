@@ -713,3 +713,22 @@ Contrôles :
 - 38 scénarios navigateur Chromium ;
 - recette 16/16 ;
 - API : 56 tests unitaires, build, e2e 122/122 (4 essais MinIO sautés, faute de MinIO local).
+
+### Réception réelle du contact
+
+Le formulaire est désormais exploitable à réception, et vérifiable avant de compter dessus :
+- **Réponse** : `reply_to` vise le visiteur ;
+- **Objet** : il porte le sujet du message ;
+- **Suivi** : l'identifiant Resend est journalisé ;
+- **Preflight** : il contrôle le domaine expéditeur vérifié et refuse une boîte de contact égale
+  à l'adresse d'envoi ;
+- **Outil** : `deploy/vps/contact-check.sh` suit la livraison chez Resend, et `--via-site` teste
+  la chaîne complète.
+
+Contrôles :
+- API : 60 tests unitaires, typecheck, build, lint, e2e 122/122 ;
+- recette 16/16 ;
+- scripts testés contre un faux Resend et l'API locale.
+
+**Non exécuté ici** : l'envoi réel, faute de clé Resend et de boîte dans cette session. Ce
+contrôle reste à lancer sur le VPS (document 07, §9).

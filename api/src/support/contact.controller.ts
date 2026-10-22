@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Post, ServiceUnavailableException } from '@nestjs/common';
+import { Body, Controller, Inject, Logger, Post, ServiceUnavailableException } from '@nestjs/common';
 import { RouteConfig } from '@nestjs/platform-fastify';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -20,6 +20,8 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ 
 @ApiTags('contact')
 @Controller('contact')
 export class ContactController {
+  private readonly logger = new Logger(ContactController.name);
+
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig, private readonly email: EmailService) {}
 
   @Post()
@@ -29,8 +31,12 @@ export class ContactController {
       throw new ServiceUnavailableException('Le formulaire est temporairement indisponible. Contactez-nous par e-mail.');
     }
     const text = `Nom : ${dto.name}\nE-mail : ${dto.email}\nTéléphone : ${dto.phone || 'Non renseigné'}\nSujet : ${dto.subject}\n\n${dto.message}`;
+    // Objet lisible dans la boîte de l'équipe ; « Répondre » écrit directement au visiteur.
+    const subject = `DomiCares — contact : ${dto.subject.replace(/\s+/g, ' ')}`;
     try {
-      await this.email.send({ to: this.config.CONTACT_RECIPIENT_EMAIL, subject: 'DomiCares — nouveau message de contact', text, html: `<pre>${escapeHtml(text)}</pre>` });
+      const { id } = await this.email.send({ to: this.config.CONTACT_RECIPIENT_EMAIL, replyTo: dto.email, subject, text, html: `<pre>${escapeHtml(text)}</pre>` });
+      // Identifiant seul (aucune donnée du visiteur) : suivi de livraison dans Resend ou contact-check.sh.
+      if (id) this.logger.log(`message de contact accepté par Resend (id ${id})`);
     } catch {
       throw new ServiceUnavailableException('Votre message n’a pas pu être transmis. Réessayez plus tard.');
     }

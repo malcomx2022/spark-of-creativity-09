@@ -11,7 +11,7 @@ describe('Public contact HTTP workflow', () => {
   const email = { send: jest.fn() };
   const payload = { name: 'Patient de recette', email: 'patient@example.invalid', subject: 'Demande de contact', message: 'Message complet de recette.' };
   beforeEach(async () => {
-    email.send.mockReset().mockResolvedValue(undefined);
+    email.send.mockReset().mockResolvedValue({ id: 're_test' });
     config.CONTACT_RECIPIENT_EMAIL = 'support@example.invalid';
     config.EMAIL_PROVIDER = 'resend';
     const module = await Test.createTestingModule({ controllers: [ContactController], providers: [{ provide: APP_CONFIG, useValue: config }, { provide: EmailService, useValue: email }] }).compile();
@@ -27,6 +27,13 @@ describe('Public contact HTTP workflow', () => {
     expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({ accepted: true });
     expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: config.CONTACT_RECIPIENT_EMAIL, text: expect.stringContaining(payload.email) }));
+  });
+  it('lets the team reply to the visitor and shows the visitor subject on one line', async () => {
+    await app.inject({ method: 'POST', url: '/api/contact', payload: { ...payload, subject: 'Rendez-vous\r\nBcc: x@evil.test' } });
+    const sent = email.send.mock.calls[0][0];
+    expect(sent.replyTo).toBe(payload.email);
+    expect(sent.subject).toBe('DomiCares — contact : Rendez-vous Bcc: x@evil.test');
+    expect(sent.subject).not.toMatch(/[\r\n]/);
   });
   it('rejects invalid fields and the honeypot without sending mail', async () => {
     for (const invalid of [{ ...payload, email: 'invalid' }, { ...payload, message: 'short' }, { ...payload, website: 'spam' }, { ...payload, message: 'a'.repeat(5001) }]) {

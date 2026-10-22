@@ -190,6 +190,33 @@ Tests :
 - API : 56 tests unitaires et e2e 122/122 (deux passages ; un premier passage a échoué sur un
   test non identifié, pendant que PostgreSQL était arrêté par l'environnement).
 
+**Réception réelle du contact (22 octobre 2026).** Le succès du formulaire signifie qu'il a été
+accepté par Resend, pas qu'il est arrivé dans la boîte (§3). Plusieurs défauts empêchaient une
+réception exploitable ou vérifiable :
+- **Réponse** : aucun `reply_to`, donc « Répondre » visait `noreply@`. Le visiteur est
+  désormais l'adresse de réponse.
+- **Objet** : il était identique pour tous les messages. Il devient « DomiCares — contact :
+  <sujet> », sur une seule ligne.
+- **Suivi** : l'identifiant Resend n'était pas conservé. `EmailService.send` le renvoie et la
+  route le journalise, sans aucune donnée du visiteur.
+- **Preflight** : il ne contrôlait ni le domaine expéditeur chez Resend (sans vérification, tout
+  envoi est refusé et le formulaire répond 503), ni une boîte de contact identique à l'adresse
+  d'envoi. Il contrôle maintenant les deux.
+- **Outil** : aucun outil ne testait la livraison. `deploy/vps/contact-check.sh` envoie un
+  message test et suit son statut jusqu'à « delivered », ou signale un rebond, une clé ou un
+  domaine refusés. Avec `--via-site`, il soumet aussi le formulaire public (document 07, §9).
+
+Tests :
+- API : `email.service.spec.ts` (`reply_to`, identifiant, refus) et `contact.controller.spec.ts`
+  (réponse au visiteur, objet sur une ligne) ; 60 tests unitaires, e2e 122/122, recette 16/16 ;
+- scripts testés contre un faux Resend : livré, refusé, rebond, clé restreinte, réponses JSON
+  compactes et formatées, et `--via-site` sur l'API locale. Ces essais ont trouvé et fait corriger
+  une lecture JSON qui ne tolérait pas les espaces.
+
+**Non exécuté** : l'envoi réel. Il faut la clé Resend et la boîte du VPS, absentes de cette
+session. Après `./contact-check.sh --via-site` sur le VPS, consigner ici l'identifiant Resend, le
+statut et la présence en boîte.
+
 Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
 `CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue
 sur un appareil. La recette automatisée tourne sous Chromium (émulation mobile pour le chat) :

@@ -303,6 +303,19 @@ prise de rendez-vous, message temps réel, notification push, et les écrans d'a
 (file KYC, finance, support). Le document 04 §4 demande la validation par un patient, un
 praticien, un coach et un administrateur réels.
 
+Formulaire de contact (réception réelle) : après avoir défini `CONTACT_RECIPIENT_EMAIL` dans
+`.env`, lancer `docker compose up -d api` (un simple restart ne recharge pas l'environnement),
+puis `./contact-check.sh --via-site`. Le script :
+- envoie un message test par Resend depuis `RESEND_FROM_EMAIL` ;
+- suit son statut chez Resend jusqu'à « delivered », ou signale un rebond ;
+- avec `--via-site`, soumet aussi le formulaire public, ce qui consomme une des 5 soumissions
+  par heure de l'IP.
+
+Il reste à confirmer la présence des deux messages dans la boîte, indésirables compris, et que
+« Répondre » vise bien l'adresse du visiteur. `preflight.sh` contrôle déjà que la boîte de contact
+n'est pas l'adresse d'envoi, et que le domaine expéditeur est vérifié chez Resend (contrôle
+impossible avec une clé à accès restreint).
+
 Le parcours de paiement se teste **en dernier**. Tant que `FEDAPAY_MODE=live`, il n'y a pas de
 bac à sable : un paiement de bout en bout débite réellement. Passez donc l'ensemble des autres
 points d'abord, puis configurez le webhook live (§11) et validez le paiement par une
