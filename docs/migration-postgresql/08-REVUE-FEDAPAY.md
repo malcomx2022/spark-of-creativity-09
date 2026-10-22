@@ -391,20 +391,38 @@ document) :
 
 Constat du 22 octobre 2026 (sondes du sandbox sans clé, document 09, §4 bis) : toutes les routes de
 `fedapay.client.ts` existent, sauf `POST /v1/transactions/{id}/refund` (404). Le canal API de
-remboursement aboutit donc toujours à `502 FEDAPAY_REFUND_UNAVAILABLE`, puis au canal manuel : c'est
-le comportement prévu. Une ressource `POST /v1/refunds` existe ; son contrat reste à lire avec une clé
-sandbox avant toute évolution du client.
+remboursement aboutissait donc à `502 FEDAPAY_REFUND_UNAVAILABLE`. Une ressource `POST /v1/refunds`
+existe : le client l'utilise désormais (paragraphe « Remboursement via `/v1/refunds` » ci-dessous).
 
-**Remboursement par l'API : vérification du 22 octobre 2026.** FedaPay ne propose pas de remboursement
-par API :
+**Remboursement par l'API : vérification du 22 octobre 2026.** La référence publique ne documente
+aucun remboursement par API :
 - la spécification OpenAPI (22 chemins) n'en contient aucun ;
 - les SDK officiels PHP et Node n'ont pas de méthode de remboursement : ils lisent seulement les
   statuts `refunded`, `approved_partially_refunded` et `transferred_partially_refunded` ;
 - la documentation ne décrit que le tableau de bord, et pour MTN seulement.
 
-`/v1/refunds`, non documenté, n'est donc pas utilisé. Le remboursement reste fait au tableau de bord,
-puis enregistré ici par le canal manuel, désormais proposé par défaut dans l'écran Remboursements.
-Le canal API reste disponible et annonce qu'il n'est pas proposé.
+**Remboursement via `/v1/refunds` (même jour).** Le tableau de bord FedaPay rembourse lui-même par
+cette ressource de l'API (code public du tableau de bord, `RefundService.create`) :
+- `POST /v1/refunds`, corps `{ transaction_id, amount, phone_number, description }` ; sans `amount`,
+  remboursement intégral ; sans `phone_number`, le numéro payeur ;
+- enregistrement `Refund` : `status`, `amount`, `mode`, `transaction_id`, `sent_at`, `failed_at`… ;
+  lecture `GET /v1/refunds/{id}`, liste `GET /v1/refunds` (enveloppe `v1/refunds`) ;
+- sondes sans clé : `POST /v1/refunds` et `GET /v1/refunds/{id}` répondent 401 (route présente).
+
+`fedapay.client.ts` appelle désormais `POST /v1/refunds` avec `transaction_id`, `amount` (toujours
+envoyé) et le motif en `description`, puis lit l'état par `GET /v1/refunds/{id}`. Comportement :
+- réponse `approved`/`sent`… : remboursement comptabilisé immédiatement ;
+- `pending` : enregistré « en attente » ; `payouts.sync` relit le remboursement lui-même, confirme
+  aussi un partiel (la transaction ne le montre pas) et clôt un `failed` sans écriture, avec
+  notification à la finance ; l'administrateur peut toujours confirmer à la main ;
+- `failed` immédiat ou refus HTTP : 502 `FEDAPAY_REFUND` avec le motif FedaPay, rien n'est enregistré ;
+- 404 : 502 `FEDAPAY_REFUND_UNAVAILABLE`, orientation vers le canal manuel.
+
+Le canal API redevient le choix par défaut de l'écran Remboursements (libellé « MTN Mobile Money ») ;
+le canal manuel reste pour un remboursement fait au tableau de bord ou par virement. Contrat non
+publié : à confirmer par la campagne sandbox (document 09, S9 et S11) avant le premier remboursement
+réel. Tests : e2e (refus immédiat, en attente puis `sent` confirmé par le job, en attente puis
+`failed`), unitaires du client HTTP (corps, URL, enveloppe, motif d'erreur).
 
 Défaut corrigé, propre à cette voie : `normalizeStatus` traduisait les statuts `*_partially_refunded`
 en `pending`. Un paiement remboursé en partie au tableau de bord avant d'être vu ici était alors
