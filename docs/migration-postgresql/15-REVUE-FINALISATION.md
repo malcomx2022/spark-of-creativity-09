@@ -441,3 +441,50 @@ propriétaire. Avant correction : motif renvoyé à tous ; après : réussi.
 Résultats : API typecheck, build, lint OK ; 42/42 unitaires ; **e2e 122 réussis,
 4 ignorés (MinIO)** ; front typecheck OK, 63/63 ; lint 0 erreur.
 
+## 12. Tests MinIO (`storage-s3`) — 22 octobre 2026
+
+Constat : les 4 tests S3 réels étaient ignorés partout (`S3_TEST_ENDPOINT` absent),
+y compris en CI. Ils ne pouvaient pas être exécutés simplement : MinIO ne
+distribue plus d'images ni de binaires accessibles anonymement. `dl.min.io`
+répond 410 pour la release épinglée, et `quay.io/minio/minio` comme Docker Hub
+refusent le pull anonyme (jeton sans droit `pull`, API 401).
+
+Correction :
+
+- La release de production (`RELEASE.2025-09-07T16-13-09Z`, commit
+  `07c3a429bfed433e49018cb0f78a52145d4bedeb`) est compilée depuis ses sources avec
+  Go (`go install github.com/minio/minio@<commit>`), sans dépendre d'un registre.
+- `api-ci.yml` : binaire mis en cache (`actions/cache`), compilé seulement en
+  l'absence de cache, démarré sur `127.0.0.1:9000` avec des identifiants jetables
+  et un dossier temporaire, puis la suite e2e reçoit `S3_TEST_ENDPOINT`.
+- `storage-s3.e2e-spec.ts` : avec `S3_TEST_REQUIRED=1` (activé en CI), l'absence
+  de serveur S3 fait échouer la suite au lieu de l'ignorer silencieusement.
+
+Exécution locale (reproductible) :
+
+```bash
+GOBIN=/tmp/minio-bin CGO_ENABLED=0 go install -trimpath github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb
+MINIO_ROOT_USER=review MINIO_ROOT_PASSWORD=review-local-password /tmp/minio-bin/minio server /tmp/minio-data --address 127.0.0.1:9000 &
+cd api && S3_TEST_ENDPOINT=http://127.0.0.1:9000 S3_TEST_REQUIRED=1 npm run test:e2e
+```
+
+Résultats : **e2e complète 126/126 réussis, aucun test ignoré** (PostgreSQL 16 et
+MinIO locaux), dont les 4 essais S3 (Content-Length signé, publication des octets
+validés, MIME falsifié rejeté, nettoyage de la quarantaine). Le script de démarrage
+de la CI a été rejoué à l'identique (santé en 2 s, 4/4 avec ses identifiants).
+Sans serveur S3 et avec `S3_TEST_REQUIRED=1`, la suite échoue avec un message explicite.
+
+### Risque d'exploitation (P1, non modifié)
+
+`deploy/vps/docker-compose.yml` utilise `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`.
+Un VPS qui a déjà cette image en cache continue de démarrer (`docker compose up`
+ne retélécharge pas une image présente). En revanche, **une installation neuve
+(document 07) ou une reconstruction du serveur échouera au téléchargement de
+MinIO**. Options à décider par l'exploitant :
+1. construire l'image MinIO depuis ce même commit (Dockerfile versionné) ;
+2. pousser l'image actuelle du VPS vers un registre privé, avant toute perte du serveur ;
+3. passer à un S3 hébergé (Wasabi, prévu par le compose).
+
+Avant toute intervention, vérifier sur le VPS que l'image est bien présente :
+`docker image ls quay.io/minio/minio`.
+

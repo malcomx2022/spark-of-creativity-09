@@ -49,8 +49,35 @@ jobs:
       - name: Tests unitaires (sécurité et cycle de vie inclus)
         run: npm test -- --runInBand
       - run: npm run build
+      # MinIO ne publie plus d'images ni de binaires accessibles anonymement (quay.io et Docker Hub
+      # refusent le pull) : la release épinglée en production est compilée depuis son commit.
+      - name: Cache MinIO (release de production)
+        id: minio-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.minio-bin
+          key: minio-RELEASE.2025-09-07T16-13-09Z-07c3a429bfed
+      - uses: actions/setup-go@v5
+        if: steps.minio-cache.outputs.cache-hit != 'true'
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Compiler MinIO RELEASE.2025-09-07T16-13-09Z
+        if: steps.minio-cache.outputs.cache-hit != 'true'
+        run: GOBIN="$HOME/.minio-bin" CGO_ENABLED=0 go install -trimpath github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb
+      - name: Démarrer MinIO (stockage isolé, identifiants jetables)
+        run: |
+          mkdir -p "$RUNNER_TEMP/minio-data"
+          MINIO_ROOT_USER=ci-minio MINIO_ROOT_PASSWORD=ci-minio-password \
+            nohup "$HOME/.minio-bin/minio" server "$RUNNER_TEMP/minio-data" --address 127.0.0.1:9000 > "$RUNNER_TEMP/minio.log" 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/minio/health/live && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/minio.log"; exit 1
       - name: Tests e2e
         env:
           DATABASE_URL: postgresql://domicares_app:ci@localhost:5432/domicares
           JWT_ACCESS_SECRET: ci-secret-ci-secret-ci-secret-ci-secret-1234
+          S3_TEST_ENDPOINT: http://127.0.0.1:9000
+          S3_TEST_ACCESS_KEY: ci-minio
+          S3_TEST_SECRET_KEY: ci-minio-password
+          S3_TEST_REQUIRED: '1'
         run: npm run test:e2e

@@ -126,7 +126,10 @@ La limite JSON Fastify est de 22 Mo pour les ensembles de documents KYC en base6
 Les essais S3 réels utilisent un bucket temporaire, créé puis supprimé :
 `S3_TEST_ENDPOINT=http://127.0.0.1:9010 S3_TEST_ACCESS_KEY=… S3_TEST_SECRET_KEY=… npm run test:e2e -- --runTestsByPath test/storage-s3.e2e-spec.ts`.
 Utiliser uniquement un stockage de test dédié ; sans `S3_TEST_ENDPOINT`, cette suite
-est ignorée explicitement. Le guide et le suivi détaillés sont dans le document 10.
+est ignorée explicitement, sauf avec `S3_TEST_REQUIRED=1` (CI) où elle échoue. MinIO ne
+publie plus d'images ni de binaires accessibles anonymement : la CI compile la release
+épinglée depuis son commit (`go install github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb`),
+voir le document 15, §12. Le guide et le suivi détaillés sont dans le document 10.
 
 ```bash
 # 1. Base : PostgreSQL 16, puis dans l'ordre

@@ -4,7 +4,9 @@ import { loadConfig } from '../src/config/config.schema';
 import { S3StorageProvider } from '../src/storage/storage.provider';
 import { StorageService } from '../src/storage/storage.service';
 
-// Essai réel optionnel : aucune connexion aux buckets de production.
+// Essai réel sur un MinIO isolé : aucune connexion aux buckets de production.
+// En CI, S3_TEST_REQUIRED=1 transforme l'absence de serveur en échec au lieu d'un saut silencieux.
+if (process.env.S3_TEST_REQUIRED === '1' && !process.env.S3_TEST_ENDPOINT) throw new Error('S3_TEST_REQUIRED=1 sans S3_TEST_ENDPOINT : la suite S3 ne peut pas être ignorée');
 const integration = process.env.S3_TEST_ENDPOINT ? describe : describe.skip;
 integration('S3 signed uploads (real isolated storage)', () => {
   const bucket = `security-test-${randomUUID()}`;
