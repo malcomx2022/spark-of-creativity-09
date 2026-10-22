@@ -100,11 +100,14 @@ services:
     ports: ["127.0.0.1:5432:5432"]
 
   minio:
-    # MinIO ne publie plus d'images sur Docker Hub : « minio/minio » y existe encore mais
-    # sans aucun tag, d'où « pull access denied … repository does not exist ». Le registre
-    # officiel restant est quay.io. Version épinglée : un tag mouvant casserait un jour la
-    # reprise des fichiers sans prévenir.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO ne publie plus d'images ni de binaires accessibles anonymement (quay.io et Docker
+    # Hub refusent le pull) : l'image est construite depuis le commit de la release épinglée
+    # (minio.Dockerfile), même version qu'avant, volume minio_data repris tel quel.
+    # Version épinglée : un tag mouvant casserait un jour la reprise des fichiers sans prévenir.
+    image: domicares-minio:RELEASE.2025-09-07T16-13-09Z
+    build:
+      context: .
+      dockerfile: minio.Dockerfile
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:

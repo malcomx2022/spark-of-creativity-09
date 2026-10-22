@@ -76,6 +76,10 @@ if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
   if [[ -f "$HERE/.env" ]]; then
     docker compose --project-directory "$HERE" config -q 2>"$HERE/.preflight-compose.log" && ok "docker-compose.yml + .env valides" || ko "docker compose config : $(head -1 "$HERE/.preflight-compose.log")"
     rm -f "$HERE/.preflight-compose.log"
+    minio_release=RELEASE.2025-09-07T16-13-09Z
+    if docker image inspect "domicares-minio:$minio_release" >/dev/null 2>&1; then ok "image MinIO domicares-minio:$minio_release présente"
+    elif docker image inspect "quay.io/minio/minio:$minio_release" >/dev/null 2>&1; then warn "image MinIO officielle présente : réétiquetée au déploiement, sans compilation"
+    else warn "image MinIO absente : construite depuis les sources (docker compose build minio, prévoir ~2 Go de RAM libre)"; fi
     for svc in postgres minio; do
       st=$(docker compose --project-directory "$HERE" ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null | awk -v s=$svc '$1==s {print $2" "$3}')
       case "$st" in
