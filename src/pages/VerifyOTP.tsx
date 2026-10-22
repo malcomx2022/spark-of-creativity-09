@@ -10,6 +10,7 @@ import { auth } from "@/lib/api";
 import { getDashboardPathFromAuth } from "@/lib/dashboardNavigation";
 import { AUTH_MESSAGES } from "@/lib/auth-constants";
 import { navigateToLogin } from "@/lib/auth-navigation";
+import { postLoginPath } from '@/lib/return-path';
 
 export default function VerifyOTP() {
   const navigate = useNavigate();
@@ -54,7 +55,7 @@ export default function VerifyOTP() {
       toast(AUTH_MESSAGES.LOGIN_SUCCESS);
 
       const destination = await getDashboardPathFromAuth();
-      navigate(destination, { replace: true });
+      navigate(postLoginPath(destination), { replace: true });
     } catch (error: unknown) {
       toast({
         ...AUTH_MESSAGES.OTP_ERROR,

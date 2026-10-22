@@ -9,6 +9,7 @@ import { ROUTES } from "@/lib/routes";
 import { toast } from "@/hooks/use-toast";
 import logo from "@/assets/logo.png";
 import { useQueryClient } from "@tanstack/react-query";
+import { clearReturnPath } from '@/lib/return-path';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,8 @@ export default function Header() {
   const handleLogout = async () => {
     // Marquer la déconnexion en cours AVANT signOut
     sessionStorage.setItem('logging_out', 'true');
+    // Déconnexion volontaire : aucune page à rouvrir à la prochaine connexion.
+    clearReturnPath(true);
     
     // Invalider immédiatement le cache utilisateur pour que l'UI se mette à jour
     queryClient.setQueryData(AUTH_USER_QUERY_KEY, null);
@@ -57,6 +60,7 @@ export default function Header() {
     });
 
     await auth.signOut();
+    clearReturnPath(true);
     
     // Fermer le menu mobile si ouvert
     setIsMenuOpen(false);

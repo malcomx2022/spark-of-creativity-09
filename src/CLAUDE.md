@@ -12,6 +12,7 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   comme redirection des anciennes notifications et ouvrir le chat mobile ciblé.
   Le clic sur une notification suit `link` via `notificationPath` (chemins internes connus seulement).
   Push : texte générique ; `public/sw.js` n'ouvre que le chemin revérifié (`notificationTarget`), sinon /login.
+  Retour après connexion : `return-path.ts` (sessionStorage, 15 min, espace du rôle, effacé au logout volontaire).
   `npm run test:recette` (API et PostgreSQL réels, `RECETTE_DATABASE_URL` locale) rejoue ces parcours.
 - Contact public : POST /contact sans authentification ; succès après accepted=true,
   champs conservés en erreur, bouton bloqué pendant l'envoi. Ne jamais simuler un succès.
