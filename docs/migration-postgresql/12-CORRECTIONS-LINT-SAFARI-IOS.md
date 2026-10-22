@@ -113,7 +113,9 @@ ci-dessous) :
 - formulaire de contact.
 
 Localement, `chromium` et `chromium-iphone` réussissent : 32/32. WebKit n'est pas téléchargeable dans
-cet environnement (voir plus haut). Le résultat `webkit-iphone` est donc celui de la CI de la PR.
+cet environnement (voir plus haut). Le résultat `webkit-iphone` est donc celui de la CI :
+[recette sur `df8c5d1`](https://github.com/malcomx2022/spark-of-creativity-09/actions/runs/39818597215)
+**réussie** pour les trois projets, `webkit-iphone` compris, à la première exécution.
 
 Ces essais ne couvrent ni le clavier virtuel, ni l'encoche, ni le mode installé, ni le mode avion,
 ni la mise à jour du worker, ni le push Apple, ni FedaPay. Ils ne remplacent pas la recette physique
