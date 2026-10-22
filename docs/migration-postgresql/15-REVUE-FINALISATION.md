@@ -680,5 +680,22 @@ Contrôles :
 - 38 scénarios navigateur Chromium ;
 - sans la correction, 9 tests échouent.
 
-Non validé : la réception sur un appareil réel (WebKit et Safari compris), ainsi que le retour
-à la page ciblée après une connexion.
+Non validé : la réception sur un appareil réel (WebKit et Safari compris). Le retour à la page
+ciblée après une connexion est traité ci-dessous.
+
+### Retour à la page après connexion
+
+Une session expirée, ou une notification ouverte hors session, menait toujours à l'accueil de
+l'espace après la connexion : `state.from` n'était lu par aucune page de connexion.
+`src/lib/return-path.ts` gère désormais ce retour, appliqué par `ProtectedRoute`,
+`navigateToDashboard`, `LoginWithOTP` et `VerifyOTP`. Détail : document 14, §4 bis.
+
+La page est réutilisée une seule fois, dans les 15 minutes, si elle relève de l'espace du rôle
+connecté. Une déconnexion volontaire l'efface. La recette a trouvé et fait corriger une
+mémorisation résiduelle après le logout.
+
+Contrôles :
+- front : 104 tests, typecheck, build, lint (0 erreur) ;
+- 38 scénarios navigateur Chromium ;
+- recette 15/15 ;
+- sans la mémorisation, le scénario du lien profond échoue.

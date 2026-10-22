@@ -5,6 +5,7 @@ import { auth, type AuthSession } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { type AppRole, resolveUserRole, getDashboardPathForRole } from '@/lib/userRoleResolver';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
+import { rememberReturnPath } from '@/lib/return-path';
 
 // Cache mémoire pour les rôles utilisateur (évite les appels répétés)
 // P4 FIX: Réduit à 1 minute pour limiter le risque d'accès après révocation de rôle
@@ -115,6 +116,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
       sessionStorage.removeItem('logging_out');
       return <Navigate to="/" replace />;
     }
+    // Retour à cette page après connexion (session expirée, notification ouverte hors session).
+    rememberReturnPath(`${location.pathname}${location.search}`);
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

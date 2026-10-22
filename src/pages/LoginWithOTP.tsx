@@ -11,6 +11,7 @@ import { auth } from '@/lib/api';
 import { getDashboardPathForUser, getDashboardPathFromAuth } from '@/lib/dashboardNavigation';
 import { MessageSquare, Phone, Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { postLoginPath } from '@/lib/return-path';
 
 type OTPChannel = 'sms' | 'whatsapp' | 'call';
 
@@ -27,7 +28,7 @@ export default function LoginWithOTP() {
 
   const redirectToDashboard = useCallback(async () => {
     const destination = await getDashboardPathFromAuth();
-    navigate(destination, { replace: true });
+    navigate(postLoginPath(destination), { replace: true });
   }, [navigate]);
 
   // Vérifier si l'utilisateur est déjà connecté

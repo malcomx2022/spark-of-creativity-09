@@ -93,7 +93,7 @@ page 2 des conversations, un avec le coach et un pour un second patient.
 
 | Parcours | Scénarios |
 |---|---|
-| Logout/login entre deux comptes | progression restaurée pour son propriétaire, purgée au logout ; le compte B ne voit ni la boîte de paiement ni les conversations de A ; déconnexion dans un autre onglet |
+| Logout/login entre deux comptes | progression restaurée pour son propriétaire, purgée au logout ; le compte B ne voit ni la boîte de paiement ni les conversations de A ; déconnexion dans un autre onglet ; retour à la page demandée après connexion (sauf autre espace ou déconnexion volontaire) |
 | Notifications par rôle | clic sur la notification du praticien, du coach et du patient (rendez-vous hors première page) → bon espace, bon chat ; ancienne notification `/dashboard` redirigée ; un tiers n'ouvre pas la conversation ; note de soin (nouveau et ancien lien) → notes partagées et détail |
 | Chat mobile | 390 px : la notification ouvre directement le chat du rendez-vous ancien ; envoi d'une réponse ; aucun débordement |
 | Contact | envoi accepté par l'API (201, succès affiché) ; échec 503 simulé côté navigateur : erreur visible, champs conservés, aucun succès |
@@ -135,8 +135,8 @@ acceptés, paramètres compris. Une URL externe, un chemin d'API ou une valeur i
 Le clic tente de naviguer dans l'onglet ouvert. S'il échoue (onglet non contrôlé par le worker),
 il ouvre une fenêtre, alors qu'auparavant rien ne se passait.
 
-Limite : sans session, la page protégée renvoie vers `/login`, et la connexion mène à l'accueil
-de l'espace, pas à la page ciblée. Les pages de connexion n'utilisent pas `state.from`.
+Sans session, la page protégée renvoie vers `/login`. La connexion ramène ensuite à la page
+ciblée (voir « Retour à la page après connexion »).
 
 Tests :
 - `push.service.spec.ts` : 9 cas, texte générique vérifié ;
@@ -145,6 +145,29 @@ Tests :
 
 Sans la correction, 4 tests API et 5 tests worker échouent. La réception sur un appareil réel
 reste à vérifier.
+
+**Retour à la page après connexion (22 octobre 2026).** `ProtectedRoute` transmettait `state.from`,
+mais aucune page de connexion ne le lisait. De plus, ce state se perdait dès que l'utilisateur
+passait de `/login` (OTP) à la connexion par e-mail. Une session expirée ou une notification
+ouverte hors session menait donc toujours à l'accueil de l'espace.
+
+Désormais, `src/lib/return-path.ts` gère ce retour :
+- **Mémorisation** : `ProtectedRoute` garde la page demandée dans le `sessionStorage` de l'onglet,
+  pour les seuls chemins internes de `notificationPath`.
+- **Retour** : `navigateToDashboard` (connexions patient et praticien, inscriptions) et les
+  connexions OTP (`LoginWithOTP`, `VerifyOTP`) rouvrent cette page une seule fois, dans les
+  15 minutes, si elle relève de l'espace du rôle connecté ou de `/dashboard` (résolu par rôle).
+  Sinon, la connexion mène à l'accueil de l'espace.
+- **Déconnexion volontaire** : elle efface la page et bloque toute mémorisation pendant 5 s.
+  La recette a trouvé ce défaut : sans ce blocage, un rendu qui suit le logout mémorisait la page quittée.
+- **Contrôle d'accès** : il reste à l'API. Si un autre compte du même rôle se connecte dans
+  l'onglet, l'ancien rendez-vous lui est refusé et aucune autre conversation ne s'ouvre.
+
+Tests :
+- `return-path.test.ts` : 10 cas ;
+- recette : 3 scénarios (lien profond hors session, page d'un autre espace, déconnexion
+  volontaire), 15/15 au total ;
+- sans la mémorisation, le scénario du lien profond échoue.
 
 Reste manuel sur l'environnement livré : réception réelle du message de contact dans la boîte de
 `CONTACT_RECIPIENT_EMAIL` (Resend), essais sur Safari/iOS physique, et notification push reçue

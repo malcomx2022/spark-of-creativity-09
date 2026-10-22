@@ -1,5 +1,6 @@
 import { NavigateFunction } from "react-router-dom";
 import { AUTH_PATHS } from "./auth-constants";
+import { postLoginPath } from "./return-path";
 
 /**
  * Centralized navigation utilities for authentication flows
@@ -58,7 +59,8 @@ export const navigateToDashboard = (
     coach: AUTH_PATHS.DASHBOARD_COACH,
   };
 
-  navigateToPath(navigate, paths[userType], { replace });
+  // Page demandée avant la connexion, si elle relève de cet espace.
+  navigateToPath(navigate, postLoginPath(paths[userType]), { replace });
 };
 
 /**

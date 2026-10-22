@@ -76,6 +76,31 @@ test.describe('1. Déconnexion et connexion entre deux comptes', () => {
   });
 });
 
+test.describe('1 bis. Retour à la page après connexion', () => {
+  test('lien ouvert hors session : la connexion ramène à la conversation demandée', async ({ page }) => {
+    await page.goto(`/dashboard/patient?tab=messages&appointment=${state.oldAppointmentId}`);
+    await expect(page).toHaveURL(/\/login$/);
+    await login(page, 'patientA');
+    await expect(page).toHaveURL(new RegExp(`/dashboard/patient\\?tab=messages&appointment=${state.oldAppointmentId}`));
+    await expect(page.getByText(`Message du praticien ${state.tag} (rendez-vous ancien)`).last()).toBeVisible();
+  });
+
+  test('page d’un autre espace : le patient arrive sur l’accueil de son espace', async ({ page }) => {
+    await page.goto('/dashboard/practitioner?tab=payouts');
+    await expect(page).toHaveURL(/\/login$/);
+    await login(page, 'patientA');
+    await expect(page).toHaveURL(/\/dashboard\/patient$/);
+  });
+
+  test('déconnexion volontaire : la reconnexion ne rouvre pas l’ancienne page', async ({ page }) => {
+    await login(page, 'patientA');
+    await page.goto('/dashboard/patient?tab=reports');
+    await logout(page);
+    await login(page, 'patientA');
+    await expect(page).toHaveURL(/\/dashboard\/patient$/);
+  });
+});
+
 test.describe('2. Notifications de message par rôle', () => {
   test('praticien : la notification ouvre la conversation du patient', async ({ page }) => {
     const space = await login(page, 'practitioner');
