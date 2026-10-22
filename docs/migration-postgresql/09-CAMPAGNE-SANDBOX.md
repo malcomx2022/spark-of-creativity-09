@@ -154,6 +154,23 @@ Fonctionnement et limites :
 - La campagne est rejouable sur la même base : au démarrage, les numéros de test sont retirés
   des comptes `campagne-*@domicares.test` précédents.
 
+Sondes du vrai sandbox sans clé (22 octobre 2026). Une route existante répond 401, ou 400 pour
+`/{mode}` qui valide d'abord le jeton ; une route absente répond 404 :
+- `POST /v1/transactions`, `…/{id}/token`, `GET`/`DELETE /v1/transactions/{id}`, la liste des
+  transactions, `POST /v1/payouts`, `PUT /v1/payouts/start`, `GET`/`DELETE /v1/payouts/{id}` et
+  la liste des dépôts : présentes ;
+- paiement sans redirection : **`POST /v1/{mode}`** (`mtn_open`, `mtn`, `moov`, `moov_tg`, `mtn_ci`),
+  réponse « Le jeton de transaction est invalide » sans jeton valide. Le harnais visait
+  `/v1/transactions/{mode}`, qui répond 404 : corrigé, sans quoi S1 à S5 auraient échoué ;
+- remboursement : `POST /v1/transactions/{id}/refund`, la route appelée par `fedapay.client.ts`,
+  répond **404**. Domicares renvoie alors `502 FEDAPAY_REFUND_UNAVAILABLE` et oriente vers le canal
+  manuel, comme prévu (document 08, §6). `POST /v1/refunds` **existe** (401) : en S9, la campagne en
+  consigne la réponse (`GET /v1/refunds`, code et clés seulement) pour décider d'un éventuel
+  remboursement par API.
+
+La campagne commence par S0 « Routes du sandbox » : elle refait ces sondes et s'arrête si une route
+appelée a disparu.
+
 Le rapport tranche les trois points ouverts comme au §4 : corps de `/payouts/start` et `mode` (S7),
 numéro `+229…` (S1, S7) et endpoint de remboursement (S9).
 

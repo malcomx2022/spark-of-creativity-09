@@ -763,3 +763,16 @@ Contrôles :
 - recette 32/32.
 
 Reste à faire sur un appareil réel : document 12, point 7.
+
+### Campagne FedaPay sur le vrai sandbox
+
+Les clés `FEDAPAY_SANDBOX_*` ne sont pas présentes dans cette session : la campagne réelle reste
+non exécutée. Le réseau atteint cependant le sandbox. Des sondes sans clé ont révélé que la route de
+paiement sans redirection utilisée par le harnais (`/v1/transactions/{mode}`) n'existe pas. C'est
+`/v1/{mode}` : corrigé, sinon S1 à S5 échouaient dès le premier essai réel.
+
+Les sondes confirment aussi que le remboursement par API (`/v1/transactions/{id}/refund`) n'existe
+pas. Domicares bascule alors comme prévu sur le canal manuel (502). Une ressource `/v1/refunds`
+existe : la campagne en lira la forme.
+
+Le contrôle S0 vérifie ces routes au démarrage. Campagne factice toujours verte (12 scénarios).

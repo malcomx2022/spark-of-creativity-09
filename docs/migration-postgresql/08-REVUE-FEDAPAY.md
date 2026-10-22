@@ -389,6 +389,12 @@ document) :
 3. Le format du numéro : la référence dit « sans préfixe national », tous les exemples montrent `+229…` ;
    c'est la forme des exemples qui est envoyée.
 
+Constat du 22 octobre 2026 (sondes du sandbox sans clé, document 09, §4 bis) : toutes les routes de
+`fedapay.client.ts` existent, sauf `POST /v1/transactions/{id}/refund` (404). Le canal API de
+remboursement aboutit donc toujours à `502 FEDAPAY_REFUND_UNAVAILABLE`, puis au canal manuel : c'est
+le comportement prévu. Une ressource `POST /v1/refunds` existe ; son contrat reste à lire avec une clé
+sandbox avant toute évolution du client.
+
 ## 7. Lot 3 — ce qui a été livré
 
 | Constat | Correction | Garde-fou |

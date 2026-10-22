@@ -102,12 +102,27 @@ describe(`Campagne FedaPay (${MODE})`, () => {
       return 'paiement simulé';
     }
     const { token } = await client.generateToken(transactionId);
-    const res = await fetch(`${SANDBOX_API}/transactions/${mode}`, {
+    // Paiement sans redirection : POST /v1/{mode} avec le jeton de la transaction (vérifié sur le sandbox :
+    // /v1/transactions/{mode} n'existe pas, 404).
+    const res = await fetch(`${SANDBOX_API}/${mode}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, phone_number: { number: phone, country: 'bj' } }),
     });
-    return `POST /transactions/${mode} → HTTP ${res.status}`;
+    const detail = res.ok ? '' : ` (${scrub(String(((await res.json().catch(() => ({}))) as { message?: unknown }).message ?? ''))})`;
+    return `POST /${mode} → HTTP ${res.status}${detail}`;
+  }
+
+  /** Routes du sandbox appelées par la campagne et fedapay.client.ts : 404 = route absente (avant authentification). */
+  async function sandboxRoutes(): Promise<string[]> {
+    const routes: [string, string][] = [['POST', '/transactions'], ['POST', '/transactions/0/token'], ['GET', '/transactions/0'], ['DELETE', '/transactions/0'], ['POST', '/mtn_open'], ['POST', '/moov'], ['POST', '/payouts'], ['PUT', '/payouts/start'], ['GET', '/payouts/0']];
+    const missing: string[] = [];
+    for (const [method, path] of routes) {
+      // Sans clé : une route existante répond 401 (ou 400 pour /{mode}), une route absente 404.
+      const res = await fetch(`${SANDBOX_API}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: method === 'GET' ? undefined : '{}' });
+      if (res.status === 404) missing.push(`${method} ${path}`);
+    }
+    return missing;
   }
 
   /** Attend un état final en relançant payments.sync (aucun webhook n'atteint l'API locale). */
@@ -200,6 +215,11 @@ describe(`Campagne FedaPay (${MODE})`, () => {
   };
 
   it('S1 à S13', async () => {
+    if (SANDBOX) {
+      const missing = await sandboxRoutes();
+      rows.push({ id: 'S0', title: 'Routes du sandbox', result: missing.length ? 'écart' : 'ok', domicares: '', fedapay: missing.length ? `absentes : ${missing.join(', ')}` : 'toutes présentes', note: '' });
+      if (missing.length) throw new Error(`routes FedaPay absentes : ${missing.join(', ')}`);
+    }
     await scenario('S1', 'Paiement MTN approuvé', async (row) => {
       const a = await newAppointment('patient', 3);
       ctx.s1Payment = a.paymentId;
@@ -276,6 +296,12 @@ describe(`Campagne FedaPay (${MODE})`, () => {
       row.domicares = `HTTP ${res.statusCode}, ${ctx.s9Status}, paiement ${(await payment(ctx.s1Payment)).status}`;
       row.fedapay = res.statusCode === 502 ? 'endpoint de remboursement indisponible' : '';
       row.note = res.statusCode === 502 ? 'canal manuel requis (document 08 §6)' : '';
+      if (SANDBOX && res.statusCode === 502) {
+        // /v1/transactions/{id}/refund n'existe pas, /v1/refunds existe : forme de sa réponse (lecture seule, sans données).
+        const r = await fetch(`${SANDBOX_API}/refunds?per_page=1`, { headers: { Authorization: `Bearer ${SECRET}` } });
+        const keys = Object.keys(((await r.json().catch(() => ({}))) as Record<string, unknown>) ?? {}).slice(0, 8).join(', ');
+        row.note += ` ; GET /v1/refunds → HTTP ${r.status}${keys ? ` (clés : ${scrub(keys)})` : ''}`;
+      }
       expectThat(row, [200, 201, 502].includes(res.statusCode), `réponse inattendue : ${scrub(res.body)}`);
     });
 
