@@ -41,6 +41,20 @@ export class AcademyController {
     return result;
   }
 
+  @Get('enrollments/:id/certificate')
+  @ApiOperation({ summary: 'Attestation d’une inscription : métadonnées et lien public de vérification' })
+  getCertificate(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.enrollments.getCertificate(user.id, id);
+  }
+
+  @Post('enrollments/:id/certificate/download')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Lien de téléchargement du PDF de l’attestation (15 min), redemandé à chaque clic' })
+  downloadCertificate(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.enrollments.certificateDownload(user.id, id);
+  }
+
   @Post('enrollments/:id/launch')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')

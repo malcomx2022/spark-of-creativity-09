@@ -2,7 +2,7 @@ import { BadGatewayException, BadRequestException, Inject, Injectable, Logger, N
 import { sql, type Selectable, type Transaction } from 'kysely';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
 import type { AcademyEnrollmentsTable, AcademyLearnersTable, DB } from '../database/types';
-import { AcademyEnrollmentView, AcademyLaunchView, akambiEnrollmentSchema, EnrollDto } from './academy.dto';
+import { AcademyCertificateDownloadView, AcademyCertificateView, AcademyEnrollmentView, AcademyLaunchView, akambiEnrollmentSchema, EnrollDto } from './academy.dto';
 import { academyHttpError, isDefinitive } from './academy.errors';
 import { AcademyService } from './academy.service';
 import { AKAMBI_CLIENT, AkambiClient, AkambiEnrollment, AkambiError } from './akambi.client';
@@ -104,6 +104,50 @@ export class AcademyEnrollmentsService {
       if (err instanceof AkambiError && err.code === 'ENROLLMENT_NOT_FOUND' && row.akambi_enrollment_id) await this.closeIfGone(enrollmentId, row.akambi_enrollment_id);
       throw academyHttpError(err);
     }
+  }
+
+  /** Attestation d'une inscription du praticien (métadonnées locales) ; 404 tant qu'elle n'est pas délivrée. */
+  async getCertificate(userId: string, enrollmentId: string): Promise<AcademyCertificateView> {
+    await this.academy.assertAccess(userId);
+    const row = await this.run((trx) => trx.selectFrom('academy_certificates')
+      .innerJoin('academy_enrollments', 'academy_enrollments.id', 'academy_certificates.enrollment_id')
+      .selectAll('academy_certificates')
+      .where('academy_enrollments.id', '=', enrollmentId)
+      .where('academy_enrollments.user_id', '=', userId)
+      .executeTakeFirst());
+    if (!row) throw new NotFoundException({ statusCode: 404, error: 'CERTIFICATE_NOT_FOUND', message: 'Attestation non délivrée' });
+    return {
+      id: row.id,
+      courseTitle: row.course_title,
+      learnerName: row.learner_name,
+      score: row.score_correct !== null && row.score_total !== null ? { correctAnswers: row.score_correct, totalQuestions: row.score_total } : null,
+      completionDate: row.completion_date?.toISOString() ?? null,
+      issuedAt: row.issued_at.toISOString(),
+      verificationUrl: row.verification_url,
+    };
+  }
+
+  /**
+   * Lien de téléchargement du PDF (§ 6.4) : valable 15 minutes, redemandé à Akambi à chaque clic, jamais stocké ni
+   * journalisé. Réservé au propriétaire d'une inscription dont l'attestation est enregistrée.
+   */
+  async certificateDownload(userId: string, enrollmentId: string): Promise<AcademyCertificateDownloadView> {
+    await this.academy.assertAccess(userId);
+    const row = await this.run((trx) => trx.selectFrom('academy_enrollments')
+      .innerJoin('academy_certificates', 'academy_certificates.enrollment_id', 'academy_enrollments.id')
+      .select('academy_enrollments.akambi_enrollment_id')
+      .where('academy_enrollments.id', '=', enrollmentId)
+      .where('academy_enrollments.user_id', '=', userId)
+      .executeTakeFirst());
+    if (!row?.akambi_enrollment_id) throw new NotFoundException({ statusCode: 404, error: 'CERTIFICATE_NOT_FOUND', message: 'Attestation non délivrée' });
+    let certificate;
+    try {
+      certificate = await this.akambi.getCertificate(row.akambi_enrollment_id);
+    } catch (err) {
+      throw academyHttpError(err);
+    }
+    if (!certificate.downloadUrl) throw new BadGatewayException({ statusCode: 502, error: 'AKAMBI_UNAVAILABLE', message: 'Lien de téléchargement indisponible. Réessayez.' });
+    return { url: certificate.downloadUrl, expiresAt: certificate.downloadUrlExpiresAt };
   }
 
   /**
