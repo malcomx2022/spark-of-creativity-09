@@ -434,4 +434,23 @@ describe('Appointments & payments (e2e)', () => {
     expect(anomaly).toMatchObject({ type: 'status_mismatch', fedapay_status: 'approved_partially_refunded', db_status: 'paid', description: expect.stringContaining('Remboursement partiel') });
     expect(anomaly.recommendation).toContain('Déjà effectué sur le tableau de bord FedaPay');
   });
+  it('paiement abandonné : la transaction supprimée chez FedaPay n’est pas une anomalie, un paiement actif sans transaction l’est', async () => {
+    const pay = async (time: string) => {
+      const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(16), time, reason: 'Réconciliation abandon' } });
+      return (await app.inject({ method: 'POST', url: `/api/appointments/${created.json().id}/respond`, headers: auth('practitioner'), payload: { action: 'accept' } })).json() as { transactionId: string; paymentId: string };
+    };
+    const abandoned = await pay('08:00');
+    const job = await app.inject({ method: 'POST', url: '/api/admin/jobs/payments.cleanup/run', headers: auth('admin'), payload: { expirationMinutes: 0 } });
+    expect(job.json().result.cleaned).toContainEqual(expect.objectContaining({ paymentId: abandoned.paymentId, newStatus: 'canceled' }));
+    const active = await pay('09:00');
+    // Le vrai FedaPay supprime la transaction annulée (DELETE, relue en 404) ; le client factice la garde.
+    fedapay.transactions.delete(abandoned.transactionId);
+    fedapay.transactions.delete(active.transactionId);
+
+    const rec = await app.inject({ method: 'POST', url: '/api/admin/finance/reconciliation', headers: auth('admin'), payload: {} });
+    expect(rec.statusCode).toBe(201);
+    const of = (id: string) => rec.json().anomalies.filter((a: { db_payment_id?: string }) => a.db_payment_id === id);
+    expect(of(abandoned.paymentId)).toEqual([]);
+    expect(of(active.paymentId)).toEqual([expect.objectContaining({ type: 'missing_in_fedapay', db_status: 'initiated' })]);
+  });
 });
