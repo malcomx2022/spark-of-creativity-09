@@ -243,9 +243,25 @@ Sondes faites avec la clé sandbox sur des transactions de 100 et 5 000 XOF, jam
   « Désactiver le Webhook lorsque l'application génère des erreurs ».
 
 Transaction de référence transmise au support : id 530207, référence `trx_bHA_1792769320885`
-(23 octobre 2026, 15:28:41 UTC). Questions posées : activation du paiement sans redirection et des
-dépôts, numéros de succès pour `momo_test`, mode de test des dépôts, filtres de `/search`, contrat
-`/v1/refunds`, prise en compte du `mode` à la création, état des webhooks.
+(23 octobre 2026, 15:28:41 UTC). Exemple `momo_test` refusé : transaction 530222, intention 294052
+(15:35:05 UTC). Questions posées :
+
+1. Activation, sur le compte sandbox, du paiement sans redirection (`mtn_open`, `moov`) et des dépôts,
+   ou limitation du sandbox à `momo_test` ?
+2. Condition préalable manquante (vérification du compte, module à activer) ?
+3. Paramètres de filtre par date de `/v1/transactions/search` ; `GET /v1/payouts` obsolète au profit de
+   `/v1/payouts/search` ?
+4. Prise en charge durable du contrat `POST /v1/refunds` `{ transaction_id, amount, description }` et
+   `GET /v1/refunds/{id}`, et moyens de paiement concernés ?
+5. Prise en compte du `mode` transmis à la création (absent à la relecture) ?
+6. Webhook sandbox désactivé : désactivation automatique après des échecs d'envoi, ou restriction du
+   compte ? Il sera recréé vers l'environnement de recette pour tester les événements `transaction.*`.
+7. `POST /v1/momo_test` est accepté, mais tous les paiements sont refusés immédiatement : quels numéros
+   de test donnent un paiement **approuvé** et lesquels un paiement **refusé** avec `momo_test` ? Quel
+   mode utiliser pour tester les dépôts en sandbox, puisque `POST /v1/payouts` avec
+   `mode: "momo_test"` répond 403 ?
+
+Réponse du support : en attente.
 
 Suite : dès qu'un numéro donne `approved` avec `momo_test`, faire payer la campagne en `momo_test` en
 sandbox (`customerPays`, `APPROVED_*`/`DECLINED_MTN`) et rejouer S1–S11. Le client de production garde
