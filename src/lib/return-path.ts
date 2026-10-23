@@ -34,7 +34,7 @@ export function clearReturnPath(voluntaryLogout = false) {
  * L'API reste seule juge de l'accès au contenu (un rendez-vous d'un autre compte est refusé).
  */
 export function takeReturnPath(dashboardPath: string): string | null {
-  let stored: { path?: unknown; at?: unknown } | null = null;
+  let stored: { path?: unknown; at?: unknown } | null;
   try {
     stored = JSON.parse(window.sessionStorage.getItem(KEY) || 'null');
     window.sessionStorage.removeItem(KEY);

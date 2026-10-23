@@ -894,3 +894,51 @@ Contrôles locaux : le script, exécuté avec un faux `npx`, coupe une installat
 à la tentative suivante. Il échoue avec le code 1 après trois échecs, renvoie le code 2 sans argument
 et ne laisse aucun processus orphelin. Le YAML des deux workflows a été validé. La vraie installation
 n'est exercée que sur les runners GitHub (`playwright install` est exclu en local).
+
+### Avertissements de la recette navigateur
+
+Le journal CI de la recette (job du 23 octobre, 1 693 lignes lues en entier) contenait les avertissements
+suivants. Ceux qui relèvent du projet sont corrigés :
+
+- **Build Vite du serveur de recette** (le même qu'avec `npm run build`) :
+  - zod 4 place des commentaires `@__PURE__` que Rollup ne sait pas rattacher. Rollup les retire sans
+    effet sur le code produit. `build.rollupOptions.onwarn` ignore ce seul cas (`INVALID_ANNOTATION`
+    dans `node_modules/zod/`) ;
+  - « chunk de plus de 500 kB » : c'était `mapbox-gl`, 1,9 Mo une fois minifié, indivisible et déjà
+    chargé à la demande (`LazyPractitionerMap`). Il passe dans son chunk `vendor-map`, que `index.html`
+    ne précharge pas, avec un budget de 2 100 ko. Le plugin `domicares-chunk-budget` garde la limite
+    de 500 ko pour tous les autres chunks : contre-épreuve faite avec un budget abaissé.
+- **`npm ci`, paquets dépréciés** :
+  - eslint 9 passe en 10, avec `@eslint/js` 10 et `eslint-plugin-react-hooks` 7. Les règles de hooks
+    restent les deux d'avant (`rules-of-hooks` en erreur, `exhaustive-deps` en avertissement), sans
+    les règles React Compiler du « recommended » de la v7 ;
+  - les deux nouvelles règles recommandées d'eslint 10 sont corrigées dans le code. Pour
+    `preserve-caught-error` (7 cas), l'erreur d'origine est attachée en `cause`, et
+    `tsconfig.app.json` reçoit `ES2022.Error` (géré depuis Safari 15). Pour `no-useless-assignment`
+    (1 cas), voir `return-path.ts` ;
+  - recharts 2 passe en 3 : seuls les types de `ui/chart.tsx` changent (payload du Tooltip via
+    `TooltipContentProps`, `LegendPayload`, clé React indépendante de `dataKey`) ;
+  - API : glob 10, apporté par `test-exclude` 7 via `babel-plugin-istanbul`, est remplacé par
+    `test-exclude` 8 (glob 13), forcé par un override versionné. La couverture Jest fonctionne.
+- **Service PostgreSQL de la recette** : `POSTGRES_INITDB_ARGS=--auth-local=trust --auth-host=trust`
+  fixe les méthodes par défaut d'initdb, ce qui supprime son avertissement « trust ». Le `pg_hba.conf`
+  est identique ligne pour ligne (vérifié dans le conteneur).
+
+Ce qui reste, et pourquoi :
+- « no usable system locales were found » vient de l'image `postgres:16-alpine`, celle de la
+  production (`deploy/vps/docker-compose.yml`). L'image Debian ne l'émet pas, mais elle éloignerait
+  la recette de la production ;
+- les `DeprecationWarning` `punycode` et `url.parse()` étaient émis par l'action `setup-node@v5`, pas
+  par le projet. La recette passe à `setup-node@v6`, et ils ont disparu de son journal (CI de la PR
+  du 23 octobre : 48/48). Les autres workflows restent en v5 ;
+- l'astuce `git init` de `actions/checkout` (« hint: … suppress this warning ») n'est pas un
+  avertissement du projet.
+
+Contrôles :
+- `npm ci` sans avertissement, audit à 0 vulnérabilité ;
+- typecheck, lint (0 erreur, 0 avertissement), 118 tests Vitest, build sans avertissement ;
+- navigateur : Chromium 38/38, WebKit en Docker 76/76 ;
+- recette réelle : Chromium et Chromium iPhone 32/32, WebKit iPhone 16/16 ;
+- API : typecheck, build, couverture Jest (76 tests), e2e 123/123 (4 essais MinIO sautés) ;
+- rendu de contrôle recharts 3 dans Vitest (aires, barres, lignes, secteurs, `ChartContainer`),
+  non commité.

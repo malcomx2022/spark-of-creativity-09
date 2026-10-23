@@ -23,6 +23,8 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: domicares
+          # Méthodes explicites, identiques aux défauts d'initdb : sans elles, initdb avertit à chaque job.
+          POSTGRES_INITDB_ARGS: --auth-local=trust --auth-host=trust
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -31,7 +33,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm

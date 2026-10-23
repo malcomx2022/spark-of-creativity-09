@@ -60,7 +60,7 @@ async function fetchPractitioners() {
       console.error('Erreur chargement praticiens:', error);
     }
     if (onlineOnly) throw error;
-    throw new Error('Impossible de charger la liste des praticiens. Veuillez vous connecter pour plus de détails.');
+    throw new Error('Impossible de charger la liste des praticiens. Veuillez vous connecter pour plus de détails.', { cause: error });
   }
 }
 
