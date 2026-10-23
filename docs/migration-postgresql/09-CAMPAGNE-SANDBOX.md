@@ -179,6 +179,38 @@ appelée a disparu.
 Le rapport tranche les trois points ouverts comme au §4 : corps de `/payouts/start` et `mode` (S7),
 numéro `+229…` (S1, S7) et contrat `/v1/refunds` (S9, S11).
 
+### Exécution du 23 octobre 2026 (sandbox réel, base PostgreSQL 16 locale dédiée)
+
+Commande : `FEDAPAY_CAMPAIGN=sandbox DATABASE_URL=<base locale domicares_campagne> npm run campaign:fedapay`,
+clés `sk_sandbox_` / `pk_sandbox_` lues dans l'environnement. Trois passages (rapports dans
+`api/campaign-reports/`, non versionnés). Résultat : **campagne bloquée par le compte sandbox**,
+deux défauts Domicares corrigés.
+
+| # | Résultat | Constat |
+|---|---|---|
+| S0 | ok | toutes les routes appelées existent |
+| S1, S2, S3, S5 | écart (compte) | `POST /v1/mtn_open` et `POST /v1/moov` → 400 « Opération non autorisée ». Sondé sur six transactions de 100 XOF : même refus avec clé secrète ou publique, numéro `+229…` ou local, avec ou sans `phone_number`, avec ou sans `mode` à la création, `/mtn` comme `/mtn_open`. Le contrat d'appel n'est pas en cause : le paiement sans redirection n'est pas autorisé sur ce compte |
+| S4 | ok | paiement `canceled` ; la transaction est **supprimée** par FedaPay (relue en 404) |
+| S6, S7, S8, S9, S10, S11 | non exercés | conséquence de S1–S5 (aucun paiement encaissé). `GET /v1/payouts` répond aussi 403 « Opération non autorisée » : les dépôts semblent également fermés sur ce compte |
+| S12 | ok après correction | 1er passage : HTTP 500. 3e passage : 201, 0 anomalie de campagne |
+| S13 | non couvert | URL publique requise |
+
+Défauts corrigés (unitaires 120/120, e2e 158 réussis et 4 ignorés pour la suite S3, build et lint) :
+- `GET /v1/transactions` répond 400 « Invoquer /v1/transactions est obsolète. Utiliser plutôt
+  /v1/transactions/search » : la réconciliation tombait en 500. `listTransactions` lit
+  `/v1/transactions/search`, qui **ignore** `created_at[gte|lte]` (même total pour une période de 2020) :
+  la période est filtrée côté Domicares sur `created_at`, pagination par `meta.next_page`.
+  Test : `fedapay.client.spec.ts`.
+- La réconciliation signalait `missing_in_fedapay` (gravité haute) pour chaque paiement abandonné,
+  car l'annulation supprime la transaction chez FedaPay. Un paiement `canceled` absent de FedaPay
+  n'est plus une anomalie ; un paiement actif absent le reste. Test : `appointments-payments.e2e-spec.ts`
+  (échoue sans la correction).
+
+Reste à faire : demander à FedaPay d'activer sur le compte sandbox le paiement sans redirection
+(`/v1/{mode}`) et les dépôts (`/v1/payouts`), puis relancer la campagne pour S1–S11, en particulier
+le contrat `/v1/refunds` (S9, S11). `GET /v1/payouts` (réconciliation des dépôts) n'a pas pu être
+vérifié face à la même dépréciation que `/v1/transactions`.
+
 ## 5. Retour en live
 
 ```bash

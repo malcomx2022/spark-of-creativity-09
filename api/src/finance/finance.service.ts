@@ -872,7 +872,9 @@ export class FinanceService implements OnModuleInit {
         }
       }
       for (const p of local) {
-        if (p.fedapay_transaction_id && !remoteMap.has(p.fedapay_transaction_id)) {
+        // Paiement annulé : l'annulation fait DELETE /v1/transactions/{id}, que FedaPay supprime réellement
+        // (relue en 404, campagne sandbox du 23 octobre 2026). Son absence de la liste est donc attendue.
+        if (p.fedapay_transaction_id && !remoteMap.has(p.fedapay_transaction_id) && p.status !== 'canceled') {
           anomalies.push({ type: 'missing_in_fedapay', severity: 'high', db_payment_id: p.id, fedapay_transaction_id: p.fedapay_transaction_id, db_amount: p.amount, db_status: p.status, description: `Paiement DB ${p.id} référence une transaction FedaPay ${p.fedapay_transaction_id} qui n'existe pas`, recommendation: "Vérifier si la transaction FedaPay a été supprimée ou si l'ID est incorrect" });
         }
       }

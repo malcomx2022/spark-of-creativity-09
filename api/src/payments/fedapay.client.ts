@@ -201,14 +201,23 @@ export class HttpFedaPayClient implements FedaPayClient {
     }
   }
 
-  /** Pagination complète (reconcile-fedapay s'arrêtait à 100 transactions). */
+  /**
+   * Pagination complète (reconcile-fedapay s'arrêtait à 100 transactions). GET /v1/transactions répond 400
+   * « obsolète, utiliser /v1/transactions/search » (sandbox, 23 octobre 2026) ; /search ignore les filtres
+   * created_at[gte|lte] : la période est donc appliquée ici sur created_at.
+   */
   async listTransactions(from: Date, to: Date): Promise<FedaPayTransaction[]> {
     const out: FedaPayTransaction[] = [];
     for (let page = 1; page <= 50; page++) {
-      const data = await this.request(`/transactions?per_page=100&page=${page}&created_at[gte]=${from.toISOString().slice(0, 10)}&created_at[lte]=${to.toISOString().slice(0, 10)}`);
-      const list = ((data['v1/transactions'] ?? (data.v1 as Record<string, unknown> | undefined)?.transactions ?? data.data ?? data.transactions ?? []) as Record<string, unknown>[]).map((t) => unwrap({ transaction: t }));
-      out.push(...list);
-      if (list.length < 100) break;
+      const data = await this.request(`/transactions/search?per_page=100&page=${page}`);
+      const rows = (data['v1/transactions'] ?? (data.v1 as Record<string, unknown> | undefined)?.transactions ?? data.data ?? data.transactions ?? []) as Record<string, unknown>[];
+      for (const t of rows) {
+        const created = typeof t.created_at === 'string' ? new Date(t.created_at) : null;
+        if (created && !Number.isNaN(created.getTime()) && (created < from || created > to)) continue;
+        out.push(unwrap({ transaction: t }));
+      }
+      const meta = data.meta as { next_page?: number | null } | undefined;
+      if (rows.length < 100 || (meta && meta.next_page == null)) break;
     }
     return out;
   }

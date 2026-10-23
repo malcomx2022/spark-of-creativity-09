@@ -38,6 +38,25 @@ describe('HttpFedaPayClient — remboursements /v1/refunds', () => {
   });
 });
 
+describe('HttpFedaPayClient — liste des transactions', () => {
+  const config = { FEDAPAY_MODE: 'sandbox', FEDAPAY_SECRET_KEY: 'sk_sandbox_test' } as AppConfig;
+  const reply = (body: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
+  const tx = (id: number, created_at: string) => ({ id, status: 'approved', amount: 1000, created_at });
+
+  it('lit /v1/transactions/search (GET /v1/transactions est obsolète) et filtre la période sur created_at', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(reply({ 'v1/transactions': [...Array.from({ length: 99 }, (_, i) => tx(100 + i, '2026-10-20T10:00:00.000+01:00')), tx(1, '2026-10-23T10:00:00.000+01:00')], meta: { next_page: 2 } }))
+      .mockResolvedValueOnce(reply({ 'v1/transactions': [tx(2, '2026-10-22T08:00:00.000+01:00'), tx(3, '2026-10-01T08:00:00.000+01:00')], meta: { next_page: null } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const list = await new HttpFedaPayClient(config).listTransactions(new Date('2026-10-21T00:00:00Z'), new Date('2026-10-23T23:59:59Z'));
+    expect(list.map((t) => t.id)).toEqual(['1', '2']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+      'https://sandbox-api.fedapay.com/v1/transactions/search?per_page=100&page=1',
+      'https://sandbox-api.fedapay.com/v1/transactions/search?per_page=100&page=2',
+    ]);
+  });
+});
+
 describe('FakeFedaPayClient — remboursements', () => {
   it('un remboursement refusé après coup rend le montant à la transaction', async () => {
     const fake = new FakeFedaPayClient();
