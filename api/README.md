@@ -137,6 +137,8 @@ psql -U postgres -c "CREATE DATABASE domicares"
 psql -U postgres -d domicares -f ../db/native/010_roles.sql
 psql -U postgres -d domicares -f ../db/native/schema.native.sql
 psql -U postgres -d domicares -f ../db/native/120_drop_rls_optional.sql   # option B (recommandée)
+psql -U postgres -d domicares -f ../db/native/130_fixes_heritage.sql
+psql -U postgres -d domicares -f ../db/native/140_academy.sql             # tables academy_* (DomiCares Academy)
 psql -U postgres -d domicares -f ../db/native/020_grants.sql
 psql -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD 'devpass'"
 
@@ -159,6 +161,8 @@ Academy (Akambi) : `AKAMBI_PROVIDER=akambi` avec `AKAMBI_BASE_URL` (HTTPS), `AKA
 `AKAMBI_API_SECRET` propres à chaque environnement, ou `fake` en dev/test ; `ACADEMY_ENABLED=false`
 par défaut (client factice interdit en production une fois activée). Client signé et client factice dans
 `src/academy/` ; plan et suivi : `../docs/academy/01-FAISABILITE-INTEGRATION-AKAMBI.md`.
+Tables `academy_*` : `db/native/140_academy.sql` (idempotent, procédure pour une base existante
+dans son en-tête), retour arrière `db/native/rollback/140_academy.down.sql`.
 
 Soldes praticien : ils sont recalculés par le trigger `trigger_update_balance_on_payment`
 à chaque changement de paiement. L'API n'appelle plus `update_payment_with_balance()` :

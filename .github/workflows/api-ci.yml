@@ -38,7 +38,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 130_fixes_heritage.sql 020_grants.sql; do
+          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 130_fixes_heritage.sql 140_academy.sql 020_grants.sql; do
             psql -h localhost -U postgres -d domicares -v ON_ERROR_STOP=1 -q -f ../db/native/$f
           done
           psql -h localhost -U postgres -d domicares -c "ALTER ROLE domicares_app PASSWORD 'ci'"

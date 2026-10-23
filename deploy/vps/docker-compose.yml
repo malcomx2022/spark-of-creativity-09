@@ -93,6 +93,7 @@ services:
       - ../../db/native/schema.native.sql:/docker-entrypoint-initdb.d/20_schema.sql:ro
       - ../../db/native/120_drop_rls_optional.sql:/docker-entrypoint-initdb.d/25_drop_rls.sql:ro
       - ../../db/native/130_fixes_heritage.sql:/docker-entrypoint-initdb.d/27_fixes.sql:ro
+      - ../../db/native/140_academy.sql:/docker-entrypoint-initdb.d/28_academy.sql:ro
       - ../../db/native/020_grants.sql:/docker-entrypoint-initdb.d/30_grants.sql:ro
       - ./backups:/backups
     healthcheck:
