@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Calendar, Clock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { loadFedaPayCheckout } from '@/lib/fedapay-widget';
 import { api, auth } from '@/lib/api';
 import { useRetryGroupSessionPayment } from '@/hooks/useRetryGroupSessionPayment';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
@@ -50,6 +51,7 @@ export function RetryGroupSessionPaymentWidget({
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [fedapayConfig, setFedapayConfig] = useState<{ publicKey: string; environment: string } | null>(null);
   const [widgetInitialized, setWidgetInitialized] = useState(false);
+  const [fedapayScriptLoaded, setFedapayScriptLoaded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const queryClient = useQueryClient();
@@ -177,9 +179,29 @@ export function RetryGroupSessionPaymentWidget({
     onOpenChange(false);
   };
 
+  // checkout.js n'est plus dans index.html : chargé à l'ouverture du paiement.
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    void loadFedaPayCheckout().then((loaded) => {
+      if (!active) return;
+      if (loaded) {
+        setFedapayScriptLoaded(true);
+      } else {
+        toast({
+          title: 'Service de paiement indisponible',
+          description: 'Le service de paiement n\'a pas pu être chargé. Veuillez rafraîchir la page.',
+          variant: 'destructive',
+          duration: 10000,
+        });
+      }
+    });
+    return () => { active = false; };
+  }, [open]);
+
   // Initialize FedaPay widget
   useEffect(() => {
-    if (paymentStatus === 'pending' && transactionId && fedapayConfig && containerRef.current && !widgetInitialized) {
+    if (paymentStatus === 'pending' && transactionId && fedapayConfig && fedapayScriptLoaded && containerRef.current && !widgetInitialized) {
       console.log('Initializing FedaPay widget for retry:', transactionId);
       
       if (containerRef.current) {
@@ -256,7 +278,7 @@ export function RetryGroupSessionPaymentWidget({
         }
       }
     }
-  }, [paymentStatus, transactionId, fedapayConfig, widgetInitialized, phoneNumber, payerName, session, completion]);
+  }, [paymentStatus, transactionId, fedapayConfig, fedapayScriptLoaded, widgetInitialized, phoneNumber, payerName, session, completion]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
