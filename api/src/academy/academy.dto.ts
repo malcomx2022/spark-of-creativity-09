@@ -41,3 +41,55 @@ export interface AcademyCourseView {
   presentationUrl: string | null;
   updatedAt: string;
 }
+
+const personName = z.string().trim().min(1).max(100).regex(/^[\p{L}\p{M}' .-]+$/u, 'Caractères non autorisés');
+
+/**
+ * POST /academy/enrollments. Le nom n'est transmis à Akambi qu'au premier rattachement du compte de formation
+ * (il figure ensuite sur les attestations) ; absent, il est déduit du nom complet du profil DomiCares.
+ */
+export const enrollSchema = z.object({
+  courseId: courseIdSchema,
+  firstName: personName.optional(),
+  lastName: personName.optional(),
+}).refine((v) => (v.firstName === undefined) === (v.lastName === undefined), { message: 'Prénom et nom vont ensemble', path: ['lastName'] });
+export type EnrollDto = z.infer<typeof enrollSchema>;
+
+/** Inscription renvoyée par Akambi (§ 6.3), contrôlée avant toute écriture locale. */
+export const akambiEnrollmentSchema = z.object({
+  id: z.string().min(1).max(128),
+  externalLearnerId: z.string(),
+  learnerId: z.string(),
+  courseId: courseIdSchema,
+  courseTitle: z.string(),
+  status: z.enum(['ENROLLED', 'IN_PROGRESS', 'COMPLETED', 'CERTIFIED', 'CANCELLED']),
+  progress: z.number().int().min(0).max(100),
+  enrolledAt: isoDate,
+  startedAt: isoDate.nullable(),
+  lastActivityAt: isoDate.nullable(),
+  completedAt: isoDate.nullable(),
+  certificateId: z.string().nullable(),
+  updatedAt: isoDate,
+});
+export type AkambiEnrollmentInput = z.infer<typeof akambiEnrollmentSchema>;
+
+/** Inscription exposée au praticien (identifiant local DomiCares, jamais l'identifiant Akambi). */
+export interface AcademyEnrollmentView {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  status: 'PENDING' | 'ENROLLED' | 'IN_PROGRESS' | 'COMPLETED' | 'CERTIFIED' | 'CANCELLED';
+  progress: number;
+  enrolledAt: string | null;
+  startedAt: string | null;
+  lastActivityAt: string | null;
+  completedAt: string | null;
+  hasCertificate: boolean;
+}
+
+/** Accès au cours (§ 7) : lien à suivre immédiatement, jamais mis en cache ni stocké. */
+export interface AcademyLaunchView {
+  mode: 'SSO' | 'LOGIN_REQUIRED';
+  url: string;
+  expiresAt: string | null;
+}
