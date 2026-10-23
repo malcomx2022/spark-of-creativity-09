@@ -5,15 +5,17 @@ name: Recette post-livraison
 # base PostgreSQL jetable, sans interception (npm run test:recette).
 on:
   pull_request:
-    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', '.github/workflows/recette.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', 'scripts/ci-playwright-install.sh', '.github/workflows/recette.yml']
   push:
     branches: [main]
-    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', '.github/workflows/recette.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', 'scripts/ci-playwright-install.sh', '.github/workflows/recette.yml']
 
 jobs:
   recette:
     name: Recette navigateur (API et PostgreSQL 16 réels, Chromium et WebKit iPhone)
     runs-on: ubuntu-latest
+    # 5 à 6 minutes d'habitude : plafond bien en deçà des 6 heures par défaut de GitHub.
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -48,7 +50,9 @@ jobs:
       - run: npm ci
         working-directory: api
       - name: Navigateurs Playwright (Chromium, WebKit pour l'émulation iPhone)
-        run: npx playwright install --with-deps chromium webkit
+        # Tentatives de 8 minutes au plus, 3 fois (miroir apt lent) ; plafond de l'étape au-dessus.
+        timeout-minutes: 30
+        run: bash scripts/ci-playwright-install.sh chromium webkit
       - name: Recette
         env:
           CI: 'true'
