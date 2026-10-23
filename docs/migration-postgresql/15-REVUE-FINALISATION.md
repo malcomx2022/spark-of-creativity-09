@@ -930,7 +930,8 @@ Ce qui reste, et pourquoi :
   la recette de la production ;
 - les `DeprecationWarning` `punycode` et `url.parse()` étaient émis par l'action `setup-node@v5`, pas
   par le projet. La recette passe à `setup-node@v6`, et ils ont disparu de son journal (CI de la PR
-  du 23 octobre : 48/48). Les autres workflows restent en v5 ;
+  du 23 octobre : 48/48). Web CI, API CI et l'image MinIO sont passés à leur tour en v6, avec les
+  mêmes paramètres (`cache: npm` explicite, aucun champ `packageManager`) ;
 - l'astuce `git init` de `actions/checkout` (« hint: … suppress this warning ») n'est pas un
   avertissement du projet.
 
