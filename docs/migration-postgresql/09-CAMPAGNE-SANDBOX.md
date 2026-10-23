@@ -248,6 +248,14 @@ Sondes faites avec la clé sandbox sur des transactions de 100 et 5 000 XOF, jam
   les refus de l'API et sans effet sur S1–S12, lus par `payments.sync`. Pour S13 : recréer le webhook
   vers l'environnement de recette, avec son secret sandbox dans `FEDAPAY_WEBHOOK_SECRET`, et décocher
   « Désactiver le Webhook lorsque l'application génère des erreurs ».
+- **Cause confirmée par FedaPay (courriel du 23 octobre 2026).** FedaPay écrit ne pas parvenir à livrer
+  les événements du compte en mode sandbox au webhook `https://domicares.life/api/webhooks/fedapay`
+  (webhook sandbox n° 1471, historique dans le tableau de bord sandbox) : seule une réponse 200 à 299
+  compte comme livrée. Le webhook **sandbox pointe donc vers la production**. Chaque transaction de
+  campagne ou de sonde produit un événement que la production refuse, comme prévu : signature vérifiée
+  avec le secret live, transaction sandbox inconnue. Ni panne de production, ni défaut Domicares.
+  À faire dans le tableau de bord sandbox : supprimer ce webhook, ou le pointer vers la recette pour S13.
+  Ne jamais faire accepter les événements sandbox par la production (secret sandbox en production).
 
 Transaction de référence transmise au support : id 530207, référence `trx_bHA_1792769320885`
 (23 octobre 2026, 15:28:41 UTC). Exemple `momo_test` refusé : transaction 530222, intention 294052
@@ -263,12 +271,13 @@ Transaction de référence transmise au support : id 530207, référence `trx_bH
 5. Prise en compte du `mode` transmis à la création (absent à la relecture) ?
 6. Webhook sandbox désactivé : désactivation automatique après des échecs d'envoi, ou restriction du
    compte ? Il sera recréé vers l'environnement de recette pour tester les événements `transaction.*`.
+   **Résolue** par le courriel de FedaPay du 23 octobre 2026 : échecs de livraison vers la production.
 7. `POST /v1/momo_test` est accepté, mais tous les paiements sont refusés immédiatement : quels numéros
    de test donnent un paiement **approuvé** et lesquels un paiement **refusé** avec `momo_test` ? Quel
    mode utiliser pour tester les dépôts en sandbox, puisque `POST /v1/payouts` avec
    `mode: "momo_test"` répond 403 ?
 
-Réponse du support : en attente.
+Réponse du support : en attente pour les questions 1 à 5 et 7.
 
 Campagne en `momo_test` (23 octobre 2026, base locale recréée depuis `main`) : le harnais paie par
 `POST /v1/momo_test` et note l'état de l'intention. Variante `fake` : tout passe (S11 sans objet, S13
