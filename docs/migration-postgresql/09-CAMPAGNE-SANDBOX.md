@@ -136,6 +136,12 @@ lues dans l'environnement. Ne jamais les écrire dans un fichier versionné. Le 
 toute autre clé, donc jamais de mode live. `FEDAPAY_CAMPAIGN=fake` rejoue la même campagne
 contre le client factice : cette variante valide le harnais.
 
+Paiement du client en sandbox : `FEDAPAY_CAMPAIGN_PAY_MODE=momo_test` (défaut, seul mode ouvert sur le
+sandbox) ou `operateur` (`mtn_open` / `moov`, si FedaPay les ouvre). En `momo_test`, les numéros du
+paiement se règlent par `FEDAPAY_MOMO_TEST_APPROVED` et `FEDAPAY_MOMO_TEST_DECLINED` (défaut :
+`+22966000001` / `+22964000001` approuvés, `+22966000000` refusé). La transaction reste créée par
+l'API avec son mode opérateur : `momo_test` l'accepte (vérifié pour `mtn_open` et `moov`).
+
 Fonctionnement et limites :
 
 - Le « patient » paie sans redirection : `POST /v1/transactions/{mtn_open|moov}` avec le jeton de
@@ -264,9 +270,16 @@ Transaction de référence transmise au support : id 530207, référence `trx_bH
 
 Réponse du support : en attente.
 
-Suite : dès qu'un numéro donne `approved` avec `momo_test`, faire payer la campagne en `momo_test` en
-sandbox (`customerPays`, `APPROVED_*`/`DECLINED_MTN`) et rejouer S1–S11. Le client de production garde
-`mtn_open`/`moov`.
+Campagne en `momo_test` (23 octobre 2026, base locale recréée depuis `main`) : le harnais paie par
+`POST /v1/momo_test` et note l'état de l'intention. Variante `fake` : tout passe (S11 sans objet, S13
+non couvert). Sandbox réel : S0, S3, S4 et S12 ok. **S3 (paiement refusé) passe désormais de bout en
+bout** : intention `declined`, transaction `declined`, paiement Domicares `failed` via `payments.sync`,
+solde inchangé. S1, S2 et S5 en écart, car toutes les intentions `momo_test` sont refusées avec les
+numéros par défaut ; S6 à S11 en découlent. Dépôts toujours en 403.
+
+Suite : dès que le support donne un numéro approuvé, relancer avec
+`FEDAPAY_MOMO_TEST_APPROVED=<numéro> FEDAPAY_CAMPAIGN=sandbox npm run campaign:fedapay`, sans modifier
+le code. Le client de production garde `mtn_open`/`moov`.
 
 Sources : [identifiants sandbox](https://support.fedapay.com/portal/fr/kb/articles/comment-avoir-les-identifiants-sandbox),
 [envoi de paiement](https://docs.fedapay.com/api-reference/transactions/send-payment.md),

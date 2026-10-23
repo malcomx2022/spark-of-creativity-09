@@ -6,8 +6,13 @@
  *   DATABASE_URL=<base de recette dédiée> JWT_ACCESS_SECRET=<secret de test> npm run campaign:fedapay
  *
  * FEDAPAY_CAMPAIGN=fake rejoue la même campagne contre le client factice (validation du harnais).
- * Le client « paie » par POST /v1/transactions/{mode} (paiement sans redirection, numéros de test
- * FedaPay) ; l'API locale ne reçoit pas de webhook : l'état final est lu par le job payments.sync.
+ * Le client « paie » sans redirection par POST /v1/{mode}. En sandbox, FedaPay ouvre le mode de test
+ * `momo_test` (centre d'aide FedaPay) et refuse mtn_open/moov (« Opération non autorisée ») :
+ * FEDAPAY_CAMPAIGN_PAY_MODE=momo_test (défaut) ou operateur (mtn_open/moov, si FedaPay les ouvre).
+ * Numéros du paiement en momo_test, en attendant ceux du support : FEDAPAY_MOMO_TEST_APPROVED et
+ * FEDAPAY_MOMO_TEST_DECLINED (défaut : les numéros de test ci-dessous). La transaction est toujours créée
+ * par l'API avec son mode opérateur. L'API locale ne reçoit pas de webhook : l'état final est lu par le
+ * job payments.sync.
  * Résultat : tableau du §4 du document 09 (statuts et codes HTTP uniquement, sans nom ni numéro)
  * dans campaign-reports/. S13 (rejeu d'un webhook) exige une URL publique : non couvert ici.
  */
@@ -50,6 +55,10 @@ const SANDBOX_API = 'https://sandbox-api.fedapay.com/v1';
 const APPROVED_MTN = '+22966000001';
 const APPROVED_MOOV = '+22964000001';
 const DECLINED_MTN = '+22966000000';
+const PAY_MODE = process.env.FEDAPAY_CAMPAIGN_PAY_MODE ?? 'momo_test';
+if (PAY_MODE !== 'momo_test' && PAY_MODE !== 'operateur') throw new Error('FEDAPAY_CAMPAIGN_PAY_MODE=momo_test ou operateur');
+const MOMO_TEST_APPROVED = process.env.FEDAPAY_MOMO_TEST_APPROVED;
+const MOMO_TEST_DECLINED = process.env.FEDAPAY_MOMO_TEST_DECLINED;
 const ATTEMPTS = SANDBOX ? 12 : 2;
 const DELAY_MS = SANDBOX ? 5000 : 0;
 const tag = Date.now().toString(36);
@@ -103,19 +112,23 @@ describe(`Campagne FedaPay (${MODE})`, () => {
     }
     const { token } = await client.generateToken(transactionId);
     // Paiement sans redirection : POST /v1/{mode} avec le jeton de la transaction (vérifié sur le sandbox :
-    // /v1/transactions/{mode} n'existe pas, 404).
-    const res = await fetch(`${SANDBOX_API}/${mode}`, {
+    // /v1/transactions/{mode} n'existe pas, 404). En momo_test, le numéro décide approuvé ou refusé.
+    const path = PAY_MODE === 'momo_test' ? 'momo_test' : mode;
+    const number = PAY_MODE === 'momo_test' ? ((phone === DECLINED_MTN ? MOMO_TEST_DECLINED : MOMO_TEST_APPROVED) ?? phone) : phone;
+    const res = await fetch(`${SANDBOX_API}/${path}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, phone_number: { number: phone, country: 'bj' } }),
+      body: JSON.stringify({ token, phone_number: { number, country: 'bj' } }),
     });
-    const detail = res.ok ? '' : ` (${scrub(String(((await res.json().catch(() => ({}))) as { message?: unknown }).message ?? ''))})`;
-    return `POST /${mode} → HTTP ${res.status}${detail}`;
+    const body = (await res.json().catch(() => ({}))) as { message?: unknown; 'v1/payment_intent'?: { status?: unknown } };
+    // momo_test répond 200 même pour un paiement refusé : l'état de l'intention est reporté.
+    const detail = res.ok ? (body['v1/payment_intent']?.status ? `, intention ${String(body['v1/payment_intent'].status)}` : '') : ` (${scrub(String(body.message ?? ''))})`;
+    return `POST /${path} → HTTP ${res.status}${detail}`;
   }
 
   /** Routes du sandbox appelées par la campagne et fedapay.client.ts : 404 = route absente (avant authentification). */
   async function sandboxRoutes(): Promise<string[]> {
-    const routes: [string, string][] = [['POST', '/transactions'], ['POST', '/transactions/0/token'], ['GET', '/transactions/0'], ['DELETE', '/transactions/0'], ['POST', '/mtn_open'], ['POST', '/moov'], ['POST', '/payouts'], ['PUT', '/payouts/start'], ['GET', '/payouts/0'], ['POST', '/refunds'], ['GET', '/refunds/0']];
+    const routes: [string, string][] = [['POST', '/transactions'], ['POST', '/transactions/0/token'], ['GET', '/transactions/0'], ['DELETE', '/transactions/0'], ['POST', '/mtn_open'], ['POST', '/moov'], ['POST', '/momo_test'], ['POST', '/payouts'], ['PUT', '/payouts/start'], ['GET', '/payouts/0'], ['POST', '/refunds'], ['GET', '/refunds/0']];
     const missing: string[] = [];
     for (const [method, path] of routes) {
       // Sans clé : une route existante répond 401 (ou 400 pour /{mode}), une route absente 404.
@@ -198,6 +211,7 @@ describe(`Campagne FedaPay (${MODE})`, () => {
     const lines = [
       `# Campagne FedaPay ${MODE} — ${new Date().toISOString()}`, '',
       'Rapport généré par `npm run campaign:fedapay` (document 09, §4). Statuts et codes HTTP uniquement.', '',
+      ...(SANDBOX ? [`Paiement client : ${PAY_MODE === 'momo_test' ? `momo_test (numéros ${MOMO_TEST_APPROVED || MOMO_TEST_DECLINED ? 'fournis par l’environnement' : 'de test par défaut'})` : 'opérateur (mtn_open / moov)'}.`, ''] : []),
       '| # | Scénario | Résultat | Statut Domicares | Statut FedaPay | Note |', '|---|---|---|---|---|---|',
       ...rows.map((r) => `| ${r.id} | ${r.title} | ${r.result} | ${r.domicares} | ${r.fedapay} | ${r.note} |`),
     ];
