@@ -925,9 +925,8 @@ suivants. Ceux qui relèvent du projet sont corrigés :
   est identique ligne pour ligne (vérifié dans le conteneur).
 
 Ce qui reste, et pourquoi :
-- « no usable system locales were found » vient de l'image `postgres:16-alpine`, celle de la
-  production (`deploy/vps/docker-compose.yml`). L'image Debian ne l'émet pas, mais elle éloignerait
-  la recette de la production ;
+- « no usable system locales were found » venait de l'image `postgres:16-alpine`, celle de la
+  production : corrigé ensuite en CI et en production (§ « Locales PostgreSQL » ci-dessous) ;
 - les `DeprecationWarning` `punycode` et `url.parse()` étaient émis par l'action `setup-node@v5`, pas
   par le projet. La recette passe à `setup-node@v6`, et ils ont disparu de son journal (CI de la PR
   du 23 octobre : 48/48). Web CI, API CI et l'image MinIO sont passés à leur tour en v6, avec les
@@ -943,3 +942,34 @@ Contrôles :
 - API : typecheck, build, couverture Jest (76 tests), e2e 123/123 (4 essais MinIO sautés) ;
 - rendu de contrôle recharts 3 dans Vitest (aires, barres, lignes, secteurs, `ChartContainer`),
   non commité.
+
+### Locales PostgreSQL
+
+initdb, dans `postgres:16-alpine`, journalisait « no usable system locales were found » : l'image ne
+contient pas `locale -a` (paquet `musl-locales`). Aucune option d'initdb ne l'évite ; c'est l'import
+des collations système qui échoue, que l'on passe `--no-locale` ou le fournisseur ICU (vérifié).
+
+Décision : même correction en CI et en production.
+- `deploy/vps/postgres.Dockerfile` reprend `postgres:16-alpine` et ajoute `musl-locales`. initdb
+  importe alors 307 collations système, dont `fr_FR`, sans avertissement ; l'image garde sa taille
+  (420 Mo).
+- Production : `docker-compose.yml` construit `domicares-postgres:16-alpine-locales`, et le
+  déploiement exécute `docker compose build postgres` sans `--pull`. Guide, `preflight.sh`, consignes
+  de `deploy/vps` et retour arrière : document 07, §6.
+- CI : dans API CI et la recette, le service PostgreSQL devient une étape qui construit l'image. Un
+  service GitHub ne se construit pas. La disponibilité est attendue en TCP et une étape finale
+  affiche les avertissements PostgreSQL. `backup-restore.yml` et `restore-drill.sh` (`PG_IMAGE`)
+  restaurent dans la même image.
+
+Contrôles locaux (Docker) :
+- l'avertissement apparaît avec l'image officielle et disparaît avec la nouvelle ;
+- tri par défaut identique (ordre des octets) dans les deux images : les index texte existants
+  restent valides ;
+- un volume créé par l'ancienne image redémarre sur la nouvelle sans erreur, données intactes, et
+  `pg_import_system_collations` ajoute 304 collations ;
+- étape CI rejouée : base prête en 2 s, schéma natif chargé, aucun avertissement.
+
+L'image n'a pas été construite telle quelle ici : le proxy HTTPS de l'environnement n'est pas reconnu
+par apk. Le certificat du proxy a été fourni au seul build de test, non versionné. La CI, sans proxy,
+construit le Dockerfile versionné. Aucun déploiement n'a été exécuté.
+

@@ -38,6 +38,10 @@ La PR #82 initiale a été fusionnée sur `main` (`4dbc588`). Suivi actif :
 branche `codex/audit-followup-20261006`, avec PR et contrôles avant livraison.
 Aucun déploiement VPS n'a été exécuté par le chantier courant.
 
+PostgreSQL : image `domicares-postgres:16-alpine-locales` (`postgres.Dockerfile`, postgres:16-alpine +
+musl-locales), construite sans `--pull` ; aussi utilisée par la CI (api-ci, recette, backup-restore) et
+`restore-drill.sh` (`PG_IMAGE`). Premier déploiement : conteneur recréé sur le volume existant (document 07, §6).
+
 Utiliser Node 22 pour le build web. Servir manifeste et worker sans cache HTTP durable,
 préserver leur version produite par Vite et valider installation, hors ligne, mise à jour
 consentie et cache exclusivement public. Rollback : images web/API ensemble et actualisation

@@ -5,10 +5,10 @@ name: Recette post-livraison
 # base PostgreSQL jetable, sans interception (npm run test:recette).
 on:
   pull_request:
-    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', 'scripts/ci-playwright-install.sh', '.github/workflows/recette.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', 'scripts/ci-playwright-install.sh', 'deploy/vps/postgres.Dockerfile', '.github/workflows/recette.yml']
   push:
     branches: [main]
-    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', 'scripts/ci-playwright-install.sh', '.github/workflows/recette.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'db/native/**', 'playwright.recette.config.ts', 'tests/recette/**', 'scripts/ci-playwright-install.sh', 'deploy/vps/postgres.Dockerfile', '.github/workflows/recette.yml']
 
 jobs:
   recette:
@@ -16,21 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     # 5 à 6 minutes d'habitude : plafond bien en deçà des 6 heures par défaut de GitHub.
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: domicares
-          # Méthodes explicites, identiques aux défauts d'initdb : sans elles, initdb avertit à chaque job.
-          POSTGRES_INITDB_ARGS: --auth-local=trust --auth-host=trust
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -40,6 +25,19 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             api/package-lock.json
+      # PostgreSQL de production (postgres.Dockerfile : postgres:16-alpine + locales musl). Un service
+      # GitHub ne se construit pas : conteneur lancé ici, prêt quand il répond en TCP (le serveur
+      # temporaire d'initdb n'écoute que le socket local).
+      - name: PostgreSQL 16 (image de production)
+        working-directory: deploy/vps
+        run: |
+          docker build -q -f postgres.Dockerfile -t domicares-postgres:16-alpine-locales .
+          docker run -d --name postgres -p 5432:5432 \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=domicares \
+            -e POSTGRES_INITDB_ARGS="--auth-local=trust --auth-host=trust" \
+            domicares-postgres:16-alpine-locales
+          for i in $(seq 1 60); do pg_isready -h localhost -p 5432 -U postgres -d domicares -q && break; sleep 1; done
+          pg_isready -h localhost -p 5432 -U postgres -d domicares || { docker logs postgres; exit 1; }
       - name: Charger le schéma natif
         env:
           PGPASSWORD: postgres
@@ -68,3 +66,6 @@ jobs:
             playwright-report/recette/
             test-results/
           retention-days: 7
+      - name: Avertissements PostgreSQL
+        if: always()
+        run: docker logs postgres 2>&1 | grep -E "WARNING|warning:" || echo "Aucun avertissement PostgreSQL"
