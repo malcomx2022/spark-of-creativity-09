@@ -215,6 +215,9 @@ Sur un VPS déjà en service, le premier déploiement qui l'embarque recrée le 
 données et tri inchangés (musl trie par octets, avec ou sans locales). Les collations système d'une
 base existante s'ajoutent si besoin par `SELECT pg_import_system_collations('pg_catalog');`.
 Retour arrière : `image: postgres:16-alpine` sans `build`, puis `docker compose up -d postgres`.
+`POSTGRES_INITDB_ARGS=--auth-local=trust --auth-host=trust` rend explicites les méthodes qu'initdb
+applique par défaut : même `pg_hba.conf`, sans l'avertissement « enabling trust authentication ».
+Comme le schéma monté, il ne joue qu'à la création d'une base neuve.
 
 MinIO ne publie plus d'images accessibles anonymement : `minio.Dockerfile` compile la release
 épinglée (`RELEASE.2025-09-07T16-13-09Z`) depuis son commit, avec les mêmes options que le build

@@ -77,6 +77,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Méthodes d'authentification d'initdb rendues explicites (ce sont ses défauts : pg_hba.conf
+      # identique) ; sans elles, initdb journalise « enabling trust authentication… ». Base neuve seulement.
+      POSTGRES_INITDB_ARGS: --auth-local=trust --auth-host=trust
     command:
       - postgres
       - -c
