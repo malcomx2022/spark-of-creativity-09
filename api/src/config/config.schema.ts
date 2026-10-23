@@ -69,6 +69,9 @@ export const configSchema = z.object({
   AKAMBI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
   AKAMBI_API_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
   AKAMBI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(10_000),
+  // Secrets de signature des webhooks (whsec_…), séparés par des virgules pendant une rotation (guide § 9.2).
+  // Absents : POST /api/webhooks/akambi répond 503 et Akambi retente plus tard.
+  AKAMBI_WEBHOOK_SECRETS: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
 
   // Push Web (VAPID) : webpush | console
   PUSH_PROVIDER: z.enum(['webpush', 'console']).default('console'),

@@ -91,7 +91,7 @@ export class AcademyEnrollmentsService {
     await this.academy.assertAccess(userId);
     const row = await this.run((trx) => trx.selectFrom('academy_enrollments')
       .innerJoin('academy_learners', 'academy_learners.user_id', 'academy_enrollments.user_id')
-      .select(['academy_enrollments.course_id', 'academy_learners.external_learner_id', 'academy_learners.link_status'])
+      .select(['academy_enrollments.course_id', 'academy_enrollments.akambi_enrollment_id', 'academy_learners.external_learner_id', 'academy_learners.link_status'])
       .where('academy_enrollments.id', '=', enrollmentId)
       .where('academy_enrollments.user_id', '=', userId)
       .where('academy_enrollments.status', 'not in', ['PENDING', 'CANCELLED'])
@@ -101,7 +101,22 @@ export class AcademyEnrollmentsService {
       const launch = await this.akambi.launchSso({ externalLearnerId: row.external_learner_id, courseId: row.course_id });
       return { mode: launch.mode, url: launch.url, expiresAt: launch.expiresAt };
     } catch (err) {
+      if (err instanceof AkambiError && err.code === 'ENROLLMENT_NOT_FOUND' && row.akambi_enrollment_id) await this.closeIfGone(enrollmentId, row.akambi_enrollment_id);
       throw academyHttpError(err);
+    }
+  }
+
+  /**
+   * Inscription retirée chez Akambi (DELETE) dont l'événement enrollment.cancelled n'a pas été reçu : confirmée par
+   * GET /enrollments/{id} (404 après suppression, guide § 8), elle est close localement en CANCELLED.
+   */
+  private async closeIfGone(enrollmentId: string, akambiEnrollmentId: string): Promise<void> {
+    try {
+      await this.akambi.getEnrollment(akambiEnrollmentId);
+    } catch (err) {
+      if (!(err instanceof AkambiError) || err.code !== 'ENROLLMENT_NOT_FOUND') return;
+      await this.run((trx) => trx.updateTable('academy_enrollments').set({ status: 'CANCELLED', last_error_code: 'ENROLLMENT_NOT_FOUND' }).where('id', '=', enrollmentId).where('status', '<>', 'CANCELLED').execute());
+      this.logger.warn(`inscription ${enrollmentId} absente chez Akambi : close localement`);
     }
   }
 
