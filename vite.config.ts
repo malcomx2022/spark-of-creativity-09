@@ -34,6 +34,24 @@ const browserNetworkFailure: Plugin = {
   },
 };
 
+// Budget des chunks après minification. mapbox-gl (1,9 Mo minifié, indivisible) n'est chargé
+// qu'à l'affichage de la carte (LazyPractitionerMap) : il a son chunk et son propre budget ;
+// tout autre chunk au-delà de 500 ko reste signalé, comme le faisait chunkSizeWarningLimit.
+const CHUNK_BUDGET_KB = 500;
+const CHUNK_BUDGETS_KB: Record<string, number> = { 'vendor-map': 2100 };
+const chunkBudget: Plugin = {
+  name: 'domicares-chunk-budget',
+  apply: 'build',
+  generateBundle(_options, bundle) {
+    for (const output of Object.values(bundle)) {
+      if (output.type !== 'chunk') continue;
+      const sizeKb = Buffer.byteLength(output.code) / 1000;
+      const budgetKb = CHUNK_BUDGETS_KB[output.name] ?? CHUNK_BUDGET_KB;
+      if (sizeKb > budgetKb) this.warn(`chunk ${output.fileName} : ${sizeKb.toFixed(0)} ko, au-delà du budget de ${budgetKb} ko (import() dynamique ou manualChunks)`);
+    }
+  },
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -52,7 +70,7 @@ export default defineConfig(({ mode }) => ({
       ? { 'Content-Security-Policy': "script-src 'self'; connect-src 'self'" }
       : undefined,
   },
-  plugins: [react(), pwaVersion, browserNetworkFailure],
+  plugins: [react(), pwaVersion, browserNetworkFailure, chunkBudget],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -74,11 +92,19 @@ export default defineConfig(({ mode }) => ({
           "vendor-forms": ["react-hook-form", "@hookform/resolvers", "zod"],
           // Charts et visualisations (chargés à la demande)
           "vendor-charts": ["recharts"],
+          // Carte (chargée à la demande par LazyPractitionerMap)
+          "vendor-map": ["mapbox-gl"],
         },
       },
+      onwarn(warning, warn) {
+        // zod 4 place des commentaires @__PURE__ que Rollup ne sait pas rattacher : il les retire,
+        // sans effet sur le code produit. Les autres avertissements restent affichés.
+        if (warning.code === 'INVALID_ANNOTATION' && warning.id?.includes('/node_modules/zod/')) return;
+        warn(warning);
+      },
     },
-    // Limite de taille des chunks
-    chunkSizeWarningLimit: 500,
+    // Remplacé par le plugin chunkBudget (budget par chunk) : seuil global au-dessus de tout budget.
+    chunkSizeWarningLimit: 2100,
   },
   // Optimisation des dépendances
   optimizeDeps: {

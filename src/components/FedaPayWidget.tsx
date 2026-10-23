@@ -284,7 +284,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         }
 
         // Autre erreur
-        throw new Error(apiErrorMessage(error, 'Erreur lors de la création du paiement'));
+        throw new Error(apiErrorMessage(error, 'Erreur lors de la création du paiement'), { cause: error });
       }
 
       // Vérifier que nous avons reçu le transactionId

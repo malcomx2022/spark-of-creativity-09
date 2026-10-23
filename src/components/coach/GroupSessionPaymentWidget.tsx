@@ -358,7 +358,7 @@ export function GroupSessionPaymentWidget({
           });
           return;
         }
-        throw new Error(errorMessage(error, 'Erreur lors de l\'inscription'));
+        throw new Error(errorMessage(error, 'Erreur lors de l\'inscription'), { cause: error });
       }
 
       // Vérifier que nous avons reçu le transactionId

@@ -762,7 +762,7 @@ export function PaymentDialog({
           return;
         }
 
-        throw new Error(apiErrorMessage(error, 'Erreur lors de la création du paiement'));
+        throw new Error(apiErrorMessage(error, 'Erreur lors de la création du paiement'), { cause: error });
       }
 
       console.log('Payment response received:', result);
@@ -943,7 +943,7 @@ export function PaymentDialog({
           });
         } catch (openError) {
           console.error('Error opening FedaPay popup:', openError);
-          throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.');
+          throw new Error('Impossible d\'ouvrir la fenêtre de paiement. Veuillez autoriser les popups pour ce site et réessayer.', { cause: openError });
         }
       } else {
         setIsCreatingPayment(false);

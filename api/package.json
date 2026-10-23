@@ -54,6 +54,7 @@
   },
   "overrides": {
     "fastify": "$fastify",
-    "js-yaml": "^4.3.2"
+    "js-yaml": "^4.3.2",
+    "test-exclude": "^8.0.0"
   }
 }

@@ -318,9 +318,9 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
           practitionerCheck = await api.get<PublicPractitionerRow>(`/practitioners/${preselectedPractitioner.id}`);
         } catch (error) {
           if (isApiError(error, 404)) {
-            throw new Error('Ce praticien n\'est pas encore validé pour exercer');
+            throw new Error('Ce praticien n\'est pas encore validé pour exercer', { cause: error });
           }
-          throw new Error(errorMessage(error, 'Praticien introuvable'));
+          throw new Error(errorMessage(error, 'Praticien introuvable'), { cause: error });
         }
 
         if (!practitionerCheck.available) {
