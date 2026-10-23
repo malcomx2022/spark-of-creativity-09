@@ -24,10 +24,13 @@ s'insère entre `main` et la production.
 
 ### 2.1 Choix de l'hébergement
 
-Un **second VPS**, comme prévu au document 04 §0 (« Prévoir un second VPS staging plus petit »).
-La pile Compose publie les ports 80 et 443 et un seul Caddy : deux piles ne cohabitent pas sur le
-même hôte sans refonte. Dimensionnement suffisant : 2 vCPU, 4 Go de RAM, 40 Go de disque,
-Ubuntu 24.04.
+Deux options :
+
+- **Second VPS** (recommandé), comme prévu au document 04 §0 (« Prévoir un second VPS staging plus
+  petit ») : 2 vCPU, 4 Go de RAM, 40 Go de disque, Ubuntu 24.04. Installation au §2.2.
+- **Même VPS que la production** : second clone servi par le Caddy de production (§2.6). Moins cher,
+  mais une panne d'hôte, un disque plein ou une commande lancée dans le mauvais clone touchent les
+  deux. Prévoir au moins 4 vCPU et 8 Go de RAM.
 
 ### 2.2 Installation
 
@@ -69,12 +72,58 @@ reste à outiller (aucun script n'existe à ce jour).
    `.env` de production. Sinon, garder la production sans webhook jusqu'au passage en live (§5.2).
 3. Vérifier dans le journal FedaPay de chaque webhook que les livraisons reviennent en 200.
 
-### 2.5 Protéger la recette (à implémenter)
+### 2.5 Protéger la recette
 
-La recette ne doit être ni indexée ni ouverte au public : ajouter dans le Caddyfile, pour le seul
-domaine de recette, un `basic_auth` sur tout le site **sauf** `/api/webhooks/*` (FedaPay et Akambi
-doivent pouvoir appeler), et un en-tête `X-Robots-Tag: noindex`. Changement de configuration à
-faire dans une PR dédiée, testé sur la recette avant tout usage.
+La recette ne doit être ni indexée ni ouverte au public. Modèle fourni :
+`deploy/vps/caddy/sites/recette.caddy.example` : `basic_auth` sur l'interface et
+`X-Robots-Tag: noindex` partout. `/api/*` et `/socket.io/*` restent sans mot de passe : le front
+envoie déjà `Authorization: Bearer` (`src/lib/api/client.ts`), qu'un `basic_auth` remplacerait, et
+les webhooks FedaPay et Akambi ne s'authentifient pas. L'API garde ses contrôles d'accès. Sur un
+second VPS, recopier ce bloc dans son Caddyfile ; sur le même VPS, voir le §2.6.
+
+### 2.6 Variante : recette sur le même VPS que la production
+
+Principe : un second clone du dépôt, une pile Compose distincte (nom de projet, volumes, base,
+MinIO), sans Caddy ni port PostgreSQL publié ; le Caddy de production la sert par le réseau
+`domicares-edge` et un fichier de site non versionné.
+
+```
+Caddy de production (80/443)
+ ├─ domicares.life          → domicares-api / domicares-web   (projet « vps », inchangé)
+ └─ staging.domicares.life  → recette-api / recette-web       (projet « domicares-recette »)
+```
+
+Fichiers : `docker-compose.recette.yml` (override), `caddy/sites/recette.caddy.example`, réseau
+`edge` et alias `domicares-api` / `domicares-web` dans `docker-compose.yml`, `import sites/*.caddy`
+dans le Caddyfile (aucun fichier : rien n'est importé).
+
+1. **Production d'abord** : déployer la version qui contient ces fichiers. Caddy, l'API et le web
+   sont recréés une fois (réseau `domicares-edge` créé, alias) : quelques secondes de coupure.
+2. **Clone de recette**, en tant que `deploy` :
+   `git clone <dépôt> ~/domicares-recette`, puis `cp deploy/vps/.env.example deploy/vps/.env`.
+3. **`.env` de recette** : valeurs du tableau du §2.2, plus
+   `COMPOSE_PROJECT_NAME=domicares-recette` et
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.recette.yml`. Ne **jamais** mettre ces deux
+   lignes dans le `.env` de production : un autre nom de projet y repartirait sur des volumes vides.
+4. **DNS** : `A staging.domicares.life` → IP du VPS.
+5. **Site Caddy**, dans le clone de **production** : copier `caddy/sites/recette.caddy.example` en
+   `caddy/sites/recette.caddy` (non versionné, conservé par `git reset --hard`), remplacer le domaine,
+   l'utilisateur et le hachage (`docker compose exec caddy caddy hash-password`), puis
+   `caddy validate` et `caddy reload` (commandes en tête du modèle).
+6. **Démarrer la recette** depuis `~/domicares-recette/deploy/vps` : `docker compose build` puis
+   `docker compose up -d`, puis `./preflight.sh`. La section « 3b » contrôle le nom de projet, la
+   version de Compose (2.24.4 minimum), le réseau, le Caddy de production et le site.
+
+Garde-fous et précautions :
+
+- lancer chaque script depuis le bon clone : `fedapay-mode.sh`, `fedapay-observe.sh`, `backup.sh` et
+  `preflight.sh` agissent sur la pile de leur dossier ;
+- `bascule.sh` refuse de tourner dans le clone de recette, car il vise `127.0.0.1:5432`, la base de
+  production ;
+- limites mémoire de la recette réglables dans son `.env` (`RECETTE_*_MEM`) ;
+- jamais de restauration d'une sauvegarde de production dans la recette ;
+- un déploiement de la recette reconstruit les images sur l'hôte de production : charge processeur
+  pendant quelques minutes. Les images épinglées (PostgreSQL, MinIO, sauvegarde) sont partagées.
 
 ## 3. Chaîne de déploiement : `main` → recette → production
 
@@ -83,18 +132,25 @@ Cible :
 1. Fusion sur `main` → déploiement **automatique de la recette**.
 2. Recette passée (§4) → déploiement **manuel de la production** du même SHA, avec approbation.
 
-Changements à faire dans `.github/workflows/deploy-vps.yml` (PR dédiée) :
+`.github/workflows/deploy-vps.yml` choisit l'environnement GitHub du déploiement :
 
-- deux environnements GitHub, `recette` et `production`, chacun avec ses secrets
-  `VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`, `VPS_SSH_PORT`, `VPS_APP_DIR`, `DOMAIN_NAME` ;
-- `push` sur `main` → job `recette` uniquement ;
-- `workflow_dispatch` (saisie `DEPLOYER` et `revision`) → job `production`, protégé par
-  l'approbation obligatoire d'un relecteur dans les réglages de l'environnement GitHub ;
-- le SHA déployé en production doit être celui validé en recette (entrée `revision`, déjà épinglée
-  au SHA et contrôlée comme ancêtre de `main`).
+- `push` sur `main` : `recette` si la **variable de dépôt** `RECETTE_AUTO` vaut `true`, sinon
+  `production` (comportement actuel, inchangé tant que la variable n'est pas définie) ;
+- lancement manuel (`DEPLOYER`, `revision`, `cible` = `production` ou `recette`).
 
-En attendant la recette, la production continue de se déployer à chaque fusion : fusionner seulement
-des PR dont la CI est verte, et vérifier la production après chaque fusion (§5.1).
+Réglages GitHub (Settings → Environments, puis Settings → Secrets and variables → Actions) :
+
+1. Environnement `recette` : secrets `VPS_APP_DIR` (`/home/deploy/domicares-recette` sur le même VPS)
+   et `DOMAIN_NAME` (`staging.domicares.life`). Sur un second VPS, aussi `VPS_HOST`,
+   `VPS_USERNAME`, `VPS_SSH_KEY`, `VPS_SSH_PORT`. Les secrets absents reprennent ceux du dépôt.
+2. Environnement `production` : « Required reviewers » pour imposer une approbation avant chaque
+   déploiement de production.
+3. Une fois la recette déployée avec succès par un lancement manuel (`cible` = `recette`) : variable
+   de dépôt `RECETTE_AUTO=true`. Dès lors, les fusions vont en recette et la production se déploie à
+   la main, avec `revision` = le SHA validé en recette.
+
+Avant `RECETTE_AUTO=true`, la production continue de se déployer à chaque fusion : fusionner
+seulement des PR dont la CI est verte, et vérifier la production après chaque fusion (§5.1).
 
 ## 4. Recette d'une version (sur `https://staging.domicares.life`)
 
@@ -143,8 +199,8 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | 2 | Obtenir du support FedaPay : numéro approuvé `momo_test`, ouverture des dépôts, contrat `/v1/refunds`, filtres `/search` | équipe | message envoyé |
 | 3 | Rejouer la campagne S1 à S11 avec `FEDAPAY_MOMO_TEST_APPROVED` ; vérifier `/payouts/search` | Claude Code | 2 |
 | 4 | Commander et installer le VPS de recette, DNS `staging` (§2.1, §2.2) | équipe (accès, achat), Claude Code (procédure) | — |
-| 5 | Protection de la recette dans le Caddyfile (§2.5) | Claude Code (PR) | 4 |
-| 6 | Séparer recette et production dans `deploy-vps.yml` (§3) | Claude Code (PR), équipe (secrets et environnements GitHub) | 4 |
+| 5 | Protection de la recette (§2.5) : modèle livré, à installer avec la recette | équipe | 4 |
+| 6 | Séparer recette et production : workflow livré (§3) ; environnements, secrets et `RECETTE_AUTO` à régler dans GitHub | équipe | 4 |
 | 7 | S13 et paiement sandbox de bout en bout sur la recette | équipe et Claude Code | 1, 4 |
 | 8 | Confirmer si l'import définitif des données Supabase est fait ; sinon répétition puis `bascule.sh` (document 04 §4, document 07 §8) | équipe | — |
 | 9 | Exploitation : sauvegarde quotidienne, copie hors site chiffrée, exercice de restauration sur le VPS, objectifs RPO/RTO | équipe et Claude Code | 4 pour l'exercice |

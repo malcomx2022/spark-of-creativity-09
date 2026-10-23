@@ -35,6 +35,7 @@ legacy/supabase/.temp/
 export/
 deploy/vps/.env
 deploy/vps/backups/
+deploy/vps/caddy/sites/*.caddy
 
 # Fichiers temporaires
 tmp/

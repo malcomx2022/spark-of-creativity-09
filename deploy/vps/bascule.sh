@@ -34,6 +34,8 @@ compose() { run docker compose --project-directory "$HERE" "$@"; }
 
 echo "▶ 1. Préconditions"
 [[ -f "$HERE/.env" ]] || ko "$HERE/.env absent (cp .env.example .env puis compléter)"
+# Recette sur le même VPS : 127.0.0.1:5432 est la base de PRODUCTION, jamais celle de la recette.
+[[ "$(env_get COMPOSE_FILE)" == *docker-compose.recette.yml* ]] && ko "clone de recette : bascule.sh vise 127.0.0.1:5432, la base de production de ce VPS (document 16, §2.6)"
 POSTGRES_DB="$(env_get POSTGRES_DB)"; POSTGRES_PASSWORD="$(env_get POSTGRES_PASSWORD)"
 APP_PASSWORD="$(env_get DOMICARES_APP_PASSWORD)"; MIG_PASSWORD="$(env_get DOMICARES_MIGRATOR_PASSWORD)"
 S3_ACCESS_KEY="$(env_get S3_ACCESS_KEY)"; S3_SECRET_KEY="$(env_get S3_SECRET_KEY)"

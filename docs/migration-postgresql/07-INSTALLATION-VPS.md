@@ -369,8 +369,10 @@ Puis dans GitHub, **Settings → Secrets and variables → Actions → New repos
 | `VPS_APP_DIR` | `/home/deploy/domicares` |
 | `DOMAIN_NAME` | le domaine servi (recette puis production) |
 
-Déclenchement : onglet **Actions → Deploy VPS → Run workflow**, saisir `DEPLOYER`. Pour un
-déploiement automatique à chaque `main`, décommentez le déclencheur `push` du workflow.
+Déclenchement : onglet **Actions → Deploy VPS → Run workflow**, saisir `DEPLOYER` et choisir la
+`cible` (`production` ou `recette`). Chaque push sur `main` déploie la production, ou la recette
+quand la variable de dépôt `RECETTE_AUTO` vaut `true` : environnements GitHub, secrets et recette sur
+le même VPS au document 16, §2.6 et §3.
 
 Mise à jour manuelle équivalente :
 

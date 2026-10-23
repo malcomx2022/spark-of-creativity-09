@@ -14,6 +14,12 @@ on:
         description: "SHA complet à déployer (vide : commit du lancement)"
         required: false
         type: string
+      cible:
+        description: "Environnement à déployer"
+        required: true
+        type: choice
+        options: [production, recette]
+        default: production
 
 permissions:
   contents: read
@@ -27,6 +33,11 @@ jobs:
     if: github.event_name == 'push' || inputs.confirm == 'DEPLOYER'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Push sur main : la recette quand la variable de dépôt RECETTE_AUTO vaut « true » (document 16, §3),
+    # sinon la production comme avant. Lancement manuel : l'environnement choisi.
+    # Secrets propres à l'environnement GitHub « recette » (VPS_APP_DIR, DOMAIN_NAME, et VPS_HOST… si
+    # autre VPS) ; les secrets du dépôt servent sinon. Approbation requise : réglage de l'environnement.
+    environment: ${{ github.event_name == 'push' && (vars.RECETTE_AUTO == 'true' && 'recette' || 'production') || inputs.cible }}
 
     env:
       DEPLOY_REVISION: ${{ inputs.revision || github.sha }}

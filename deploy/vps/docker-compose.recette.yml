@@ -1,0 +1,43 @@
+# =============================================================================
+# Recette sur le VPS de production (document 16, §2.6) — à ajouter à docker-compose.yml.
+# Dans le .env du clone de recette (jamais dans celui de production) :
+#   COMPOSE_PROJECT_NAME=domicares-recette   # volumes, base et MinIO distincts de la production
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.recette.yml
+# - pas de Caddy ici : le Caddy de production sert la recette (caddy/sites/recette.caddy) ;
+# - PostgreSQL non publié sur l'hôte : 127.0.0.1:5432 reste la base de production ;
+# - api et web rejoignent le réseau domicares-edge sous des alias propres à la recette ;
+# - limites mémoire pour protéger la production (ajustables dans le .env de recette).
+# =============================================================================
+services:
+  caddy:
+    profiles: ["jamais-en-recette"]
+
+  web:
+    networks:
+      edge:
+        aliases: [recette-web]
+    mem_limit: ${RECETTE_WEB_MEM:-128m}
+
+  api:
+    networks:
+      edge:
+        aliases: [recette-api]
+    mem_limit: ${RECETTE_API_MEM:-768m}
+
+  worker:
+    mem_limit: ${RECETTE_WORKER_MEM:-512m}
+
+  postgres:
+    ports: !reset []
+    mem_limit: ${RECETTE_POSTGRES_MEM:-768m}
+
+  minio:
+    mem_limit: ${RECETTE_MINIO_MEM:-512m}
+
+  backup:
+    mem_limit: ${RECETTE_BACKUP_MEM:-512m}
+
+networks:
+  edge:
+    name: domicares-edge
+    external: true

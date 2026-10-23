@@ -10,6 +10,8 @@
 #   postgres  : PostgreSQL 16 (schéma db/native)
 #   minio     : stockage S3 compatible (ou utiliser Wasabi : supprimer ce service)
 # Variables : voir .env.example
+# Recette sur le même VPS : second clone + docker-compose.recette.yml (document 16, §2.6) ;
+# le Caddy de production la sert via le réseau domicares-edge et caddy/sites/*.caddy.
 # =============================================================================
 services:
   caddy:
@@ -28,6 +30,8 @@ services:
       DOMAIN: ${DOMAIN}
       WWW_DOMAIN: ${WWW_DOMAIN:-www.localhost}
       ACME_EMAIL: ${ACME_EMAIL}
+    # edge : réseau partagé avec une recette installée sur le même VPS (recette-api, recette-web).
+    networks: [default, edge]
     depends_on: [web, api]
 
   web:
@@ -41,12 +45,19 @@ services:
         VITE_SITE_URL: https://${DOMAIN}
     restart: unless-stopped
     expose: ["80"]
+    # Alias unique : sur edge, une recette expose aussi un service « web » ; Caddy vise domicares-web.
+    networks:
+      default:
+        aliases: [domicares-web]
 
   api:
     build:
       context: ../../api        # back-end NestJS : même image pour l'API et le worker
     restart: unless-stopped
     expose: ["3000"]
+    networks:
+      default:
+        aliases: [domicares-api]
     env_file: .env
     environment:
       DATABASE_URL: postgresql://domicares_app:${DOMICARES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -164,6 +175,12 @@ services:
     # Pas de dépendance à minio : le service peut être retiré au profit de Wasabi ; backup.sh attend le S3.
     depends_on:
       postgres: { condition: service_healthy }
+
+networks:
+  default:
+  # Nom fixe, créé par la pile de production ; la recette s'y rattache (external dans son override).
+  edge:
+    name: domicares-edge
 
 volumes:
   pg_data:
