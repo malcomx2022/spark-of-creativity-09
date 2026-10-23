@@ -55,6 +55,14 @@ describe('HttpFedaPayClient — liste des transactions', () => {
       'https://sandbox-api.fedapay.com/v1/transactions/search?per_page=100&page=2',
     ]);
   });
+
+  it('lit les dépôts par /v1/payouts/search et filtre la période sur created_at', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(reply({ 'v1/payouts': [{ id: 7, status: 'sent', amount: 900, created_at: '2026-10-22T09:00:00.000+01:00' }, { id: 8, status: 'sent', amount: 500, created_at: '2026-09-30T09:00:00.000+01:00' }], meta: { next_page: null } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const list = await new HttpFedaPayClient(config).listPayouts(new Date('2026-10-21T00:00:00Z'), new Date('2026-10-23T23:59:59Z'));
+    expect(list).toEqual([{ id: '7', status: 'sent', amount: 900 }]);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['https://sandbox-api.fedapay.com/v1/payouts/search?per_page=100&page=1']);
+  });
 });
 
 describe('FakeFedaPayClient — remboursements', () => {

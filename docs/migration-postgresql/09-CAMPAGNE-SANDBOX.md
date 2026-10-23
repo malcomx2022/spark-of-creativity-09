@@ -233,8 +233,9 @@ Sondes faites avec la clé sandbox sur des transactions de 100 et 5 000 XOF, jam
   support@fedapay.com.
 - **Listes.** La référence de l'API ne documente que `GET /transactions/search` et `GET /payouts/search`,
   sans aucun paramètre de filtre. C'est cohérent avec le filtrage de période fait côté Domicares.
-  La réconciliation des dépôts appelle encore `GET /v1/payouts` : à basculer sur `/v1/payouts/search`
-  une fois les dépôts accessibles et la dépréciation vérifiée.
+  La réconciliation des dépôts lit désormais `GET /v1/payouts/search`, avec la même pagination et le
+  même filtrage de période que les transactions (`searchAll` dans `fedapay.client.ts`, test unitaire).
+  Non vérifié sur le sandbox, qui répond 403 aux dépôts : à confirmer quand ils seront ouverts.
 - **Webhook désactivé dans le sandbox.** La documentation des webhooks indique : « Après 10 essais sans
   succès, le webhook est automatiquement désactivé. » L'URL configurée ne répondait donc pas en 2xx,
   par exemple la production, qui rejette les signatures sandbox (§4 bis). Ce point est sans lien avec
