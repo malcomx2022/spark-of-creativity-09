@@ -781,6 +781,102 @@ export interface OtpAttemptsTable {
   created_at: GeneratedTimestamp;
 }
 
+// --- DomiCares Academy (db/native/140_academy.sql) : correspondance avec l'API partenaires Akambi v1 ---
+export type AcademyEnrollmentStatusDb = 'PENDING' | 'ENROLLED' | 'IN_PROGRESS' | 'COMPLETED' | 'CERTIFIED' | 'CANCELLED';
+
+export interface AcademyCoursesTable {
+  id: string;
+  title: string;
+  description: string | null;
+  type: 'E_LEARNING' | 'VISIO_CONFERENCE' | 'PRESENTIEL';
+  status: 'PUBLISHED' | 'ARCHIVED';
+  category_code: string | null;
+  category_title: string | null;
+  /** numeric(12,2) : lu en chaîne par node-postgres. */
+  public_price_amount: ColumnType<string | null, number | string | null, number | string | null>;
+  public_price_currency: 'EURO' | 'DOLLAR' | 'FRANC_CFA' | null;
+  module_count: number | null;
+  chapter_count: number | null;
+  cover_image_url: string | null;
+  presentation_url: string | null;
+  akambi_created_at: Timestamp | null;
+  akambi_updated_at: Timestamp;
+  synced_at: GeneratedTimestamp;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AcademyLearnersTable {
+  user_id: string;
+  /** Toujours 'DC-' || user_id (contrainte academy_learners_external_id_check). */
+  external_learner_id: string;
+  akambi_learner_id: string | null;
+  account_origin: 'CREATED' | 'EXISTING' | null;
+  email: string;
+  link_status: Generated<'pending' | 'linked' | 'failed'>;
+  last_error_code: string | null;
+  idempotency_key: Generated<string>;
+  akambi_updated_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AcademyEnrollmentsTable {
+  id: Generated<string>;
+  user_id: string;
+  course_id: string;
+  akambi_enrollment_id: string | null;
+  status: Generated<AcademyEnrollmentStatusDb>;
+  progress: Generated<number>;
+  enrolled_at: Timestamp | null;
+  started_at: Timestamp | null;
+  last_activity_at: Timestamp | null;
+  completed_at: Timestamp | null;
+  certificate_id: string | null;
+  akambi_updated_at: Timestamp | null;
+  last_error_code: string | null;
+  idempotency_key: Generated<string>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AcademyCertificatesTable {
+  id: string;
+  enrollment_id: string;
+  learner_name: string;
+  course_title: string;
+  score_correct: number | null;
+  score_total: number | null;
+  completion_date: Timestamp | null;
+  issued_at: Timestamp;
+  verification_url: string;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AcademyWebhookEventsTable {
+  id: Generated<string>;
+  event_id: string;
+  event_type: string;
+  event_version: number | null;
+  payload: Json;
+  signed_at: Timestamp;
+  akambi_created_at: Timestamp | null;
+  received_at: GeneratedTimestamp;
+  processed_at: Timestamp | null;
+  processing_status: Generated<'pending' | 'processed' | 'ignored' | 'failed'>;
+  error_message: string | null;
+}
+
+export interface AcademySyncStateTable {
+  key: 'courses' | 'enrollments';
+  cursor: Timestamp | null;
+  last_run_at: Timestamp | null;
+  last_success_at: Timestamp | null;
+  last_error: string | null;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   refresh_tokens: RefreshTokensTable;
@@ -836,6 +932,12 @@ export interface DB {
   consultation_reports_access_log: ConsultationReportsAccessLogTable;
   triage_results: TriageResultsTable;
   saved_payment_methods: SavedPaymentMethodsTable;
+  academy_courses: AcademyCoursesTable;
+  academy_learners: AcademyLearnersTable;
+  academy_enrollments: AcademyEnrollmentsTable;
+  academy_certificates: AcademyCertificatesTable;
+  academy_webhook_events: AcademyWebhookEventsTable;
+  academy_sync_state: AcademySyncStateTable;
 }
 
 export type User = Selectable<UsersTable>;

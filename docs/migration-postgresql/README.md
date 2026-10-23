@@ -32,6 +32,7 @@ corrections après la nouvelle revue, avec validation et règles de cache PWA.
 | `db/native/110_realtime_notify.sql` | Triggers `pg_notify` sur les 10 tables suivies en temps réel par le front |
 | `db/native/120_drop_rls_optional.sql` | Option B : retrait des 155 policies RLS (autorisation côté API) |
 | `db/native/130_fixes_heritage.sql` | Corrections de défauts hérités (colonne `updated_at` de `practitioner_payouts`) |
+| `db/native/140_academy.sql` | Tables `academy_*` de DomiCares Academy (Akambi) ; retour arrière `db/native/rollback/140_academy.down.sql` |
 | `db/native/schema.native.sql` | **Schéma natif consolidé, généré et validé** (58 tables, 5 vues, 46 fonctions, 24 triggers) |
 | `scripts/db/build-native-schema.sh` | Regénère et valide `schema.native.sql` depuis `legacy/supabase/migrations` |
 | `scripts/supabase/export-supabase.sh` | Export complet depuis Supabase (pg_dump public + auth + storage meta + comptages) |

@@ -6,6 +6,7 @@
 #   db/native/100_to_native.sql             (conversion vers PostgreSQL natif)
 #   db/native/110_realtime_notify.sql       (LISTEN/NOTIFY à la place de Realtime)
 #   db/native/130_fixes_heritage.sql        (corrections de défauts hérités, hors schéma généré)
+#   db/native/140_academy.sql               (tables DomiCares Academy, hors schéma généré)
 # puis valide le résultat en le rejouant dans une base vierge.
 #
 # Usage : PGHOST=/tmp PGPORT=5433 PGUSER=postgres scripts/db/build-native-schema.sh
@@ -61,6 +62,7 @@ $PSQL -d postgres -c "DROP DATABASE IF EXISTS $CHECK_DB" -c "CREATE DATABASE $CH
 $PSQL -d "$CHECK_DB" -f "$ROOT/db/native/010_roles.sql"
 $PSQL -d "$CHECK_DB" -f "$OUT"
 $PSQL -d "$CHECK_DB" -f "$ROOT/db/native/130_fixes_heritage.sql"
+$PSQL -d "$CHECK_DB" -f "$ROOT/db/native/140_academy.sql"
 $PSQL -d "$CHECK_DB" -f "$ROOT/db/native/020_grants.sql"
 psql -X -At -d "$CHECK_DB" <<'SQL'
 select 'tables='||count(*) from pg_tables where schemaname='public';

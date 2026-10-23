@@ -32,7 +32,7 @@ jobs:
           docker run -d --name minio --network prod -e MINIO_ROOT_USER=ci-minio -e MINIO_ROOT_PASSWORD=ci-minio-password "$MINIO_IMAGE" server /data
           for i in $(seq 1 30); do docker exec postgres pg_isready -U postgres -d domicares -q && break; sleep 1; done
           sleep 2
-          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 130_fixes_heritage.sql 020_grants.sql; do
+          for f in 010_roles.sql schema.native.sql 120_drop_rls_optional.sql 130_fixes_heritage.sql 140_academy.sql 020_grants.sql; do
             docker exec postgres psql -U postgres -d domicares -v ON_ERROR_STOP=1 -q -f "/native/$f" >/dev/null
           done
           docker exec -i postgres psql -U postgres -d domicares -v ON_ERROR_STOP=1 -q <<'SQL'
