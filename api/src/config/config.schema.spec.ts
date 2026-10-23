@@ -59,3 +59,30 @@ describe('publication de la documentation OpenAPI', () => {
     expect(documentationPubliee({ ...base, API_DOCS_ENABLED: 'false' })).toBe(false);
   });
 });
+
+describe('DomiCares Academy (Akambi)', () => {
+  const akambi = { AKAMBI_PROVIDER: 'akambi', AKAMBI_BASE_URL: 'https://preprod.akambiconsulting.com', AKAMBI_API_KEY: 'key', AKAMBI_API_SECRET: 'secret' };
+
+  it('désactivée et factice par défaut ; valeurs vides du .env ignorées', () => {
+    const config = loadConfig({ ...base, AKAMBI_BASE_URL: '', AKAMBI_API_KEY: '', AKAMBI_API_SECRET: '' } as NodeJS.ProcessEnv);
+    expect(config.ACADEMY_ENABLED).toBe(false);
+    expect(config.AKAMBI_PROVIDER).toBe('fake');
+    expect(config.AKAMBI_BASE_URL).toBeUndefined();
+    expect(config.AKAMBI_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it('AKAMBI_PROVIDER=akambi exige URL, clé et secret', () => {
+    expect(() => loadConfig({ ...base, ...akambi, AKAMBI_API_SECRET: '' } as NodeJS.ProcessEnv)).toThrow('AKAMBI_BASE_URL, AKAMBI_API_KEY et AKAMBI_API_SECRET requis');
+    expect(loadConfig({ ...base, ...akambi } as NodeJS.ProcessEnv).AKAMBI_PROVIDER).toBe('akambi');
+  });
+
+  it('refuse une URL Akambi non HTTPS', () => {
+    expect(() => loadConfig({ ...base, ...akambi, AKAMBI_BASE_URL: 'http://preprod.akambiconsulting.com' } as NodeJS.ProcessEnv)).toThrow('HTTPS');
+  });
+
+  it('production : client factice refusé seulement si l’Academy est activée', () => {
+    expect(loadConfig(prod as NodeJS.ProcessEnv).ACADEMY_ENABLED).toBe(false);
+    expect(() => loadConfig({ ...prod, ACADEMY_ENABLED: 'true' } as NodeJS.ProcessEnv)).toThrow('AKAMBI_PROVIDER=fake est interdit en production');
+    expect(loadConfig({ ...prod, ...akambi, ACADEMY_ENABLED: 'true' } as NodeJS.ProcessEnv).ACADEMY_ENABLED).toBe(true);
+  });
+});
