@@ -137,7 +137,7 @@ Cible :
 
 - `push` sur `main` : `recette` si la **variable de dépôt** `RECETTE_AUTO` vaut `true`, sinon
   `production` (comportement actuel, inchangé tant que la variable n'est pas définie) ;
-- lancement manuel (`DEPLOYER`, `revision`, `cible` = `production` ou `recette`).
+- lancement manuel (`DEPLOYER`, `revision`, `cible` = `production` ou `recette`, `sans_recette`).
 
 Réglages GitHub (Settings → Environments, puis Settings → Secrets and variables → Actions) :
 
@@ -149,6 +149,18 @@ Réglages GitHub (Settings → Environments, puis Settings → Secrets and varia
 3. Une fois la recette déployée avec succès par un lancement manuel (`cible` = `recette`) : variable
    de dépôt `RECETTE_AUTO=true`. Dès lors, les fusions vont en recette et la production se déploie à
    la main, avec `revision` = le SHA validé en recette.
+
+**Contrôle « SHA validé en recette »** (job `validation-recette`, actif quand `RECETTE_AUTO=true`) :
+un déploiement de production n'est accepté que si ce SHA a un déploiement GitHub réussi dans
+l'environnement `recette`. Le contrôle passe **avant** la demande d'approbation de `production`.
+Un SHA validé puis remplacé en recette par une version plus récente reste accepté. Limites et
+dérogation :
+
+- un déploiement manuel de la recette avec une `revision` différente du commit du lancement est
+  enregistré par GitHub pour le commit du lancement : il ne valide pas cette révision (le run
+  l'indique par un avertissement). Lancer plutôt le workflow depuis le commit voulu ;
+- urgence (correctif de production) : `sans_recette` coché, déploiement accepté et signalé par un
+  avertissement et dans le résumé du run. L'approbation de l'environnement `production` reste requise.
 
 Avant `RECETTE_AUTO=true`, la production continue de se déployer à chaque fusion : fusionner
 seulement des PR dont la CI est verte, et vérifier la production après chaque fusion (§5.1).
