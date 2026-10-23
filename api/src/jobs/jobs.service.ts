@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AcademySyncService } from '../academy/academy-sync.service';
 import { AcademyService } from '../academy/academy.service';
 import { StorageService } from '../storage/storage.service';
 import { sql } from 'kysely';
@@ -7,7 +8,7 @@ import { DisputesService } from '../disputes/disputes.service';
 import { FinanceService } from '../finance/finance.service';
 import { PaymentsService } from '../payments/payments.service';
 
-export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup' | 'payouts.sync' | 'funds.release' | 'webhooks.retry' | 'payments.reminders' | 'disputes.sla' | 'maintenance.cleanup' | 'academy.catalog.sync';
+export type JobName = 'consultations.tick' | 'payments.sync' | 'payments.cleanup' | 'payouts.sync' | 'funds.release' | 'webhooks.retry' | 'payments.reminders' | 'disputes.sla' | 'maintenance.cleanup' | 'academy.catalog.sync' | 'academy.enrollments.reconcile';
 
 export interface JobDefinition {
   name: JobName;
@@ -32,9 +33,10 @@ export class JobsService {
     { name: 'disputes.sla', everyMs: 60 * 60_000, description: 'Passe en priorité haute les litiges dont le délai de traitement est dépassé (ex check_overdue_disputes)' },
     { name: 'maintenance.cleanup', everyMs: 24 * 60 * 60_000, description: 'Rétention quotidienne : cleanup_old_* (limites OTP > 7 j, journaux d’accès fichiers, tentatives de paiement et activité de recherche > 90 j), repair_missing_profiles() ; comptes orphelins comptés, supprimés seulement avec deleteOrphans=true' },
     { name: 'academy.catalog.sync', everyMs: 6 * 60 * 60_000, description: 'Relit le catalogue DomiCares Academy chez Akambi (GET /courses, archivées comprises), enregistre les mises à jour et masque les formations retirées ; sans effet si ACADEMY_ENABLED=false' },
+    { name: 'academy.enrollments.reconcile', everyMs: 60 * 60_000, description: 'Rapproche les inscriptions DomiCares Academy depuis Akambi (GET /enrollments?updatedSince), en complément des webhooks : progression, achèvement, annulation, attestations manquantes ; sans effet si ACADEMY_ENABLED=false' },
   ];
 
-  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService, private readonly finance: FinanceService, private readonly disputes: DisputesService, private readonly storage: StorageService, private readonly academy: AcademyService) {}
+  constructor(private readonly database: DatabaseService, private readonly payments: PaymentsService, private readonly finance: FinanceService, private readonly disputes: DisputesService, private readonly storage: StorageService, private readonly academy: AcademyService, private readonly academySync: AcademySyncService) {}
 
   /** Verrou consultatif PostgreSQL : un seul exécutant par job, même avec plusieurs workers. */
   async run(name: JobName, options: Record<string, unknown> = {}) {
@@ -76,6 +78,9 @@ export class JobsService {
           break;
         case 'academy.catalog.sync':
           result = await this.academy.syncCatalog();
+          break;
+        case 'academy.enrollments.reconcile':
+          result = await this.academySync.reconcileEnrollments();
           break;
         case 'maintenance.cleanup': {
           // Fonctions SQL héritées, jamais planifiées chez Supabase (aucun pg_cron versionné) : exécutées une fois par jour.
