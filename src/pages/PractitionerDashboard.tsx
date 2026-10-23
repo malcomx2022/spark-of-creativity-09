@@ -19,8 +19,10 @@ import {
   HelpCircle,
   Shield,
   ClipboardCheck,
-  Wallet
+  Wallet,
+  GraduationCap
 } from 'lucide-react';
+import { useAcademyEnabled } from '@/hooks/useAcademy';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useMutateAppointment, usePractitionerAppointments } from '@/hooks/useAppointments';
@@ -42,12 +44,16 @@ const PractitionerMessagesSection = lazy(() => import('@/components/dashboard/pr
 const SupportSection = lazy(() => import('@/components/dashboard/SupportSection').then(m => ({ default: m.SupportSection })));
 const ConsultationReportSection = lazy(() => import('@/components/dashboard/practitioner/ConsultationReportSection').then(m => ({ default: m.ConsultationReportSection })));
 const LocationSection = lazy(() => import('@/components/dashboard/practitioner/LocationSection').then(m => ({ default: m.LocationSection })));
+const AcademySection = lazy(() => import('@/components/dashboard/practitioner/AcademySection').then(m => ({ default: m.AcademySection })));
 const DocumentsSection = lazy(() => import('@/components/dashboard/practitioner/DocumentsSection').then(m => ({ default: m.DocumentsSection })));
 
-const PRACTITIONER_TABS = ['appointments', 'profile', 'availability', 'payment-info', 'payouts', 'reports', 'messages', 'reviews', 'notifications', 'support'] as const;
+const PRACTITIONER_TABS = ['appointments', 'profile', 'availability', 'payment-info', 'payouts', 'reports', 'messages', 'reviews', 'notifications', 'support', 'academy'] as const;
 
 export default function PractitionerDashboard() {
-  const [activeTab, setActiveTab] = useDashboardTab(PRACTITIONER_TABS, 'appointments');
+  // Onglet Academy (lien des notifications ?tab=academy) seulement quand l'intégration Akambi est activée.
+  const { data: academyEnabled = false } = useAcademyEnabled();
+  const practitionerTabs = useMemo(() => PRACTITIONER_TABS.filter((tab) => tab !== 'academy' || academyEnabled), [academyEnabled]);
+  const [activeTab, setActiveTab] = useDashboardTab(practitionerTabs, 'appointments');
   const { data: user, isLoading: isLoadingUser } = useAuthUser();
   const { toast } = useToast();
   const [processingAppointment, setProcessingAppointment] = useState<string | null>(null);
@@ -421,6 +427,12 @@ export default function PractitionerDashboard() {
                   <Star className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm">Avis</span>
                 </TabsTrigger>
+                {academyEnabled && (
+                  <TabsTrigger value="academy" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+                    <GraduationCap className="h-4 w-4 flex-shrink-0" />
+                    <span className="text-sm">Academy</span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="support" className="flex items-center gap-1.5 px-3 py-2.5 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
                   <HelpCircle className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm">Support</span>
@@ -660,6 +672,14 @@ export default function PractitionerDashboard() {
               <SupportSection />
             </Suspense>
           </TabsContent>
+
+          {academyEnabled && (
+            <TabsContent value="academy">
+              <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
+                <AcademySection />
+              </Suspense>
+            </TabsContent>
+          )}
         </Tabs>
       </main>
     </div>

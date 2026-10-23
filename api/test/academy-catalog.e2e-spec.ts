@@ -99,6 +99,8 @@ describe('Academy — catalogue (e2e)', () => {
   });
 
   it('authentification requise ; praticien validé : catalogue vide avant synchronisation', async () => {
+    // Drapeau public lu par le front pour afficher l'onglet Academy (sans authentification).
+    expect((await app.inject({ method: 'GET', url: '/api/config/public' })).json()).toMatchObject({ academyEnabled: true });
     expect((await get(null, '/api/academy/courses')).statusCode).toBe(401);
     const res = await get('nurse', '/api/academy/courses');
     expect(res.statusCode).toBe(200);

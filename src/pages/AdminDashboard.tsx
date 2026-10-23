@@ -7,7 +7,8 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import { useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useDashboardTab } from "@/hooks/useDashboardTab";
-import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2, Webhook, Search } from "lucide-react";
+import { Users, Stethoscope, Calendar, DollarSign, Activity, Shield, FileCheck, AlertTriangle, MessageSquare, BookOpen, Phone, Settings, Loader2, Webhook, Search, GraduationCap } from "lucide-react";
+import { useAcademyEnabled } from "@/hooks/useAcademy";
 import { useIsAdmin } from "@/hooks/useAdminRole";
 import { useAdminStats } from "@/hooks/useAdminStats";
 import { useAuthUser } from "@/hooks/useAuthUser";
@@ -29,8 +30,9 @@ const WebhooksSection = lazy(() => import("@/components/admin/WebhooksSection").
 const WebhookConfig = lazy(() => import("@/components/admin/WebhookConfig").then(m => ({ default: m.WebhookConfig })));
 const SandboxPaymentTester = lazy(() => import("@/components/admin/SandboxPaymentTester").then(m => ({ default: m.SandboxPaymentTester })));
 const SearchActivitySection = lazy(() => import("@/components/admin/SearchActivitySection"));
+const AcademyAdminSection = lazy(() => import("@/components/admin/AcademyAdminSection").then(m => ({ default: m.AcademyAdminSection })));
 
-const ADMIN_TABS = ["dashboard", "admins", "kyc", "operations", "finance", "support", "otp", "api", "compliance", "audit", "webhooks", "search-activity"] as const;
+const ADMIN_TABS = ["dashboard", "admins", "kyc", "operations", "finance", "support", "otp", "api", "compliance", "audit", "webhooks", "search-activity", "academy"] as const;
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -48,7 +50,9 @@ export default function AdminDashboard() {
   const processedKycNotifications = useRef(new Set<string>());
   const canManageAdmins = role === "super_admin";
   // Onglet lié à l'URL (/admin?tab=kyc des notifications, retour après connexion, bouton Retour).
-  const adminTabs = useMemo(() => ADMIN_TABS.filter(tab => tab !== "admins" || canManageAdmins), [canManageAdmins]);
+  // Onglet Academy affiché seulement quand l'API annonce l'intégration Akambi activée.
+  const { data: academyEnabled = false } = useAcademyEnabled();
+  const adminTabs = useMemo(() => ADMIN_TABS.filter(tab => (tab !== "admins" || canManageAdmins) && (tab !== "academy" || academyEnabled)), [canManageAdmins, academyEnabled]);
   const [activeTab, setActiveTab] = useDashboardTab(adminTabs, "dashboard");
 
   const unreadKycNotifications = notifications.filter((notification) =>
@@ -159,7 +163,7 @@ export default function AdminDashboard() {
         {/* Main Admin Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-12 gap-1">
+            <TabsList className="inline-flex w-auto min-w-full justify-start lg:grid lg:w-full lg:grid-cols-13 gap-1">
               <TabsTrigger value="dashboard" className="whitespace-nowrap">
                 <Activity className="h-4 w-4 mr-2" />
                 Vue d'ensemble
@@ -215,6 +219,12 @@ export default function AdminDashboard() {
                 <Search className="h-4 w-4 mr-2" />
                 Recherches
               </TabsTrigger>
+              {academyEnabled && (
+                <TabsTrigger value="academy" className="whitespace-nowrap">
+                  <GraduationCap className="h-4 w-4 mr-2" />
+                  Academy
+                </TabsTrigger>
+              )}
             </TabsList>
           </div>
 
@@ -318,6 +328,16 @@ export default function AdminDashboard() {
               </Suspense>
             </ErrorBoundary>
           </TabsContent>
+
+          {academyEnabled && (
+            <TabsContent value="academy">
+              <ErrorBoundary>
+                <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                  <AcademyAdminSection />
+                </Suspense>
+              </ErrorBoundary>
+            </TabsContent>
+          )}
         </Tabs>
       </main>
     </div>
