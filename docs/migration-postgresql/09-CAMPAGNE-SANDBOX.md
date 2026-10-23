@@ -211,6 +211,54 @@ Reste à faire : demander à FedaPay d'activer sur le compte sandbox le paiement
 le contrat `/v1/refunds` (S9, S11). `GET /v1/payouts` (réconciliation des dépôts) n'a pas pu être
 vérifié face à la même dépréciation que `/v1/transactions`.
 
+### Compléments du 23 octobre 2026 (documentation en ligne et sondes du sandbox)
+
+Sondes faites avec la clé sandbox sur des transactions de 100 et 5 000 XOF, jamais en live.
+
+- **Mode de test `momo_test`.** Le centre d'aide FedaPay (« Comment avoir les identifiants sandbox ? »)
+  indique : « Les paiements Mobile Money se testent via la méthode momo_test. » La référence de l'API
+  ne le mentionne pas. `POST /v1/momo_test` avec le jeton de la transaction est **accepté** (HTTP 200,
+  objet `v1/payment_intent`, transaction relue en `mode` = `momo_test`), alors que `mtn_open` et `moov`
+  répondent 400 « Opération non autorisée ». En sandbox, seul ce mode de test semble ouvert.
+- **Paiements `momo_test` tous refusés.** Chaque intention passe `declined` immédiatement, avec
+  `last_error_code` vide. Essais faits avec `64000001` (numéro de succès Moov cité par la documentation)
+  et `66000001`, aux formats `+229…` et local, pour 100 et 5 000 XOF (exemple : transaction 530222,
+  intention 294052, 15:35:05 UTC). La page des numéros de test (`docs.fedapay.com/payments/test`)
+  répond 404 : aucun numéro de succès propre à `momo_test` n'est publié.
+- **Route documentée absente.** La référence de l'API indique `POST /transactions/{mode}` (corps
+  `{ token, phone_number }`), mais le sandbox répond toujours 404 sur `/v1/transactions/mtn_open` et
+  `/v1/transactions/mtn`. La route `POST /v1/{mode}` des SDK, utilisée par le harnais, reste la bonne.
+- **Dépôts.** `POST /v1/payouts` avec `mode: "momo_test"` répond aussi 403 « Opération non autorisée ».
+  La documentation des dépôts ne cite aucune condition d'activation : seulement le contact
+  support@fedapay.com.
+- **Listes.** La référence de l'API ne documente que `GET /transactions/search` et `GET /payouts/search`,
+  sans aucun paramètre de filtre. C'est cohérent avec le filtrage de période fait côté Domicares.
+  La réconciliation des dépôts appelle encore `GET /v1/payouts` : à basculer sur `/v1/payouts/search`
+  une fois les dépôts accessibles et la dépréciation vérifiée.
+- **Webhook désactivé dans le sandbox.** La documentation des webhooks indique : « Après 10 essais sans
+  succès, le webhook est automatiquement désactivé. » L'URL configurée ne répondait donc pas en 2xx,
+  par exemple la production, qui rejette les signatures sandbox (§4 bis). Ce point est sans lien avec
+  les refus de l'API et sans effet sur S1–S12, lus par `payments.sync`. Pour S13 : recréer le webhook
+  vers l'environnement de recette, avec son secret sandbox dans `FEDAPAY_WEBHOOK_SECRET`, et décocher
+  « Désactiver le Webhook lorsque l'application génère des erreurs ».
+
+Transaction de référence transmise au support : id 530207, référence `trx_bHA_1792769320885`
+(23 octobre 2026, 15:28:41 UTC). Questions posées : activation du paiement sans redirection et des
+dépôts, numéros de succès pour `momo_test`, mode de test des dépôts, filtres de `/search`, contrat
+`/v1/refunds`, prise en compte du `mode` à la création, état des webhooks.
+
+Suite : dès qu'un numéro donne `approved` avec `momo_test`, faire payer la campagne en `momo_test` en
+sandbox (`customerPays`, `APPROVED_*`/`DECLINED_MTN`) et rejouer S1–S11. Le client de production garde
+`mtn_open`/`moov`.
+
+Sources : [identifiants sandbox](https://support.fedapay.com/portal/fr/kb/articles/comment-avoir-les-identifiants-sandbox),
+[envoi de paiement](https://docs.fedapay.com/api-reference/transactions/send-payment.md),
+[moyens de paiement](https://docs.fedapay.com/fr/payment-methods.md),
+[recherche de transactions](https://docs.fedapay.com/api-reference/transactions/get-all.md),
+[recherche de dépôts](https://docs.fedapay.com/api-reference/payouts/get-all.md),
+[gestion des dépôts](https://docs.fedapay.com/fr/integration-api/payouts-management.md),
+[webhooks](https://docs.fedapay.com/fr/integration-api/webhooks.md).
+
 ## 5. Retour en live
 
 ```bash
