@@ -57,7 +57,8 @@ CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml
   rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement, et
   `07-INSTALLATION-VPS.md` (installation et déploiement du VPS pas à pas).
 - `docs/academy/01-FAISABILITE-INTEGRATION-AKAMBI.md` : faisabilité et plan d'intégration de
-  DomiCares Academy avec l'API partenaires Akambi v1 (23 octobre 2026, plan sans code).
+  DomiCares Academy avec l'API partenaires Akambi v1 (23 octobre 2026) et suivi des lots A1 à A8 ;
+  `docs/academy/02-RECETTE-PREPRODUCTION.md` : activation en préproduction et recette commune.
 - `api/README.md` : table des routes de l'API (et ce qu'elles remplacent), jobs, configuration.
 - `docs/archive/` : documents de l'ère Lovable / Supabase, conservés pour l'historique.
 - `promo/digisante-mobile/README.md` : vidéo promotionnelle DigiSanté Mobile (45 s, verticale),

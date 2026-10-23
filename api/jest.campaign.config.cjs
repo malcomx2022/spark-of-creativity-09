@@ -1,4 +1,5 @@
-// Campagne FedaPay (document 09) : hors des tests e2e, lancée à la demande (npm run campaign:fedapay).
+// Campagnes FedaPay (document 09) et Akambi (docs/academy/02) : hors des tests e2e, lancées à la demande
+// (npm run campaign:fedapay, npm run campaign:akambi).
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',

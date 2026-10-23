@@ -167,6 +167,8 @@ Academy (Akambi) : `AKAMBI_PROVIDER=akambi` avec `AKAMBI_BASE_URL` (HTTPS), `AKA
 `AKAMBI_API_SECRET` propres à chaque environnement, ou `fake` en dev/test ; `ACADEMY_ENABLED=false`
 par défaut (client factice interdit en production une fois activée). Client signé et client factice dans
 `src/academy/` ; plan et suivi : `../docs/academy/01-FAISABILITE-INTEGRATION-AKAMBI.md`.
+Campagne contre la préproduction Akambi (hors CI, base locale dédiée) : `npm run campaign:akambi`,
+procédure dans `../docs/academy/02-RECETTE-PREPRODUCTION.md`.
 Tables `academy_*` : `db/native/140_academy.sql` (idempotent, procédure pour une base existante
 dans son en-tête), retour arrière `db/native/rollback/140_academy.down.sql`.
 

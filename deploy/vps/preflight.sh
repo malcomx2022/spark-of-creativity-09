@@ -6,7 +6,8 @@
 #
 # Contrôle, sans rien modifier : outils (docker, compose, pg_restore 17), .env complet et cohérent
 # avec api/src/config/config.schema.ts (valeurs « change-me », fournisseurs fake/console interdits en
-# production, clés FedaPay conformes au mode, VAPID, Twilio, Resend), pile docker (config valide,
+# production, clés FedaPay conformes au mode, VAPID, Twilio, Resend,
+# Academy/Akambi et horloge NTP), pile docker (config valide,
 # postgres/minio en service), ressources (disque, RAM), DNS du domaine vs IP publique, ports 80/443,
 # et l'export si un dossier est donné (check-export.sh). Sortie ✔ / ⚠ / ✖, code 1 si un ✖.
 # =============================================================================
@@ -80,6 +81,23 @@ else
       *) ko "FEDAPAY_MODE=$mode inconnu" ;;
     esac
   fi
+  # DomiCares Academy (Akambi, docs/academy/02-RECETTE-PREPRODUCTION.md) : refus des requêtes hors ±5 min.
+  if [[ "$(env_get ACADEMY_ENABLED)" == "true" ]]; then
+    akambi_url="$(env_get AKAMBI_BASE_URL)"
+    [[ "$(env_get AKAMBI_PROVIDER)" == "akambi" ]] && ok "Academy activée, AKAMBI_PROVIDER=akambi" || ko "ACADEMY_ENABLED=true exige AKAMBI_PROVIDER=akambi en production (config.schema.ts)"
+    [[ "$akambi_url" == https://* ]] || ko "AKAMBI_BASE_URL=$akambi_url : HTTPS requis"
+    for v in AKAMBI_API_KEY AKAMBI_API_SECRET; do placeholder "$(env_get $v)" && ko "$v requis avec l'Academy activée (transmis séparément par Akambi)"; done
+    case "$akambi_url" in
+      *preprod.*) [[ "$DOMAIN" == staging.* ]] && ok "Akambi préproduction sur $DOMAIN" || warn "Akambi préproduction sur $DOMAIN : réservé à la préproduction DomiCares" ;;
+      *) [[ "$DOMAIN" == staging.* ]] && warn "Akambi production ($akambi_url) sur $DOMAIN : la recette se fait sur preprod.akambiconsulting.com" ;;
+    esac
+    [[ -n "$(env_get AKAMBI_WEBHOOK_SECRETS | tr -d ' ,')" ]] && ok "secret webhook Akambi renseigné (https://$DOMAIN/api/webhooks/akambi)" || warn "AKAMBI_WEBHOOK_SECRETS vide : webhooks Akambi refusés (503), suivi par rapprochement horaire seulement"
+    case "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" in
+      yes) ok "horloge synchronisée (NTP)" ;;
+      no)  ko "horloge non synchronisée (NTP) : Akambi refuse les signatures décalées de plus de 5 min" ;;
+      *)   warn "synchronisation de l'horloge non vérifiable (timedatectl) : tolérance Akambi ±5 min" ;;
+    esac
+  else ok "DomiCares Academy désactivée (ACADEMY_ENABLED=false)"; fi
   [[ "$(env_get COOKIE_SECURE)" == "true" ]] || warn "COOKIE_SECURE devrait être true derrière Caddy (HTTPS)"
   for v in FRONTEND_URL CORS_ORIGINS APP_BASE_URL SITE_URL; do val="$(env_get $v)"; [[ -n "$DOMAIN" && "$val" == *"$DOMAIN"* ]] || warn "$v=$val ne mentionne pas $DOMAIN"; done
 fi
@@ -108,6 +126,10 @@ if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
       ok "PostgreSQL joignable sur 127.0.0.1:5432"
       n=$(PGPASSWORD="$(env_get POSTGRES_PASSWORD)" psql -X -At -h 127.0.0.1 -U postgres -d "$(env_get POSTGRES_DB)" -c "select count(*) from users" 2>/dev/null || echo "?")
       [[ "$n" == "?" ]] && warn "base $(env_get POSTGRES_DB) sans table users (sera recréée par bascule.sh)" || ok "base $(env_get POSTGRES_DB) : $n compte(s) actuellement (recréée par bascule.sh)"
+      if [[ "$n" != "?" && "$(env_get ACADEMY_ENABLED)" == "true" ]]; then
+        t=$(PGPASSWORD="$(env_get POSTGRES_PASSWORD)" psql -X -At -h 127.0.0.1 -U postgres -d "$(env_get POSTGRES_DB)" -c "select count(*) from information_schema.tables where table_schema = 'public' and table_name like 'academy\_%'" 2>/dev/null || echo 0)
+        [[ "$t" == "6" ]] && ok "tables academy_* présentes" || ko "tables academy_* absentes ou incomplètes ($t/6) : appliquer 28_academy.sql puis 30_grants.sql (en-tête de db/native/140_academy.sql)"
+      fi
     else warn "PostgreSQL injoignable sur 127.0.0.1:5432 (normal si postgres n'est pas démarré)"; fi
   fi
 else
