@@ -928,9 +928,11 @@ Ce qui reste, et pourquoi :
 - « no usable system locales were found » vient de l'image `postgres:16-alpine`, celle de la
   production (`deploy/vps/docker-compose.yml`). L'image Debian ne l'émet pas, mais elle éloignerait
   la recette de la production ;
-- les `DeprecationWarning` `punycode` et `url.parse()` sont émis par l'action `setup-node`, pas par le
-  projet. La recette passe à `setup-node@v6` ; le journal CI montrera si ces deux avertissements
-  disparaissent.
+- les `DeprecationWarning` `punycode` et `url.parse()` étaient émis par l'action `setup-node@v5`, pas
+  par le projet. La recette passe à `setup-node@v6`, et ils ont disparu de son journal (CI de la PR
+  du 23 octobre : 48/48). Les autres workflows restent en v5 ;
+- l'astuce `git init` de `actions/checkout` (« hint: … suppress this warning ») n'est pas un
+  avertissement du projet.
 
 Contrôles :
 - `npm ci` sans avertissement, audit à 0 vulnérabilité ;
