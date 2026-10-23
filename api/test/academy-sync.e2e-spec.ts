@@ -141,6 +141,15 @@ describe('Academy — webhooks et rapprochement (e2e)', () => {
     const stored = await db.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('academy_certificates').selectAll().where('enrollment_id', '=', id).executeTakeFirstOrThrow());
     expect(stored).toMatchObject({ id: certificate.id, learner_name: 'Prénomnurse Nomnurse', score_correct: 9, score_total: 10, verification_url: certificate.verificationUrl });
     expect(Object.keys(stored)).not.toContain('download_url');
+
+    // Praticien prévenu une fois par transition (terminée, puis attestée), vers l'onglet Academy ; pas sur un doublon.
+    const notifications = () => db.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('notifications').select(['title', 'message', 'type', 'link']).where('user_id', '=', userIds['nurse']).where('type', '=', 'academy').orderBy('created_at').execute());
+    expect(await notifications()).toEqual([
+      { title: 'Formation terminée', message: expect.stringContaining(`progress ${tag}`), type: 'academy', link: '/dashboard/practitioner?tab=academy' },
+      { title: 'Attestation disponible', message: expect.stringContaining(`progress ${tag}`), type: 'academy', link: '/dashboard/practitioner?tab=academy' },
+    ]);
+    expect((await send(event('progress.updated', { enrollment }))).json().status).toBe('processed');
+    expect(await notifications()).toHaveLength(2);
   });
 
   it('annulation : inscription close localement, nouvelle inscription possible ensuite', async () => {

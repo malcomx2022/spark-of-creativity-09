@@ -20,6 +20,7 @@ export class PublicConfigController {
       const v = r.value as unknown;
       features[r.key] = typeof v === 'boolean' ? v : typeof v === 'object' && v !== null && 'enabled' in v ? Boolean((v as { enabled?: unknown }).enabled) : v === 'true';
     }
-    return { mapboxToken: this.config.MAPBOX_TOKEN ?? null, features };
+    // academyEnabled : affiche l'onglet DomiCares Academy ; les droits restent vérifiés par /academy/*.
+    return { mapboxToken: this.config.MAPBOX_TOKEN ?? null, features, academyEnabled: this.config.ACADEMY_ENABLED };
   }
 }

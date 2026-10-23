@@ -3,6 +3,7 @@ import type { Transaction } from 'kysely';
 import { z } from 'zod';
 import { APP_CONFIG, AppConfig } from '../config/config.module';
 import { DatabaseService, SERVICE_CONTEXT } from '../database/database.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import type { DB } from '../database/types';
 import { applyEnrollmentState } from './academy-enrollments.service';
 import { akambiEnrollmentSchema, AkambiEnrollmentInput } from './academy.dto';
@@ -34,6 +35,8 @@ const certificateSchema = z.object({
   verificationUrl: z.string().url(),
 });
 
+/** Onglet Academy de l'espace praticien (chemin autorisé par notificationPath / pushTargetPath / sw.js). */
+const ACADEMY_LINK = '/dashboard/practitioner?tab=academy';
 const ENROLLMENT_EVENTS = new Set(['enrollment.created', 'progress.updated', 'course.completed', 'enrollment.cancelled', 'certificate.issued']);
 const PAGE_LIMIT = 100;
 const MAX_REQUESTS = 1000;
@@ -65,7 +68,26 @@ export class AcademySyncService {
     private readonly database: DatabaseService,
     @Inject(AKAMBI_CLIENT) private readonly akambi: AkambiClient,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly inApp: InAppNotificationsService,
   ) {}
+
+  /**
+   * Applique l'état reçu et prévient le praticien, dans la même transaction, quand la formation passe à terminée ou
+   * à attestée (notification in-app ; le titre de la formation n'est pas une donnée de santé). Un doublon ou un état
+   * plus ancien ne notifie pas : le statut ne change pas.
+   */
+  private async applyAndNotify(trx: Transaction<DB>, localId: string, remote: AkambiEnrollmentInput) {
+    const before = await trx.selectFrom('academy_enrollments').select('status').where('id', '=', localId).executeTakeFirst();
+    const applied = await applyEnrollmentState(trx, localId, remote);
+    if (applied && before && applied.status !== before.status && (applied.status === 'COMPLETED' || applied.status === 'CERTIFIED')) {
+      const course = await trx.selectFrom('academy_courses').select('title').where('id', '=', applied.course_id).executeTakeFirst();
+      const title = course?.title ?? remote.courseTitle;
+      await this.inApp.notifyUser(trx, applied.user_id, applied.status === 'CERTIFIED'
+        ? { title: 'Attestation disponible', message: `Votre attestation pour « ${title} » est disponible dans DomiCares Academy.`, type: 'academy', link: ACADEMY_LINK }
+        : { title: 'Formation terminée', message: `Vous avez terminé « ${title} ». L'évaluation finale permet d'obtenir l'attestation.`, type: 'academy', link: ACADEMY_LINK });
+    }
+    return applied;
+  }
 
   private get webhookSecrets(): string[] {
     return (this.config.AKAMBI_WEBHOOK_SECRETS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -129,7 +151,7 @@ export class AcademySyncService {
     const localId = await this.localEnrollmentId(trx, remote);
     if (!localId) return { status: 'ignored', message: 'inscription inconnue de DomiCares' };
 
-    const applied = await applyEnrollmentState(trx, localId, remote);
+    const applied = await this.applyAndNotify(trx, localId, remote);
     if (type === 'certificate.issued') {
       const certificate = certificateSchema.safeParse(data.certificate);
       if (!certificate.success) return { status: 'failed', message: `attestation illisible (${certificate.error.issues.map((i) => i.path.join('.')).join(', ')})` };
@@ -190,7 +212,7 @@ export class AcademySyncService {
           const outcome = await this.database.runAs(SERVICE_CONTEXT, async (trx) => {
             const localId = await this.localEnrollmentId(trx, remote);
             if (!localId) return null;
-            const applied = await applyEnrollmentState(trx, localId, remote);
+            const applied = await this.applyAndNotify(trx, localId, remote);
             const hasCertificate = await trx.selectFrom('academy_certificates').select('id').where('enrollment_id', '=', localId).executeTakeFirst();
             return { localId, applied: !!applied, needsCertificate: remote.status === 'CERTIFIED' && !hasCertificate };
           });
