@@ -324,6 +324,10 @@ Notification push sur téléphone réel :
   résultat réel de l'envoi.
 - Checklist complète : document 12, point 7.
 
+DomiCares Academy (Akambi) : désactivée par défaut (`ACADEMY_ENABLED=false`). Activation,
+tables `academy_*` sur une base existante, webhook et retour arrière :
+`docs/academy/02-RECETTE-PREPRODUCTION.md` ; `preflight.sh` contrôle la configuration et l'horloge.
+
 Formulaire de contact (réception réelle) : après avoir défini `CONTACT_RECIPIENT_EMAIL` dans
 `.env`, lancer `docker compose up -d api` (un simple restart ne recharge pas l'environnement),
 puis `./contact-check.sh --via-site`. Le script :
