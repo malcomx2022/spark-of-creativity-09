@@ -198,13 +198,23 @@ principal se fait au §11.
 
 ```bash
 cd ~/domicares/deploy/vps
-docker compose build minio                   # MinIO compilé depuis sa release épinglée (voir ci-dessous)
+docker compose build minio postgres          # MinIO compilé depuis sa release ; PostgreSQL + locales (ci-dessous)
 docker compose up -d postgres minio          # la base se crée avec 010_roles + schema.native.sql
 docker compose logs -f postgres              # attendre « database system is ready », puis Ctrl-C
 docker compose build web api worker          # 5 à 10 min la première fois
 docker compose up -d
 docker compose ps
 ```
+
+PostgreSQL : `postgres.Dockerfile` reprend `postgres:16-alpine` et ajoute les locales musl
+(`musl-locales`). Sans elles, initdb journalise « no usable system locales were found » et n'importe
+aucune collation système ; avec, `fr_FR`, `en_US`… sont importées (les collations ICU restent
+disponibles). L'image est construite sans `--pull` : pas de montée de version mineure implicite.
+Sur un VPS déjà en service, le premier déploiement qui l'embarque recrée le conteneur `postgres`
+(quelques secondes d'indisponibilité) sur le volume `pg_data` existant : mêmes binaires PostgreSQL,
+données et tri inchangés (musl trie par octets, avec ou sans locales). Les collations système d'une
+base existante s'ajoutent si besoin par `SELECT pg_import_system_collations('pg_catalog');`.
+Retour arrière : `image: postgres:16-alpine` sans `build`, puis `docker compose up -d postgres`.
 
 MinIO ne publie plus d'images accessibles anonymement : `minio.Dockerfile` compile la release
 épinglée (`RELEASE.2025-09-07T16-13-09Z`) depuis son commit, avec les mêmes options que le build
@@ -358,7 +368,7 @@ déploiement automatique à chaque `main`, décommentez le déclencheur `push` d
 Mise à jour manuelle équivalente :
 
 ```bash
-cd ~/domicares && git pull && cd deploy/vps && docker compose build web api worker && docker compose up -d
+cd ~/domicares && git pull && cd deploy/vps && docker compose build web api worker && docker compose build postgres && docker compose up -d
 ```
 
 ## 11. Bascule en production

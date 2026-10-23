@@ -93,6 +93,9 @@ jobs:
               fi
             fi
             docker compose build --pull web api worker
+            # PostgreSQL : postgres:16-alpine local + locales musl, sans --pull (aucune montée de version
+            # mineure implicite) ; au premier déploiement, le conteneur est recréé sur le volume pg_data existant.
+            docker compose build postgres
             # Version applicative inscrite dans le manifeste des sauvegardes (backup.sh).
             echo "$DEPLOY_REVISION" > backups/.app-version 2>/dev/null || echo "version de sauvegarde non inscrite (droits de deploy/vps/backups)"
             docker compose up -d --remove-orphans

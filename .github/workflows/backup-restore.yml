@@ -5,10 +5,10 @@ name: Backup / restore
 # l'archive hors site déchiffrée, puis cas négatif (objet référencé supprimé → échec attendu).
 on:
   pull_request:
-    paths: ['deploy/vps/backup.sh', 'deploy/vps/restore-check.sh', 'deploy/vps/restore-drill.sh', 'deploy/vps/minio.Dockerfile', 'deploy/vps/docker-compose.yml', 'db/native/**', '.github/workflows/backup-restore.yml']
+    paths: ['deploy/vps/backup.sh', 'deploy/vps/restore-check.sh', 'deploy/vps/restore-drill.sh', 'deploy/vps/minio.Dockerfile', 'deploy/vps/postgres.Dockerfile', 'deploy/vps/docker-compose.yml', 'db/native/**', '.github/workflows/backup-restore.yml']
   push:
     branches: [main]
-    paths: ['deploy/vps/backup.sh', 'deploy/vps/restore-check.sh', 'deploy/vps/restore-drill.sh', 'deploy/vps/minio.Dockerfile', 'deploy/vps/docker-compose.yml', 'db/native/**', '.github/workflows/backup-restore.yml']
+    paths: ['deploy/vps/backup.sh', 'deploy/vps/restore-check.sh', 'deploy/vps/restore-drill.sh', 'deploy/vps/minio.Dockerfile', 'deploy/vps/postgres.Dockerfile', 'deploy/vps/docker-compose.yml', 'db/native/**', '.github/workflows/backup-restore.yml']
 
 jobs:
   cycle:
@@ -17,18 +17,20 @@ jobs:
     env:
       BACKUP_IMAGE: domicares-backup:pg16-mc-RELEASE.2025-08-13T08-35-41Z
       MINIO_IMAGE: domicares-minio:RELEASE.2025-09-07T16-13-09Z
+      PG_IMAGE: domicares-postgres:16-alpine-locales
     steps:
       - uses: actions/checkout@v5
-      - name: Construire les images (serveur MinIO et sauvegarde)
+      - name: Construire les images (serveur MinIO, sauvegarde, PostgreSQL)
         working-directory: deploy/vps
         run: |
+          docker build -f postgres.Dockerfile -t "$PG_IMAGE" .
           docker build -f minio.Dockerfile -t "$MINIO_IMAGE" .
           docker build -f minio.Dockerfile --target backup -t "$BACKUP_IMAGE" .
           docker run --rm --entrypoint sh "$BACKUP_IMAGE" -c 'pg_dump --version && mc --version | head -1 && age --version && rclone version | head -1'
       - name: Pile source (schéma natif, buckets, données référencées)
         run: |
           docker network create prod
-          docker run -d --name postgres --network prod -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=domicares -v "$PWD/db/native:/native:ro" postgres:16-alpine
+          docker run -d --name postgres --network prod -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=domicares -v "$PWD/db/native:/native:ro" "$PG_IMAGE"
           docker run -d --name minio --network prod -e MINIO_ROOT_USER=ci-minio -e MINIO_ROOT_PASSWORD=ci-minio-password "$MINIO_IMAGE" server /data
           for i in $(seq 1 30); do docker exec postgres pg_isready -U postgres -d domicares -q && break; sleep 1; done
           sleep 2

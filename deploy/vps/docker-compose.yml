@@ -67,7 +67,11 @@ services:
       postgres: { condition: service_healthy }
 
   postgres:
-    image: postgres:16-alpine
+    # postgres:16-alpine + locales musl (postgres.Dockerfile) : collations système importées à l'initdb.
+    image: domicares-postgres:16-alpine-locales
+    build:
+      context: .
+      dockerfile: postgres.Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
