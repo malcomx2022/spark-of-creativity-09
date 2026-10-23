@@ -251,11 +251,12 @@ Sondes faites avec la clé sandbox sur des transactions de 100 et 5 000 XOF, jam
 - **Cause confirmée par FedaPay (courriel du 23 octobre 2026).** FedaPay écrit ne pas parvenir à livrer
   les événements du compte en mode sandbox au webhook `https://domicares.life/api/webhooks/fedapay`
   (webhook sandbox n° 1471, historique dans le tableau de bord sandbox) : seule une réponse 200 à 299
-  compte comme livrée. Le webhook **sandbox pointe donc vers la production**. Chaque transaction de
-  campagne ou de sonde produit un événement que la production refuse, comme prévu : signature vérifiée
-  avec le secret live, transaction sandbox inconnue. Ni panne de production, ni défaut Domicares.
-  À faire dans le tableau de bord sandbox : supprimer ce webhook, ou le pointer vers la recette pour S13.
-  Ne jamais faire accepter les événements sandbox par la production (secret sandbox en production).
+  compte comme livrée. Le webhook **sandbox pointe donc vers la production**, elle-même en
+  `FEDAPAY_MODE=sandbox` (constaté le 23 octobre 2026 par `GET /api/payments/config`). L'API ne répond
+  hors 2xx que sur une signature absente ou invalide (401, `WebhooksController`) : la cause probable
+  est un `FEDAPAY_WEBHOOK_SECRET` de production différent du secret du webhook n° 1471 (code exact
+  dans le journal du webhook). Conséquence : la production ne reçoit aucun webhook FedaPay et
+  dépend de `payments.sync`. Correctif : document 16, §2.4 (webhook par environnement, secret propre).
 
 Transaction de référence transmise au support : id 530207, référence `trx_bHA_1792769320885`
 (23 octobre 2026, 15:28:41 UTC). Exemple `momo_test` refusé : transaction 530222, intention 294052
