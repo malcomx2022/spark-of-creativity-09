@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AcademyModule } from './academy/academy.module';
 import { AdminModule } from './admin/admin.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuditModule } from './audit/audit.module';
@@ -26,6 +27,6 @@ import { StorageModule } from './storage/storage.module';
 import { SupportModule } from './support/support.module';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, AuditModule, NotificationsModule, StorageModule, AuthModule, ProfilesModule, FilesModule, PractitionersModule, KycModule, PaymentsModule, AppointmentsModule, GroupSessionsModule, FinanceModule, AdminModule, SupportModule, DisputesModule, MedicalModule, ReviewsModule, PaymentMethodsModule, StatsModule, MessagingModule, RealtimeModule, JobsModule, HealthModule],
+  imports: [ConfigModule, DatabaseModule, AuditModule, NotificationsModule, StorageModule, AuthModule, ProfilesModule, FilesModule, PractitionersModule, KycModule, PaymentsModule, AppointmentsModule, GroupSessionsModule, FinanceModule, AdminModule, SupportModule, DisputesModule, MedicalModule, ReviewsModule, PaymentMethodsModule, StatsModule, MessagingModule, RealtimeModule, JobsModule, HealthModule, AcademyModule],
 })
 export class AppModule {}

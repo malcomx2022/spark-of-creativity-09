@@ -155,6 +155,11 @@ sont identiques à ceux de Supabase Storage : les valeurs déjà en base restent
 Paiement : `FEDAPAY_PROVIDER=fedapay` (clés sandbox/live, secret webhook) ou `fake` en dev/test ;
 l'URL de webhook à déclarer chez FedaPay est `https://<domaine>/api/webhooks/fedapay`.
 
+Academy (Akambi) : `AKAMBI_PROVIDER=akambi` avec `AKAMBI_BASE_URL` (HTTPS), `AKAMBI_API_KEY` et
+`AKAMBI_API_SECRET` propres à chaque environnement, ou `fake` en dev/test ; `ACADEMY_ENABLED=false`
+par défaut (client factice interdit en production une fois activée). Client signé et client factice dans
+`src/academy/` ; plan et suivi : `../docs/academy/01-FAISABILITE-INTEGRATION-AKAMBI.md`.
+
 Soldes praticien : ils sont recalculés par le trigger `trigger_update_balance_on_payment`
 à chaque changement de paiement. L'API n'appelle plus `update_payment_with_balance()` :
 combinée au trigger, cette fonction doublait le montant en attente (défaut hérité de la

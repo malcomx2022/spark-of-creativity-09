@@ -61,6 +61,15 @@ export const configSchema = z.object({
   PAYMENT_STUCK_EXPIRATION_MINUTES: z.coerce.number().int().positive().default(10),
   JOBS_ENABLED: bool.default('true'),
 
+  // DomiCares Academy — API partenaires Akambi v1 (docs/academy). Clés distinctes en préproduction et en
+  // production, uniquement côté serveur. Une valeur vide dans .env vaut « non renseignée ».
+  ACADEMY_ENABLED: bool.default('false'),
+  AKAMBI_PROVIDER: z.enum(['akambi', 'fake']).default('fake'),
+  AKAMBI_BASE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  AKAMBI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  AKAMBI_API_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  AKAMBI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(10_000),
+
   // Push Web (VAPID) : webpush | console
   PUSH_PROVIDER: z.enum(['webpush', 'console']).default('console'),
   WEB_PUSH_PUBLIC_KEY: z.string().optional(),
@@ -112,6 +121,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.FEDAPAY_PROVIDER === 'fake') {
     throw new Error('FEDAPAY_PROVIDER=fake est interdit en production');
+  }
+  if (parsed.data.AKAMBI_PROVIDER === 'akambi' && !(parsed.data.AKAMBI_BASE_URL && parsed.data.AKAMBI_API_KEY && parsed.data.AKAMBI_API_SECRET)) {
+    throw new Error('AKAMBI_BASE_URL, AKAMBI_API_KEY et AKAMBI_API_SECRET requis avec AKAMBI_PROVIDER=akambi');
+  }
+  if (parsed.data.AKAMBI_PROVIDER === 'akambi' && !parsed.data.AKAMBI_BASE_URL?.startsWith('https://')) {
+    throw new Error('AKAMBI_BASE_URL doit être une URL HTTPS');
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.ACADEMY_ENABLED && parsed.data.AKAMBI_PROVIDER === 'fake') {
+    throw new Error('AKAMBI_PROVIDER=fake est interdit en production avec ACADEMY_ENABLED=true');
   }
   if (parsed.data.PUSH_PROVIDER === 'webpush' && !(parsed.data.WEB_PUSH_PUBLIC_KEY && parsed.data.WEB_PUSH_PRIVATE_KEY)) {
     throw new Error('WEB_PUSH_PUBLIC_KEY et WEB_PUSH_PRIVATE_KEY requis avec PUSH_PROVIDER=webpush');

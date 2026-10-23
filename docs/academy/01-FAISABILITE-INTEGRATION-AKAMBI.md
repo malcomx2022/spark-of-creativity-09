@@ -9,7 +9,7 @@ Sources analysées :
   transmis séparément, URL de réception des webhooks demandée) ;
 - état du dépôt : `main`, documents 10 à 15, modules `api/src/*`, `db/native/`, `deploy/vps/`.
 
-Statut : **plan, aucun code ni schéma modifié**. Aucun appel à la préproduction Akambi n'a été
+Statut : plan ; lot A1 (client Akambi) implémenté, voir « Suivi des lots » (§ 7). Aucun schéma SQL modifié. Aucun appel à la préproduction Akambi n'a été
 exécuté pendant cette analyse (identifiants non disponibles dans cet environnement) : le test
 « Vérifier l'authentification » reste à faire (§ 8, étape 0).
 
@@ -254,6 +254,13 @@ Les deux jobs ne s'exécutent que si `ACADEMY_ENABLED=true` et restent déclench
 | A7 | Front praticien et admin, notifications | 3,5 j |
 | A8 | Déploiement préproduction DomiCares, recette commune, documentation | 2,5 j |
 | | **Total** | **19 j (fourchette 18–22 j)** |
+
+### Suivi des lots
+
+| Lot | État | Preuve |
+|---|---|---|
+| A1 | **Implémenté et validé localement** (23 octobre 2026) | `api/src/academy/` : `akambi.signature.ts` (signature des requêtes, chemin et query figés, vérification des webhooks avec rotation et ±300 s), `akambi.client.ts` (`HttpAkambiClient` : nouveau nonce par tentative, même `Idempotency-Key`, 3 tentatives sur réseau/délai/5xx uniquement, réponses non JSON classées, journaux sans corps ni message ; `FakeAkambiClient` : règles documentées en mémoire), `academy.module.ts` (sélection par `AKAMBI_PROVIDER`, aucune route). Configuration : `ACADEMY_ENABLED`, `AKAMBI_PROVIDER`, `AKAMBI_BASE_URL` (HTTPS), `AKAMBI_API_KEY`, `AKAMBI_API_SECRET`, `AKAMBI_TIMEOUT_MS` ; client factice refusé en production quand l'Academy est activée. Le secret de webhook sera ajouté au lot A5. Contrôles (Node 22.22.0) : `npm run typecheck` OK ; `npm test -- --runInBand` 12 suites, 110 tests réussis (dont 34 nouveaux : signature avec vecteurs `openssl`, client HTTP, client factice, configuration) ; `npm run build` OK ; `npm run lint` à la racine OK (0 avertissement) ; `npm run test:e2e` sur PostgreSQL 16 local jetable : 123 réussis, 4 ignorés (MinIO absent). Non exécuté : appel réel à la préproduction Akambi (identifiants non disponibles dans cet environnement). |
+| A0, A2–A8 | À faire | — |
 
 Chaque lot suit la méthode du dépôt : tests ajoutés, contrôles exécutés (typecheck, tests unitaires
 et e2e, build, lint), ligne de suivi avec preuve et commit.
