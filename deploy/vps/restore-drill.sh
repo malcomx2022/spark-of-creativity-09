@@ -25,7 +25,8 @@ done
 echo "▶ Exercice isolé ($ID) sur $(basename "$BACKUP")"
 start=$(date +%s)
 docker network create --internal "$ID" >/dev/null
-docker run -d --name "$ID-pg" --network "$ID" -e POSTGRES_PASSWORD="$PASS" -e POSTGRES_DB=domicares "$PG_IMAGE" >/dev/null
+docker run -d --name "$ID-pg" --network "$ID" -e POSTGRES_PASSWORD="$PASS" -e POSTGRES_DB=domicares \
+  -e POSTGRES_INITDB_ARGS="--auth-local=trust --auth-host=trust" "$PG_IMAGE" >/dev/null
 docker run -d --name "$ID-s3" --network "$ID" -e MINIO_ROOT_USER=drill -e MINIO_ROOT_PASSWORD="$PASS" "$MINIO_IMAGE" server /data >/dev/null
 docker run --rm --network "$ID" \
   -v "$BACKUP:/restore:ro" -v "$HERE/restore-check.sh:/restore-check.sh:ro" \

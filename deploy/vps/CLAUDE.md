@@ -41,6 +41,8 @@ Aucun déploiement VPS n'a été exécuté par le chantier courant.
 PostgreSQL : image `domicares-postgres:16-alpine-locales` (`postgres.Dockerfile`, postgres:16-alpine +
 musl-locales), construite sans `--pull` ; aussi utilisée par la CI (api-ci, recette, backup-restore) et
 `restore-drill.sh` (`PG_IMAGE`). Premier déploiement : conteneur recréé sur le volume existant (document 07, §6).
+`POSTGRES_INITDB_ARGS=--auth-local=trust --auth-host=trust` (défauts d'initdb explicites, pg_hba.conf identique) :
+ne pas le retirer sans revoir l'authentification locale, utilisée par les scripts d'initialisation.
 
 Utiliser Node 22 pour le build web. Servir manifeste et worker sans cache HTTP durable,
 préserver leur version produite par Vite et valider installation, hors ligne, mise à jour

@@ -973,3 +973,17 @@ L'image n'a pas été construite telle quelle ici : le proxy HTTPS de l'environn
 par apk. Le certificat du proxy a été fourni au seul build de test, non versionné. La CI, sans proxy,
 construit le Dockerfile versionné. Aucun déploiement n'a été exécuté.
 
+### Avertissement initdb « trust » en production
+
+initdb journalisait aussi `enabling "trust" authentication for local connections` à la création de la
+base de production. La recette ne l'émettait déjà plus (PR #104). `POSTGRES_INITDB_ARGS=--auth-local=trust
+--auth-host=trust` est maintenant fixé dans `docker-compose.yml`, dans `restore-drill.sh` et dans
+`backup-restore.yml`. Ce sont les méthodes par défaut d'initdb, rendues explicites.
+
+Contrôle dans `domicares-postgres:16-alpine-locales`, avec et sans le paramètre : le `pg_hba.conf`
+est identique ligne pour ligne (7 règles, dont `host all all all scram-sha-256` ajoutée par
+l'entrypoint). Avec le paramètre, le démarrage ne produit plus aucun avertissement.
+
+Le paramètre n'agit qu'à la création d'une base neuve. Au prochain déploiement, le conteneur
+`postgres` est recréé de toute façon, pour l'image avec locales, et la base existante est inchangée.
+
