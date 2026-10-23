@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { loadFedaPayCheckout } from '@/lib/fedapay-widget';
 import { api, auth, errorMessage as apiErrorMessage, isApiError } from '@/lib/api';
 import { useSavedPaymentMethods } from '@/hooks/useSavedPaymentMethods';
 import { MOBILE_MONEY_PROVIDERS, formatAmount } from '@/lib/payment-config';
@@ -52,6 +53,10 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
 
   // Vérifier si le script FedaPay est chargé avec timeout
   useEffect(() => {
+    // checkout.js n'est plus dans index.html : chargé à l'ouverture du paiement, il ne bloque plus le
+    // chargement des autres pages quand le CDN FedaPay répond lentement.
+    if (!open) return;
+    void loadFedaPayCheckout();
     const FEDAPAY_LOAD_TIMEOUT = 15000; // 15 secondes
 
     const checkFedaPayLoaded = () => {
@@ -96,7 +101,7 @@ export function FedaPayWidget({ open, onOpenChange, appointmentId, amount, onSuc
         clearTimeout(fedapayLoadTimeoutRef.current);
       }
     };
-  }, []);
+  }, [open]);
 
   // Load FedaPay configuration
   useEffect(() => {

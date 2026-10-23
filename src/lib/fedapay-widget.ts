@@ -69,6 +69,34 @@ export const isFedaPayLoaded = (): boolean => {
   return typeof window !== 'undefined' && !!window.FedaPay;
 };
 
+export const FEDAPAY_CHECKOUT_URL = 'https://cdn.fedapay.com/checkout.js?v=1.1.7';
+let checkoutLoading: Promise<boolean> | null = null;
+
+/**
+ * Charge checkout.js à la demande, une seule fois. Placé dans index.html, ce script synchrone d'un CDN
+ * externe bloquait DOMContentLoaded et load de toutes les pages quand le CDN répondait lentement.
+ * Résout false en cas d'échec ; un appel suivant retente alors le chargement.
+ */
+export const loadFedaPayCheckout = (): Promise<boolean> => {
+  if (isFedaPayLoaded()) return Promise.resolve(true);
+  if (typeof document === 'undefined') return Promise.resolve(false);
+  if (!checkoutLoading) {
+    checkoutLoading = new Promise<boolean>((resolve) => {
+      const script = document.createElement('script');
+      script.src = FEDAPAY_CHECKOUT_URL;
+      script.async = true;
+      script.onload = () => resolve(isFedaPayLoaded());
+      script.onerror = () => {
+        script.remove();
+        checkoutLoading = null;
+        resolve(false);
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return checkoutLoading;
+};
+
 // Constants for checkout completion reasons
 export const CHECKOUT_COMPLETED = 1;
 export const DIALOG_DISMISSED = 2;
