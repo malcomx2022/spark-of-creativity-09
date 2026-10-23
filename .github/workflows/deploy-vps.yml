@@ -20,16 +20,62 @@ on:
         type: choice
         options: [production, recette]
         default: production
+      sans_recette:
+        description: "Production : déployer un SHA non validé en recette (urgence, tracée dans le résumé)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  deployments: read
 
 concurrency:
   group: deploy-vps
   cancel-in-progress: false
 
 jobs:
+  # Avant la demande d'approbation de l'environnement « production » : quand la recette existe
+  # (RECETTE_AUTO=true), la production n'accepte qu'un SHA déployé avec succès en recette. Chaque job
+  # lié à un environnement crée un déploiement GitHub (SHA du run, statuts in_progress puis success
+  # ou failure, inactive quand un déploiement plus récent le remplace) : on cherche un « success ».
+  validation-recette:
+    if: github.event_name == 'push' || inputs.confirm == 'DEPLOYER'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DEPLOY_REVISION: ${{ inputs.revision || github.sha }}
+      # Même expression que « environment » du job deploy ci-dessous.
+      DEPLOY_TARGET: ${{ github.event_name == 'push' && (vars.RECETTE_AUTO == 'true' && 'recette' || 'production') || inputs.cible }}
+      RECETTE_AUTO: ${{ vars.RECETTE_AUTO }}
+      SANS_RECETTE: ${{ inputs.sans_recette }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Vérifier que le SHA a été validé en recette
+        run: |
+          set -eu
+          if [ "$DEPLOY_TARGET" != production ] || [ "$RECETTE_AUTO" != true ]; then
+            echo "Contrôle non applicable (cible $DEPLOY_TARGET, RECETTE_AUTO=${RECETTE_AUTO:-absent})"
+            exit 0
+          fi
+          if [ "$SANS_RECETTE" = true ]; then
+            echo "::warning::Production déployée sans validation en recette (dérogation sans_recette) : $DEPLOY_REVISION"
+            echo "⚠️ Dérogation \`sans_recette\` : \`$DEPLOY_REVISION\` déployé en production sans validation en recette." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          ids=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=recette&sha=$DEPLOY_REVISION&per_page=100" --jq '.[].id')
+          for id in $ids; do
+            if gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=100" --jq '.[].state' | grep -qx success; then
+              echo "SHA $DEPLOY_REVISION déployé avec succès en recette (déploiement GitHub $id)"
+              echo "✅ \`$DEPLOY_REVISION\` validé en recette (déploiement $id)." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "::error::$DEPLOY_REVISION n'a aucun déploiement réussi en recette. Le déployer d'abord en recette (cible recette), ou relancer avec sans_recette en cas d'urgence."
+          exit 1
+
   deploy:
+    needs: validation-recette
     if: github.event_name == 'push' || inputs.confirm == 'DEPLOYER'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -44,6 +90,14 @@ jobs:
       DEPLOY_APP_DIR: ${{ secrets.VPS_APP_DIR }}
 
     steps:
+      - name: Signaler une recette qui ne vaudra pas validation
+        if: inputs.cible == 'recette' && inputs.revision != '' && inputs.revision != github.sha
+        env:
+          RUN_SHA: ${{ github.sha }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          echo "::warning::Le déploiement GitHub est enregistré pour $RUN_SHA, pas pour la révision $REVISION : il ne validera pas cette révision pour la production. Lancer le workflow depuis ce commit, ou relancer la production avec sans_recette."
+
       - name: Déployer sur le VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
