@@ -873,3 +873,24 @@ arrêté, le script s'arrête avec un message explicite (code 2).
 Contrôles locaux : `npm run test:webkit` 76/76 (WebKit iPhone et iPad), `npm run test:recette:webkit`
 16/16 (API et PostgreSQL 16 réels), lint et typecheck. Ce sont des résultats d'émulation WebKit, pas
 une recette sur iPhone physique (document 12).
+
+### Délai de l'installation des navigateurs en CI
+
+Le 22 octobre 2026, l'étape `npx playwright install --with-deps` de Web CI a duré plus de 20 minutes
+sans échouer. Le miroir apt `azure.archive.ubuntu.com` servait les dépendances système de WebKit à
+quelques dizaines de ko/s (2 min 15 s pour 5,8 Mo). Aucun délai n'étant fixé, le job pouvait courir
+jusqu'à la limite GitHub de 6 heures. Il a été annulé, puis relancé avec succès en 4 minutes.
+
+Désormais, Web CI et la recette passent par `scripts/ci-playwright-install.sh` :
+- chaque tentative est coupée après 8 minutes (`PW_INSTALL_TIMEOUT`), avec 3 tentatives
+  (`PW_INSTALL_ATTEMPTS`). `timeout` arrête tout le groupe de processus (npx, apt-get, dpkg) ;
+- avant une nouvelle tentative, `dpkg --configure -a` termine une installation interrompue ;
+- apt réessaie de lui-même un téléchargement figé (`Acquire::Retries 3`, délai de 30 s) ;
+- après le dernier échec, une annotation `::error::` explicite est émise.
+
+L'étape est plafonnée à 30 minutes et chaque job à 45 minutes, contre 4 à 6 minutes d'habitude.
+
+Contrôles locaux : le script, exécuté avec un faux `npx`, coupe une installation figée puis réussit
+à la tentative suivante. Il échoue avec le code 1 après trois échecs, renvoie le code 2 sans argument
+et ne laisse aucun processus orphelin. Le YAML des deux workflows a été validé. La vraie installation
+n'est exercée que sur les runners GitHub (`playwright install` est exclu en local).

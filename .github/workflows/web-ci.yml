@@ -2,15 +2,17 @@ name: Web CI
 
 on:
   pull_request:
-    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', '.github/workflows/web-ci.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', 'scripts/ci-playwright-install.sh', '.github/workflows/web-ci.yml']
   push:
     branches: [main]
-    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', '.github/workflows/web-ci.yml']
+    paths: ['api/**', 'src/**', 'public/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'postcss.config.js', 'tsconfig*.json', 'tailwind.config.ts', 'eslint.config.js', 'playwright.config.ts', 'tests/browser/**', 'scripts/ci-playwright-install.sh', '.github/workflows/web-ci.yml']
 
 jobs:
   build:
     name: Typecheck, tests, build (Vite)
     runs-on: ubuntu-latest
+    # 4 à 6 minutes d'habitude : plafond bien en deçà des 6 heures par défaut de GitHub.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -33,7 +35,9 @@ jobs:
         env:
           VITE_API_URL: /api
       - name: Navigateurs de test (WebKit et Chromium)
-        run: npx playwright install --with-deps webkit chromium
+        # Tentatives de 8 minutes au plus, 3 fois (miroir apt lent) ; plafond de l'étape au-dessus.
+        timeout-minutes: 30
+        run: bash scripts/ci-playwright-install.sh webkit chromium
       - name: Compatibilité Safari simulée et PWA
         run: npm run test:browser
       - uses: actions/upload-artifact@v6
