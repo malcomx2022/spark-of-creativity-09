@@ -56,6 +56,8 @@ CI : `.github/workflows/web-ci.yml` (front), `api-ci.yml` (API), `deploy-vps.yml
 - `docs/migration-postgresql/` : état des lieux, récupération des données Supabase,
   rétro-ingénierie, plan d'exécution VPS, point fonctionnel d'alignement, et
   `07-INSTALLATION-VPS.md` (installation et déploiement du VPS pas à pas).
+- `docs/academy/01-FAISABILITE-INTEGRATION-AKAMBI.md` : faisabilité et plan d'intégration de
+  DomiCares Academy avec l'API partenaires Akambi v1 (23 octobre 2026, plan sans code).
 - `api/README.md` : table des routes de l'API (et ce qu'elles remplacent), jobs, configuration.
 - `docs/archive/` : documents de l'ère Lovable / Supabase, conservés pour l'historique.
 - `promo/digisante-mobile/README.md` : vidéo promotionnelle DigiSanté Mobile (45 s, verticale),
