@@ -21,6 +21,8 @@ warn() { echo "  ⚠ $*"; warnings=$((warnings + 1)); }
 ko()   { echo "  ✖ $*"; errors=$((errors + 1)); }
 env_get() { grep -E "^$1=" "$HERE/.env" 2>/dev/null | head -1 | cut -d= -f2- | sed -E 's/[[:space:]]+#.*$//; s/^[[:space:]]+|[[:space:]]+$//g; s/^"(.*)"$/\1/'; }
 placeholder() { [[ -z "$1" || "$1" == change-me* || "$1" == *_xxx || "$1" == "<"* ]]; }
+# Recette sur le VPS de production (docker-compose.recette.yml, document 16, §2.6).
+RECETTE=0; [[ "$(env_get COMPOSE_FILE)" == *docker-compose.recette.yml* ]] && RECETTE=1
 
 echo "▶ 1. Outils"
 command -v docker >/dev/null && ok "docker $(docker --version | awk '{print $3}' | tr -d ,)" || ko "docker absent (install-vps.sh)"
@@ -122,7 +124,9 @@ if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
         *) ko "$svc : $st" ;;
       esac
     done
-    if pg_isready -h 127.0.0.1 -p 5432 -q 2>/dev/null; then
+    if (( RECETTE )); then
+      ok "recette : PostgreSQL non publié sur l'hôte (127.0.0.1:5432 est la base de production)"
+    elif pg_isready -h 127.0.0.1 -p 5432 -q 2>/dev/null; then
       ok "PostgreSQL joignable sur 127.0.0.1:5432"
       n=$(PGPASSWORD="$(env_get POSTGRES_PASSWORD)" psql -X -At -h 127.0.0.1 -U postgres -d "$(env_get POSTGRES_DB)" -c "select count(*) from users" 2>/dev/null || echo "?")
       [[ "$n" == "?" ]] && warn "base $(env_get POSTGRES_DB) sans table users (sera recréée par bascule.sh)" || ok "base $(env_get POSTGRES_DB) : $n compte(s) actuellement (recréée par bascule.sh)"
@@ -136,7 +140,36 @@ else
   ko "démon docker injoignable"
 fi
 
-echo "▶ 3b. Sauvegardes"
+echo "▶ 3b. Recette sur le même VPS"
+proj="$(env_get COMPOSE_PROJECT_NAME)"
+if (( RECETTE )); then
+  [[ -n "$proj" && "$proj" != vps ]] && ok "COMPOSE_PROJECT_NAME=$proj (volumes distincts de la production)" \
+    || ko "COMPOSE_PROJECT_NAME absent ou « vps » : la recette partagerait les volumes de la production"
+  cv="$(docker compose version --short 2>/dev/null)"
+  [[ -n "$cv" && "$(printf '2.24.4\n%s\n' "$cv" | sort -V | head -1)" == 2.24.4 ]] && ok "docker compose $cv compatible avec l'override de recette" \
+    || ko "docker compose ${cv:-absent} : 2.24.4 minimum (« !reset » de docker-compose.recette.yml)"
+  if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+    docker network inspect domicares-edge >/dev/null 2>&1 && ok "réseau domicares-edge présent" \
+      || ko "réseau domicares-edge absent : il est créé par la pile de production (déployer la production d'abord)"
+    prod_caddy="$(docker ps -q --filter label=com.docker.compose.project=vps --filter label=com.docker.compose.service=caddy | head -1)"
+    if [[ -z "$prod_caddy" ]]; then ko "Caddy de production (projet vps) introuvable : c'est lui qui sert la recette"
+    else
+      dom="$(env_get DOMAIN)"; prod_dom="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$prod_caddy" | sed -n 's/^DOMAIN=//p')"
+      [[ -n "$dom" && "$dom" != "$prod_dom" ]] && ok "DOMAIN=$dom distinct de la production ($prod_dom)" || ko "DOMAIN=$dom vide ou identique à la production"
+      site="$(docker exec "$prod_caddy" sh -c 'cat /etc/caddy/sites/*.caddy 2>/dev/null')"
+      if ! grep -qF "$dom {" <<<"$site"; then ko "aucun site $dom dans caddy/sites/*.caddy du clone de production (modèle : recette.caddy.example)"
+      elif grep -q '<HASH>\|<UTILISATEUR>' <<<"$site"; then ko "caddy/sites : <UTILISATEUR>/<HASH> à remplacer (caddy hash-password)"
+      else ok "site $dom servi par le Caddy de production"; fi
+    fi
+  fi
+else
+  [[ -z "$proj" || "$proj" == vps ]] && ok "production : projet compose « vps » (volumes existants conservés)" \
+    || ko "COMPOSE_PROJECT_NAME=$proj dans un clone de production : la pile repartirait sur des volumes vides"
+  n_sites=$(ls "$HERE"/caddy/sites/*.caddy 2>/dev/null | wc -l)
+  (( n_sites )) && ok "$n_sites site(s) supplémentaire(s) servi(s) par ce Caddy (caddy/sites/*.caddy)" || ok "aucun site supplémentaire (caddy/sites/*.caddy)"
+fi
+
+echo "▶ 3c. Sauvegardes"
 if [[ -f "$HERE/.env" ]]; then
   if [[ -n "$(env_get BACKUP_OFFSITE_REMOTE)" ]]; then
     [[ "$(env_get BACKUP_AGE_RECIPIENT)" == age1* ]] && ok "copie hors site chiffrée configurée" || ko "BACKUP_OFFSITE_REMOTE sans BACKUP_AGE_RECIPIENT (age1…) : sauvegarde refusée"

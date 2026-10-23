@@ -1,0 +1,42 @@
+# Recette servie par le Caddy de PRODUCTION du même VPS (document 16, §2.6).
+# À copier, dans le clone de production, en caddy/sites/recette.caddy (non versionné) puis :
+#   docker compose exec caddy caddy hash-password          # saisir le mot de passe de la recette
+#   remplacer <DOMAINE_RECETTE>, <UTILISATEUR> et <HASH> ci-dessous
+#   docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+#   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+# recette-api / recette-web : alias de la pile de recette sur le réseau domicares-edge
+# (docker-compose.recette.yml).
+
+<DOMAINE_RECETTE> {
+  encode zstd gzip
+
+  # API, Socket.IO et webhooks (FedaPay, Akambi) sans mot de passe : le front envoie déjà
+  # « Authorization: Bearer », qu'un basic_auth écraserait, et les webhooks ne s'authentifient pas.
+  # L'API garde ses propres contrôles d'accès.
+  handle /api/* {
+    reverse_proxy recette-api:3000
+  }
+  handle /socket.io/* {
+    reverse_proxy recette-api:3000
+  }
+
+  # Interface (SPA) réservée à l'équipe.
+  handle {
+    basic_auth {
+      <UTILISATEUR> <HASH>
+    }
+    reverse_proxy recette-web:80
+  }
+
+  header {
+    X-Robots-Tag "noindex, nofollow"
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+  }
+  log {
+    output file /data/access-recette.log
+  }
+}
