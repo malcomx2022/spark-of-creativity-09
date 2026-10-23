@@ -148,6 +148,12 @@ if (( RECETTE )); then
   cv="$(docker compose version --short 2>/dev/null)"
   [[ -n "$cv" && "$(printf '2.24.4\n%s\n' "$cv" | sort -V | head -1)" == 2.24.4 ]] && ok "docker compose $cv compatible avec l'override de recette" \
     || ko "docker compose ${cv:-absent} : 2.24.4 minimum (« !reset » de docker-compose.recette.yml)"
+  # shared_buffers doit tenir dans la limite mémoire du conteneur (sinon PostgreSQL ne démarre pas).
+  to_mb() { local v="${1,,}"; case "$v" in *gb|*g) echo $(( ${v%%g*} * 1024 ));; *mb|*m) echo "${v%%m*}";; *kb|*k) echo $(( ${v%%k*} / 1024 ));; *) echo "";; esac; }
+  sb="$(env_get PG_SHARED_BUFFERS)"; sb="${sb:-1GB}"; lim="$(env_get RECETTE_POSTGRES_MEM)"; lim="${lim:-768m}"
+  sb_mb="$(to_mb "$sb")"; lim_mb="$(to_mb "$lim")"
+  if [[ -n "$sb_mb" && -n "$lim_mb" ]] && (( sb_mb * 3 <= lim_mb )); then ok "PG_SHARED_BUFFERS=$sb pour une limite de $lim"
+  else ko "PG_SHARED_BUFFERS=$sb trop élevé pour RECETTE_POSTGRES_MEM=$lim (au plus un tiers, ex. 192MB pour 768m)"; fi
   if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
     docker network inspect domicares-edge >/dev/null 2>&1 && ok "réseau domicares-edge présent" \
       || ko "réseau domicares-edge absent : il est créé par la pile de production (déployer la production d'abord)"

@@ -101,7 +101,8 @@ dans le Caddyfile (aucun fichier : rien n'est importé).
    sont recréés une fois (réseau `domicares-edge` créé, alias) : quelques secondes de coupure.
 2. **Clone de recette**, en tant que `deploy` :
    `git clone <dépôt> ~/domicares-recette`, puis `cp deploy/vps/.env.example deploy/vps/.env`.
-3. **`.env` de recette** : valeurs du tableau du §2.2, plus
+3. **`.env` de recette** : valeurs du tableau du §2.2, `PG_SHARED_BUFFERS=192MB` (le `1GB` de
+   `.env.example` dépasse la limite mémoire de 768 Mo de la base de recette), plus
    `COMPOSE_PROJECT_NAME=domicares-recette` et
    `COMPOSE_FILE=docker-compose.yml:docker-compose.recette.yml`. Ne **jamais** mettre ces deux
    lignes dans le `.env` de production : un autre nom de projet y repartirait sur des volumes vides.
