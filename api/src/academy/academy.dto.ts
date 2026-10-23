@@ -93,3 +93,37 @@ export interface AcademyLaunchView {
   url: string;
   expiresAt: string | null;
 }
+
+/** Attestation exposée au praticien : métadonnées locales et lien public de vérification (§ 6.4). */
+export interface AcademyCertificateView {
+  id: string;
+  courseTitle: string;
+  learnerName: string;
+  score: { correctAnswers: number; totalQuestions: number } | null;
+  completionDate: string | null;
+  issuedAt: string;
+  verificationUrl: string;
+}
+
+/** Lien de téléchargement du PDF (15 minutes), redemandé à Akambi à chaque clic, jamais stocké. */
+export interface AcademyCertificateDownloadView {
+  url: string;
+  expiresAt: string | null;
+}
+
+const adminPage = { page: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(100).default(50) };
+
+export const adminEnrollmentsQuerySchema = z.object({
+  status: z.enum(['PENDING', 'ENROLLED', 'IN_PROGRESS', 'COMPLETED', 'CERTIFIED', 'CANCELLED']).optional(),
+  courseId: courseIdSchema.optional(),
+  search: z.string().trim().max(100).optional(),
+  ...adminPage,
+});
+export type AdminEnrollmentsQuery = z.infer<typeof adminEnrollmentsQuerySchema>;
+
+export const adminWebhookEventsQuerySchema = z.object({
+  status: z.enum(['pending', 'processed', 'ignored', 'failed']).optional(),
+  type: z.string().trim().max(100).optional(),
+  ...adminPage,
+});
+export type AdminWebhookEventsQuery = z.infer<typeof adminWebhookEventsQuerySchema>;
