@@ -43,7 +43,7 @@ Ne pas confondre cette référence avec les validations historiques ou l'état d
 | 3 — Atomicité des jetons | Haute | 0, coordination avec 2 | Validé localement |
 | 4 — Cycle de vie temps réel | Moyenne | 2 et 3 | Validé localement |
 | 5 — Validation des fichiers | Moyenne | 0 | Validé localement |
-| 6 — Qualité, sauvegardes et recette | Moyenne | 1 à 5 pour la recette finale | Partiel |
+| 6 — Qualité, sauvegardes et recette | Moyenne | 1 à 5 pour la recette finale | Partiel (§7) |
 
 Livrer des changements distincts par lot. Les sauvegardes et le nettoyage lint ciblé
 peuvent commencer avant la fin des corrections de sécurité. Aucune estimation de
@@ -235,7 +235,7 @@ Un lot peut être implémenté sans être validé ; une recette sandbox n'est pa
 | 3 | Validé localement | Requêtes concurrentes PostgreSQL | Refresh : un succès, famille révoquée ; reset/email : un consommateur | Web Locks entre onglets lorsqu'il est disponible |
 | 4 | Validé localement | E2e Socket.IO + test unitaire LISTEN | Expiration, retrait de rôle, suspension, reconnexion ; aucun listener dupliqué | Réévaluation toutes les 5 s par défaut, hors durée des requêtes DB |
 | 5 | Validé localement | MinIO réel + tests API | Taille signée, quarantaine, validation, publication stable et purge | Droits HEAD/GET/PUT/DELETE/LIST nécessaires |
-| 6 | Sauvegarde/restauration implémentées et validées localement (document 15, §14) ; workflow `backup-restore.yml` à exécuter en CI | `backup.sh`, `restore-check.sh`, `restore-drill.sh`, cible `backup` de `minio.Dockerfile` | Sauvegarde PostgreSQL 16 + MinIO réels, copie hors site chiffrée puis restaurée, 7 références résolues ; 8 cas d'échec vérifiés | Copie hors site et alerte à configurer sur le VPS (`.env`) ; premier exercice sur la vraie sauvegarde à consigner ; RPO 24 h / RTO 4 h à confirmer par l'exploitant |
+| 6 | Partiel : sauvegarde/restauration validées localement **et en CI** ; lint global bloquant ; chaîne recette → production livrée, recette déployée le 24/10 | `backup.sh`, `restore-check.sh`, `restore-drill.sh`, cible `backup` de `minio.Dockerfile` ; PR #122, #123, #124 | `backup-restore.yml` vert sur `main` (runs 9, 11 et 13 du 23/10) ; `npm run lint` = `eslint . --max-warnings 0`, 0 erreur, 0 avertissement ; `deploy-vps.yml` runs 37 à 47 `success` (§7) | Copie hors site et alerte à configurer dans le `.env` du VPS ; premier exercice sur la vraie sauvegarde à consigner ; RPO 24 h / RTO 4 h retenus (document 07 §13), durée réelle à mesurer par cet exercice ; `RECETTE_AUTO` à activer ; recette fonctionnelle (document 16 §4) à jouer |
 
 ## 6. Livraison applicative du 6 octobre 2026
 
@@ -270,3 +270,17 @@ Commits préparés : `ebb5f76` (plan et consignes), `39c822f` (correctifs applic
 `aeb183c` (CI, suivi et déploiement épinglé). Le statut des contrôles GitHub reste
 consultable dans la PR de la branche de correction ; seuls les contrôles locaux
 ci-dessus sont déclarés réussis dans ce document.
+
+## 7. Point du lot 6 — 24 octobre 2026
+
+| Volet | État | Preuve | Reste |
+|---|---|---|---|
+| Lint | **Fait** | 45 avertissements hérités corrigés (document 15, « Avertissements lint ») ; `npm run lint` = `eslint . --max-warnings 0`, bloquant dans `web-ci.yml` | — |
+| Tests unitaires API en CI | **Fait** | `api-ci.yml` (Jest unitaire, e2e PostgreSQL 16, `storage-s3` contre MinIO) | — |
+| Sauvegarde et restauration | **Validé en CI**, pas sur le VPS | `backup-restore.yml` vert sur `main` les 23/10 (runs 9, 11, 13) ; procédure et RPO 24 h / RTO 4 h au document 07 §13 | copie hors site chiffrée et alerte (`.env` du VPS), premier exercice sur la vraie sauvegarde avec sa durée |
+| Écriture de la version applicative dans la sauvegarde de recette | **Défaut relevé** | run 47 : `backups/.app-version: Permission denied` dans le clone de recette (message non bloquant prévu par le workflow) | droits du dossier `deploy/vps/backups` de la recette à aligner sur ceux de la production ; sans cela, le manifeste des sauvegardes de recette n'a pas la version |
+| Chaîne de déploiement | **Livrée, recette déployée** | #122 (recette sur le même VPS), #123 (mémoire PostgreSQL), #124 (production limitée à un SHA validé en recette). `deploy-vps.yml` : runs 37 à 46 `success` sur `push` (production) ; run 47 du 24/10, `workflow_dispatch`, cible `recette`, SHA `52e03ec` : conteneurs `domicares-recette-*` recréés, `GET /api/health` de la recette → 200 depuis le runner | variable `RECETTE_AUTO` **absente** (journal du job `validation-recette` : « RECETTE_AUTO=absent ») : chaque fusion sur `main` déploie encore la production. À régler à `true` (document 16 §3) |
+| Recette fonctionnelle après déploiement | **À faire** | `staging.domicares.life` résout vers l'IP du VPS de production ; depuis l'environnement de développement, le proxy sortant refuse ce sous-domaine (502 du proxy) : santé, configuration FedaPay et `basic_auth` non vérifiés d'ici | dérouler le document 16 §4 depuis un poste autorisé : santé, `GET /api/payments/config` → `sandbox`, `/` → 401 sans identifiants, connexion, OTP, rendez-vous, fichiers, temps réel, campagne FedaPay et S13 |
+
+Production au 24/10/2026 : `GET https://domicares.life/api/health` → `{"status":"ok","database":"ok"}`,
+`GET /api/payments/config` → `environment: sandbox`.
