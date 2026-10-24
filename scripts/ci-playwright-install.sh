@@ -6,7 +6,13 @@
 # 20 minutes sans échouer, et le job pouvait atteindre la limite GitHub de 6 heures.
 # Ici, chaque tentative est coupée après PW_INSTALL_TIMEOUT secondes (480 par défaut, contre une
 # à deux minutes d'habitude), avec PW_INSTALL_ATTEMPTS tentatives (3 par défaut). Entre deux
-# tentatives, dpkg termine une installation interrompue.
+# tentatives, l'apt-get de la tentative coupée est arrêté, puis dpkg termine l'installation
+# interrompue.
+#
+# Le 23 octobre 2026, cet apt-get a survécu à timeout : Playwright le lance sous sudo, qui l'exécute
+# dans sa propre session, hors du groupe de processus que timeout signale. Il gardait le verrou
+# /var/lib/dpkg/lock-frontend et les tentatives 2 et 3 échouaient en une seconde (« Could not get
+# lock »), sans rien télécharger.
 #
 #   bash scripts/ci-playwright-install.sh webkit chromium
 set -uo pipefail
@@ -21,9 +27,27 @@ attempts="${PW_INSTALL_ATTEMPTS:-3}"
 
 # Sur un runner GitHub : apt réessaie lui-même les téléchargements interrompus ou figés.
 if [ "${GITHUB_ACTIONS:-}" = "true" ] && command -v sudo >/dev/null 2>&1; then
-  printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+  # DPkg::Lock::Timeout : apt-get attend le verrou de dpkg au lieu d'échouer aussitôt.
+  printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nDPkg::Lock::Timeout "120";\n' \
     | sudo tee /etc/apt/apt.conf.d/80-domicares-ci >/dev/null
 fi
+
+# Arrête l'apt-get d'une tentative coupée et attend la fin de dpkg (60 s au plus). dpkg n'est jamais
+# interrompu : une installation de paquets coupée en cours d'écriture abîmerait le système du runner.
+release_apt() {
+  command -v sudo >/dev/null 2>&1 || return 0
+  if pgrep -x apt-get >/dev/null; then
+    echo "apt-get de la tentative précédente encore actif : arrêt"
+    sudo pkill -TERM -x apt-get || true
+  fi
+  for _ in $(seq 1 30); do
+    pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null || return 0
+    sleep 2
+  done
+  sudo pkill -KILL -x apt-get || true
+  pgrep -x dpkg >/dev/null && echo "::warning::dpkg toujours actif après 60 s ; la tentative suivante attendra le verrou"
+  return 0
+}
 
 for attempt in $(seq 1 "$attempts"); do
   echo "Navigateurs Playwright ($*) : tentative ${attempt}/${attempts}, limite ${timeout_s} s"
@@ -41,6 +65,7 @@ for attempt in $(seq 1 "$attempts"); do
     echo "::warning::Installation des navigateurs en échec, code ${status} (tentative ${attempt}/${attempts})"
   fi
   if [ "$attempt" -lt "$attempts" ]; then
+    release_apt
     if command -v sudo >/dev/null 2>&1; then
       sudo dpkg --configure -a || true
     fi
