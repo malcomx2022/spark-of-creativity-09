@@ -883,7 +883,8 @@ jusqu'à la limite GitHub de 6 heures. Il a été annulé, puis relancé avec su
 
 Désormais, Web CI et la recette passent par `scripts/ci-playwright-install.sh` :
 - chaque tentative est coupée après 8 minutes (`PW_INSTALL_TIMEOUT`), avec 3 tentatives
-  (`PW_INSTALL_ATTEMPTS`). `timeout` arrête tout le groupe de processus (npx, apt-get, dpkg) ;
+  (`PW_INSTALL_ATTEMPTS`). `timeout` arrête le groupe de processus de npx ; l'`apt-get` lancé sous
+  `sudo` lui échappe (voir ci-dessous) ;
 - avant une nouvelle tentative, `dpkg --configure -a` termine une installation interrompue ;
 - apt réessaie de lui-même un téléchargement figé (`Acquire::Retries 3`, délai de 30 s) ;
 - après le dernier échec, une annotation `::error::` explicite est émise.
@@ -894,6 +895,20 @@ Contrôles locaux : le script, exécuté avec un faux `npx`, coupe une installat
 à la tentative suivante. Il échoue avec le code 1 après trois échecs, renvoie le code 2 sans argument
 et ne laisse aucun processus orphelin. Le YAML des deux workflows a été validé. La vraie installation
 n'est exercée que sur les runners GitHub (`playwright install` est exclu en local).
+
+**Reprises inopérantes, corrigées le 24 octobre 2026.** Run 55 de la recette (fusion de #119) : la
+tentative 1 est coupée après 480 s, puis les tentatives 2 et 3 échouent en une seconde, « Could not get
+lock /var/lib/dpkg/lock-frontend. It is held by process 2958 (apt-get) ». Playwright installe les
+dépendances par `sudo` ; sudo exécute `apt-get` dans sa propre session, hors du groupe que `timeout`
+signale, et l'`apt-get` de la tentative coupée gardait le verrou. Correction dans le script :
+- avant chaque reprise, `release_apt` arrête cet `apt-get` (`TERM`, puis `KILL` après 60 s) et attend
+  la fin d'un `dpkg` en cours, sans jamais l'interrompre ;
+- `DPkg::Lock::Timeout "120"` : apt-get attend le verrou au lieu d'échouer aussitôt.
+
+Reproduction locale avec des substituts (`npx` qui lance un `apt-get` par `setsid`, comme sudo) : avant
+la correction, tentatives 2 et 3 en échec « Could not get lock », code 1 ; après, succès à la tentative 2
+et aucun `apt-get` restant, y compris quand `apt-get` ignore `SIGTERM` (arrêt par `KILL` après 60 s).
+La vraie installation reste exercée seulement sur les runners GitHub.
 
 ### Avertissements de la recette navigateur
 
