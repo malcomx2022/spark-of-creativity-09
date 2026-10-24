@@ -24,7 +24,7 @@ export type AdminDisputesQuery = z.infer<typeof adminDisputesQuerySchema>;
 
 /** Ex updateDisputeMutation (OperationsSection) : prise en charge, résolution, réouverture, fermeture. */
 export const updateDisputeSchema = z
-  .object({ status: disputeStatusEnum.optional(), resolution: z.string().trim().max(5000).optional(), priority: priorityEnum.optional(), assignedTo: z.string().uuid().nullable().optional() })
+  .object({ status: disputeStatusEnum.optional(), resolution: z.string().trim().max(5000).optional(), priority: priorityEnum.optional(), assignedTo: z.string().guid().nullable().optional() })
   .superRefine((d, ctx) => {
     if (d.status === 'resolved' && !d.resolution) ctx.addIssue({ code: 'custom', path: ['resolution'], message: 'Commentaire de résolution requis' });
     if (!Object.values(d).some((v) => v !== undefined)) ctx.addIssue({ code: 'custom', message: 'Aucune modification' });

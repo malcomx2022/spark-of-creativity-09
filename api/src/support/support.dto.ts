@@ -26,7 +26,7 @@ export const updateTicketSchema = z
     status: ticketStatusEnum.optional(),
     response: z.string().trim().max(5000).optional(),
     priority: priorityEnum.optional(),
-    assignedTo: z.string().uuid().nullable().optional(),
+    assignedTo: z.string().guid().nullable().optional(),
     tags: z.array(z.string().trim().max(50)).max(20).optional(),
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), { message: 'Aucune modification' });
@@ -35,15 +35,21 @@ export type UpdateTicketDto = z.infer<typeof updateTicketSchema>;
 export const FAQ_CATEGORIES = ['Général', 'Paiements', 'Rendez-vous', 'Compte', 'Praticiens', 'Technique'] as const;
 export const audienceEnum = z.enum(['all', 'patients', 'practitioners']);
 
-export const faqSchema = z.object({
+// zod 4 applique un .default() même dans un champ rendu facultatif par .partial() : les schémas de
+// mise à jour partent donc des champs sans valeur par défaut, sinon un PATCH écraserait le champ omis.
+const faqFields = z.object({
   question: z.string().trim().min(1, 'Question et réponse requises').max(500),
   answer: z.string().trim().min(1, 'Question et réponse requises').max(10_000),
-  category: z.string().trim().min(1).max(100).default('Général'),
-  targetAudience: audienceEnum.default('all'),
+  category: z.string().trim().min(1).max(100),
+  targetAudience: audienceEnum,
+});
+export const faqSchema = faqFields.extend({
+  category: faqFields.shape.category.default('Général'),
+  targetAudience: faqFields.shape.targetAudience.default('all'),
 });
 export type FaqDto = z.infer<typeof faqSchema>;
 
-export const updateFaqSchema = faqSchema.partial().extend({ isPublished: z.boolean().optional() }).refine((d) => Object.values(d).some((v) => v !== undefined), { message: 'Aucune modification' });
+export const updateFaqSchema = faqFields.partial().extend({ isPublished: z.boolean().optional() }).refine((d) => Object.values(d).some((v) => v !== undefined), { message: 'Aucune modification' });
 export type UpdateFaqDto = z.infer<typeof updateFaqSchema>;
 
 export const publicFaqQuerySchema = z.object({ audience: z.enum(['patients', 'practitioners']).optional(), category: z.string().trim().max(100).optional() });

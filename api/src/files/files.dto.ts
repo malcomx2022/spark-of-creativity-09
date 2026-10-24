@@ -18,7 +18,7 @@ export const registerFileSchema = z.object({
   fileName,
   fileSize: z.number().int().nonnegative(),
   fileType: z.string().max(100).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type RegisterFileDto = z.infer<typeof registerFileSchema>;
 

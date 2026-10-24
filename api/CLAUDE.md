@@ -15,6 +15,10 @@ de la base locale et les routes ; plan actif :
 ## Conventions à conserver
 
 - Garder les modules NestJS, DTO Zod, `ZodValidationPipe`, erreurs HTTP et types Kysely.
+  DTO en zod 4 : un `.default()` s'applique aussi dans `.partial()`, donc un schéma de mise à jour part
+  des champs sans valeur par défaut (sinon un PATCH écrase le champ omis) ; `z.string().guid()` garde
+  l'acceptation de tout UUID hexadécimal (`.uuid()` exige les bits RFC 9562) ; `.prefault()` pour un
+  défaut à analyser (booléens de configuration). Test : `zod-validation.pipe.spec.ts`.
 - Garder TypeScript strict. Préférer les types existants aux casts `any` ou `never`.
 - Vérifier l'appartenance et le rôle dans chaque opération concernée ; le contexte
   `service_role` n'autorise pas à exposer une ligne complète à son appelant.

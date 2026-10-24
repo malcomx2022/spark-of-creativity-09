@@ -19,13 +19,13 @@ export type RevokeAdminDto = z.infer<typeof revokeAdminSchema>;
 export const usersQuerySchema = z.object({ search: z.string().trim().max(100).optional(), ...page });
 export type UsersQuery = z.infer<typeof usersQuerySchema>;
 
-export const deleteUserSchema = z.object({ userType: z.enum(['patient', 'practitioner']).optional(), confirm: z.literal('SUPPRIMER', { errorMap: () => ({ message: 'Tapez SUPPRIMER pour confirmer' }) }) });
+export const deleteUserSchema = z.object({ userType: z.enum(['patient', 'practitioner']).optional(), confirm: z.literal('SUPPRIMER', { error: 'Tapez SUPPRIMER pour confirmer' }) });
 export type DeleteUserDto = z.infer<typeof deleteUserSchema>;
 
 export const auditQuerySchema = z.object({
   entityType: z.string().max(60).optional(),
   action: z.string().max(80).optional(),
-  adminId: z.string().uuid().optional(),
+  adminId: z.string().guid().optional(),
   /** Historique d'une entité précise (ex KYC d'un praticien). */
   entityId: z.string().max(255).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -48,9 +48,9 @@ export type SearchActivityQuery = z.infer<typeof searchActivityQuerySchema>;
 export const logSearchActivitySchema = z.object({
   sessionId: z.string().min(4).max(120),
   actionType: z.enum(['view_search_page', 'filter_specialty', 'filter_zone', 'view_practitioner_details', 'click_contact', 'click_appointment', 'click_itinerary', 'close_practitioner_details', 'search_text', 'appointment_created']),
-  practitionerId: z.string().uuid().optional().nullable(),
-  searchFilters: z.record(z.unknown()).optional().nullable(),
-  metadata: z.record(z.unknown()).optional().nullable(),
+  practitionerId: z.string().guid().optional().nullable(),
+  searchFilters: z.record(z.string(), z.unknown()).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 export type LogSearchActivityDto = z.infer<typeof logSearchActivitySchema>;
 

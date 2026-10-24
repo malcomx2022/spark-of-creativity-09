@@ -15,7 +15,7 @@ export const registerSchema = z.object({
     .enum(['medecin', 'infirmier', 'kinesitherapeute', 'nutritionniste', 'sage_femme', 'psychologue', 'coach_sportif', 'autre'])
     .optional(),
   /** Charge utile d'onboarding différée (src/lib/patient-onboarding.ts), stockée dans raw_user_meta_data. */
-  pendingOnboarding: z.record(z.unknown()).optional(),
+  pendingOnboarding: z.record(z.string(), z.unknown()).optional(),
 });
 export type RegisterDto = z.infer<typeof registerSchema>;
 
@@ -32,7 +32,7 @@ export const resetPasswordSchema = z.object({ token: z.string().min(20), passwor
 /** refreshToken (clients mobiles ; sinon cookie) : session conservée, toutes les autres révoquées. */
 export const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: password, refreshToken: z.string().min(20).optional() });
 
-export const updateMetadataSchema = z.object({ metadata: z.record(z.unknown()) });
+export const updateMetadataSchema = z.object({ metadata: z.record(z.string(), z.unknown()) });
 export type UpdateMetadataDto = z.infer<typeof updateMetadataSchema>;
 
 export const sendOtpSchema = z.object({ phoneNumber: phone, channel: z.enum(['sms', 'whatsapp', 'call']).default('sms') });

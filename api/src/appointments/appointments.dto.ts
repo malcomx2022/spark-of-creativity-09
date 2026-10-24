@@ -6,7 +6,7 @@ const time = z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Format HH:MM');
 /** Port de useAppointments.createAppointment + create-appointment-with-payment. */
 export const createAppointmentSchema = z.object({
   /** Absent : affectation côté serveur du praticien validé le plus proche (demande « sans praticien » de NewAppointmentDialog). */
-  practitionerId: z.string().uuid().optional(),
+  practitionerId: z.string().guid().optional(),
   specialty: z.string().trim().min(2).max(100),
   /** Position du patient (géolocalisation) pour l'affectation automatique ; sinon l'adresse par défaut. */
   latitude: z.number().min(-90).max(90).optional(),

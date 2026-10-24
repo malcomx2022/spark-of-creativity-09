@@ -21,8 +21,8 @@ export const configSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET doit faire au moins 32 caractères'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(30 * 24 * 3600),
-  REQUIRE_EMAIL_VERIFICATION: bool.default('true'),
-  COOKIE_SECURE: bool.default('false'),
+  REQUIRE_EMAIL_VERIFICATION: bool.prefault('true'),
+  COOKIE_SECURE: bool.prefault('false'),
 
   EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
   RESEND_API_KEY: z.string().optional(),
@@ -41,7 +41,7 @@ export const configSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),
-  S3_FORCE_PATH_STYLE: bool.default('true'),
+  S3_FORCE_PATH_STYLE: bool.prefault('true'),
   S3_BUCKET_DOCUMENTS: z.string().default('documents'),
   S3_BUCKET_AVATARS: z.string().default('avatars'),
   S3_BUCKET_ATTACHMENTS: z.string().default('message-attachments'),
@@ -59,11 +59,11 @@ export const configSchema = z.object({
   PAYMENT_HOLD_PERIOD_DAYS: z.coerce.number().int().nonnegative().default(2),
   PAYMENT_STALE_SYNC_MINUTES: z.coerce.number().int().positive().default(5),
   PAYMENT_STUCK_EXPIRATION_MINUTES: z.coerce.number().int().positive().default(10),
-  JOBS_ENABLED: bool.default('true'),
+  JOBS_ENABLED: bool.prefault('true'),
 
   // DomiCares Academy — API partenaires Akambi v1 (docs/academy). Clés distinctes en préproduction et en
   // production, uniquement côté serveur. Une valeur vide dans .env vaut « non renseignée ».
-  ACADEMY_ENABLED: bool.default('false'),
+  ACADEMY_ENABLED: bool.prefault('false'),
   AKAMBI_PROVIDER: z.enum(['akambi', 'fake']).default('fake'),
   AKAMBI_BASE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   AKAMBI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
@@ -79,7 +79,7 @@ export const configSchema = z.object({
   WEB_PUSH_PRIVATE_KEY: z.string().optional(),
   WEB_PUSH_EMAIL: z.string().default('mailto:admin@domicares.life'),
   // Temps réel (Socket.IO + LISTEN table_changes)
-  REALTIME_ENABLED: bool.default('true'),
+  REALTIME_ENABLED: bool.prefault('true'),
   REALTIME_AUTH_CHECK_MS: z.coerce.number().int().min(100).max(60_000).default(5_000),
   // Chiffrement des numéros Mobile Money enregistrés (ex secure-phone) : clé AES-256-GCM en base64 (32 octets)
   PHONE_ENCRYPTION_KEY: z.string().optional(),

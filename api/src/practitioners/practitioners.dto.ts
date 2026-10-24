@@ -104,9 +104,12 @@ export type AvailabilityUpdateDto = z.infer<typeof availabilityUpdateSchema>;
 export const exceptionSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.string().trim().max(200).optional(), isAvailable: z.boolean().default(false) });
 export type ExceptionDto = z.infer<typeof exceptionSchema>;
 
-export const rateSchema = z.object({ serviceType: z.string().trim().min(2).max(100), basePrice: z.number().int().min(0).max(10_000_000), durationMinutes: z.number().int().min(5).max(600).default(60) });
+// zod 4 applique un .default() même dans un champ rendu facultatif par .partial() : les schémas de
+// mise à jour partent donc des champs sans valeur par défaut, sinon un PATCH écraserait le champ omis.
+const rateFields = z.object({ serviceType: z.string().trim().min(2).max(100), basePrice: z.number().int().min(0).max(10_000_000), durationMinutes: z.number().int().min(5).max(600) });
+export const rateSchema = rateFields.extend({ durationMinutes: rateFields.shape.durationMinutes.default(60) });
 export type RateDto = z.infer<typeof rateSchema>;
-export const rateUpdateSchema = rateSchema.partial();
+export const rateUpdateSchema = rateFields.partial();
 export type RateUpdateDto = z.infer<typeof rateUpdateSchema>;
 
 /** Ex DocumentsSection : nouveau document KYC téléversé via POST /files/upload-url (dossier documents). */
