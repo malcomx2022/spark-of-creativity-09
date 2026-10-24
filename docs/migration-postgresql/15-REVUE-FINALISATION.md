@@ -180,7 +180,7 @@ confirme un filtrage sur le praticien connecté ; seul le test manque.
   de test unitaire ; prioriser le paiement (`PaymentDialog`, `FedaPayWidget`),
   la prise de rendez-vous (`NewAppointmentDialog`) et le formulaire de fin de
   consultation (`CompleteConsultationForm`).
-- 45 avertissements de lint hérités (lot 6 du document 10).
+- ~~45 avertissements de lint hérités~~ : corrigés, lint bloquant à 0 avertissement (« Avertissements lint »).
 - Le build signale un chunk volumineux ; les plus gros sont `vendor-charts`
   (432 kB) et `jspdf` (386 kB). Le chargement différé de jsPDF est une piste.
 - Unités sans test unitaire dédié malgré une logique critique : `ledger`,
@@ -195,14 +195,21 @@ supprimée après exécution).
 
 1. ~~Corriger les deux P2 restants~~ : faits (§7).
 2. ~~Correction du P1 et tests d'intégration des 29 routes~~ : faits (§6).
-3. **Valider les prérequis non exécutés ici** : suite `storage-s3` contre MinIO
-   (`S3_TEST_ENDPOINT`), projets Playwright WebKit en CI, essai Safari physique.
-4. **Campagne FedaPay sandbox** du document 09 avant tout paiement réel : script automatisé
-   prêt (§15), exécution contre le vrai sandbox à faire avec les clés `sk_sandbox_`/`pk_sandbox_`.
-5. **Exploitation (lot 6, document 10)** : sauvegarde complète, copie hors site,
-   restauration testée, objectifs RPO/RTO.
+3. **Prérequis non exécutés ici** : suite `storage-s3` contre MinIO **verte en CI** (`api-ci.yml`,
+   `S3_TEST_REQUIRED=1`) ; projets Playwright WebKit **exécutés en CI** (`web-ci.yml`, `recette.yml`).
+   Reste l'essai Safari sur appareil physique (document 12, point 7), que WebKit ne remplace pas.
+4. **Campagne FedaPay sandbox** : **exécutée le 23 octobre 2026** sur le vrai sandbox (document 09
+   §4 bis, document 08 §8). S0, S3, S4 et S12 ok ; S1, S2, S5 à S11 bloqués par le compte sandbox
+   (seul `momo_test` ouvert, paiements tous refusés, dépôts en 403) ; S13 non couvert. Deux défauts
+   corrigés (#112). Suite : réponse du support FedaPay, puis relance avec un numéro `momo_test` approuvé.
+5. **Exploitation (lot 6, document 10 §7)** : **partiel**. Sauvegarde et restauration vertes en CI
+   (`backup-restore.yml`), RPO 24 h / RTO 4 h retenus (document 07 §13). Restent la copie hors site et
+   l'alerte sur le VPS, et un exercice de restauration sur la vraie sauvegarde.
 6. ~~**Recette post-livraison du document 14**~~ : automatisée (§16), un défaut corrigé.
-   Restent manuelles sur le VPS : la réception réelle du contact et les essais Safari et push sur appareil.
+   Restent manuelles : la réception réelle du contact et les essais Safari et push sur appareil.
+7. **Environnement de recette** : déployé le 24 octobre 2026 sur le VPS de production (§17). Restent
+   `RECETTE_AUTO=true`, la recette fonctionnelle du document 16 §4 et le webhook FedaPay de recette (S13).
+8. **CI « Recette post-livraison » rouge sur `main`** depuis #118 (§17) : à rétablir avant de s'y fier.
 
 ## 5. Reproduire
 
@@ -987,3 +994,36 @@ l'entrypoint). Avec le paramètre, le démarrage ne produit plus aucun avertisse
 Le paramètre n'agit qu'à la création d'une base neuve. Au prochain déploiement, le conteneur
 `postgres` est recréé de toute façon, pour l'image avec locales, et la base existante est inchangée.
 
+## 17. Point du 24 octobre 2026 — recette activée
+
+### Environnement de recette
+
+| Contrôle | Résultat | Preuve |
+|---|---|---|
+| Déploiement en recette | **réussi** | `deploy-vps.yml` run 47 (`workflow_dispatch`, cible `recette`, SHA `52e03ec`) : `domicares-recette-api`, `-worker`, `-web` recréés ; `-postgres` (sain), `-minio`, `-backup` (sain) en service |
+| Santé de l'API de recette | **200** depuis le runner GitHub | étape « Vérifier l'API » : 502 à la 1re tentative (démarrage), 200 à la 2e |
+| DNS | `staging.domicares.life` → même IP que `domicares.life` | résolution DNS publique du 24/10 |
+| Accès depuis l'environnement de développement | **non vérifiable** | le proxy sortant de cette session refuse le sous-domaine (502 du proxy, « injection failed ») : `/api/health`, `/api/payments/config` et le `basic_auth` du site restent à contrôler depuis un poste autorisé |
+| Contrôle « SHA validé en recette » | **inactif** | `RECETTE_AUTO` absente (« Contrôle non applicable (cible recette, RECETTE_AUTO=absent) ») : le run 46 (`push`) a déployé la production directement |
+| Version dans la sauvegarde de recette | **défaut** | `backups/.app-version: Permission denied` (non bloquant, voir document 10 §7) |
+| Production | saine | `GET /api/health` → `ok` ; `GET /api/payments/config` → `sandbox` |
+
+Rien n'est déclaré validé côté recette fonctionnelle : le document 16 §4 reste à dérouler.
+
+### CI « Recette post-livraison » sur `main`
+
+Deux échecs de natures différentes, non corrigés à ce jour :
+
+- **#118 (run 53)** : 47/48. Seul WebKit iPhone échoue : `page.goto: WebKit encountered an internal error`
+  sur `/dashboard/patient?tab=messages` (scénario 1, changement de compte). Le blocage de `page.goto` par
+  `checkout.js`, corrigé par #118, n'est plus en cause : l'erreur vient du navigateur. La PR elle-même
+  était verte (run 52). Cause à établir avec la trace (artefact du run).
+- **#119 (run 55)** : aucun test lancé. L'installation des navigateurs dépasse 480 s (miroir apt lent),
+  puis les tentatives 2 et 3 échouent immédiatement : `dpkg frontend lock` tenu par l'`apt-get` de la
+  tentative 1 (pid 2958). `timeout` ne tue pas ce processus, lancé sous `sudo` par Playwright, si bien que
+  les reprises de `scripts/ci-playwright-install.sh` sont inopérantes après un dépassement. Correction à
+  prévoir dans ce script : attendre la libération du verrou dpkg, ou terminer l'`apt-get` restant, avant
+  chaque reprise.
+
+Aucune exécution sur `main` depuis (filtre de chemins). Les PR #120 à #124 ne touchent pas les chemins
+du workflow.

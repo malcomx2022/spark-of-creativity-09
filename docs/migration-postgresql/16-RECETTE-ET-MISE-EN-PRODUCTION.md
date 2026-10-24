@@ -13,6 +13,7 @@ détaillées existantes sont référencées plutôt que recopiées (documents 04
 | Paiements en production | FedaPay en **mode sandbox** : aucun paiement réel encaissé | `GET /api/payments/config` → `environment: sandbox`, clé `pk_sandbox_…` |
 | Déploiement | `deploy-vps.yml` déploie la **production à chaque push sur `main`** | runs 37 à 42 du 23 octobre, tous `success` |
 | Recette | **Aucun environnement de recette joignable** ; `https://staging.domicares.life` (cité par la recette Academy) ne répond pas | `GET /api/health` → 502 depuis l'environnement de développement |
+| Recette (24 octobre) | **Déployée** sur le VPS de production (projet `domicares-recette`, SHA `52e03ec`) ; `RECETTE_AUTO` pas encore activée ; recette fonctionnelle (§4) à dérouler | `deploy-vps.yml` run 47, santé 200 depuis le runner ; détail au document 15 §17 |
 | Webhook FedaPay | Le webhook **sandbox** n° 1471 vise la production et échoue (désactivé par FedaPay) ; la production ne reçoit donc aucun webhook et dépend de `payments.sync` | courriel FedaPay du 23 octobre, document 09 §4 bis |
 | Campagne sandbox | S0, S3, S4, S12 ok ; S1, S2, S5 à S11 bloqués côté compte FedaPay ; S13 non couvert | document 09 §4 bis |
 | Données réelles | Import Supabase définitif (document 04, phase P5) : **à confirmer**, aucune trace d'exécution dans les documents | — |

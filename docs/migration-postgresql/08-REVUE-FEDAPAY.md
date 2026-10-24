@@ -23,7 +23,8 @@ migration et n'ont jamais eu l'occasion de se manifester.
 
 Conséquence pratique : **la recette du paiement doit se faire en `FEDAPAY_MODE=sandbox`**,
 pas avec les clés live sur un rendez-vous réel, tant que les constats critiques ne sont pas
-levés. Le `.env` du VPS est aujourd'hui en live.
+levés. Le `.env` du VPS était alors en live ; depuis, la production tourne en `FEDAPAY_MODE=sandbox`
+(`GET https://domicares.life/api/payments/config` → `environment: sandbox`, constaté les 23 et 24 octobre 2026).
 
 ### 1.2 Périmètre lu
 
@@ -461,6 +462,27 @@ correctif, purger leurs lignes `ledger_entries` avec les données de recette (`0
 | m7 | `POST /api/payments/:id/sync` par un patient : rien sur un paiement terminé, une interrogation FedaPay par paiement toutes les 10 s (entre deux, l'état local est rendu avec `throttled: true`), 30 appels par utilisateur et 10 min puis 429 `TOO_MANY_SYNCS`. L'administration (`/admin/payments/:id/sync`) n'est pas limitée. Compteurs en mémoire du processus API (une seule réplique) | e2e : second appel sous 10 s rendu sans interroger FedaPay, appel admin non limité, paiement terminé ignoré |
 | m8 | La finance n'est plus notifiée de chaque approbation ou refus ; restent les alertes utiles : doublon, webhook échoué définitivement, reversements, et désormais un remboursement constaté chez FedaPay sans remboursement enregistré ici | — |
 
-Le lot 3 est clos. Les points encore ouverts de cette revue sont ceux de la campagne sandbox (§6 : corps de
-`/payouts/start`, `mode` des dépôts, format du numéro, endpoint de remboursement, `DELETE /v1/transactions`,
-sémantique de `created_at[lte]`).
+Le lot 3 est clos. Les points encore ouverts de cette revue sont ceux de la campagne sandbox, repris
+au §8 avec les résultats du 23 octobre 2026.
+
+## 8. Points ouverts après le sandbox réel — 23 et 24 octobre 2026
+
+Campagne `npm run campaign:fedapay` sur le vrai sandbox, base PostgreSQL 16 locale dédiée, et sondes
+faites avec la clé sandbox (document 09, §4 bis). Aucun appel live. « Tranché » veut dire que la réponse
+réelle de FedaPay a été observée ; « ouvert », qu'elle ne l'a pas encore été.
+
+| Point | État | Constat et preuve | Suite |
+|---|---|---|---|
+| Paiement sans redirection (m1, route) | **tranché** | `POST /v1/{mode}` est la route servie (SDK) ; `/v1/transactions/{mode}`, pourtant listée par la référence, répond 404. Le sandbox n'ouvre que `momo_test` (200) ; `mtn_open` et `moov` répondent 400 « Opération non autorisée » | le client de production garde `mtn_open` / `moov` ; numéro `momo_test` approuvé demandé au support (question 7) |
+| `mode` transmis à la création (m1) | **tranché, sans effet** | absent à la relecture de la transaction : FedaPay l'ignore, le mode est celui du paiement (`/v1/{mode}`) | question 5 au support ; aucune modification de code |
+| `DELETE /v1/transactions/{id}` (M1, `cancelOpen`) | **tranché** | exercé en S4 : la transaction est **supprimée** (relue en 404), pas passée `canceled`. La réconciliation ne signale plus `missing_in_fedapay` pour un paiement `canceled` (#112, test e2e qui échoue sans la correction) | — |
+| M6, sémantique de `created_at[lte]` | **tranché** | `GET /v1/transactions` répond 400 (obsolète) ; `/v1/transactions/search` **ignore** `created_at[gte\|lte]`. La période est filtrée côté Domicares sur `created_at`, pagination par `meta.next_page` (#112, `searchAll`, test unitaire) ; S12 : 0 anomalie | — |
+| Liste des dépôts (M5, réconciliation) | **ouvert** | lecture basculée sur `/v1/payouts/search` (#116), même filtrage ; non vérifiée : `/v1/payouts*` répond 403 sur le compte sandbox | question 3 ; à vérifier dès l'ouverture des dépôts |
+| C2 : corps de `/payouts/start`, `mode` des dépôts | **ouvert** | S7 et S8 non exercés : `POST /v1/payouts` répond 403, y compris avec `mode: "momo_test"` | questions 1 et 7 au support |
+| C3 : remboursement `POST /v1/refunds` | **ouvert** | route présente (401 sans clé) ; contrat non confirmé, S9 et S11 non exercés faute de paiement approuvé | question 4 ; S9 et S11 avant le premier remboursement réel |
+| m2 : format du numéro `+229…` | **ouvert** | les refus sont identiques au format international et local : le sandbox ne tranche pas | S1 et S7 avec un numéro approuvé |
+| C4 : statut `declined` de bout en bout | **tranché** | S3 en `momo_test` : intention `declined`, transaction `declined`, paiement Domicares `failed` via `payments.sync`, solde inchangé | — |
+| Webhooks réels | **ouvert** | le webhook sandbox n° 1471 visait la production et échouait en 401 (signature), désactivé par FedaPay après 10 échecs ; S13 non couvert | recréer le webhook vers la recette avec son propre secret (document 16, §2.4), puis S13 |
+
+Réponse du support FedaPay : en attente pour les questions 1 à 5 et 7 (document 09). Tant que S1 à S11
+n'ont pas été rejoués avec succès, le passage en live reste exclu (§4).
