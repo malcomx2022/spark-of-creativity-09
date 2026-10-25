@@ -10,8 +10,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, onTableChange } from "@/lib/api";
 import { format, subMonths, startOfMonth, endOfMonth, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import type { jsPDF } from "jspdf";
+import { loadPdf } from "@/lib/pdf";
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 import { formatAmount, PAYOUT_STATUS_LABELS } from "@/lib/payment-config";
 import logoImage from "@/assets/logo.png";
@@ -304,6 +304,7 @@ export default function PayoutsSection({ practitionerId }: PayoutsSectionProps) 
 
   const exportToPDF = async () => {
     try {
+      const { jsPDF, autoTable } = await loadPdf();
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       

@@ -9,8 +9,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from '@/hooks/use-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type { jsPDF } from 'jspdf';
+import { loadPdf } from '@/lib/pdf';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -145,8 +145,9 @@ export function PatientConsultationReportsVirtualized({
     }
   };
 
-  const handleDownloadPDF = (report: Report) => {
+  const handleDownloadPDF = async (report: Report) => {
     try {
+      const { jsPDF, autoTable } = await loadPdf();
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       let yPosition = 20;

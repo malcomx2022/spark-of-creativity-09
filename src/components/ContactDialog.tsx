@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Phone, MessageSquare, Send } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { useSendMessage } from '@/hooks/useMessages';
+import { useSendMessage } from '@/hooks/useConversations';
 import type { Appointment } from '@/types/appointment';
 
 interface ContactDialogProps {

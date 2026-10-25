@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Download, X } from 'lucide-react';
 import type { Payment } from '@/types/payment';
 import { formatAmount, PAYMENT_STATUS_LABELS } from '@/lib/payment-config';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type { jsPDF } from 'jspdf';
+import { loadPdf } from '@/lib/pdf';
 import { toast } from '@/hooks/use-toast';
 
 interface PaymentReceiptDialogProps {
@@ -16,8 +16,9 @@ interface PaymentReceiptDialogProps {
 export function PaymentReceiptDialog({ open, onOpenChange, payment }: PaymentReceiptDialogProps) {
   if (!payment) return null;
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     try {
+      const { jsPDF, autoTable } = await loadPdf();
       const doc = new jsPDF();
       
       // Générer le numéro de facture si non disponible
