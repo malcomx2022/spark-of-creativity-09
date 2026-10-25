@@ -20,7 +20,7 @@ const webhookEnvelopeSchema = z.object({
   version: z.number().int().nullable().optional(),
   createdAt: isoDate.nullable().optional(),
   partnerCode: z.string().optional(),
-  data: z.record(z.unknown()).default({}),
+  data: z.record(z.string(), z.unknown()).default({}),
 });
 
 /** Attestation d'un événement certificate.issued ou de GET …/certificate ; downloadUrl n'est jamais lu ni stocké. */

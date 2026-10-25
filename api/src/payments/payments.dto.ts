@@ -7,7 +7,7 @@ const groupSession = /^group_session_[0-9a-f-]{36}_[0-9a-f-]{36}$/i;
 export const createPaymentSchema = z.object({
   appointmentId: z.string().refine((v) => uuid.test(v) || groupSession.test(v), "Format d'identifiant invalide (UUID ou group_session_{uuid}_{uuid} attendu)"),
   amount: z.number().min(100, "Le montant doit être d'au moins 100 XOF").max(1_000_000, 'Le montant ne doit pas dépasser 1 000 000 XOF').optional(),
-  paymentMethod: z.enum(['mtn', 'moov'], { errorMap: () => ({ message: "La méthode de paiement doit être 'mtn' ou 'moov'" }) }),
+  paymentMethod: z.enum(['mtn', 'moov'], { error: "La méthode de paiement doit être 'mtn' ou 'moov'" }),
   phoneNumber: z.string().regex(/^\+229(01)?\d{8}$/, 'Le numéro doit être au format béninois : +229XXXXXXXX ou +2290101XXXXXXXX'),
   payerName: z.string().trim().min(2, 'Le nom du payeur doit contenir au moins 2 caractères').max(120),
   payerEmail: z.string().email("Format d'email invalide").optional(),

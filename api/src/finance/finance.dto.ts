@@ -37,7 +37,7 @@ export const adminPaymentsQuerySchema = z.object({
 });
 export type AdminPaymentsQuery = z.infer<typeof adminPaymentsQuerySchema>;
 
-export const payoutsQuerySchema = z.object({ status: z.enum(['planned', 'sent', 'completed', 'failed']).optional(), practitionerId: z.string().uuid().optional(), batchId: z.string().uuid().optional(), ...page });
+export const payoutsQuerySchema = z.object({ status: z.enum(['planned', 'sent', 'completed', 'failed']).optional(), practitionerId: z.string().guid().optional(), batchId: z.string().guid().optional(), ...page });
 export type PayoutsQuery = z.infer<typeof payoutsQuerySchema>;
 
 /** Ex create-payout : reversement individuel immédiat. */
@@ -52,7 +52,7 @@ export type CreatePayoutDto = z.infer<typeof createPayoutSchema>;
 
 /** Ex create-payout-batch. */
 export const createBatchSchema = z.object({
-  practitionerIds: z.array(z.string().uuid()).min(1, 'Sélectionnez au moins un praticien').max(500),
+  practitionerIds: z.array(z.string().guid()).min(1, 'Sélectionnez au moins un praticien').max(500),
   paymentMethod: z.enum(['momo', 'bank']),
 });
 export type CreateBatchDto = z.infer<typeof createBatchSchema>;
@@ -64,7 +64,7 @@ export type CreateBatchDto = z.infer<typeof createBatchSchema>;
  */
 export const refundSchema = z
   .object({
-    paymentId: z.string().uuid(),
+    paymentId: z.string().guid(),
     refundAmount: z.number().int().positive('Le montant du remboursement doit être un nombre positif').optional(),
     reason: z.string().trim().min(3, 'Le motif est obligatoire').max(500),
     channel: z.enum(['fedapay', 'manual']).default('fedapay'),

@@ -14,7 +14,7 @@ export const medicalProfileSchema = z.object({
   additionalNotes: nullable(4000),
   shareWithPractitioner: z.boolean().optional(),
   /** Médecin traitant : praticien de la plateforme (primaryDoctorId) ou saisie libre. */
-  primaryDoctorId: z.string().uuid().nullable().optional(),
+  primaryDoctorId: z.string().guid().nullable().optional(),
   primaryDoctorName: nullable(120),
   primaryDoctorEmail: z.string().trim().email().nullable().optional().or(z.literal('').transform(() => null)),
   primaryDoctorPhone: nullable(30),
@@ -27,30 +27,34 @@ export type EmergencyContactDto = z.infer<typeof emergencyContactSchema>;
 export const updateEmergencyContactSchema = emergencyContactSchema.partial();
 
 // --- Adresses -------------------------------------------------------------------------------------
-export const addressSchema = z.object({
+// zod 4 applique un .default() même dans un champ rendu facultatif par .partial() : les schémas de
+// mise à jour partent donc des champs sans valeur par défaut, sinon un PATCH écraserait le champ omis.
+const addressFields = z.object({
   label: z.string().trim().min(1, 'Libellé requis').max(60),
   address: z.string().trim().min(5, 'Adresse requise').max(300),
   city: nullable(100),
   postalCode: nullable(20),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
-  isDefault: z.boolean().default(false),
+  isDefault: z.boolean(),
 });
+export const addressSchema = addressFields.extend({ isDefault: addressFields.shape.isDefault.default(false) });
 export type AddressDto = z.infer<typeof addressSchema>;
-export const updateAddressSchema = addressSchema.partial();
+export const updateAddressSchema = addressFields.partial();
 
 // --- Notes de soins (SOAP) ----------------------------------------------------------------------
-export const careNoteSchema = z.object({
+const careNoteFields = z.object({
   appointmentId: z.string().min(1).max(255),
   subjective: nullable(4000),
   objective: nullable(4000),
   assessment: nullable(4000),
   plan: nullable(4000),
   attachments: z.array(z.string().max(1024)).max(10).optional(),
-  sharedWithPatient: z.boolean().default(false),
+  sharedWithPatient: z.boolean(),
 });
+export const careNoteSchema = careNoteFields.extend({ sharedWithPatient: careNoteFields.shape.sharedWithPatient.default(false) });
 export type CareNoteDto = z.infer<typeof careNoteSchema>;
-export const updateCareNoteSchema = careNoteSchema.omit({ appointmentId: true }).partial();
+export const updateCareNoteSchema = careNoteFields.omit({ appointmentId: true }).partial();
 export type UpdateCareNoteDto = z.infer<typeof updateCareNoteSchema>;
 export const listQuerySchema = z.object(page);
 export type ListQuery = z.infer<typeof listQuerySchema>;
@@ -64,7 +68,7 @@ const mapped = (table: Record<string, string>, label: string) => z.string().trim
   if (!m) ctx.addIssue({ code: 'custom', message: `${label} invalide (${Object.keys(table).join(', ')})` });
   return m ?? v;
 });
-export const consultationReportSchema = z.object({
+const consultationReportFields = z.object({
   appointmentId: z.string().min(1).max(255),
   consultationType: mapped(CONSULTATION_TYPES, 'Type de consultation'),
   severityLevel: mapped(SEVERITIES, 'Niveau de gravité'),
@@ -75,22 +79,26 @@ export const consultationReportSchema = z.object({
   followUpRecommendation: nullable(4000),
   followUpTimeframe: nullable(100),
   additionalComments: nullable(4000),
-  shareWithDoctor: z.boolean().default(false),
+  shareWithDoctor: z.boolean(),
   consultationDate: z.string().datetime().optional(),
   /** Ex CompleteConsultationForm : termine aussi la consultation (rendez-vous → awaiting_confirmation). */
-  completeAppointment: z.boolean().default(false),
+  completeAppointment: z.boolean(),
+});
+export const consultationReportSchema = consultationReportFields.extend({
+  shareWithDoctor: consultationReportFields.shape.shareWithDoctor.default(false),
+  completeAppointment: consultationReportFields.shape.completeAppointment.default(false),
 });
 export type ConsultationReportDto = z.infer<typeof consultationReportSchema>;
-export const updateConsultationReportSchema = consultationReportSchema.omit({ appointmentId: true, completeAppointment: true }).partial();
+export const updateConsultationReportSchema = consultationReportFields.omit({ appointmentId: true, completeAppointment: true }).partial();
 export type UpdateConsultationReportDto = z.infer<typeof updateConsultationReportSchema>;
 
 // --- Triage (src/types/triage.ts) ---------------------------------------------------------------
 export const triageAnswersSchema = z.object({
-  consciousness: z.enum(['conscious', 'confused', 'unconscious'], { errorMap: () => ({ message: 'Veuillez sélectionner une option' }) }),
-  breathing: z.enum(['normal', 'mild', 'severe'], { errorMap: () => ({ message: 'Veuillez sélectionner une option' }) }),
-  'chest-pain': z.enum(['none', 'moderate', 'severe'], { errorMap: () => ({ message: 'Veuillez sélectionner une option' }) }),
-  bleeding: z.enum(['none', 'minor', 'major'], { errorMap: () => ({ message: 'Veuillez sélectionner une option' }) }),
-  'pain-level': z.enum(['mild', 'moderate', 'severe'], { errorMap: () => ({ message: 'Veuillez sélectionner une option' }) }),
+  consciousness: z.enum(['conscious', 'confused', 'unconscious'], { error: 'Veuillez sélectionner une option' }),
+  breathing: z.enum(['normal', 'mild', 'severe'], { error: 'Veuillez sélectionner une option' }),
+  'chest-pain': z.enum(['none', 'moderate', 'severe'], { error: 'Veuillez sélectionner une option' }),
+  bleeding: z.enum(['none', 'minor', 'major'], { error: 'Veuillez sélectionner une option' }),
+  'pain-level': z.enum(['mild', 'moderate', 'severe'], { error: 'Veuillez sélectionner une option' }),
   symptoms: z.array(z.enum(['fever', 'vomiting', 'dizzy', 'confusion', 'paralysis'])).default([]),
 });
 export type TriageAnswers = z.infer<typeof triageAnswersSchema>;

@@ -11,7 +11,7 @@ const sessionFields = {
   sessionName: z.string().trim().min(3, 'Le nom de la séance doit contenir au moins 3 caractères').max(100),
   sessionType: z.enum(['individuelle', 'duo', 'groupe']),
   maxParticipants: z.number().int().min(1).max(100),
-  minParticipants: z.number().int().min(1).max(100).default(1),
+  minParticipants: z.number().int().min(1).max(100),
   scheduledDate: z.string().regex(dateRe, 'Date attendue au format AAAA-MM-JJ'),
   startTime: z.string().regex(timeRe, 'Heure attendue au format HH:MM'),
   endTime: z.string().regex(timeRe, 'Heure attendue au format HH:MM'),
@@ -20,8 +20,10 @@ const sessionFields = {
   description: z.string().trim().max(2000).optional().nullable(),
 };
 
-function refine<T extends z.ZodTypeAny>(schema: T) {
-  return schema.superRefine((d: Partial<Record<keyof typeof sessionFields, unknown>>, ctx) => {
+type SessionInput = Partial<Record<keyof typeof sessionFields, unknown>>;
+
+function refine<T extends z.ZodType<SessionInput>>(schema: T) {
+  return schema.superRefine((d: SessionInput, ctx) => {
     const min = d.minParticipants as number | undefined;
     const max = d.maxParticipants as number | undefined;
     if (min !== undefined && max !== undefined && min > max) ctx.addIssue({ code: 'custom', path: ['minParticipants'], message: 'Le nombre minimum de participants ne peut pas dépasser le maximum' });
@@ -33,14 +35,16 @@ function refine<T extends z.ZodTypeAny>(schema: T) {
   });
 }
 
-export const createGroupSessionSchema = refine(z.object(sessionFields));
+// minParticipants vaut 1 par défaut à la création seulement : zod 4 appliquerait la valeur par défaut
+// dans .partial(), et une mise à jour sans le champ le remettrait à 1.
+export const createGroupSessionSchema = refine(z.object({ ...sessionFields, minParticipants: sessionFields.minParticipants.default(1) }));
 export type CreateGroupSessionDto = z.infer<typeof createGroupSessionSchema>;
 
 export const updateGroupSessionSchema = refine(z.object(sessionFields).partial());
 export type UpdateGroupSessionDto = z.infer<typeof updateGroupSessionSchema>;
 
 export const listGroupSessionsQuerySchema = z.object({
-  coachId: z.string().uuid().optional(),
+  coachId: z.string().guid().optional(),
   page: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -61,7 +65,7 @@ export type MineQuery = z.infer<typeof mineQuerySchema>;
 
 /** Ex register-group-session : le montant est celui de la séance, le patient est l'utilisateur connecté. */
 export const registerSchema = z.object({
-  paymentMethod: z.enum(['mtn', 'moov'], { errorMap: () => ({ message: "La méthode de paiement doit être 'mtn' ou 'moov'" }) }),
+  paymentMethod: z.enum(['mtn', 'moov'], { error: "La méthode de paiement doit être 'mtn' ou 'moov'" }),
   phoneNumber: z.string().regex(/^\+229(01)?\d{8}$/, 'Le numéro doit être au format béninois : +229XXXXXXXX ou +2290101XXXXXXXX'),
   payerName: z.string().trim().min(2).max(120).optional(),
   payerEmail: z.string().email().optional(),
