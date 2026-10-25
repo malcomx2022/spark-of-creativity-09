@@ -183,8 +183,8 @@ confirme un filtrage sur le praticien connecté ; seul le test manque.
 - ~~45 avertissements de lint hérités~~ : corrigés, lint bloquant à 0 avertissement (« Avertissements lint »).
 - Le build signale un chunk volumineux ; les plus gros sont `vendor-charts`
   (432 kB) et `jspdf` (386 kB). Le chargement différé de jsPDF est une piste.
-- Unités sans test unitaire dédié malgré une logique critique : `ledger`,
-  `balances`, `tokens`, `account-status` (couvertes uniquement en e2e).
+- ~~Unités sans test unitaire dédié malgré une logique critique : `ledger`,
+  `balances`, `tokens`, `account-status` (couvertes uniquement en e2e)~~ : couvertes (§19).
 
 Vérifié et écarté : les routes sans `ParseUUIDPipe` (`appointments/:id`,
 `conversations/:appointmentId/messages`, notes et comptes rendus par rendez-vous)
@@ -1067,3 +1067,19 @@ Défauts mis au jour et corrigés (chaque test concerné échoue sans la correct
   « Vérification en cours... » restait affiché et masquait le bouton Payer jusqu'à la réouverture du dialogue.
 
 Contrôles : typecheck, 162 tests Vitest (31 fichiers), lint (0 avertissement), build, audit 0 vulnérabilité élevée.
+
+## 19. Tests unitaires API (ledger, soldes, jetons, état des comptes) — 25 octobre 2026
+
+41 tests Jest dans `api/src/**/*.spec.ts`. Les requêtes passent par `test/unit/fake-trx.ts` : une transaction
+Kysely sans base, qui compile chaque requête avec le vrai compilateur PostgreSQL, l'enregistre et renvoie
+des lignes simulées. Les e2e restent la preuve d'exécution sur PostgreSQL 16.
+
+| Unité | Tests | Ce qui est vérifié |
+|---|---|---|
+| `LedgerService` | 13 | écritures équilibrées en configuration de production et frais au patient, pour des montants de 100 à 1 000 000 XOF (entiers, net au praticien) ; écart de commission porté et signalé ; aucune ligne à zéro ; idempotence ; un compte créé une seule fois, `payable` au nom du praticien, comptes plateforme cherchés par `owner_id IS NULL` |
+| `BalancesService` | 10 | `parseGroupSessionRef` ; périmètre rendez-vous et séances de groupe, réservations et remboursements partiels ; aucune écriture si le solde est inchangé ; upsert sinon ; `repairAll` ne rapporte que les soldes corrigés |
+| `TokensService` | 11 | seule l'empreinte du refresh token est stockée, avec l'expiration configurée ; famille conservée à la rotation ; JWT (secret, sujet, durée) ; aucune session pour un compte supprimé, suspendu ou introuvable ; jeton à usage unique : invalidation des précédents, empreinte seule, consommation en une requête conditionnelle |
+| `assertActiveAccount` / `AccountStatusService` | 7 | actif, suspension terminée ou en cours (403), supprimé ou introuvable (401) ; lecture dans le contexte service |
+
+Aucun défaut trouvé. Contrôles : typecheck, 173 tests unitaires (20 suites), lint, build ; le dossier `test/`
+reste hors du build.
