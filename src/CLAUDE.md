@@ -36,7 +36,8 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   refresh concurrent et erreurs d'envoi réelles lorsque ces parcours changent.
 - Faire passer typecheck, tests et build ; relever les erreurs lint restantes avec leur périmètre.
 
-Validation du chantier : 118 tests front ; typecheck/build réussis. Le lint actif
+Validation du chantier : 162 tests front (dont paiement, rendez-vous et fin de consultation
+dans `components/__tests__/`) ; typecheck/build réussis. `@hookform/resolvers` 5 est requis avec zod 4. Le lint actif
 est bloquant en CI : zéro erreur et zéro avertissement (`--max-warnings 0`). Les archives
 Supabase et les artefacts sont explicitement exclus, sans modifier leurs fichiers.
 Ne pas ajouter des dépendances d'effets de paiement sans vérifier leurs déclenchements :

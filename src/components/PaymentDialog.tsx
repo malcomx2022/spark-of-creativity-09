@@ -336,6 +336,8 @@ export function PaymentDialog({
           }
 
           setExistingPaymentChecked(true);
+          // Sans quoi « Vérification en cours... » masquait le bouton Payer jusqu'à la réouverture.
+          setIsCheckingExistingPayment(false);
           return;
         }
 

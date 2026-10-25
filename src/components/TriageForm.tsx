@@ -31,7 +31,8 @@ const formSchema = z.object({
   symptoms: z.array(z.string()).default([])
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormInput = z.input<typeof formSchema>;
+type FormValues = z.output<typeof formSchema>;
 
 export function TriageForm() {
   const { data: user } = useAuthUser();
@@ -40,7 +41,8 @@ export function TriageForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
-  const form = useForm<FormValues>({
+  // symptoms a une valeur par défaut : facultatif en entrée, toujours présent en sortie.
+  const form = useForm<FormInput, unknown, FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       consciousness: '',
