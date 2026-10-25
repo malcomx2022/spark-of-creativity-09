@@ -186,6 +186,8 @@ if [[ -f "$HERE/backups/last-success" ]]; then
   age_h=$(( ( $(date +%s) - $(cat "$HERE/backups/last-success") ) / 3600 ))
   (( age_h <= 26 )) && ok "dernière sauvegarde réussie il y a ${age_h} h" || ko "dernière sauvegarde réussie il y a ${age_h} h (voir backups/last-status.json)"
 else warn "aucune sauvegarde réussie à ce jour (backups/last-success)"; fi
+crontab -l 2>/dev/null | grep -q "cd $HERE && ./supervision.sh interne" && ok "supervision interne planifiée (crontab)" \
+  || warn "supervision interne non planifiée pour ce clone : crontab du document 07 §14"
 echo "▶ 4. Ressources"
 avail=$(df -BG --output=avail "$HERE" 2>/dev/null | tail -1 | tr -dc 0-9); [[ -n "$avail" ]] && { [[ "$avail" -ge 15 ]] && ok "disque : ${avail} Go libres" || ko "disque : ${avail} Go libres (< 15 Go : images + base + fichiers + sauvegardes)"; }
 mem=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null); [[ -n "$mem" ]] && { [[ "$mem" -ge 4 ]] && ok "RAM : ${mem} Go" || warn "RAM : ${mem} Go (< 4 Go : réduire PG_SHARED_BUFFERS)"; }
