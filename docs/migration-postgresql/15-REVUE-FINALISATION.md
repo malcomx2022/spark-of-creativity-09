@@ -177,9 +177,9 @@ confirme un filtrage sur le praticien connecté ; seul le test manque.
 ### P3 — Couverture front et qualité
 
 - Les composants `dashboard/`, `admin/` et `coach/` (~27 700 lignes) n'ont pas
-  de test unitaire ; prioriser le paiement (`PaymentDialog`, `FedaPayWidget`),
+  de test unitaire. ~~Prioriser le paiement (`PaymentDialog`, `FedaPayWidget`),
   la prise de rendez-vous (`NewAppointmentDialog`) et le formulaire de fin de
-  consultation (`CompleteConsultationForm`).
+  consultation (`CompleteConsultationForm`)~~ : couverts, trois défauts corrigés (§18).
 - ~~45 avertissements de lint hérités~~ : corrigés, lint bloquant à 0 avertissement (« Avertissements lint »).
 - Le build signale un chunk volumineux ; les plus gros sont `vendor-charts`
   (432 kB) et `jspdf` (386 kB). Le chargement différé de jsPDF est une piste.
@@ -1042,3 +1042,28 @@ Deux échecs de natures différentes, non corrigés à ce jour :
 
 Aucune exécution sur `main` depuis (filtre de chemins). Les PR #120 à #124 ne touchent pas les chemins
 du workflow.
+
+## 18. Tests front prioritaires — 25 octobre 2026
+
+27 tests Vitest dans `src/components/__tests__/`, API et widget FedaPay simulés :
+
+| Composant | Tests | Parcours couverts |
+|---|---|---|
+| `CompleteConsultationForm` | 4 | champs requis, corps envoyé à `/consultation-reports` (clôture, sans `practitionerId`), erreur API (saisie conservée), envoi unique |
+| `FedaPayWidget` | 6 | numéro normalisé et widget ouvert sur la transaction, numéro invalide, 409, erreur API vers `onError`, succès (méthode enregistrée, `/payments/:id/sync`), fenêtre fermée |
+| `NewAppointmentDialog` | 7 | formulaire incomplet, praticien choisi (disponible, indisponible, non validé), adresse manuelle avec et sans GPS, géolocalisation absente |
+| `PaymentDialog` | 8 | propriété du rendez-vous, création et widget, succès, fermeture sans payer, paiement expiré, séance de groupe (sans montant), 409, refus de l'API |
+| `TriageForm` | 2 | questionnaire incomplet, envoi complet |
+
+Défauts mis au jour et corrigés (chaque test concerné échoue sans la correction) :
+- **Validation des formulaires `react-hook-form`** (`NewAppointmentDialog`, `TriageForm`) : depuis le passage à
+  zod 4 (#64), `@hookform/resolvers` 3.10 cherchait `error.errors`, absent de zod 4, et relançait la `ZodError`.
+  Un formulaire incomplet n'affichait aucun message et la soumission partait en rejet non géré.
+  `@hookform/resolvers` passe à 5.9.1 (prise en charge de zod 4) ; `TriageForm` type ses valeurs d'entrée et de sortie.
+- **Message « Formulaire incomplet »** de la demande de rendez-vous : `handleFormError` lisait
+  `form.formState.errors`, pas encore à jour dans ce rappel, et n'affichait qu'un texte générique ; il lit
+  désormais les erreurs reçues de `handleSubmit`.
+- **Paiement précédent expiré** (`PaymentDialog`) : après son annulation à l'ouverture, l'indicateur
+  « Vérification en cours... » restait affiché et masquait le bouton Payer jusqu'à la réouverture du dialogue.
+
+Contrôles : typecheck, 162 tests Vitest (31 fichiers), lint (0 avertissement), build, audit 0 vulnérabilité élevée.

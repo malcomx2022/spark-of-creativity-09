@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -858,8 +858,8 @@ export function NewAppointmentDialog({ onSubmit, open: externalOpen, onOpenChang
     }
   };
   
-  const handleFormError = () => {
-    const errors = form.formState.errors;
+  // Erreurs reçues de handleSubmit : form.formState.errors n'est pas encore à jour dans ce rappel.
+  const handleFormError = (errors: FieldErrors<FormValues>) => {
     const errorMessages = [];
     
     if (errors.specialty) errorMessages.push(errors.specialty.message || 'Spécialité manquante');
