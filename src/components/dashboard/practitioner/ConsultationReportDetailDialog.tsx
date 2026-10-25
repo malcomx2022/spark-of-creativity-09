@@ -5,7 +5,8 @@ import { Separator } from "@/components/ui/separator";
 import { Download, X, FileText, Calendar, User, Stethoscope } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import jsPDF from "jspdf";
+import { loadPdf } from "@/lib/pdf";
+import { toast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
 import logoImage from "@/assets/logo.png";
 
@@ -79,7 +80,8 @@ export function ConsultationReportDetailDialog({
     return Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
   };
 
-  const handleDownloadPDF = async () => {
+  const generatePdf = async () => {
+    const { jsPDF } = await loadPdf();
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -257,6 +259,16 @@ export function ConsultationReportDetailDialog({
     doc.text("DOMICARES - Votre santé, notre priorité", pageWidth - margin, y + 4, { align: "right" });
 
     doc.save(`rapport-consultation-domicares-${format(new Date(report.consultation_date), 'yyyy-MM-dd')}.pdf`);
+  };
+
+  // jsPDF est chargé à la demande : un échec (hors ligne) ne doit pas passer inaperçu.
+  const handleDownloadPDF = async () => {
+    try {
+      await generatePdf();
+    } catch (error) {
+      console.error('PDF export error:', error);
+      toast({ title: "Erreur d'export", description: 'Impossible de générer le PDF', variant: 'destructive' });
+    }
   };
 
   return (

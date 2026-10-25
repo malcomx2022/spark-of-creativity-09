@@ -182,7 +182,7 @@ confirme un filtrage sur le praticien connecté ; seul le test manque.
   consultation (`CompleteConsultationForm`)~~ : couverts, trois défauts corrigés (§18).
 - ~~45 avertissements de lint hérités~~ : corrigés, lint bloquant à 0 avertissement (« Avertissements lint »).
 - Le build signale un chunk volumineux ; les plus gros sont `vendor-charts`
-  (432 kB) et `jspdf` (386 kB). Le chargement différé de jsPDF est une piste.
+  (432 kB) et `jspdf` (386 kB). ~~Le chargement différé de jsPDF est une piste~~ : fait (§20).
 - ~~Unités sans test unitaire dédié malgré une logique critique : `ledger`,
   `balances`, `tokens`, `account-status` (couvertes uniquement en e2e)~~ : couvertes (§19).
 
@@ -1083,3 +1083,29 @@ des lignes simulées. Les e2e restent la preuve d'exécution sur PostgreSQL 16.
 
 Aucun défaut trouvé. Contrôles : typecheck, 173 tests unitaires (20 suites), lint, build ; le dossier `test/`
 reste hors du build.
+
+## 20. jsPDF à la demande, `useMessages`, erreur WebKit du run 53 — 25 octobre 2026
+
+**jsPDF chargé à la demande.** Six composants importaient `jspdf` et `jspdf-autotable` statiquement : les
+tableaux de bord patient, praticien et coach téléchargeaient à l'ouverture le chunk `jspdf` (386 ko, 126 ko
+compressés) et `jspdf.plugin.autotable` (31 ko), avant tout export. `src/lib/pdf.ts` (`loadPdf`) les importe
+au clic sur « Télécharger » ; seul ce module y fait encore référence dans le build. Le compte rendu de
+consultation praticien, sans gestion d'erreur jusque-là, affiche désormais « Erreur d'export » si le
+chargement échoue (hors ligne). Test : `src/lib/__tests__/pdf.test.ts` (document et tableau produits).
+
+**TODO de `useMessages`.** `useMessages` (agrégation de toutes les conversations, une requête par conversation)
+et `useMarkMessageAsRead` n'avaient plus aucun appelant : la messagerie passe par `useConversations`. Le
+fichier est supprimé ; `ContactDialog` utilise le `useSendMessage` de `useConversations`, qui faisait le même
+appel. Test : `ContactDialog.test.tsx` (envoi dans la conversation du rendez-vous, échec affiché, saisie
+conservée).
+
+**Erreur WebKit du run 53.** La trace du test en échec montre, juste après la connexion du second patient, un
+`page.goto` lancé pendant que le tableau de bord chargeait encore une soixantaine de modules : ces requêtes sont
+annulées (« Load request cancelled »), puis WebKit reste 21 s sur la requête du document avant
+« WebKit encountered an internal error ». Ce n'est pas un défaut de l'application ; le test attend désormais que
+le réseau se calme après la connexion (`networkidle`, 10 s au plus) avant de naviguer. L'avertissement
+« Service worker unavailable … R.waiting » de la même trace vient de `serviceWorkers: 'block'` dans la
+configuration Playwright, pas d'une erreur de `PwaStatus`.
+
+Contrôles : typecheck, 165 tests Vitest, lint (0 avertissement), build, 40 scénarios navigateur Chromium en local ;
+la recette WebKit tourne en CI.

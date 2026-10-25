@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import jsPDF from 'jspdf';
+import { loadPdf } from '@/lib/pdf';
 import { toast } from '@/hooks/use-toast';
 
 interface CareNote {
@@ -50,8 +50,9 @@ export function CareNoteDetailDialog({
 }: CareNoteDetailDialogProps) {
   if (!note) return null;
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     try {
+      const { jsPDF } = await loadPdf();
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 20;

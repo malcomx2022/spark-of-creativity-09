@@ -18,6 +18,11 @@ async function login(page: Page, who: keyof RecetteState['accounts']) {
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
   const space = who === 'coach' ? 'coach' : practitioner ? 'practitioner' : 'patient';
   await page.waitForURL(new RegExp(`/dashboard/${space}`));
+  // L'URL change avant la fin du chargement du tableau de bord (route chargée à la demande, une
+  // soixantaine de modules). Un page.goto lancé à ce moment annule ces requêtes, et WebKit restait
+  // alors 21 s bloqué sur le document suivant avant « WebKit encountered an internal error »
+  // (run 53 du 23 octobre, trace). On laisse le réseau se calmer ; au-delà de 10 s, on continue.
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
   return space;
 }
 
