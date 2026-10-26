@@ -163,10 +163,13 @@ export class AcademySyncService {
   /**
    * Ligne locale d'une inscription Akambi : par son identifiant Akambi, sinon la demande encore en attente du même
    * apprenant pour la même formation (l'événement enrollment.created peut précéder l'enregistrement de la réponse).
+   * Une inscription annulée n'est jamais rattachée ainsi : Akambi attribue un nouvel identifiant à la réinscription,
+   * et liste aussi les annulations (réponse du 26 octobre 2026) ; une ancienne annulation fermerait la nouvelle demande.
    */
   private async localEnrollmentId(trx: Transaction<DB>, remote: AkambiEnrollmentInput): Promise<string | null> {
     const byId = await trx.selectFrom('academy_enrollments').select('id').where('akambi_enrollment_id', '=', remote.id).executeTakeFirst();
     if (byId) return byId.id;
+    if (remote.status === 'CANCELLED') return null;
     const userId = remote.externalLearnerId.startsWith('DC-') ? remote.externalLearnerId.slice(3) : '';
     if (!UUID.test(userId)) return null;
     const pending = await trx.selectFrom('academy_enrollments')

@@ -67,13 +67,13 @@ describe('Academy — webhooks et rapprochement (e2e)', () => {
     db = app.get(DatabaseService);
     fake = app.get(FakeAkambiClient);
     fake.courses.clear();
-    for (const key of ['progress', 'cancel', 'early', 'reconcile', 'gone']) courses[key] = fake.seedCourse({ title: `${key} ${tag}` });
+    for (const key of ['progress', 'cancel', 'early', 'reconcile', 'gone', 'stale', 'listed']) courses[key] = fake.seedCourse({ title: `${key} ${tag}` });
     await signup('admin');
     await db.runAs(SERVICE_CONTEXT, (trx) => trx.insertInto('user_roles').values({ user_id: userIds['admin'], role: 'super_admin' }).execute());
     expect((await runJob('academy.catalog.sync')).statusCode).toBe(200);
     await signup('nurse');
     await db.runAs(SERVICE_CONTEXT, (trx) => trx.insertInto('practitioners').values({ user_id: userIds['nurse'], name: 'Cabinet', specialty: 'Soins', practitioner_type: 'infirmier', kyc_status: 'approved' }).execute());
-    for (const key of ['progress', 'cancel', 'reconcile', 'gone']) expect((await enroll(key)).statusCode).toBe(201);
+    for (const key of ['progress', 'cancel', 'reconcile', 'gone', 'listed']) expect((await enroll(key)).statusCode).toBe(201);
   });
 
   afterAll(async () => {
@@ -180,6 +180,18 @@ describe('Academy — webhooks et rapprochement (e2e)', () => {
     expect(await db.runAs(SERVICE_CONTEXT, (trx) => trx.selectFrom('academy_enrollments').select('id').where('user_id', '=', userIds['nurse']).where('course_id', '=', courses.early.id).execute())).toHaveLength(1);
   });
 
+  it('ancienne inscription annulée inconnue localement : jamais rattachée à une nouvelle demande en attente', async () => {
+    const spy = jest.spyOn(fake, 'createEnrollment').mockRejectedValueOnce(new AkambiError('coupure', 504, 'TIMEOUT'));
+    expect((await enroll('stale')).statusCode).toBe(502);
+    spy.mockRestore();
+    expect(await local('stale')).toMatchObject({ status: 'PENDING', akambi_enrollment_id: null });
+    const at = new Date().toISOString();
+    const old = { id: `ancienne-${tag}`, externalLearnerId: `DC-${userIds['nurse']}`, learnerId: 'learner', courseId: courses.stale.id, courseTitle: courses.stale.title, status: 'CANCELLED', progress: 0, enrolledAt: at, startedAt: null, lastActivityAt: null, completedAt: null, certificateId: null, updatedAt: at };
+    const cancelled = event('enrollment.cancelled', { enrollment: old });
+    expect((await send(cancelled)).json().status).toBe('ignored');
+    expect(await local('stale')).toMatchObject({ status: 'PENDING', akambi_enrollment_id: null });
+  });
+
   it('contenus non applicables : inscription inconnue ignorée, type inconnu ignoré, inscription illisible en échec (acquittés)', async () => {
     const { akambi_enrollment_id: akId } = await local('reconcile');
     const remote = await fake.getEnrollment(akId as string);
@@ -230,5 +242,16 @@ describe('Academy — webhooks et rapprochement (e2e)', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe('ENROLLMENT_NOT_FOUND');
     expect(await local('gone')).toMatchObject({ status: 'CANCELLED', last_error_code: 'ENROLLMENT_NOT_FOUND' });
+  });
+
+  it('rapprochement : inscription annulée renvoyée par la liste (évolution annoncée par Akambi) close localement', async () => {
+    const { akambi_enrollment_id: akId } = await local('listed');
+    // Le client factice supprime l'inscription comme Akambi aujourd'hui ; la liste simulée renvoie l'annulation.
+    const cancelled = await fake.cancelEnrollment(akId as string);
+    const spy = jest.spyOn(fake, 'listEnrollments').mockResolvedValueOnce({ items: [{ ...cancelled, cancelledAt: cancelled.updatedAt } as AkambiEnrollment], pagination: { page: 1, limit: 100, total: 1, totalPages: 1 } });
+    expect((await runJob('academy.enrollments.reconcile')).statusCode).toBe(200);
+    spy.mockRestore();
+    expect(await local('listed')).toMatchObject({ status: 'CANCELLED', akambi_enrollment_id: akId });
+    expect((await enroll('listed')).statusCode).toBe(201);
   });
 });
