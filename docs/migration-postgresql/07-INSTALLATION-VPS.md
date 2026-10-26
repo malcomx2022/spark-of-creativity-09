@@ -408,6 +408,7 @@ fenêtre, l'ancien système reste cohérent (document 04 §4).
 | Accès psql | `docker compose exec postgres psql -U postgres -d domicares` |
 | Redémarrage | `docker compose restart api worker` |
 | Espace disque | `docker system prune -f` (images orphelines) |
+| Supervision | `./supervision.sh interne` (contrôles du VPS) ; `./supervision.sh externe https://<domaine>` (§14) |
 
 ### Dépannage courant
 
@@ -500,3 +501,41 @@ docker compose up -d
 Puis la recette du §9. `restore-check.sh` refuse toute base contenant des tables et tout bucket
 non vide : il ne peut pas écraser des données existantes par erreur.
 
+
+## 14. Supervision
+
+Un seul script, `deploy/vps/supervision.sh`, sans pile supplémentaire : une ligne `OK` ou `KO`
+par contrôle, code 1 si un contrôle est KO. Avec `--alerte`, il poste `{"text": "…"}` à
+`SUPERVISION_ALERT_URL` (à défaut `BACKUP_ALERT_URL`, même format que les sauvegardes)
+seulement quand l'état change : première panne, puis rétablissement. L'état est gardé dans
+`deploy/vps/.supervision-state` ; un envoi raté sera retenté au passage suivant.
+
+| Mode | Où | Contrôles |
+|---|---|---|
+| `externe [URL]` | workflow `supervision.yml`, toutes les 15 min | `/api/health` → 200 avec `status` et `database` à `ok` ; `/` → `SUPERVISION_PAGE_STATUS` (200, 401 pour la recette protégée) ; mode FedaPay de `/api/payments/config` = `SUPERVISION_FEDAPAY_ENV` s'il est renseigné ; certificat TLS valide au moins `SUPERVISION_TLS_MIN_DAYS` jours (14) |
+| `interne` | cron sur le VPS, dans le clone | conteneurs arrêtés ou `unhealthy` ; dernière sauvegarde réussie de moins de l'intervalle + 2 h, dernier statut non `failed` ; webhooks FedaPay en échec définitif sur 24 h ; plus de 5 webhooks en attente de rejeu ; paiements FedaPay créés depuis 2 à 26 h sans aucun webhook reçu sur 26 h (URL ou secret du webhook à vérifier, cas du webhook n° 1471) ; disque au-delà de `SUPERVISION_DISK_MAX` % |
+
+La requête interne ne lit que des décomptes : aucun contenu de webhook, de paiement ni de personne.
+Le détail d'un échec se lit ensuite avec `./fedapay-observe.sh`.
+
+**Installer la sonde interne** (utilisateur `deploy`, une ligne par pile) :
+
+```bash
+cd ~/domicares/deploy/vps && ./supervision.sh interne     # premier essai à la main
+crontab -e
+# Production :
+*/15 * * * * cd /home/deploy/domicares/deploy/vps && ./supervision.sh interne --alerte >> /home/deploy/supervision.log 2>&1
+# Recette (clone et .env séparés, document 16 §2.6) :
+*/15 * * * * cd /home/deploy/domicares-recette/deploy/vps && ./supervision.sh interne --alerte >> /home/deploy/supervision-recette.log 2>&1
+```
+
+`preflight.sh` signale un clone sans cette ligne de crontab. Tester l'alerte une fois : arrêter un service sans rôle public (`docker compose stop worker`),
+attendre le passage du cron, vérifier le message, puis `docker compose start worker` et attendre
+le message « supervision rétablie ».
+
+**Activer la sonde externe** dans GitHub (Settings → Secrets and variables → Actions) : secret
+`SUPERVISION_ALERT_URL`, variables `SUPERVISION_FEDAPAY_ENV` (`sandbox` aujourd'hui) et, si la
+recette doit être sondée, `SUPERVISION_RECETTE_URL`. Le job en échec déclenche aussi la
+notification GitHub habituelle. Limites : GitHub peut retarder les tâches planifiées de
+plusieurs minutes et les désactive après 60 jours sans activité sur le dépôt ; la sonde interne,
+qui ne dépend pas de GitHub, couvre ce cas pour tout sauf un VPS entièrement injoignable.

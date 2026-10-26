@@ -218,7 +218,7 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | 7 | S13 et paiement sandbox de bout en bout sur la recette | équipe et Claude Code | 1, 4 |
 | 8 | Confirmer si l'import définitif des données Supabase est fait ; sinon répétition puis `bascule.sh` (document 04 §4, document 07 §8) | équipe | — |
 | 9 | Exploitation : sauvegarde quotidienne, copie hors site chiffrée, exercice de restauration sur le VPS, objectifs RPO/RTO | équipe et Claude Code | 4 pour l'exercice |
-| 10 | Supervision : sondes `/api/health` et `/`, alerte sur webhooks en échec (Uptime Kuma ou équivalent) | équipe et Claude Code | — |
+| 10 | Supervision : modèle livré (`supervision.sh`, workflow `supervision.yml`, document 07 §14) ; à activer : cron interne sur le VPS, secret `SUPERVISION_ALERT_URL` et variables GitHub, essai d'alerte | équipe | — |
 | 11 | Validations manuelles : Safari iPhone, push sur téléphone réel, réception du contact | équipe | 4 |
 | 12 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis passage en production | équipe et Akambi | 4 |
 | 13 | Paiements réels (§5.2) | équipe, avec Claude Code | 3, 7 |

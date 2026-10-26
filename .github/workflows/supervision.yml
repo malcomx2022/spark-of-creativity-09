@@ -1,0 +1,62 @@
+name: Supervision
+
+# Sondes externes toutes les 15 minutes (deploy/vps/supervision.sh externe) : /api/health (API et
+# base), page d'accueil, mode FedaPay attendu, échéance TLS ; recette en option. Le job échoue en
+# cas de panne (notification GitHub) ; le secret SUPERVISION_ALERT_URL reçoit un POST {"text": …}
+# seulement au changement d'état (panne après succès, rétablissement après échec).
+# Les contrôles internes (conteneurs, sauvegardes, webhooks FedaPay, disque) tournent par cron sur
+# le VPS : document 07, §« Supervision ».
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: supervision
+  cancel-in-progress: false
+
+jobs:
+  sondes:
+    name: Sondes externes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Production
+        id: production
+        continue-on-error: true
+        env:
+          SUPERVISION_FEDAPAY_ENV: ${{ vars.SUPERVISION_FEDAPAY_ENV }}
+        run: bash deploy/vps/supervision.sh externe "${{ vars.SUPERVISION_URL || 'https://domicares.life' }}" | tee -a "$RUNNER_TEMP/sondes.txt"
+      - name: Recette
+        id: recette
+        if: vars.SUPERVISION_RECETTE_URL != ''
+        continue-on-error: true
+        env:
+          SUPERVISION_PAGE_STATUS: '401'
+        run: bash deploy/vps/supervision.sh externe "${{ vars.SUPERVISION_RECETTE_URL }}" | tee -a "$RUNNER_TEMP/sondes.txt"
+      - name: Alerte au changement d'état
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALERT_URL: ${{ secrets.SUPERVISION_ALERT_URL }}
+          FAILED: ${{ steps.production.outcome == 'failure' || steps.recette.outcome == 'failure' }}
+        run: |
+          previous="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/supervision.yml/runs?status=completed&per_page=1" --jq '.workflow_runs[0].conclusion // "success"' 2>/dev/null || echo success)"
+          message=""
+          if [ "$FAILED" = true ] && [ "$previous" = success ]; then
+            message="Domicares supervision externe : $(grep '^KO' "$RUNNER_TEMP/sondes.txt" | tr '\n' ' ')$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          elif [ "$FAILED" != true ] && [ "$previous" = failure ]; then
+            message="Domicares supervision externe rétablie : tous les contrôles sont OK"
+          fi
+          if [ -n "$message" ] && [ -n "$ALERT_URL" ]; then
+            message="${message//\\/\\\\}"; message="${message//\"/\\\"}"
+            curl -fsS -m 20 -H 'Content-Type: application/json' -d "{\"text\":\"$message\"}" "$ALERT_URL" >/dev/null || echo "::warning::alerte non envoyée"
+          elif [ -n "$message" ]; then
+            echo "::notice::$message (secret SUPERVISION_ALERT_URL absent : alerte non envoyée)"
+          fi
+          [ "$FAILED" != true ] || { echo "::error::au moins une sonde est KO"; exit 1; }
