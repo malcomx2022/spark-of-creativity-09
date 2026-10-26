@@ -190,6 +190,9 @@ interface CallResult<T> {
 
 const MAX_ATTEMPTS = 3;
 
+/** Seules variables lues par le client HTTP (le script `akambi-ping` le construit sans le reste de la configuration). */
+export type AkambiClientConfig = Pick<AppConfig, 'AKAMBI_BASE_URL' | 'AKAMBI_API_KEY' | 'AKAMBI_API_SECRET' | 'AKAMBI_TIMEOUT_MS'>;
+
 /**
  * Client HTTP de l'API partenaires Akambi : échanges serveur à serveur signés (guide §3).
  * Chaque tentative porte un nouvel horodatage et un nouveau nonce ; l'`Idempotency-Key` reste la même
@@ -202,7 +205,7 @@ export class HttpAkambiClient implements AkambiClient {
   /** Attente entre deux tentatives ; remplaçable par les tests. */
   sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-  constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
+  constructor(@Inject(APP_CONFIG) private readonly config: AkambiClientConfig) {
     this.baseUrl = (config.AKAMBI_BASE_URL ?? '').replace(/\/+$/, '');
   }
 

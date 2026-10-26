@@ -168,7 +168,9 @@ Academy (Akambi) : `AKAMBI_PROVIDER=akambi` avec `AKAMBI_BASE_URL` (HTTPS), `AKA
 par défaut (client factice interdit en production une fois activée). Client signé et client factice dans
 `src/academy/` ; plan et suivi : `../docs/academy/01-FAISABILITE-INTEGRATION-AKAMBI.md`.
 Campagne contre la préproduction Akambi (hors CI, base locale dédiée) : `npm run campaign:akambi`,
-procédure dans `../docs/academy/02-RECETTE-PREPRODUCTION.md`.
+procédure dans `../docs/academy/02-RECETTE-PREPRODUCTION.md`. Vérification des identifiants seule
+(ping signé, horloge, signature fausse refusée, catalogue) : `npm run akambi:ping`, ou
+`node dist/academy/akambi-ping.js` dans le conteneur (`../docs/academy/03-LOT-A0-ECHANGES-ET-ARBITRAGES.md`).
 Tables `academy_*` : `db/native/140_academy.sql` (idempotent, procédure pour une base existante
 dans son en-tête), retour arrière `db/native/rollback/140_academy.down.sql`.
 

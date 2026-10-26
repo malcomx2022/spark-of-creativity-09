@@ -14,7 +14,7 @@ l'environnement du terminal.
 
 | # | Prérequis | Qui | Preuve attendue |
 |---|---|---|---|
-| P1 | Postman : collection et environnement Akambi importés, `apiKey`/`apiSecret` renseignés, « 0. Démarrage > Vérifier l'authentification » | DomiCares | 200 avec `partner.code` (capture sans les en-têtes) |
+| P1 | Postman : collection et environnement Akambi importés, `apiKey`/`apiSecret` renseignés, « 0. Démarrage > Vérifier l'authentification » ; ou `npm run akambi:ping` (document 03, § 2) | DomiCares | 200 avec `partner.code` (capture sans les en-têtes) |
 | P2 | Préproduction DomiCares servie sur `https://staging.domicares.life` (document 07 de la migration) | DomiCares | `/api/health` 200, `preflight.sh` sans ✖ |
 | P3 | Formation de test courte avec évaluation, dans la catégorie DomiCares | Akambi (§ 9, question 5) | visible dans `GET /courses` |
 | P4 | Compte apprenant `EXISTING` de test (e-mail déjà connu d'Akambi) | Akambi | e-mail transmis hors dépôt |
