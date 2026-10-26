@@ -14,7 +14,7 @@ détaillées existantes sont référencées plutôt que recopiées (documents 04
 | Déploiement | `deploy-vps.yml` déploie la **production à chaque push sur `main`** | runs 37 à 42 du 23 octobre, tous `success` |
 | Recette | **Aucun environnement de recette joignable** ; `https://staging.domicares.life` (cité par la recette Academy) ne répond pas | `GET /api/health` → 502 depuis l'environnement de développement |
 | Recette (24 octobre) | **Déployée** sur le VPS de production (projet `domicares-recette`, SHA `52e03ec`) ; `RECETTE_AUTO` pas encore activée ; recette fonctionnelle (§4) à dérouler | `deploy-vps.yml` run 47, santé 200 depuis le runner ; détail au document 15 §17 |
-| Supervision et recette (26 octobre) | Sonde externe active : production et recette OK (recette protégée, `/` → 401) ; `RECETTE_AUTO` créée en secret au lieu d'une variable, prise en compte non vérifiée ; alerte et cron interne pas encore installés | `supervision.yml` run 1, document 10 §7 |
+| Supervision et recette (26 octobre) | Fusions en recette (`RECETTE_AUTO=true`, run 56) ; production redéployée à la main en `4bd6d71` (run 57) après huit déploiements « production » partis dans le clone de recette (`VPS_APP_DIR`, runs 48 à 55) ; clés FedaPay live actives 5 minutes après ce déploiement, retour en sandbox à 18:19 UTC ; sondes externe et interne OK sur les deux environnements | document 10 §7 (chaîne de déploiement, supervision, incident) |
 | Webhook FedaPay | Le webhook **sandbox** n° 1471 vise la production et échoue (désactivé par FedaPay) ; la production ne reçoit donc aucun webhook et dépend de `payments.sync` | courriel FedaPay du 23 octobre, document 09 §4 bis |
 | Campagne sandbox | S0, S3, S4, S12 ok ; S1, S2, S5 à S11 bloqués côté compte FedaPay ; S13 non couvert | document 09 §4 bis |
 | Données réelles | Import Supabase définitif (document 04, phase P5) : **à confirmer**, aucune trace d'exécution dans les documents | — |
@@ -146,6 +146,9 @@ Réglages GitHub (Settings → Environments, puis Settings → Secrets and varia
 1. Environnement `recette` : secrets `VPS_APP_DIR` (`/home/deploy/domicares-recette` sur le même VPS)
    et `DOMAIN_NAME` (`staging.domicares.life`). Sur un second VPS, aussi `VPS_HOST`,
    `VPS_USERNAME`, `VPS_SSH_KEY`, `VPS_SSH_PORT`. Les secrets absents reprennent ceux du dépôt.
+   Les secrets **du dépôt** restent ceux de la production (`VPS_APP_DIR` = `/home/deploy/domicares`,
+   `DOMAIN_NAME` = `domicares.life`) : s'ils désignent la recette, les déploiements « production »
+   reconstruisent la recette sans erreur visible (cas des runs 48 à 55, document 10 §7).
 2. Environnement `production` : « Required reviewers » pour imposer une approbation avant chaque
    déploiement de production.
 3. Une fois la recette déployée avec succès par un lancement manuel (`cible` = `recette`) : variable
@@ -192,6 +195,14 @@ connexion d'un compte réel, ouverture d'un écran par rôle, journaux `api` et 
 `/api/health` seul ne valide pas les parcours. Retour arrière : relancer avec le SHA précédent
 (document 10 §6) ; images web et API ensemble.
 
+Le déploiement recrée les conteneurs avec le `.env` du moment : une valeur modifiée sans
+redémarrage s'applique alors. Après chaque déploiement de production, vérifier aussi :
+
+- dans le journal du run, les conteneurs recréés `vps-*` (et non `domicares-recette-*`) ;
+- sur le VPS, `git log --oneline -1` dans `/home/deploy/domicares` = SHA déployé ;
+- `GET /api/payments/config` → mode attendu (`sandbox` tant que le §5.2 n'est pas exécuté),
+  aussi contrôlé par `supervision.yml`.
+
 ### 5.2 Ouvrir les paiements réels (FedaPay live)
 
 Prérequis : campagne sandbox S1 à S12 `ok` (document 09) et S13 `ok` en recette ; contrat
@@ -215,11 +226,11 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | 3 | Rejouer la campagne S1 à S11 avec `FEDAPAY_MOMO_TEST_APPROVED` ; vérifier `/payouts/search` | Claude Code | 2 |
 | 4 | Commander et installer le VPS de recette, DNS `staging` (§2.1, §2.2) | équipe (accès, achat), Claude Code (procédure) | — |
 | 5 | Protection de la recette (§2.5) : modèle livré, à installer avec la recette | équipe | 4 |
-| 6 | Séparer recette et production : workflow livré (§3), environnement `recette` créé ; `RECETTE_AUTO=true` à déclarer en **variable** de dépôt (pas en secret), puis vérifier le journal du prochain push | équipe | 4 |
+| 6 | Séparer recette et production : **fait** (`RECETTE_AUTO=true`, run 56 en recette, run 57 en production) ; reste à confirmer l'approbation obligatoire de l'environnement `production` | équipe | — |
 | 7 | S13 et paiement sandbox de bout en bout sur la recette | équipe et Claude Code | 1, 4 |
 | 8 | Confirmer si l'import définitif des données Supabase est fait ; sinon répétition puis `bascule.sh` (document 04 §4, document 07 §8) | équipe | — |
 | 9 | Exploitation : sauvegarde quotidienne, copie hors site chiffrée, exercice de restauration sur le VPS, objectifs RPO/RTO | équipe et Claude Code | 4 pour l'exercice |
-| 10 | Supervision : sonde externe active depuis le 26/10 (`supervision.yml`, production et recette OK) ; reste : secret `SUPERVISION_ALERT_URL`, cron interne sur le VPS (production et recette), essai d'alerte (document 07 §14) | équipe | — |
+| 10 | Supervision : sondes externe (`supervision.yml`) et interne (`supervision.sh interne`) OK en production et en recette le 26/10 ; reste : lignes `crontab` sur le VPS, secret GitHub `SUPERVISION_ALERT_URL`, essai d'alerte (document 07 §14) | équipe | — |
 | 11 | Validations manuelles : Safari iPhone, push sur téléphone réel, réception du contact | équipe | 4 |
 | 12 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis passage en production | équipe et Akambi | 4 |
 | 13 | Paiements réels (§5.2) | équipe, avec Claude Code | 3, 7 |
