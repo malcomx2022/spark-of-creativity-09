@@ -13,6 +13,7 @@
  */
 import { configSchema } from '../config/config.schema';
 import { AkambiClient, AkambiClientConfig, AkambiError, HttpAkambiClient } from './akambi.client';
+import { AKAMBI_CLOCK_TOLERANCE_SECONDS } from './akambi.signature';
 
 export const AKAMBI_PREPROD_URL = 'https://preprod.akambiconsulting.com';
 
@@ -44,8 +45,9 @@ export async function runAkambiPing(client: AkambiClient, wrongSecret: AkambiCli
     const skew = Math.round((Date.parse(ping.serverTime) - (sentAt + now()) / 2) / 1000);
     checks.push({ label: 'Authentification (GET /ping)', ok: true, detail: `200, partenaire ${ping.partner.code} (${ping.partner.name})` });
     if (Number.isNaN(skew)) checks.push({ label: 'Horloge', ok: true, warning: true, detail: 'serverTime illisible : décalage non mesuré' });
-    else if (Math.abs(skew) >= 300) checks.push({ label: 'Horloge', ok: false, detail: `décalage de ${skew} s avec Akambi : requêtes refusées au-delà de ±300 s (NTP)` });
-    else checks.push({ label: 'Horloge', ok: true, warning: Math.abs(skew) >= 60, detail: `décalage de ${skew} s avec Akambi (tolérance ±300 s)` });
+    // Tolérance inclusive et symétrique (Akambi, 26 octobre 2026) : |écart| ≤ 300 s accepté.
+    else if (Math.abs(skew) > AKAMBI_CLOCK_TOLERANCE_SECONDS) checks.push({ label: 'Horloge', ok: false, detail: `décalage de ${skew} s avec Akambi : requêtes refusées au-delà de ±${AKAMBI_CLOCK_TOLERANCE_SECONDS} s (NTP)` });
+    else checks.push({ label: 'Horloge', ok: true, warning: Math.abs(skew) >= 60, detail: `décalage de ${skew} s avec Akambi (tolérance ±${AKAMBI_CLOCK_TOLERANCE_SECONDS} s)` });
   } catch (err) {
     checks.push({ label: 'Authentification (GET /ping)', ok: false, detail: `${describe(err)} — vérifier la clé, le secret et l'URL (préproduction ou production)` });
     return checks;

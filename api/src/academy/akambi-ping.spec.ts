@@ -46,4 +46,14 @@ describe('akambi-ping (lot A0)', () => {
     expect(checks.find((c) => c.label === 'Refus d’une signature fausse')).toMatchObject({ ok: false });
     expect(checks.find((c) => c.label === 'Catalogue (GET /courses)')).toMatchObject({ ok: true, warning: true });
   });
+
+  it('horloge : tolérance inclusive, 300 s acceptés (avertissement), 301 s refusés', async () => {
+    const at = (serverTime: string) => {
+      const client = new FakeAkambiClient();
+      jest.spyOn(client, 'ping').mockResolvedValue({ partner: { code: 'DOMICARES', name: 'DomiCares' }, serverTime });
+      return runAkambiPing(client, refusing(), () => Date.parse('2026-10-26T12:00:00.000Z'));
+    };
+    expect((await at('2026-10-26T11:55:00.000Z')).find((c) => c.label === 'Horloge')).toMatchObject({ ok: true, warning: true });
+    expect((await at('2026-10-26T12:05:01.000Z')).find((c) => c.label === 'Horloge')).toMatchObject({ ok: false });
+  });
 });
