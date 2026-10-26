@@ -15,7 +15,8 @@
     "test:e2e": "jest --config jest.e2e.config.cjs --runInBand",
     "start:worker:dev": "node --watch -r ts-node/register/transpile-only src/worker.ts",
     "campaign:fedapay": "jest --config jest.campaign.config.cjs --runInBand",
-    "campaign:akambi": "jest --config jest.campaign.config.cjs --runInBand test/campaign/akambi-preprod.campaign.ts"
+    "campaign:akambi": "jest --config jest.campaign.config.cjs --runInBand test/campaign/akambi-preprod.campaign.ts",
+    "akambi:ping": "ts-node --transpile-only src/academy/akambi-ping.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1124.0",
