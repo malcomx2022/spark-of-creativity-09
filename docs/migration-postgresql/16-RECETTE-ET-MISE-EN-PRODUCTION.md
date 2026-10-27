@@ -17,7 +17,7 @@ détaillées existantes sont référencées plutôt que recopiées (documents 04
 | Supervision et recette (26 octobre) | Fusions en recette (`RECETTE_AUTO=true`, run 56) ; production redéployée à la main en `4bd6d71` (run 57) après huit déploiements « production » partis dans le clone de recette (`VPS_APP_DIR`, runs 48 à 55) ; clés FedaPay live actives 5 minutes après ce déploiement, retour en sandbox à 18:19 UTC ; sondes externe et interne OK sur les deux environnements | document 10 §7 (chaîne de déploiement, supervision, incident) |
 | Webhook FedaPay | Le webhook **sandbox** n° 1471 vise la production et échoue (désactivé par FedaPay) ; la production ne reçoit donc aucun webhook et dépend de `payments.sync` | courriel FedaPay du 23 octobre, document 09 §4 bis |
 | Campagne sandbox | S0, S3, S4, S12 ok ; S1, S2, S5 à S11 bloqués côté compte FedaPay ; S13 non couvert | document 09 §4 bis |
-| Données réelles | Import Supabase définitif (document 04, phase P5) : **à confirmer**, aucune trace d'exécution dans les documents | — |
+| Données réelles | Import Supabase définitif **fait** (confirmé par l'équipe le 26/10) ; archive finale chiffrée et pause du projet Supabase le 27/10 ; révocation et suppression à venir | document 10 §7 (« Données réelles et clôture Supabase / Lovable ») |
 
 Conséquence : toute fusion part directement en production, sans étape de validation. La recette
 s'insère entre `main` et la production.
@@ -228,17 +228,16 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | 5 | Protection de la recette (§2.5) : modèle livré, à installer avec la recette | équipe | 4 |
 | 6 | Séparer recette et production : **fait** (`RECETTE_AUTO=true`, run 56 en recette, run 57 en production) ; reste à confirmer l'approbation obligatoire de l'environnement `production` | équipe | — |
 | 7 | S13 et paiement sandbox de bout en bout sur la recette | équipe et Claude Code | 1, 4 |
-| 8 | Confirmer si l'import définitif des données Supabase est fait ; sinon répétition puis `bascule.sh` (document 04 §4, document 07 §8) | équipe | — |
+| 8 | Import définitif des données Supabase : **fait** (confirmé le 26/10) | équipe | — |
 | 9 | Exploitation : sauvegarde quotidienne, copie hors site chiffrée, exercice de restauration sur le VPS, objectifs RPO/RTO | équipe et Claude Code | 4 pour l'exercice |
-| 10 | Supervision : sondes externe (`supervision.yml`) et interne (`supervision.sh interne`) OK en production et en recette le 26/10 ; reste : lignes `crontab` sur le VPS, secret GitHub `SUPERVISION_ALERT_URL`, essai d'alerte (document 07 §14) | équipe | — |
+| 10 | Supervision : sondes externe et interne en service (crontab installé, premier passage 18:45 UTC le 26/10, secret `SUPERVISION_ALERT_URL` lu) ; reste l'essai d'alerte (document 07 §14) | équipe | — |
 | 11 | Validations manuelles : Safari iPhone, push sur téléphone réel, réception du contact | équipe | 4 |
 | 12 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis passage en production | équipe et Akambi | 4 |
 | 13 | Paiements réels (§5.2) | équipe, avec Claude Code | 3, 7 |
-| 14 | Clôture : pause puis suppression des projets Supabase (après dernière sauvegarde), révocation des clés `service_role` et des secrets Lovable | équipe | 8, 13 |
+| 14 | Clôture : vérification d'indépendance faite, archive finale chiffrée et **pause Supabase faites** (27/10) ; reste la révocation des clés Supabase et des secrets Lovable (intégration GitHub et domaine compris), puis la suppression à J+30 après l'import (document 10 §7). La suppression n'attend plus le point 13 si la pause s'est passée sans incident et qu'un exercice de restauration a réussi | équipe | — |
 
 ## 7. Décisions à prendre
 
-- Hébergeur et taille du VPS de recette (§2.1).
+- ~~Hébergeur et taille du VPS de recette (§2.1)~~ : réglé, recette sur le VPS de production (§2.6).
 - Compte Twilio de la recette : le même service Verify que la production, ou un service séparé.
-- Réponse au point 8 : la base de production contient-elle déjà les données réelles importées ?
 - Date cible d'ouverture des paiements réels, une fois les prérequis du §5.2 remplis.
