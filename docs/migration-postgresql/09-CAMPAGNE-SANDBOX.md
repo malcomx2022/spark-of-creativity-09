@@ -287,6 +287,38 @@ bout** : intention `declined`, transaction `declined`, paiement Domicares `faile
 solde inchangé. S1, S2 et S5 en écart, car toutes les intentions `momo_test` sont refusées avec les
 numéros par défaut ; S6 à S11 en découlent. Dépôts toujours en 403.
 
+Numéros `momo_test` de succès communiqués le 27/10/2026 : `0166000001` et `0164000001` (format à
+10 chiffres du Bénin, soit `+2290166000001` et `+2290164000001`). Ce sont des numéros publics de
+test FedaPay, sans valeur en mode live.
+
+Campagne rejouée le 27/10/2026 à 18:58 UTC (base locale `domicares_campagne` recréée depuis
+`main` avec le schéma natif, vrai FedaPay sandbox, `FEDAPAY_MOMO_TEST_APPROVED=+2290166000001`,
+refus par le numéro par défaut ; rapport `api/campaign-reports/fedapay-sandbox-2026-10-27T18-58-19-763Z.md`,
+non versionné) :
+
+| # | Résultat | Constat |
+|---|---|---|
+| S0 | ok | routes du sandbox présentes |
+| S1 | **ok** | paiement MTN approuvé : `paid`/`held`, rendez-vous `confirmed`, retenue 14 250 |
+| S2 | **ok** | paiement Moov approuvé (séance) : `paid`/`held`, inscription `paid` |
+| S3 | ok | refus : paiement `failed`, rendez-vous `pending_payment` |
+| S4 | ok | abandon puis nettoyage : `canceled` (lecture FedaPay 404 après `DELETE`) |
+| S5 | **ok** | reprise après abandon : nouveau `paid`, ancien `canceled` |
+| S6 | **ok** | libération des fonds : rendez-vous et séance `ready` |
+| S7 | écart | dépôt refusé par FedaPay : 403 « Opération non autorisée » (dépôts non ouverts sur le compte) |
+| S8 | ok | reversement refusé : 502 côté Domicares, reversement `failed`, paiement séance `ready` |
+| S9 | écart | `POST /v1/refunds` refusé : « Erreur d'authentification » (502 `FEDAPAY_REFUND`, aucune écriture) |
+| S10 | **ok** | remboursement manuel enregistré, paiement `refunded` |
+| S11 | sans objet | découle de S9 |
+| S12 | ok | réconciliation : 4 rapprochées, 1 anomalie de campagne expliquée (reste remboursé hors FedaPay) |
+| S13 | non couvert | exige une URL publique (recette) |
+
+Les numéros reçus débloquent tout le parcours d'encaissement (S1, S2, S5, S6). Restent du côté
+FedaPay : l'ouverture des dépôts (S7) et le contrat `/v1/refunds` sur le compte sandbox (S9, S11).
+Domicares se comporte comme prévu sur ces refus (502, aucune écriture, reversement `failed`).
+Le lancement exécute aussi la campagne Akambi du même dossier, qui s'arrête faute de
+`AKAMBI_CAMPAIGN` : sans lien avec FedaPay.
+
 Suite : dès que le support donne un numéro approuvé, relancer avec
 `FEDAPAY_MOMO_TEST_APPROVED=<numéro> FEDAPAY_CAMPAIGN=sandbox npm run campaign:fedapay`, sans modifier
 le code. Le client de production garde `mtn_open`/`moov`.

@@ -12,6 +12,12 @@ Le document 10 conserve le suivi des protections initiales et des travaux d'expl
 Les lots applicatifs 1 à 5 sont implémentés et validés localement. Le suivi du
 document 10 distingue les contrôles CI, la livraison et les travaux d’exploitation restants.
 
+**État au 27 octobre 2026 : projet en phase de validation.** Les données réelles sont importées
+dans le PostgreSQL du VPS (import validé par l'équipe), la production tourne sur la pile native et
+FedaPay reste en sandbox jusqu'à l'ouverture des paiements réels (document 16, §5.2). Les projets
+Supabase et Lovable sont **supprimés** (archive finale chiffrée conservée hors dépôt). Le suivi
+de la validation et de la mise en exploitation est au document 16, §6, et au document 10, §7.
+
 Les demandes explicites de l'utilisateur priment sur ces consignes. Respecter les
 modifications locales et limiter chaque changement au lot demandé.
 
@@ -22,8 +28,11 @@ modifications locales et limiter chaque changement au lot demandé.
 - S3 compatible, Socket.IO et relais PostgreSQL LISTEN/NOTIFY ; Docker Compose + Caddy.
 - Autorisations portées par les services et gardes. `DatabaseService.runAs` définit
   le contexte SQL ; il ne remplace pas les contrôles d'appartenance.
-- `legacy/supabase/` et `docs/archive/` sont des références historiques. Ne pas
-  réintroduire Supabase/Lovable, Redis ou une autre pile pour ce chantier.
+- `legacy/supabase/`, `scripts/supabase/` et `docs/archive/` sont des archives en lecture
+  seule : Supabase et Lovable n'existent plus (projets supprimés le 27/10/2026), leurs URL, clés
+  et fonctions ne répondent plus. Ne pas les citer comme source de vérité ni comme repli ; la
+  référence est le code de `api/`, `src/` et `db/native/`. Ne pas réintroduire Supabase/Lovable,
+  Redis ou une autre pile.
 - Conserver les routes, structures de réponse, règles métier, chemins de stockage,
   résolution des rôles et mécanismes FedaPay existants, sauf évolution explicitement
   décrite et testée. Retirer les données confidentielles des réponses concernées.

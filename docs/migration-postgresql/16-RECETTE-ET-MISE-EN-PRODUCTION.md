@@ -1,5 +1,9 @@
 # 16 — Environnement de recette, déploiement et mise en production — 23 octobre 2026
 
+> **27 octobre 2026 : projet en phase de validation.** Import des données réelles validé ;
+> projets Supabase et Lovable supprimés ; restent la validation fonctionnelle (§4), l'exploitation
+> (sauvegarde hors site, restauration, alerte) et l'ouverture des paiements réels (§5.2), voir §6.
+
 Processus complet pour créer la recette, faire passer chaque version de la recette à la production,
 ouvrir les paiements réels, et liste de ce qui reste pour terminer le projet. Les procédures
 détaillées existantes sont référencées plutôt que recopiées (documents 04, 07, 09, 10, 12, 14, 15 et
@@ -17,7 +21,7 @@ détaillées existantes sont référencées plutôt que recopiées (documents 04
 | Supervision et recette (26 octobre) | Fusions en recette (`RECETTE_AUTO=true`, run 56) ; production redéployée à la main en `4bd6d71` (run 57) après huit déploiements « production » partis dans le clone de recette (`VPS_APP_DIR`, runs 48 à 55) ; clés FedaPay live actives 5 minutes après ce déploiement, retour en sandbox à 18:19 UTC ; sondes externe et interne OK sur les deux environnements | document 10 §7 (chaîne de déploiement, supervision, incident) |
 | Webhook FedaPay | Le webhook **sandbox** n° 1471 vise la production et échoue (désactivé par FedaPay) ; la production ne reçoit donc aucun webhook et dépend de `payments.sync` | courriel FedaPay du 23 octobre, document 09 §4 bis |
 | Campagne sandbox | S0, S3, S4, S12 ok ; S1, S2, S5 à S11 bloqués côté compte FedaPay ; S13 non couvert | document 09 §4 bis |
-| Données réelles | Import Supabase définitif **fait** (confirmé par l'équipe le 26/10) ; archive finale chiffrée et pause du projet Supabase le 27/10 ; révocation et suppression à venir | document 10 §7 (« Données réelles et clôture Supabase / Lovable ») |
+| Données réelles | Import Supabase définitif **validé** par l'équipe (27/10) ; archive finale chiffrée conservée hors dépôt ; projets **Supabase et Lovable supprimés** le 27/10 | document 10 §7 (« Données réelles et clôture Supabase / Lovable ») |
 
 Conséquence : toute fusion part directement en production, sans étape de validation. La recette
 s'insère entre `main` et la production.
@@ -222,8 +226,8 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | # | Tâche | Qui | Dépend de |
 |---|---|---|---|
 | 1 | Supprimer ou rediriger le webhook sandbox n° 1471 (§2.4) | équipe, tableau de bord FedaPay | — |
-| 2 | Obtenir du support FedaPay : numéro approuvé `momo_test`, ouverture des dépôts, contrat `/v1/refunds`, filtres `/search` | équipe | message envoyé |
-| 3 | Rejouer la campagne S1 à S11 avec `FEDAPAY_MOMO_TEST_APPROVED` ; vérifier `/payouts/search` | Claude Code | 2 |
+| 2 | Support FedaPay : numéros `momo_test` de succès reçus le 27/10 (`0166000001`, `0164000001`) ; restent l'ouverture des **dépôts** (S7 : 403) et l'accès à **`/v1/refunds`** sur le compte sandbox (S9 : « Erreur d'authentification ») ; filtres `/search` | équipe | — |
+| 3 | Campagne rejouée le 27/10 avec les numéros reçus (document 09 §4 bis) : S0 à S6, S8, S10 et S12 ok ; écarts S7 (dépôts 403, non ouverts par FedaPay) et S9/S11 (`/v1/refunds` : erreur d'authentification) ; S13 sur la recette | Claude Code, puis équipe pour FedaPay | 2 |
 | 4 | Commander et installer le VPS de recette, DNS `staging` (§2.1, §2.2) | équipe (accès, achat), Claude Code (procédure) | — |
 | 5 | Protection de la recette (§2.5) : modèle livré, à installer avec la recette | équipe | 4 |
 | 6 | Séparer recette et production : **fait** (`RECETTE_AUTO=true`, run 56 en recette, run 57 en production) ; reste à confirmer l'approbation obligatoire de l'environnement `production` | équipe | — |
@@ -234,7 +238,7 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | 11 | Validations manuelles : Safari iPhone, push sur téléphone réel, réception du contact | équipe | 4 |
 | 12 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis passage en production | équipe et Akambi | 4 |
 | 13 | Paiements réels (§5.2) | équipe, avec Claude Code | 3, 7 |
-| 14 | Clôture : vérification d'indépendance faite, archive finale chiffrée et **pause Supabase faites** (27/10) ; reste la révocation des clés Supabase et des secrets Lovable (intégration GitHub et domaine compris), puis la suppression à J+30 après l'import (document 10 §7). La suppression n'attend plus le point 13 si la pause s'est passée sans incident et qu'un exercice de restauration a réussi | équipe | — |
+| 14 | Clôture : **faite** le 27/10 (archive finale chiffrée, projets Supabase et Lovable supprimés) ; reste à retirer l'accès de l'application Lovable au dépôt GitHub s'il subsiste, et à faire tourner les clés FedaPay, Twilio et Resend autrefois copiées chez ces prestataires | équipe | — |
 
 ## 7. Décisions à prendre
 
