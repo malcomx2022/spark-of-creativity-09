@@ -292,9 +292,9 @@ Production au 27/10/2026 (12:58 UTC, projet Supabase en pause) : `/api/health` o
 
 | Étape | État | Preuve | Reste |
 |---|---|---|---|
-| Import définitif Supabase → PostgreSQL du VPS | **Fait** (déclaré le 26/10) | réponse de l'équipe ; date de l'import non transmise | consigner la date (calcule J+7 et J+30) |
+| Import définitif Supabase → PostgreSQL du VPS | **Fait** (confirmé par l'équipe le 26/10) | réponse de l'équipe ; date de l'import non consignée | J+7 et J+30 comptés par l'équipe à partir de sa date d'import |
 | Indépendance vis-à-vis de Supabase et Lovable | **Vérifiée** (26-27/10) | `grep -ni supabase` sur les deux `.env` du VPS : seul le commentaire `# --- Auth (remplace Supabase Auth) ---` ; équipe : aucune URL `supabase.co` ou Lovable dans les webhooks FedaPay live et sandbox, Twilio, Resend, Akambi et intégrations externes | — |
-| Archive finale chiffrée (document 02 §4, `age`) | **Faite, vérification déclarée par l'équipe** (27/10) | export, chiffrement, déchiffrement et rangement hors VPS déclarés ; date, taille, empreinte SHA256 et sortie de `check-export.sh` non transmises | transmettre ces éléments pour marquer l'étape validée |
+| Archive finale chiffrée (document 02 §4, `age`) | **Confirmée par l'équipe** (27/10) | export, chiffrement, essai de déchiffrement et rangement hors VPS confirmés par l'équipe, qui choisit de ne pas consigner date, taille, empreinte ni sortie de `check-export.sh` : attestation, non vérifiée par un tiers | conserver la clé `age` et l'empreinte de l'archive avec elle, hors dépôt |
 | Pause du projet Supabase | **Faite** (déclarée le 27/10) | production inchangée après la pause (12:58 UTC ci-dessus) | surveiller une à trois semaines ; réactivation possible (« Restore project ») |
 | Révocation (Supabase : clés `sb_secret_…`, `anon`, `service_role`, mot de passe de base, secrets des Edge Functions ; Lovable : secrets, intégration GitHub, domaine) | **À faire** | — | puis rotation recommandée des clés FedaPay, Twilio et Resend (sans toucher `PHONE_ENCRYPTION_KEY` ni VAPID) |
 | Suppression définitive Supabase et Lovable | **À faire** (J+30 après l'import, document 04 §4) | — | après une pause sans incident, une archive vérifiée et un `restore-drill.sh` réussi sur le VPS |
