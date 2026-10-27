@@ -8,7 +8,7 @@
 #   (Redis n'est pas nécessaire sur un nœud unique : à ajouter comme adaptateur Socket.IO
 #    seulement si l'API est déployée en plusieurs réplicas)
 #   postgres  : PostgreSQL 16 (schéma db/native)
-#   minio     : stockage S3 compatible (ou utiliser Wasabi : supprimer ce service)
+#   minio     : stockage S3 compatible (ou un S3 hébergé : supprimer ce service)
 # Variables : voir .env.example
 # Recette sur le même VPS : second clone + docker-compose.recette.yml (document 16, §2.6) ;
 # le Caddy de production la sert via le réseau domicares-edge et caddy/sites/*.caddy.
@@ -172,7 +172,7 @@ services:
       interval: 30m
       timeout: 10s
       start_period: 2h
-    # Pas de dépendance à minio : le service peut être retiré au profit de Wasabi ; backup.sh attend le S3.
+    # Pas de dépendance à minio : le service peut être retiré au profit d'un S3 hébergé ; backup.sh attend le S3.
     depends_on:
       postgres: { condition: service_healthy }
 

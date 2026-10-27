@@ -156,7 +156,7 @@ npm run start:dev         # http://localhost:3000/api/docs
 
 Tests e2e (base réelle) : `DATABASE_URL=… npm run test:e2e`.
 
-Stockage : `STORAGE_PROVIDER=s3` avec `S3_ENDPOINT` (MinIO, Wasabi, AWS) et les buckets
+Stockage : `STORAGE_PROVIDER=s3` avec `S3_ENDPOINT` (MinIO ou autre S3 compatible) et les buckets
 `documents`, `avatars`, `message-attachments`. Les chemins produits (`documents/<userId>/<ts>-<nom>`)
 sont identiques à ceux de Supabase Storage : les valeurs déjà en base restent résolubles.
 
