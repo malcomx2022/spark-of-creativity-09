@@ -287,6 +287,10 @@ bout** : intention `declined`, transaction `declined`, paiement Domicares `faile
 solde inchangé. S1, S2 et S5 en écart, car toutes les intentions `momo_test` sont refusées avec les
 numéros par défaut ; S6 à S11 en découlent. Dépôts toujours en 403.
 
+Numéros `momo_test` de succès communiqués le 27/10/2026 : `0166000001` et `0164000001` (format à
+10 chiffres du Bénin, soit `+2290166000001` et `+2290164000001`). Ce sont des numéros publics de
+test FedaPay, sans valeur en mode live.
+
 Suite : dès que le support donne un numéro approuvé, relancer avec
 `FEDAPAY_MOMO_TEST_APPROVED=<numéro> FEDAPAY_CAMPAIGN=sandbox npm run campaign:fedapay`, sans modifier
 le code. Le client de production garde `mtn_open`/`moov`.
