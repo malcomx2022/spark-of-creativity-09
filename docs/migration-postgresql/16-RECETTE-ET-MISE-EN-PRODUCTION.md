@@ -226,8 +226,8 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 | # | Tâche | Qui | Dépend de |
 |---|---|---|---|
 | 1 | Supprimer ou rediriger le webhook sandbox n° 1471 (§2.4) | équipe, tableau de bord FedaPay | — |
-| 2 | Support FedaPay : numéros `momo_test` de succès reçus le 27/10 (`0166000001`, `0164000001`) ; restent l'ouverture des dépôts, le contrat `/v1/refunds` et les filtres `/search` | équipe | — |
-| 3 | Rejouer la campagne S1 à S11 avec `FEDAPAY_MOMO_TEST_APPROVED` ; vérifier `/payouts/search` | Claude Code | 2 |
+| 2 | Support FedaPay : numéros `momo_test` de succès reçus le 27/10 (`0166000001`, `0164000001`) ; restent l'ouverture des **dépôts** (S7 : 403) et l'accès à **`/v1/refunds`** sur le compte sandbox (S9 : « Erreur d'authentification ») ; filtres `/search` | équipe | — |
+| 3 | Campagne rejouée le 27/10 avec les numéros reçus (document 09 §4 bis) : S0 à S6, S8, S10 et S12 ok ; écarts S7 (dépôts 403, non ouverts par FedaPay) et S9/S11 (`/v1/refunds` : erreur d'authentification) ; S13 sur la recette | Claude Code, puis équipe pour FedaPay | 2 |
 | 4 | Commander et installer le VPS de recette, DNS `staging` (§2.1, §2.2) | équipe (accès, achat), Claude Code (procédure) | — |
 | 5 | Protection de la recette (§2.5) : modèle livré, à installer avec la recette | équipe | 4 |
 | 6 | Séparer recette et production : **fait** (`RECETTE_AUTO=true`, run 56 en recette, run 57 en production) ; reste à confirmer l'approbation obligatoire de l'environnement `production` | équipe | — |
