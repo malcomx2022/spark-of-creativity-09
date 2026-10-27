@@ -11,7 +11,7 @@ dossier médical, support et back-office.
 | Front web (SPA) | Vite, React, TanStack Query, Tailwind, Socket.IO client | `src/` |
 | API et worker | NestJS 11 (Fastify), Kysely, Socket.IO, jobs planifiés | `api/` |
 | Base de données | PostgreSQL 16, schéma natif consolidé | `db/native/` |
-| Stockage de fichiers | S3 compatible (MinIO sur le VPS, Wasabi possible) | `api/src/storage` |
+| Stockage de fichiers | S3 compatible (MinIO sur le VPS) | `api/src/storage` |
 | Déploiement | Docker Compose + Caddy (TLS automatique) | `deploy/vps/` |
 
 Le front ne parle qu'à l'API (`VITE_API_URL`, défaut `/api`) et au WebSocket Socket.IO

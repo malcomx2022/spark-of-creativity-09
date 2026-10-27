@@ -449,13 +449,21 @@ après le dump : tout fichier référencé par le dump est dans la sauvegarde. R
 alerte à `BACKUP_ALERT_URL`, et le service passe `unhealthy` après 26 h sans réussite.
 
 **Copie hors site chiffrée (à configurer).** Sans elle, une perte du VPS emporte les sauvegardes.
+Stockage retenu : **Cloudflare R2** (S3 compatible, téléchargements gratuits, pas de durée
+minimale de facturation). Le prestataire ne reçoit que des archives chiffrées.
+
+1. Tableau de bord Cloudflare → **R2 Object Storage** → *Create bucket* `domicares-backups`
+   (juridiction UE si proposée). Relever l'**Account ID** (page R2, colonne de droite).
+2. *Manage R2 API Tokens* → *Create API token* : permission **Object Read & Write**, limitée au
+   bucket `domicares-backups`. Relever l'*Access Key ID* et la *Secret Access Key* (affichées une fois).
+3. `no_check_bucket=true` évite que rclone tente de créer le bucket, ce que ce jeton n'autorise pas.
 
 ```bash
 age-keygen -o domicares-backup.key     # SUR VOTRE POSTE, pas sur le VPS
 # Conserver domicares-backup.key hors du VPS (coffre-fort de mots de passe + copie hors ligne).
 # Dans deploy/vps/.env :
 BACKUP_AGE_RECIPIENT=age1…              # ligne « public key » affichée par age-keygen
-BACKUP_OFFSITE_REMOTE=:s3,provider=Wasabi,access_key_id=…,secret_access_key=…,endpoint=s3.eu-central-1.wasabisys.com:domicares-backups
+BACKUP_OFFSITE_REMOTE=:s3,provider=Cloudflare,access_key_id=…,secret_access_key=…,endpoint=<ID_COMPTE>.r2.cloudflarestorage.com,no_check_bucket=true:domicares-backups
 BACKUP_ALERT_URL=https://…              # webhook recevant {"text": "…"}
 docker compose up -d backup             # recharge l'environnement (un restart ne suffit pas)
 ```
@@ -464,6 +472,9 @@ Chaque archive `domicares-<horodatage>.tar.age` est chiffrée pour cette clé pu
 ne peut pas la relire, seule la clé privée le peut. Rétention distante : `BACKUP_OFFSITE_KEEP_DAYS`.
 Une valeur rclone contenant `,` ou `:` se met entre apostrophes dans la chaîne de connexion.
 `preflight.sh` contrôle cette configuration et l'ancienneté de la dernière sauvegarde réussie.
+Contrôle de la copie : `docker compose exec backup sh -c 'rclone --config /dev/null lsl "$BACKUP_OFFSITE_REMOTE"'`
+liste les `domicares-<horodatage>.tar.age` ; déchiffrement d'essai sur le poste :
+`age -d -i domicares-backup.key -o verif.tar <archive>.tar.age`, puis `tar -tf verif.tar`.
 
 **Exercice mensuel (isolé).** Restaure la dernière sauvegarde dans un PostgreSQL et un MinIO
 jetables, sur un réseau docker interne, puis supprime tout. La production n'est pas touchée.
