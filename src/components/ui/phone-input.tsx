@@ -8,6 +8,10 @@ interface PhoneInputProps extends Omit<React.ComponentProps<"input">, "type" | "
   onChange: (value: string) => void;
   countryCode?: string;
   localNumberLength?: number;
+  /** Longueurs locales acceptées (ex. [8, 10]) ; remplace `localNumberLength` quand elle est fournie. */
+  localNumberLengths?: number[];
+  /** Motif du numéro complet (avec +) pour l'indicateur de validité. */
+  validationPattern?: RegExp;
   error?: string;
 }
 
@@ -18,9 +22,14 @@ const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
     onChange, 
     countryCode = "+229",
     localNumberLength = 8,
+    localNumberLengths,
+    validationPattern,
     error,
     ...props 
   }, ref) => {
+    const lengths = localNumberLengths?.length ? [...localNumberLengths].sort((a, b) => a - b) : [localNumberLength];
+    const maxLength = lengths[lengths.length - 1];
+
     // Extract local number from full value
     const localNumber = value.startsWith(countryCode) 
       ? value.slice(countryCode.length) 
@@ -31,8 +40,8 @@ const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
       let inputValue = e.target.value.replace(/[^\d]/g, '');
       
       // Limit to local number length
-      if (inputValue.length > localNumberLength) {
-        inputValue = inputValue.slice(0, localNumberLength);
+      if (inputValue.length > maxLength) {
+        inputValue = inputValue.slice(0, maxLength);
       }
 
       // Always return the full number with country code
@@ -40,10 +49,13 @@ const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
       onChange(fullNumber);
     };
 
-    const isComplete = localNumber.length === localNumberLength;
-    const isValid = isComplete && isValidPhoneNumber(value, { 
+    const isComplete = lengths.includes(localNumber.length);
+    // Longueur attendue pour le compteur : la plus petite longueur encore atteignable.
+    const expectedLength = lengths.find((length) => length >= localNumber.length) ?? maxLength;
+    const isValid = isComplete && isValidPhoneNumber(value, {
       defaultCountryCode: countryCode,
-      localNumberLengths: [localNumberLength]
+      localNumberLengths: lengths,
+      pattern: validationPattern,
     });
 
     return (
@@ -64,7 +76,7 @@ const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
               isComplete && isValid && "border-green-500 focus-visible:ring-green-500",
               className
             )}
-            placeholder={`${"0".repeat(localNumberLength)}`}
+            placeholder={`${"0".repeat(lengths[0])}`}
             {...props}
           />
         </div>
@@ -73,16 +85,16 @@ const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
             "text-muted-foreground",
             error && "text-destructive"
           )}>
-            {error || `Saisissez ${localNumberLength} chiffres sans espaces`}
+            {error || `Saisissez ${lengths.join(' ou ')} chiffres sans espaces`}
           </span>
           <span className={cn(
             "font-medium",
             localNumber.length === 0 && "text-muted-foreground",
-            localNumber.length > 0 && localNumber.length < localNumberLength && "text-orange-500",
+            localNumber.length > 0 && !isComplete && "text-orange-500",
             isComplete && isValid && "text-green-500",
             isComplete && !isValid && "text-destructive"
           )}>
-            {localNumber.length}/{localNumberLength}
+            {localNumber.length}/{expectedLength}
           </span>
         </div>
       </div>

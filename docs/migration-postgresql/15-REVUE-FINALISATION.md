@@ -198,18 +198,22 @@ supprimée après exécution).
 3. **Prérequis non exécutés ici** : suite `storage-s3` contre MinIO **verte en CI** (`api-ci.yml`,
    `S3_TEST_REQUIRED=1`) ; projets Playwright WebKit **exécutés en CI** (`web-ci.yml`, `recette.yml`).
    Reste l'essai Safari sur appareil physique (document 12, point 7), que WebKit ne remplace pas.
-4. **Campagne FedaPay sandbox** : **exécutée le 23 octobre 2026** sur le vrai sandbox (document 09
-   §4 bis, document 08 §8). S0, S3, S4 et S12 ok ; S1, S2, S5 à S11 bloqués par le compte sandbox
-   (seul `momo_test` ouvert, paiements tous refusés, dépôts en 403) ; S13 non couvert. Deux défauts
-   corrigés (#112). Suite : réponse du support FedaPay, puis relance avec un numéro `momo_test` approuvé.
+4. **Campagne FedaPay sandbox** : exécutée le 23 octobre 2026, **rejouée le 27 octobre** avec les numéros
+   `momo_test` du support (document 09 §4 bis) : S0 à S6, S8, S10 et S12 ok. Restent côté FedaPay
+   l'ouverture des dépôts (S7 : 403) et `/v1/refunds` (S9, S11 : erreur d'authentification) ; S13 sur la recette.
 5. **Exploitation (lot 6, document 10 §7)** : **partiel**. Sauvegarde et restauration vertes en CI
-   (`backup-restore.yml`), RPO 24 h / RTO 4 h retenus (document 07 §13). Restent la copie hors site et
-   l'alerte sur le VPS, et un exercice de restauration sur la vraie sauvegarde.
+   (`backup-restore.yml`), RPO 24 h / RTO 4 h retenus (document 07 §13), stockage hors site choisi
+   (Cloudflare R2, #139). Restent sur le VPS la copie hors site et l'alerte, et un exercice de restauration
+   sur la vraie sauvegarde.
 6. ~~**Recette post-livraison du document 14**~~ : automatisée (§16), un défaut corrigé.
    Restent manuelles : la réception réelle du contact et les essais Safari et push sur appareil.
-7. **Environnement de recette** : déployé le 24 octobre 2026 sur le VPS de production (§17). Restent
-   `RECETTE_AUTO=true`, la recette fonctionnelle du document 16 §4 et le webhook FedaPay de recette (S13).
-8. **CI « Recette post-livraison » rouge sur `main`** depuis #118 (§17) : à rétablir avant de s'y fier.
+7. **Environnement de recette** : déployé le 24 octobre 2026 (§17) ; `RECETTE_AUTO=true` depuis le 26/10
+   (fusions en recette, production à la main). Restent la recette fonctionnelle du document 16 §4 et le
+   webhook FedaPay de recette (S13).
+8. ~~**CI « Recette post-livraison » rouge sur `main`**~~ : rétablie (§20 ; runs 72 et 74 `success`, 26 et 27/10).
+9. **Numéros béninois à 10 chiffres** : acceptés dans les widgets de paiement (§21). Hors paiement
+   (inscription, connexion OTP, contacts d'urgence, numéro de reversement), la saisie reste limitée à
+   8 chiffres : décision à prendre (document 16 §7).
 
 ## 5. Reproduire
 
@@ -1109,3 +1113,46 @@ configuration Playwright, pas d'une erreur de `PwaStatus`.
 
 Contrôles : typecheck, 165 tests Vitest, lint (0 avertissement), build, 40 scénarios navigateur Chromium en local ;
 la recette WebKit tourne en CI.
+
+## 21. Numéros à 10 chiffres dans les widgets de paiement — 11 novembre 2026
+
+Point de départ : revue du 11/11 (`main` / `992c397`). Le support FedaPay a fourni le 27/10 des numéros
+`momo_test` au format béninois à 10 chiffres (`0166000001`, `0164000001`), seuls approuvés par le sandbox
+(document 09 §4 bis).
+
+**Défauts constatés.**
+
+- `PhoneInput` coupait toute saisie à 8 chiffres (`localNumberLength={8}`) dans les quatre écrans de
+  paiement (`FedaPayWidget`, `PaymentDialog`, `GroupSessionPaymentWidget`, `RetryGroupSessionPaymentWidget`),
+  alors que l'aide affichée annonçait « Les deux formats sont acceptés : avec ou sans le préfixe 01 » et que
+  l'API accepte `^\+229(01)?\d{8}$` (`payments.dto.ts`, `group-sessions.dto.ts`). Le format à 10 chiffres,
+  en vigueur au Bénin depuis le 30 novembre 2024, ne pouvait pas être saisi : ni les numéros de test
+  approuvés en sandbox, ni les numéros réels au nouveau format une fois en live.
+- L'encadré « Mode Test » et la console (`console.log` au chargement) indiquaient les anciens numéros à
+  8 chiffres, que le sandbox n'approuve pas.
+- Le message d'erreur proposait `+2290101XXXXXXXX` (préfixe doublé) au lieu de `+22901XXXXXXXX`.
+
+**Correction.**
+
+- `src/lib/fedapay-phone.ts` : motif partagé `BENIN_MOBILE_MONEY_PATTERN` (identique à l'API), longueurs
+  locales `[8, 10]` et numéros de test sandbox (approuvés `+229 01 66 00 00 01` / `+229 01 64 00 00 01`,
+  refus constaté `+229 66 00 00 00`).
+- `PhoneInput` : props optionnelles `localNumberLengths` et `validationPattern`. Sans elles, comportement
+  inchangé (inscription, connexion OTP, contacts d'urgence, numéro de reversement restent à 8 chiffres).
+- Les quatre écrans de paiement utilisent ces props et le motif partagé ; l'encadré sandbox passe par
+  `FedaPaySandboxNumbers` ; les `console.log` de numéros de test sont retirés ; message d'erreur corrigé.
+- Aucun changement d'API, de route, de règle FedaPay ni de schéma : `formatPhoneForFedaPay` envoie déjà
+  le numéro sans `+229` (`0166000001`).
+
+**Tests.** `FedaPayWidget.test.tsx` : saisie de `0166000001` → `POST /payments` avec `+2290166000001`,
+widget FedaPay ouvert avec `phone_number.number = 0166000001`, numéros sandbox affichés ; un numéro à
+10 chiffres sans `01` est refusé sans appel. `ui/__tests__/phone-input.test.tsx` : limite à 8 chiffres
+inchangée sans les nouvelles props, saisie à 10 chiffres et coupure au-delà, indicateur invalide sans `01`.
+
+**Contrôles** (11/11/2026, Node 22) : `npx tsc --noEmit -p tsconfig.app.json` ok ; `npm run lint`
+0 erreur, 0 avertissement ; `npm test` **170 tests**, 34 fichiers ; `npm run build` ok. Les scénarios
+Playwright ne saisissent pas de numéro de paiement ; ils tournent en CI.
+
+**Reste.** Paiement sandbox de bout en bout depuis l'interface de la recette avec `+229 01 66 00 00 01`
+(document 16 §4). Hors paiement, accepter aussi les 10 chiffres touche l'identité des comptes (numéros
+enregistrés au format à 8 chiffres, connexion OTP, Twilio) : à décider avant toute modification.

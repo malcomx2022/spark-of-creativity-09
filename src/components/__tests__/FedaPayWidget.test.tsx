@@ -166,3 +166,33 @@ it('fenêtre FedaPay fermée : paiement annulé, aucun succès signalé', async 
   expect(onSuccess).not.toHaveBeenCalled();
   expect(mocks.addPaymentMethod).not.toHaveBeenCalled();
 });
+
+it('accepte un numéro béninois à 10 chiffres (préfixe 01) et affiche les numéros de test sandbox', async () => {
+  mocks.post.mockResolvedValue({ transactionId: '530207', paymentId: 'pay-1' });
+  const { user } = renderWidget();
+  await waitFor(() => expect(screen.getByLabelText('Nom complet *')).toHaveValue('Awa Patiente'));
+  const sandboxItem = (text: string) => (_: string, el: Element | null) => el?.tagName === 'LI' && (el.textContent ?? '').includes(text);
+  expect(await screen.findByText(sandboxItem('MTN succès : +229 01 66 00 00 01'))).toBeInTheDocument();
+  expect(screen.getByText(sandboxItem('Moov succès : +229 01 64 00 00 01'))).toBeInTheDocument();
+
+  const phone = screen.getByLabelText('Numéro de téléphone *');
+  await user.clear(phone);
+  await user.type(phone, '0166000001');
+  expect(phone).toHaveValue('0166000001');
+  await user.click(screen.getByRole('button', { name: /^Payer/ }));
+
+  await waitFor(() => expect(mocks.init).toHaveBeenCalled());
+  expect(mocks.post).toHaveBeenCalledWith('/payments', expect.objectContaining({ phoneNumber: '+2290166000001' }), { timeoutMs: 60_000 });
+  expect(initOptions().customer).toMatchObject({ phone_number: { number: '0166000001', country: 'bj' } });
+});
+
+it("refuse un numéro à 10 chiffres sans le préfixe 01 sans appeler l'API", async () => {
+  const { user } = renderWidget();
+  await waitFor(() => expect(screen.getByLabelText('Nom complet *')).toHaveValue('Awa Patiente'));
+  const phone = screen.getByLabelText('Numéro de téléphone *');
+  await user.clear(phone);
+  await user.type(phone, '9966000001');
+  await user.click(screen.getByRole('button', { name: /^Payer/ }));
+  expect(mocks.post).not.toHaveBeenCalled();
+  expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Erreur', variant: 'destructive' }));
+});

@@ -3,6 +3,10 @@
 > **27 octobre 2026 : projet en phase de validation.** Import des données réelles validé ;
 > projets Supabase et Lovable supprimés ; restent la validation fonctionnelle (§4), l'exploitation
 > (sauvegarde hors site, restauration, alerte) et l'ouverture des paiements réels (§5.2), voir §6.
+>
+> **11 novembre 2026 : point complet** (§1, dernière ligne, et §6 réordonné par priorité). Code sans
+> défaut P1/P2 ouvert ; production en retard sur `main` (`4bd6d71` contre `992c397`) ; actions restantes
+> surtout sur le VPS et chez FedaPay.
 
 Processus complet pour créer la recette, faire passer chaque version de la recette à la production,
 ouvrir les paiements réels, et liste de ce qui reste pour terminer le projet. Les procédures
@@ -22,6 +26,7 @@ détaillées existantes sont référencées plutôt que recopiées (documents 04
 | Webhook FedaPay | Le webhook **sandbox** n° 1471 vise la production et échoue (désactivé par FedaPay) ; la production ne reçoit donc aucun webhook et dépend de `payments.sync` | courriel FedaPay du 23 octobre, document 09 §4 bis |
 | Campagne sandbox | S0, S3, S4, S12 ok ; S1, S2, S5 à S11 bloqués côté compte FedaPay ; S13 non couvert | document 09 §4 bis |
 | Données réelles | Import Supabase définitif **validé** par l'équipe (27/10) ; archive finale chiffrée conservée hors dépôt ; projets **Supabase et Lovable supprimés** le 27/10 | document 10 §7 (« Données réelles et clôture Supabase / Lovable ») |
+| Point du 11 novembre | `main` = `992c397` ; contrôles locaux verts (front : typecheck, lint 0 avertissement, 165 tests, build ; API : typecheck, 178 tests unitaires, build) ; `deploy-vps.yml` run 63 et `recette.yml` run 74 `success` ; `supervision.yml` vert toute la journée ; aucune PR ouverte. **Production à `4bd6d71`** (dernier déploiement de production consigné : run 57, 26/10 ; à confirmer par `git log -1` sur le VPS) : avec `RECETTE_AUTO=true`, les fusions #133 à #139 (runs 58 à 63) sont parties en recette, dont du code Academy (`akambi-ping.ts`, `academy-sync`, `akambi.client`). Défaut relevé et corrigé : saisie des numéros à 10 chiffres impossible dans les widgets de paiement (document 15 §21) | runs GitHub du 11/11 ; `git diff --stat 4bd6d71 992c397` |
 
 Conséquence : toute fusion part directement en production, sans étape de validation. La recette
 s'insère entre `main` et la production.
@@ -223,25 +228,50 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 
 ## 6. Ce qui reste pour terminer le projet
 
+Mis à jour le 11 novembre 2026, par ordre de priorité. Commandes pas à pas des tâches 1 à 10 :
+`17-FICHE-COMMANDES-VPS.md`. Les lignes « fait » de l'ancienne liste sont
+regroupées en fin de section.
+
+**Priorité 1 : sécurité et données (la production contient les données réelles).**
+
 | # | Tâche | Qui | Dépend de |
 |---|---|---|---|
-| 1 | Supprimer ou rediriger le webhook sandbox n° 1471 (§2.4) | équipe, tableau de bord FedaPay | — |
-| 2 | Support FedaPay : numéros `momo_test` de succès reçus le 27/10 (`0166000001`, `0164000001`) ; restent l'ouverture des **dépôts** (S7 : 403) et l'accès à **`/v1/refunds`** sur le compte sandbox (S9 : « Erreur d'authentification ») ; filtres `/search` | équipe | — |
-| 3 | Campagne rejouée le 27/10 avec les numéros reçus (document 09 §4 bis) : S0 à S6, S8, S10 et S12 ok ; écarts S7 (dépôts 403, non ouverts par FedaPay) et S9/S11 (`/v1/refunds` : erreur d'authentification) ; S13 sur la recette | Claude Code, puis équipe pour FedaPay | 2 |
-| 4 | Commander et installer le VPS de recette, DNS `staging` (§2.1, §2.2) | équipe (accès, achat), Claude Code (procédure) | — |
-| 5 | Protection de la recette (§2.5) : modèle livré, à installer avec la recette | équipe | 4 |
-| 6 | Séparer recette et production : **fait** (`RECETTE_AUTO=true`, run 56 en recette, run 57 en production) ; reste à confirmer l'approbation obligatoire de l'environnement `production` | équipe | — |
-| 7 | S13 et paiement sandbox de bout en bout sur la recette | équipe et Claude Code | 1, 4 |
-| 8 | Import définitif des données Supabase : **fait** (confirmé le 26/10) | équipe | — |
-| 9 | Exploitation : sauvegarde quotidienne, copie hors site chiffrée, exercice de restauration sur le VPS, objectifs RPO/RTO | équipe et Claude Code | 4 pour l'exercice |
-| 10 | Supervision : sondes externe et interne en service (crontab installé, premier passage 18:45 UTC le 26/10, secret `SUPERVISION_ALERT_URL` lu) ; reste l'essai d'alerte (document 07 §14) | équipe | — |
-| 11 | Validations manuelles : Safari iPhone, push sur téléphone réel, réception du contact | équipe | 4 |
-| 12 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis passage en production | équipe et Akambi | 4 |
-| 13 | Paiements réels (§5.2) | équipe, avec Claude Code | 3, 7 |
-| 14 | Clôture : **faite** le 27/10 (archive finale chiffrée, projets Supabase et Lovable supprimés) ; reste à retirer l'accès de l'application Lovable au dépôt GitHub s'il subsiste, et à faire tourner les clés FedaPay, Twilio et Resend autrefois copiées chez ces prestataires | équipe | — |
+| 1 | Incident du 26/10 (document 10 §7) : contrôler dans le tableau de bord FedaPay **live** l'absence de transaction entre 18:14 et 18:19 UTC ; vérifier qu'une seule ligne `FEDAPAY_MODE=` subsiste dans le `.env` de production | équipe | — |
+| 2 | Copie hors site chiffrée sur Cloudflare R2 (document 07 §13) : bucket `domicares-backups` et jeton limité, clé `age` générée sur un poste, `BACKUP_AGE_RECIPIENT`, `BACKUP_OFFSITE_REMOTE`, `BACKUP_ALERT_URL` dans le `.env` de production, `docker compose up -d backup`, contrôle `rclone lsl` et déchiffrement d'essai | équipe | — |
+| 3 | Premier exercice `restore-drill.sh` sur la vraie sauvegarde, durée mesurée et comparée au RTO de 4 h | équipe et Claude Code | 2 conseillé |
+| 4 | Essai d'alerte de la supervision (document 07 §14) : `docker compose stop worker`, message Discord, puis « supervision rétablie » | équipe | — |
+| 5 | Droits du dossier `deploy/vps/backups` du clone de recette (`.app-version: Permission denied`, document 10 §7) | équipe | — |
+
+**Priorité 2 : chaîne recette → production.**
+
+| # | Tâche | Qui | Dépend de |
+|---|---|---|---|
+| 6 | « Required reviewers » sur l'environnement GitHub `production` (§3, réglage 2) | équipe | — |
+| 7 | Webhook sandbox n° 1471 redirigé vers la recette, secret dans le `.env` de recette, `docker compose up -d api` (§2.4) | équipe, tableau de bord FedaPay | — |
+| 8 | Recette fonctionnelle du §4 depuis un poste autorisé, dont le paiement sandbox depuis l'interface avec `+229 01 66 00 00 01` et S13 | équipe et Claude Code | 7 |
+| 9 | Validations manuelles : Safari iPhone, PWA installée, push sur téléphone réel, réception du contact (`contact-check.sh --via-site`) | équipe | — |
+| 10 | Déployer en production le SHA validé en recette (au moins `992c397`, plus la PR des numéros à 10 chiffres) ; contrôles du §5.1 (conteneurs `vps-*`, `git log -1` du clone, FedaPay `sandbox`) | équipe | 6, 8 |
+
+**Priorité 3 : fin de chantier.**
+
+| # | Tâche | Qui | Dépend de |
+|---|---|---|---|
+| 11 | Rotation des clés FedaPay, Twilio et Resend autrefois copiées chez Supabase/Lovable (sans toucher `PHONE_ENCRYPTION_KEY` ni VAPID) ; vérifier que l'application Lovable n'a plus accès au dépôt GitHub | équipe | — |
+| 12 | Support FedaPay : ouverture des **dépôts** (S7 : 403) et accès à **`/v1/refunds`** (S9, S11) sur le compte sandbox, puis relance de la campagne (document 09 §4 bis) | équipe, puis Claude Code | — |
+| 13 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis production | équipe et Akambi | — |
+| 14 | Paiements réels (§5.2) | équipe, avec Claude Code | 1, 7, 8, 12 |
+
+**Faits** : séparation recette / production (`RECETTE_AUTO=true`, runs 56 et 57) ; import définitif des
+données (26-27/10) ; clôture Supabase et Lovable (27/10) ; numéros `momo_test` reçus et campagne rejouée
+(27/10) ; stockage hors site choisi (Cloudflare R2, #139) ; supervision externe et interne en service ;
+saisie des numéros à 10 chiffres dans les widgets de paiement (11/11, document 15 §21).
 
 ## 7. Décisions à prendre
 
 - ~~Hébergeur et taille du VPS de recette (§2.1)~~ : réglé, recette sur le VPS de production (§2.6).
 - Compte Twilio de la recette : le même service Verify que la production, ou un service séparé.
 - Date cible d'ouverture des paiements réels, une fois les prérequis du §5.2 remplis.
+- Numéros à 10 chiffres hors paiement (inscription, connexion OTP, contacts d'urgence, numéro de
+  reversement) : la saisie y reste limitée à 8 chiffres. Les accepter touche l'identité des comptes
+  (numéros enregistrés à 8 chiffres, recherche du compte à la connexion OTP, Twilio) : choisir entre
+  accepter les deux formats avec correspondance, ou migrer les numéros enregistrés (document 15 §21).

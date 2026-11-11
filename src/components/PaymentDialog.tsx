@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { FedaPaySandboxNumbers } from '@/components/FedaPaySandboxNumbers';
+import { BENIN_LOCAL_NUMBER_LENGTHS, BENIN_MOBILE_MONEY_PATTERN } from '@/lib/fedapay-phone';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -641,7 +643,7 @@ export function PaymentDialog({
       setIsCreatingPayment(false);
       toast({
         title: 'Erreur',
-        description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX',
+        description: 'Numéro de téléphone invalide. Format attendu: +229 XXXXXXXX ou +229 01 XX XX XX XX',
         variant: 'destructive',
       });
       return;
@@ -1395,11 +1397,7 @@ export function PaymentDialog({
             <AlertTriangle className="h-4 w-4 text-primary" />
             <AlertDescription className="text-sm">
               <p className="font-semibold mb-2">Mode Test - Utilisez ces numéros :</p>
-              <ul className="space-y-1 text-xs">
-                <li>✅ <strong>MTN succès:</strong> +229 66 00 00 01</li>
-                <li>✅ <strong>MOOV succès:</strong> +229 64 00 00 01</li>
-                <li>❌ <strong>Échec simulé:</strong> +229 66 00 00 00 ou +229 64 00 00 00</li>
-              </ul>
+              <FedaPaySandboxNumbers />
               <p className="mt-2 text-xs text-muted-foreground">
                 Les vrais numéros ne fonctionnent pas en mode test.
               </p>
@@ -1523,7 +1521,8 @@ export function PaymentDialog({
                     value={phoneNumber}
                     onChange={(value) => setPhoneNumber(value)}
                     countryCode="+229"
-                    localNumberLength={8}
+                    localNumberLengths={BENIN_LOCAL_NUMBER_LENGTHS}
+                    validationPattern={BENIN_MOBILE_MONEY_PATTERN}
                   />
                   <p className="text-sm text-muted-foreground">
                     Les deux formats sont acceptés : avec ou sans le préfixe 01

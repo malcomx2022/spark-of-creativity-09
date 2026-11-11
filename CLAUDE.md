@@ -16,7 +16,8 @@ document 10 distingue les contrôles CI, la livraison et les travaux d’exploit
 dans le PostgreSQL du VPS (import validé par l'équipe), la production tourne sur la pile native et
 FedaPay reste en sandbox jusqu'à l'ouverture des paiements réels (document 16, §5.2). Les projets
 Supabase et Lovable sont **supprimés** (archive finale chiffrée conservée hors dépôt). Le suivi
-de la validation et de la mise en exploitation est au document 16, §6, et au document 10, §7.
+de la validation et de la mise en exploitation est au document 16, §6 (point du 11 novembre 2026,
+par priorité), et au document 10, §7 et §8.
 
 Les demandes explicites de l'utilisateur priment sur ces consignes. Respecter les
 modifications locales et limiter chaque changement au lot demandé.

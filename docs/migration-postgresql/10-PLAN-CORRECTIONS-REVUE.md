@@ -235,7 +235,7 @@ Un lot peut être implémenté sans être validé ; une recette sandbox n'est pa
 | 3 | Validé localement | Requêtes concurrentes PostgreSQL | Refresh : un succès, famille révoquée ; reset/email : un consommateur | Web Locks entre onglets lorsqu'il est disponible |
 | 4 | Validé localement | E2e Socket.IO + test unitaire LISTEN | Expiration, retrait de rôle, suspension, reconnexion ; aucun listener dupliqué | Réévaluation toutes les 5 s par défaut, hors durée des requêtes DB |
 | 5 | Validé localement | MinIO réel + tests API | Taille signée, quarantaine, validation, publication stable et purge | Droits HEAD/GET/PUT/DELETE/LIST nécessaires |
-| 6 | Partiel : sauvegarde/restauration validées localement **et en CI** ; lint global bloquant ; chaîne recette → production active depuis le 26/10 (`RECETTE_AUTO=true`, production redéployée au run 57) | `backup.sh`, `restore-check.sh`, `restore-drill.sh`, cible `backup` de `minio.Dockerfile` ; PR #122, #123, #124 | `backup-restore.yml` vert sur `main` (runs 9, 11 et 13 du 23/10) ; `npm run lint` = `eslint . --max-warnings 0`, 0 erreur, 0 avertissement ; `deploy-vps.yml` runs 37 à 47 `success` (§7) | Copie hors site et alerte à configurer dans le `.env` du VPS ; premier exercice sur la vraie sauvegarde à consigner ; RPO 24 h / RTO 4 h retenus (document 07 §13), durée réelle à mesurer par cet exercice ; `RECETTE_AUTO` à activer ; recette fonctionnelle (document 16 §4) à jouer |
+| 6 | Partiel : sauvegarde/restauration validées localement **et en CI** ; lint global bloquant ; chaîne recette → production active depuis le 26/10 (`RECETTE_AUTO=true`, production redéployée au run 57) | `backup.sh`, `restore-check.sh`, `restore-drill.sh`, cible `backup` de `minio.Dockerfile` ; PR #122, #123, #124 | `backup-restore.yml` vert sur `main` (runs 9, 11 et 13 du 23/10) ; `npm run lint` = `eslint . --max-warnings 0`, 0 erreur, 0 avertissement ; `deploy-vps.yml` runs 37 à 47 `success` (§7) | Copie hors site et alerte à configurer dans le `.env` du VPS ; premier exercice sur la vraie sauvegarde à consigner ; RPO 24 h / RTO 4 h retenus (document 07 §13), durée réelle à mesurer par cet exercice ; stockage hors site retenu : Cloudflare R2 (#139) ; `RECETTE_AUTO=true` depuis le 26/10 ; recette fonctionnelle (document 16 §4) à jouer. Point du 11/11 : §8 |
 
 ## 6. Livraison applicative du 6 octobre 2026
 
@@ -314,3 +314,17 @@ par `fedapay-mode.sh live` (document 16 §5.2) ; `supervision.yml` (`SUPERVISION
 signale désormais tout mode inattendu au passage suivant (toutes les 15 minutes en principe, 20 à 30 minutes
 constatées). La production contenant les données réelles (import définitif confirmé le 26/10), un
 paiement réel était possible pendant la fenêtre : la vérification FedaPay live reste prioritaire.
+
+## 8. Point du lot 6 — 11 novembre 2026
+
+Aucun changement d'exploitation constaté depuis le 27/10 (pas de nouvelle déclaration de l'équipe) ;
+les volets restants du §7 sont donc toujours ouverts. Liste ordonnée : document 16 §6.
+
+| Volet | État au 11/11 | Preuve | Reste |
+|---|---|---|---|
+| Supervision externe | En service | `supervision.yml` : tous les passages du 11/11 `success` (runs 1455 à 1484, SHA `992c397`) | essai d'alerte réel |
+| Chaîne de déploiement | Recette à `992c397` ; production au dernier déploiement consigné, `4bd6d71` (run 57) | `deploy-vps.yml` run 63 `success` (27/10) ; `recette.yml` run 74 `success` | déployer en production le SHA validé en recette ; « Required reviewers » de `production` |
+| Sauvegarde hors site | Stockage choisi (Cloudflare R2), **non configuré** sur le VPS d'après le suivi | #139, document 07 §13 | bucket, jeton, clé `age`, variables du `.env`, contrôle `rclone lsl`, déchiffrement d'essai |
+| Exercice de restauration | **À faire** | — | `restore-drill.sh` sur la vraie sauvegarde, durée mesurée |
+| Incident FedaPay du 26/10 | Vérification **ouverte** | §7 | tableau de bord FedaPay live (18:14 à 18:19 UTC) et ligne unique `FEDAPAY_MODE=` |
+| Sauvegarde de recette | Défaut `.app-version` toujours ouvert | §7 | droits de `deploy/vps/backups` dans le clone de recette |

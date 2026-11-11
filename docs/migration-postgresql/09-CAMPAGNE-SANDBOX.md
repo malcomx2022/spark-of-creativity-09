@@ -313,6 +313,10 @@ non versionné) :
 | S12 | ok | réconciliation : 4 rapprochées, 1 anomalie de campagne expliquée (reste remboursé hors FedaPay) |
 | S13 | non couvert | exige une URL publique (recette) |
 
+Depuis le 11/11/2026, les widgets de paiement acceptent la saisie de ces numéros à 10 chiffres et les
+affichent dans l'encadré « Mode Test » (document 15 §21) : le paiement sandbox peut se faire depuis
+l'interface de la recette avec `+229 01 66 00 00 01` (MTN) ou `+229 01 64 00 00 01` (Moov).
+
 Les numéros reçus débloquent tout le parcours d'encaissement (S1, S2, S5, S6). Restent du côté
 FedaPay : l'ouverture des dépôts (S7) et le contrat `/v1/refunds` sur le compte sandbox (S9, S11).
 Domicares se comporte comme prévu sur ces refus (502, aucune écriture, reversement `failed`).

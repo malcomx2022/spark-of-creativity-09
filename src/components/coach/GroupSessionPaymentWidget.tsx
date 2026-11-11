@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { FedaPaySandboxNumbers } from '@/components/FedaPaySandboxNumbers';
+import { BENIN_LOCAL_NUMBER_LENGTHS, BENIN_MOBILE_MONEY_PATTERN } from '@/lib/fedapay-phone';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -306,11 +308,10 @@ export function GroupSessionPaymentWidget({
     }
 
     // Validation regex côté frontend
-    const phoneRegex = /^\+229(01)?\d{8}$/;
-    if (!phoneRegex.test(sanitizedPhoneNumber)) {
+    if (!BENIN_MOBILE_MONEY_PATTERN.test(sanitizedPhoneNumber)) {
       toast({
         title: 'Erreur',
-        description: 'Format de numéro invalide. Utilisez +229XXXXXXXX ou +2290101XXXXXXXX',
+        description: 'Format de numéro invalide. Utilisez +229XXXXXXXX ou +22901XXXXXXXX',
         variant: 'destructive',
       });
       return;
@@ -629,11 +630,7 @@ export function GroupSessionPaymentWidget({
             <AlertTriangle className="h-4 w-4 text-primary" />
             <AlertDescription className="text-sm">
               <p className="font-semibold mb-2">Mode Test - Utilisez ces numéros :</p>
-              <ul className="space-y-1 text-xs">
-                <li>✅ <strong>MTN succès:</strong> +229 66 00 00 01</li>
-                <li>✅ <strong>MOOV succès:</strong> +229 64 00 00 01</li>
-                <li>❌ <strong>Échec simulé:</strong> +229 66 00 00 00 ou +229 64 00 00 00</li>
-              </ul>
+              <FedaPaySandboxNumbers />
             </AlertDescription>
           </Alert>
         )}
@@ -769,7 +766,8 @@ export function GroupSessionPaymentWidget({
                   value={phoneNumber}
                   onChange={(value) => setPhoneNumber(value)}
                   countryCode="+229"
-                  localNumberLength={8}
+                  localNumberLengths={BENIN_LOCAL_NUMBER_LENGTHS}
+                  validationPattern={BENIN_MOBILE_MONEY_PATTERN}
                   disabled={isProcessing}
                 />
               </div>

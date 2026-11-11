@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { FedaPaySandboxNumbers } from '@/components/FedaPaySandboxNumbers';
+import { BENIN_LOCAL_NUMBER_LENGTHS, BENIN_MOBILE_MONEY_PATTERN } from '@/lib/fedapay-phone';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Calendar, Clock } from 'lucide-react';
@@ -67,13 +69,7 @@ export function RetryGroupSessionPaymentWidget({
         setFedapayConfig(data);
 
         // ✅ Bug #1 FIX: NE PAS pré-remplir le numéro de test - même en sandbox
-        // Les numéros de test sont documentés dans les logs console seulement
-        if (data?.environment === 'sandbox') {
-          console.log('🧪 MODE SANDBOX - Numéros de test disponibles:');
-          console.log('   ✅ MTN succès: +229 66 00 00 01');
-          console.log('   ✅ MOOV succès: +229 64 00 00 01');
-          console.log('   ❌ Échec simulé: +229 66 00 00 00 ou +229 64 00 00 00');
-        }
+        // Les numéros de test sont affichés dans l'encadré « Mode Test » (FedaPaySandboxNumbers)
       } catch (error) {
         console.error('Failed to load FedaPay config:', error);
         toast({
@@ -306,10 +302,7 @@ export function RetryGroupSessionPaymentWidget({
             <AlertTriangle className="h-4 w-4 text-primary" />
             <AlertDescription className="text-sm">
               <p className="font-semibold mb-2">Mode Test</p>
-              <ul className="space-y-1 text-xs">
-                <li>✅ MTN succès: +229 66 00 00 01</li>
-                <li>✅ MOOV succès: +229 64 00 00 01</li>
-              </ul>
+              <FedaPaySandboxNumbers showDeclined={false} />
             </AlertDescription>
           </Alert>
         )}
@@ -357,7 +350,8 @@ export function RetryGroupSessionPaymentWidget({
                   value={phoneNumber}
                   onChange={(value) => setPhoneNumber(value)}
                   countryCode="+229"
-                  localNumberLength={8}
+                  localNumberLengths={BENIN_LOCAL_NUMBER_LENGTHS}
+                  validationPattern={BENIN_MOBILE_MONEY_PATTERN}
                   disabled={isRetrying}
                 />
               </div>

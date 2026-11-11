@@ -36,13 +36,16 @@ Les consignes de `../CLAUDE.md` s'appliquent. Plan actif :
   refresh concurrent et erreurs d'envoi réelles lorsque ces parcours changent.
 - Faire passer typecheck, tests et build ; relever les erreurs lint restantes avec leur périmètre.
 
-Validation du chantier : 162 tests front (dont paiement, rendez-vous et fin de consultation
+Validation du chantier : 170 tests front (dont paiement, rendez-vous et fin de consultation
 dans `components/__tests__/`) ; typecheck/build réussis. `@hookform/resolvers` 5 est requis avec zod 4. Le lint actif
 est bloquant en CI : zéro erreur et zéro avertissement (`--max-warnings 0`). Les archives
 Supabase et les artefacts sont explicitement exclus, sans modifier leurs fichiers.
 Ne pas ajouter des dépendances d'effets de paiement sans vérifier leurs déclenchements :
 un rappel FedaPay lit les dernières props via `useLatest` (hooks/useLatest.ts), l'effet garde
 ses déclencheurs. Variants, hooks et contextes vivent hors des fichiers de composants (Fast Refresh).
+Téléphone de paiement : les quatre écrans FedaPay passent `localNumberLengths` et `validationPattern`
+de `lib/fedapay-phone.ts` à `PhoneInput` (8 ou 10 chiffres, motif identique à l'API) ; les autres
+champs téléphone restent à 8 chiffres tant que la décision du document 16 §7 n'est pas prise.
 
 - Cible minimale : Safari/iOS 16.4 (Tailwind 4). Conserver `dvh`, les zones sûres,
   les champs mobiles ≥16 px, et la détection iPadOS avec agent utilisateur de Mac.
