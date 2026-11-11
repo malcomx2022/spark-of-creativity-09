@@ -228,7 +228,8 @@ Retour arrière : `fedapay-mode.sh sandbox` (document 09 §5).
 
 ## 6. Ce qui reste pour terminer le projet
 
-Mis à jour le 11 novembre 2026, par ordre de priorité. Les lignes « fait » de l'ancienne liste sont
+Mis à jour le 11 novembre 2026, par ordre de priorité. Commandes pas à pas des tâches 1 à 10 :
+`17-FICHE-COMMANDES-VPS.md`. Les lignes « fait » de l'ancienne liste sont
 regroupées en fin de section.
 
 **Priorité 1 : sécurité et données (la production contient les données réelles).**
