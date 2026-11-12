@@ -27,6 +27,7 @@ détaillées existantes sont référencées plutôt que recopiées (documents 04
 | Campagne sandbox | S0, S3, S4, S12 ok ; S1, S2, S5 à S11 bloqués côté compte FedaPay ; S13 non couvert | document 09 §4 bis |
 | Données réelles | Import Supabase définitif **validé** par l'équipe (27/10) ; archive finale chiffrée conservée hors dépôt ; projets **Supabase et Lovable supprimés** le 27/10 | document 10 §7 (« Données réelles et clôture Supabase / Lovable ») |
 | Point du 11 novembre | `main` = `992c397` ; contrôles locaux verts (front : typecheck, lint 0 avertissement, 165 tests, build ; API : typecheck, 178 tests unitaires, build) ; `deploy-vps.yml` run 63 et `recette.yml` run 74 `success` ; `supervision.yml` vert toute la journée ; aucune PR ouverte. **Production à `4bd6d71`** (dernier déploiement de production consigné : run 57, 26/10 ; à confirmer par `git log -1` sur le VPS) : avec `RECETTE_AUTO=true`, les fusions #133 à #139 (runs 58 à 63) sont parties en recette, dont du code Academy (`akambi-ping.ts`, `academy-sync`, `akambi.client`). Défaut relevé et corrigé : saisie des numéros à 10 chiffres impossible dans les widgets de paiement (document 15 §21) | runs GitHub du 11/11 ; `git diff --stat 4bd6d71 992c397` |
+| CI et recette du 12 novembre | `main` = `bd9cd80` (#141, webhook tardif sur paiement annulé, après #140). CI verte sur `eb8130b` (#140) après deux échecs d'infrastructure à l'installation des navigateurs (miroirs apt, puis paquet `libsoup-3.0` absent chez Ubuntu ; tentative 3 verte) et sur `bd9cd80` dès le premier passage (API CI, Web CI, Recette post-livraison). Recette déployée à `bd9cd80` (`deploy-vps.yml` run 65, santé 200). Production toujours au dernier déploiement consigné, `4bd6d71` | document 10 §8, ligne « CI sur `main` » |
 
 Conséquence : toute fusion part directement en production, sans étape de validation. La recette
 s'insère entre `main` et la production.
@@ -250,7 +251,7 @@ regroupées en fin de section.
 | 7 | Webhook sandbox n° 1471 redirigé vers la recette, secret dans le `.env` de recette, `docker compose up -d api` (§2.4) | équipe, tableau de bord FedaPay | — |
 | 8 | Recette fonctionnelle du §4 depuis un poste autorisé, dont le paiement sandbox depuis l'interface avec `+229 01 66 00 00 01` et S13 | équipe et Claude Code | 7 |
 | 9 | Validations manuelles : Safari iPhone, PWA installée, push sur téléphone réel, réception du contact (`contact-check.sh --via-site`) | équipe | — |
-| 10 | Déployer en production le SHA validé en recette (au moins `992c397`, plus la PR des numéros à 10 chiffres) ; contrôles du §5.1 (conteneurs `vps-*`, `git log -1` du clone, FedaPay `sandbox`) | équipe | 6, 8 |
+| 10 | Déployer en production le SHA validé en recette (`bd9cd80` au 12/11 : CI verte, en recette ; il inclut #140 et #141) ; contrôles du §5.1 (conteneurs `vps-*`, `git log -1` du clone, FedaPay `sandbox`) | équipe | 6, 8 |
 
 **Priorité 3 : fin de chantier.**
 
