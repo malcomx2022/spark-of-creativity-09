@@ -455,7 +455,21 @@ export class PaymentsService {
       if (!this.transferHandler) return { handled: false, reason: 'transfer_handler_missing' };
       return this.transferHandler({ transferId: transactionId, status, eventType, payload });
     }
-    return this.transition(null, normalizeStatus(status), status, `webhook:${eventType}`, transactionId);
+    // `transaction.deleted` porte le dernier statut connu de la transaction (souvent « pending ») : c'est
+    // l'événement qui fait foi, la transaction n'est plus payable.
+    const newStatus = eventType === 'transaction.deleted' ? 'canceled' : normalizeStatus(status);
+    try {
+      return await this.transition(null, newStatus, status, `webhook:${eventType}`, transactionId);
+    } catch (err) {
+      // Transaction inconnue ici : celle qu'une création refusée (paiement ouvert, index unique) a annulée
+      // chez FedaPay avant tout enregistrement, ou un événement arrivé avant l'insertion. Sans argent
+      // encaissé, rien à faire : l'ignorer évite cinq rejeux puis une alerte finance sans objet. Un
+      // encaissement ou un remboursement inconnu reste une erreur, rejouée puis signalée.
+      if (err instanceof NotFoundException && !['paid', 'refunded', 'partially_refunded', 'chargeback'].includes(newStatus)) {
+        return { handled: false, reason: 'unknown_transaction', transactionId, status: newStatus };
+      }
+      throw err;
+    }
   }
 
   /** Enregistré par FinanceService (évite la dépendance circulaire payments ↔ finance). */
@@ -544,6 +558,12 @@ export class PaymentsService {
       }
 
       if (payment.status === newStatus) return { paymentId: payment.id, status: newStatus, changed: false };
+      if (FINAL_STATUSES.includes(payment.status) && OPEN_STATUSES.includes(newStatus)) {
+        // Un paiement terminé (annulé, échoué…) ne redevient pas ouvert sur un événement tardif : le
+        // `transaction.deleted` d'un paiement remplacé le remettait « pending » et bloquait la nouvelle tentative.
+        await this.logEvent(trx, payment.id, 'payment.status.ignored', { from: payment.status, to: newStatus, fedapay_status: fedapayStatus, source });
+        return { paymentId: payment.id, status: payment.status, changed: false, ignored: true };
+      }
       if (['paid', 'partially_refunded'].includes(payment.status) && !['refunded', 'partially_refunded', 'chargeback'].includes(newStatus)) {
         // Un paiement payé ne redevient pas pending/failed sur un événement tardif.
         await this.logEvent(trx, payment.id, 'payment.status.ignored', { from: payment.status, to: newStatus, fedapay_status: fedapayStatus, source });
@@ -569,7 +589,11 @@ export class PaymentsService {
       const hold = newStatus === 'paid' ? holdUntil(await this.holdPeriodDays(trx)) : payment.hold_until;
       await this.applyStatus(trx, payment, newStatus, payoutStatus, practitionerId, hold);
       await this.logEvent(trx, payment.id, `payment.${newStatus}`, { from: payment.status, fedapay_status: fedapayStatus, source, transaction_id: payment.fedapay_transaction_id });
-      await trx.updateTable('payment_attempts').set({ status: newStatus === 'paid' ? 'success' : 'failed', completed_at: new Date() }).where('payment_id', '=', payment.id).where('status', '=', 'pending').execute();
+      // La tentative ne se termine qu'avec le paiement : un passage à « pending » (webhook transaction.created)
+      // la marquait en échec dès sa création.
+      if (FINAL_STATUSES.includes(newStatus)) {
+        await trx.updateTable('payment_attempts').set({ status: newStatus === 'paid' ? 'success' : 'failed', completed_at: new Date() }).where('payment_id', '=', payment.id).where('status', '=', 'pending').execute();
+      }
 
       if (newStatus === 'paid' && ref && session) {
         // Séance de groupe : la place est confirmée ; current_participants = inscrits payés.
