@@ -453,4 +453,46 @@ describe('Appointments & payments (e2e)', () => {
     expect(of(abandoned.paymentId)).toEqual([]);
     expect(of(active.paymentId)).toEqual([expect.objectContaining({ type: 'missing_in_fedapay', db_status: 'initiated' })]);
   });
+
+  it('webhook tardif : le transaction.deleted d’un paiement remplacé ne le rouvre pas et ne bloque pas la nouvelle tentative', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/appointments', headers: auth('patient'), payload: { practitionerId, specialty: 'Généraliste', date: futureDate(17), time: '10:00', reason: 'Webhook tardif' } });
+    const id = created.json().id;
+    const first = await app.inject({ method: 'POST', url: `/api/appointments/${id}/respond`, headers: auth('practitioner'), payload: { action: 'accept', paymentMethod: 'mtn' } });
+    const payA = first.json().paymentId as string;
+    const txA = first.json().transactionId as string;
+    const attemptOf = (paymentId: string) => db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payment_attempts').select('status').where('payment_id', '=', paymentId).executeTakeFirstOrThrow());
+    const statusOf = (paymentId: string) => db.runAs({ role: 'service_role' }, (trx) => trx.selectFrom('payments').select('status').where('id', '=', paymentId).executeTakeFirstOrThrow());
+
+    // transaction.created (pending) : le paiement passe « pending », la tentative reste en cours.
+    const pending = await webhook({ id: `evt-${tag}-late-created`, name: 'transaction.created', entity: { id: txA, status: 'pending' } });
+    expect(pending.json()).toMatchObject({ status: 'pending', changed: true });
+    expect((await attemptOf(payA)).status).toBe('pending');
+
+    // Au-delà du délai de blocage, une nouvelle demande remplace le paiement A.
+    await db.runAs({ role: 'service_role' }, (trx) => trx.updateTable('payments').set({ created_at: new Date(Date.now() - 60 * 60_000) }).where('id', '=', payA).execute());
+    const second = await app.inject({ method: 'POST', url: '/api/payments', headers: auth('patient'), payload: { appointmentId: id, paymentMethod: 'mtn', phoneNumber: patientPhone, payerName: 'User patient' } });
+    expect(second.statusCode).toBe(201);
+    const payB = second.json().paymentId as string;
+    expect((await statusOf(payA)).status).toBe('canceled');
+    expect((await attemptOf(payA)).status).toBe('failed');
+
+    // FedaPay notifie ensuite la suppression de A avec son dernier statut connu (« pending ») : A reste annulé.
+    const deleted = await webhook({ id: `evt-${tag}-late-deleted`, name: 'transaction.deleted', entity: { id: txA, status: 'pending' } });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toMatchObject({ status: 'canceled', changed: false });
+    expect((await statusOf(payA)).status).toBe('canceled');
+    expect((await statusOf(payB)).status).toBe('initiated');
+
+    // Un événement non monétaire pour une transaction inconnue est ignoré (pas de rejeu ni d'alerte) ;
+    // un encaissement inconnu reste une erreur.
+    const unknown = await webhook({ id: `evt-${tag}-late-unknown`, name: 'transaction.deleted', entity: { id: '999999999', status: 'pending' } });
+    expect(unknown.statusCode).toBe(200);
+    expect(unknown.json()).toMatchObject({ handled: false, reason: 'unknown_transaction' });
+    const unknownPaid = await webhook({ id: `evt-${tag}-late-unknown-paid`, name: 'transaction.approved', entity: { id: '999999998', status: 'approved' } });
+    expect(unknownPaid.statusCode).toBe(404);
+
+    // Et un « pending » tardif sur un paiement annulé est ignoré, journalisé.
+    const reopen = await webhook({ id: `evt-${tag}-late-reopen`, name: 'transaction.updated', entity: { id: txA, status: 'pending' } });
+    expect(reopen.json()).toMatchObject({ status: 'canceled', changed: false, ignored: true });
+  });
 });
