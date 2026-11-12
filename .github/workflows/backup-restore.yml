@@ -70,7 +70,13 @@ jobs:
           if grep -q _pending "backups/$stamp/objects.sha256"; then echo "objet _pending sauvegardé"; exit 1; fi
           test -s "offsite/domicares-$stamp.tar.age"
       - name: Exercice isolé sur la sauvegarde locale
-        run: sudo chown -R "$USER" backups && deploy/vps/restore-drill.sh "backups/$(ls backups | grep -E '^20.*Z$')"
+        run: |
+          sudo chown -R "$USER" backups
+          before=$(docker volume ls -q | sort)
+          deploy/vps/restore-drill.sh "backups/$(ls backups | grep -E '^20.*Z$')"
+          # L'exercice ne doit laisser aucun volume : ils contiendraient une copie des données restaurées.
+          left=$(comm -13 <(echo "$before") <(docker volume ls -q | sort))
+          if [ -n "$left" ]; then echo "volumes laissés par restore-drill.sh :"; echo "$left"; exit 1; fi
       - name: Exercice isolé sur l'archive hors site déchiffrée
         run: |
           mkdir -p from-offsite

@@ -329,3 +329,22 @@ les volets restants du §7 sont donc toujours ouverts. Liste ordonnée : documen
 | Exercice de restauration | **À faire** | — | `restore-drill.sh` sur la vraie sauvegarde, durée mesurée |
 | Incident FedaPay du 26/10 | Vérification **ouverte** | §7 | tableau de bord FedaPay live (18:14 à 18:19 UTC) et ligne unique `FEDAPAY_MODE=` |
 | Sauvegarde de recette | Défaut `.app-version` toujours ouvert | §7 | droits de `deploy/vps/backups` dans le clone de recette |
+
+## 9. Point du lot 6 — 12 novembre 2026 (fiche 17)
+
+Résultats déclarés par la session Claude Code ouverte sur le VPS (11 et 12/11, relevé à 04:50 UTC),
+qui remplacent les lignes correspondantes du §8. Seul ce qui a été exécuté et constaté est marqué fait.
+Procédures : document 17.
+
+| Volet | État au 12/11 | Preuve (session VPS) | Reste |
+|---|---|---|---|
+| Incident FedaPay du 26/10 | VPS **conforme** ; contrôle live **ouvert** | une seule ligne `FEDAPAY_MODE=` dans le `.env` de production ; `sandbox` vu par le conteneur et par `/api/payments/config` | équipe : tableau de bord FedaPay **live**, aucune transaction le 26/10 entre 18:10 et 18:25 UTC |
+| Sauvegarde hors site | **En service** depuis le 07/11 (une archive chiffrée par jour) | sauvegarde `20261112T044209Z` : 101 objets, 94,6 Mo, copie hors site faite ; `preflight.sh` : 0 bloquant, 9 avertissements | déchiffrement d'essai d'une archive sur un poste avec la clé `age` (document 17 §2.5) |
+| Exercice de restauration | **Réussi** le 12/11 en **12 s** (RTO retenu : 4 h, durée hors transfert hors site et réinstallation) | `restore-drill.sh` sur `20261112T044209Z` : 5 étapes OK, 103 références SQL → objet trouvées, 0 manquante ; aucun volume orphelin après correction de `cleanup` | variante depuis l'archive hors site déchiffrée (document 17 §3) |
+| Liens de fichiers cassés | **Traité** avant l'exercice | 9 références sans objet chez 3 praticiens, vidées ; copie préalable des lignes dans `/home/deploy/praticiens-avant-vidage-20261112T044145Z.csv` (sur le VPS, hors dépôt : données personnelles) | demander aux 3 praticiens de renvoyer leurs justificatifs (messages non envoyés au 12/11) |
+| `restore-drill.sh` : volumes orphelins | **Corrigé dans le dépôt** (PR du 12/11) | sur le VPS, chaque exercice laissait les volumes anonymes des conteneurs PostgreSQL et MinIO jetables, avec une copie des données restaurées ; correctif `docker rm -fv`, appliqué d'abord en modification locale (perdue en recette au déploiement de 04:43, encore locale en production) | après fusion, le prochain déploiement de production remplace la modification locale par la version du dépôt ; contrôle CI ajouté dans `backup-restore.yml` |
+| Essai d'alerte | Supervision **conforme** ; réception **à confirmer** | worker arrêté le 11/11 de 18:12 à 18:13 UTC : `KO` puis tout `OK` ; cron toutes les 15 min | équipe : vérifier sur Discord le message d'alerte et « supervision rétablie » |
+| Sauvegarde de recette | **Corrigé** | `deploy/vps/backups` appartient à `deploy` ; `.app-version` = `bd9cd80`, réécrit par le déploiement de recette de 04:43 | — |
+| Webhook sandbox de recette | **En service** | 7 événements FedaPay sandbox reçus et signatures acceptées sur la recette le 12/11 | vérifier la case « désactiver en cas d'erreurs » côté FedaPay |
+| Chaîne de déploiement | Production à `4bd6d71` (confirmé sur le VPS) ; recette à `bd9cd80` | — | réglages GitHub non vérifiables depuis le VPS : « Required reviewers » de `production`, `RECETTE_AUTO=true` ; déploiement de production (document 17 §10) |
+

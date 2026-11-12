@@ -16,7 +16,10 @@ PG_IMAGE="${PG_IMAGE:-domicares-postgres:16-alpine-locales}"
 ID="domicares-drill-$(date +%s)"
 PASS="$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 
-cleanup() { docker rm -f "$ID-pg" "$ID-s3" >/dev/null 2>&1 || true; docker network rm "$ID" >/dev/null 2>&1 || true; }
+# -v : supprime aussi les volumes anonymes des conteneurs (VOLUME de l'image postgres, données MinIO).
+# Sans lui, chaque exercice laissait sur l'hôte deux volumes orphelins contenant une copie restaurée
+# des données de production (constaté sur le VPS le 12/11/2026).
+cleanup() { docker rm -fv "$ID-pg" "$ID-s3" >/dev/null 2>&1 || true; docker network rm "$ID" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 for image in "$BACKUP_IMAGE" "$MINIO_IMAGE" "$PG_IMAGE"; do

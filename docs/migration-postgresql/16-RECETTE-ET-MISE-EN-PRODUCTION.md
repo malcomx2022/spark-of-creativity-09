@@ -233,6 +233,25 @@ Mis à jour le 11 novembre 2026, par ordre de priorité. Commandes pas à pas de
 `17-FICHE-COMMANDES-VPS.md`. Les lignes « fait » de l'ancienne liste sont
 regroupées en fin de section.
 
+**Avancement au 12 novembre 2026** (session Claude Code sur le VPS, relevé à 04:50 UTC ; détail au
+document 10 §9) :
+
+| # | État | Constat | Reste |
+|---|---|---|---|
+| 1 | partiel | une seule ligne `FEDAPAY_MODE=`, `sandbox` vu par le conteneur et l'API | contrôle du tableau de bord FedaPay live (26/10, 18:10 à 18:25 UTC) |
+| 2 | partiel | copie hors site R2 en service depuis le 07/11 ; sauvegarde du 12/11 copiée | déchiffrement d'essai sur un poste |
+| 3 | **fait** | `restore-drill.sh` réussi en 12 s, 103 références, 0 manquante (après vidage de 9 liens cassés chez 3 praticiens) | variante depuis l'archive hors site ; correctif `rm -fv` à fusionner |
+| 4 | partiel | supervision `KO` puis `OK` le 11/11 (18:12 à 18:13 UTC) | réception des deux messages Discord à confirmer |
+| 5 | **fait** | `backups` à `deploy`, `.app-version` = `bd9cd80` | — |
+| 6 | à confirmer | réglages GitHub non visibles depuis le VPS | « Required reviewers » de `production`, `RECETTE_AUTO=true` |
+| 7 | en service | 7 webhooks sandbox reçus et acceptés par la recette | case « désactiver en cas d'erreurs » à vérifier |
+| 8 | partiel | contrôles techniques OK (santé, `sandbox`, `401`) ; **paiement MTN `0166000001` ok** le 12/11 à 04:22 UTC (`paid`, rendez-vous confirmé, 14 250 XOF en attente pour le praticien, écritures équilibrées 15 300 / 15 300, notifications patient et praticien) ; S13 : 7 webhooks `success`. Ce premier essai a révélé un webhook tardif qui rouvrait un paiement annulé, corrigé par #141 (`bd9cd80`, en recette depuis 04:43) | paiement Moov `0164000001` ; **paiement refusé** (`66000000`, à jouer : #141 change ce cas) ; `contact-check.sh --via-site` ; grille par rôle du §4 |
+| 9 | à faire | — | iPhone : Safari, PWA, push, hors ligne |
+| 10 | à faire | production à `4bd6d71`, sans #140 ni #141 | déployer `bd9cd80` après l'étape 8 |
+
+Ajout : 3 praticiens n'ont plus de justificatif enregistré (liens vidés avant l'exercice de
+restauration) ; leur demander de les renvoyer (équipe).
+
 **Priorité 1 : sécurité et données (la production contient les données réelles).**
 
 | # | Tâche | Qui | Dépend de |
