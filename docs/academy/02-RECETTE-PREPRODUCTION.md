@@ -23,6 +23,10 @@ l'environnement du terminal.
 
 ## 2. Activation sur la préproduction DomiCares
 
+> Recette installée sur le VPS de production (clone `~/domicares-recette`, document 16 de la
+> migration, § 2.6) : suivre la fiche pas à pas `04-FICHE-ACTIVATION-RECETTE.md`, qui adapte ce
+> paragraphe et le § 3 (chemins, contrôles, phases sans puis avec secret de webhook).
+
 Sur le VPS de préproduction, en tant que `deploy`, depuis `~/domicares/deploy/vps` :
 
 ```bash
