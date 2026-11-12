@@ -113,6 +113,12 @@ AKAMBI_WEBHOOK_SECRETS=
 Coller la clé et le secret sans espace ni guillemet, puis enregistrer (`Ctrl+O`, Entrée, `Ctrl+X`).
 `AKAMBI_WEBHOOK_SECRETS` reste vide jusqu'à la phase B.
 
+**Attention** : une variable vide doit rester seule sur sa ligne (`AKAMBI_WEBHOOK_SECRETS=`). Si un
+commentaire la suit (`AKAMBI_WEBHOOK_SECRETS=   # …`), Docker Compose transmet le texte du
+commentaire comme valeur : l'API croit alors disposer d'un secret public et le webhook répond `401`
+au lieu de `503` (constaté le 12/11 avec un `.env` copié d'un ancien `.env.example`). `preflight.sh`
+signale désormais ce cas par un ✖.
+
 Contrôle (une ligne par variable, valeurs secrètes non affichées) :
 
 ```bash
@@ -254,5 +260,6 @@ formation de test publiée par Akambi.
 
 | Date | Phase | Résultat | Preuve |
 |---|---|---|---|
-| 12 novembre 2026 | A, étapes 0 à 6 | recette à `adbccb2` ; sauvegarde `20261112T084832Z` ; 6 tables `academy_*` déjà présentes ; `.env` mis à jour (copie `.env.bak-20261112T085753Z`, clé 40 et secret 64 caractères) ; `preflight.sh` 0 bloquant ; API démarrée, `academyEnabled:true`, `akambi-ping` ✔ depuis la configuration du conteneur. **Écart** : webhook `401` au lieu de `503` : `AKAMBI_WEBHOOK_SECRETS` reçu par l'API et le worker = texte du commentaire de `.env.example` (77 caractères, `# whsec_…`), Compose ne retirant pas un commentaire après une valeur vide ; correction de la ligne en cours, étape 7 à faire | sorties transmises en séance |
+| 12 novembre 2026 | A, étapes 0 à 6 | recette à `adbccb2` ; sauvegarde `20261112T084832Z` ; 6 tables `academy_*` déjà présentes ; `.env` mis à jour (copie `.env.bak-20261112T085753Z`, clé 40 et secret 64 caractères) ; `preflight.sh` 0 bloquant ; API démarrée, `academyEnabled:true`, `akambi-ping` ✔ depuis la configuration du conteneur. **Écart** : webhook `401` au lieu de `503` : `AKAMBI_WEBHOOK_SECRETS` reçu par l'API et le worker = texte du commentaire de `.env.example` (77 caractères, `# whsec_…`), Compose ne retirant pas un commentaire après une valeur vide. **Corrigé** le même jour : ligne `AKAMBI_WEBHOOK_SECRETS=` sans commentaire (copie `.env.bak-…` préalable), `up -d api worker`, longueur 0 dans le conteneur, webhook `503`. Étape 7 (synchronisations) à faire | sorties transmises en séance |
+| 12 novembre 2026 | A, étape 7 | **phase A terminée** : synchronisations du catalogue et des inscriptions réussies (09:44 UTC) ; catalogue : « lecture incomplète (0/0) : aucune formation masquée », attendu tant qu'Akambi ne publie aucune formation (garde de `AcademyService.syncCatalog` : rien n'est masqué sur une lecture vide) ; inscriptions « sans erreur » ; indicateurs Akambi : 1 apprenant, 0 inscription ; journal de l'API sans ligne `akambi` (le client ne journalise que les échecs, méthode, chemin et code) | captures de l'onglet Academy, `docker compose logs --since 15m api \| grep -i akambi` vide |
 | — | B | à faire (en attente du `whsec_…`) | |
