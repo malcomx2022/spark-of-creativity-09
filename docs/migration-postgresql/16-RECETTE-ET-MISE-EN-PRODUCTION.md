@@ -278,7 +278,7 @@ restauration) ; leur demander de les renvoyer (équipe).
 |---|---|---|---|
 | 11 | Rotation des clés FedaPay, Twilio et Resend autrefois copiées chez Supabase/Lovable (sans toucher `PHONE_ENCRYPTION_KEY` ni VAPID) ; vérifier que l'application Lovable n'a plus accès au dépôt GitHub | équipe | — |
 | 12 | Support FedaPay : ouverture des **dépôts** (S7 : 403) et accès à **`/v1/refunds`** (S9, S11) sur le compte sandbox, puis relance de la campagne (document 09 §4 bis) | équipe, puis Claude Code | — |
-| 13 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis production | équipe et Akambi | — |
+| 13 | Academy : identifiants de préproduction Akambi (**vérifiés le 12/11** : `akambi-ping` 200, catalogue vide), réponse à Denis, grille R0 à R10, puis production | équipe et Akambi | — |
 | 14 | Paiements réels (§5.2) | équipe, avec Claude Code | 1, 7, 8, 12 |
 
 **Faits** : séparation recette / production (`RECETTE_AUTO=true`, runs 56 et 57) ; approbation obligatoire de la production (12/11) ; import définitif des
