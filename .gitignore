@@ -34,6 +34,8 @@ legacy/supabase/.temp/
 # Exports Supabase (données personnelles) — ne jamais versionner
 export/
 deploy/vps/.env
+# Copies horodatées du .env (document 17, étape 0 ; fedapay-mode.sh) : elles contiennent les secrets
+deploy/vps/.env.bak-*
 deploy/vps/backups/
 deploy/vps/.supervision-state
 deploy/vps/caddy/sites/*.caddy
