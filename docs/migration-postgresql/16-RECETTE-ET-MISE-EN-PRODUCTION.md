@@ -238,7 +238,7 @@ document 10 §9) :
 
 | # | État | Constat | Reste |
 |---|---|---|---|
-| 1 | partiel | une seule ligne `FEDAPAY_MODE=`, `sandbox` vu par le conteneur et l'API | contrôle du tableau de bord FedaPay live (26/10, 18:10 à 18:25 UTC) |
+| 1 | **fait** | une seule ligne `FEDAPAY_MODE=`, `sandbox` vu par le conteneur et l'API ; base de production (12/11) : 0 paiement créé et 0 webhook reçu le 26/10 entre 18:00 et 18:30 UTC ; tableau de bord FedaPay live (12/11), « 2 mois précédents » : aucun volume ni transaction réussie | facultatif : liste Transactions du 26/10 tous statuts |
 | 2 | partiel | copie hors site R2 en service depuis le 07/11 ; sauvegarde du 12/11 copiée | déchiffrement d'essai sur un poste |
 | 3 | **fait** | `restore-drill.sh` réussi en 12 s, 103 références, 0 manquante (après vidage de 9 liens cassés chez 3 praticiens) | variante depuis l'archive hors site ; correctif `rm -fv` à fusionner |
 | 4 | partiel | supervision `KO` puis `OK` le 11/11 (18:12 à 18:13 UTC) | réception des deux messages Discord à confirmer |
