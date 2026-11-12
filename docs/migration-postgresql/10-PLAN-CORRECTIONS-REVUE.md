@@ -348,3 +348,13 @@ Procédures : document 17.
 | Webhook sandbox de recette | **En service** | 7 événements FedaPay sandbox reçus et signatures acceptées sur la recette le 12/11 | vérifier la case « désactiver en cas d'erreurs » côté FedaPay |
 | Chaîne de déploiement | Production à `4bd6d71` (confirmé sur le VPS) ; recette à `bd9cd80` ; **approbation obligatoire de la production active** | « Required reviewers » configuré le 12/11 sur `production` (approbateur `malcomx2022`, « Prevent self-review » décoché, contournement par les administrateurs autorisé, déploiement limité à la branche `main`) ; `RECETTE_AUTO` = `true` en variable de dépôt (captures des réglages GitHub fournies par l'équipe) | déploiement de production (document 17 §10), qui s'arrêtera sur « Waiting for review » jusqu'à l'approbation |
 
+**Recette des paiements sandbox, 12/11 (06:28 à 06:45 UTC, clone de recette, `fedapay-observe.sh` et décomptes
+sans donnée personnelle) :**
+
+| Cas | Résultat | Preuve |
+|---|---|---|
+| Paiement Moov `0164000001` | **ok** | paiement `7d171974` : `pending` à 06:34:27, `paid`/`held` à 06:34:39 ; webhooks `created`, `updated`, `approved` en `success` |
+| Reprise après abandon (#141) | **ok** | paiement MTN ouvert `c5067bbe` (transaction `542268`) annulé au remplacement à 06:34:25 ; `transaction.deleted` reçu à 06:34:26 en `success` sans rouvrir le paiement ; tentative close en `failed` ; 0 écriture comptable ; nouvelle tentative acceptée sans 409, rendez-vous `confirmed` |
+| Paiement refusé `66000000` | **non testable depuis l'interface** | paiement `24334092`, transaction `542270` : un seul webhook (`transaction.created`) ; chez FedaPay, `GET /v1/transactions/542270` → `pending`, sans moyen de paiement, à 07:39 heure du Bénin : la fenêtre FedaPay sandbox ne soumet pas ce numéro, aucun refus n'est émis. Côté Domicares : message « Le paiement a échoué ou a été annulé », rendez-vous toujours payable, paiement laissé `pending` jusqu'à son remplacement ou au nettoyage des paiements en attente. Le refus (`declined` → `failed`) reste couvert par la campagne API (S3, document 09 §4 bis, 27/10) |
+| Grand livre | **équilibré** | débits 30 600 = crédits 30 600 (deux paiements payés de 15 300) ; solde « en attente » du praticien = paiements encore `pending`, sans écriture |
+
