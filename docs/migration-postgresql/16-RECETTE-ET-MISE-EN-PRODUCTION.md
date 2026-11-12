@@ -159,7 +159,7 @@ Réglages GitHub (Settings → Environments, puis Settings → Secrets and varia
    Les secrets **du dépôt** restent ceux de la production (`VPS_APP_DIR` = `/home/deploy/domicares`,
    `DOMAIN_NAME` = `domicares.life`) : s'ils désignent la recette, les déploiements « production »
    reconstruisent la recette sans erreur visible (cas des runs 48 à 55, document 10 §7).
-2. Environnement `production` : « Required reviewers » pour imposer une approbation avant chaque
+2. Environnement `production` (**configuré le 12/11/2026**, document 10 §9) : « Required reviewers » pour imposer une approbation avant chaque
    déploiement de production.
 3. Une fois la recette déployée avec succès par un lancement manuel (`cible` = `recette`) : variable
    de dépôt `RECETTE_AUTO=true`. Dès lors, les fusions vont en recette et la production se déploie à
@@ -243,7 +243,7 @@ document 10 §9) :
 | 3 | **fait** | `restore-drill.sh` réussi en 12 s, 103 références, 0 manquante (après vidage de 9 liens cassés chez 3 praticiens) | variante depuis l'archive hors site ; correctif `rm -fv` à fusionner |
 | 4 | partiel | supervision `KO` puis `OK` le 11/11 (18:12 à 18:13 UTC) | réception des deux messages Discord à confirmer |
 | 5 | **fait** | `backups` à `deploy`, `.app-version` = `bd9cd80` | — |
-| 6 | à confirmer | réglages GitHub non visibles depuis le VPS | « Required reviewers » de `production`, `RECETTE_AUTO=true` |
+| 6 | **fait** | « Required reviewers » configuré le 12/11 sur `production` (approbateur `malcomx2022`, « Prevent self-review » décoché, contournement par les administrateurs autorisé, déploiement limité à la branche `main`) ; `RECETTE_AUTO` = `true` en variable de dépôt (captures des réglages GitHub fournies par l'équipe) | — |
 | 7 | en service | 7 webhooks sandbox reçus et acceptés par la recette | case « désactiver en cas d'erreurs » à vérifier |
 | 8 | partiel | contrôles techniques OK (santé, `sandbox`, `401`) ; **paiement MTN `0166000001` ok** le 12/11 à 04:22 UTC (`paid`, rendez-vous confirmé, 14 250 XOF en attente pour le praticien, écritures équilibrées 15 300 / 15 300, notifications patient et praticien) ; S13 : 7 webhooks `success`. Ce premier essai a révélé un webhook tardif qui rouvrait un paiement annulé, corrigé par #141 (`bd9cd80`, en recette depuis 04:43) | paiement Moov `0164000001` ; **paiement refusé** (`66000000`, à jouer : #141 change ce cas) ; `contact-check.sh --via-site` ; grille par rôle du §4 |
 | 9 | à faire | — | iPhone : Safari, PWA, push, hors ligne |
@@ -281,7 +281,7 @@ restauration) ; leur demander de les renvoyer (équipe).
 | 13 | Academy : identifiants de préproduction Akambi, grille R0 à R10, puis production | équipe et Akambi | — |
 | 14 | Paiements réels (§5.2) | équipe, avec Claude Code | 1, 7, 8, 12 |
 
-**Faits** : séparation recette / production (`RECETTE_AUTO=true`, runs 56 et 57) ; import définitif des
+**Faits** : séparation recette / production (`RECETTE_AUTO=true`, runs 56 et 57) ; approbation obligatoire de la production (12/11) ; import définitif des
 données (26-27/10) ; clôture Supabase et Lovable (27/10) ; numéros `momo_test` reçus et campagne rejouée
 (27/10) ; stockage hors site choisi (Cloudflare R2, #139) ; supervision externe et interne en service ;
 saisie des numéros à 10 chiffres dans les widgets de paiement (11/11, document 15 §21).
