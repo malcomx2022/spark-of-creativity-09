@@ -294,9 +294,12 @@ curl -s -o /dev/null -w '%{http_code}\n' https://staging.domicares.life/
 Attendu : `"status":"ok"` et `"database":"ok"` ; `"environment":"sandbox"` ; `401` (site protégé).
 
 **[navigateur]** `https://staging.domicares.life` (identifiants du `basic_auth`), comptes de
-recette par rôle, grille du document 16 §4. Paiement sandbox depuis l'interface (après fusion de
-[malcomx2022/spark-of-creativity-09#140](https://github.com/malcomx2022/spark-of-creativity-09/pull/140)
-et son déploiement en recette) :
+recette par rôle, grille du document 16 §4. Paiement sandbox depuis l'interface (la recette est à
+`bd9cd80` depuis le 12/11 : elle contient
+[malcomx2022/spark-of-creativity-09#140](https://github.com/malcomx2022/spark-of-creativity-09/pull/140),
+numéros à 10 chiffres, et
+[malcomx2022/spark-of-creativity-09#141](https://github.com/malcomx2022/spark-of-creativity-09/pull/141),
+webhook tardif sur paiement annulé) :
 
 | Cas | Numéro saisi | Attendu |
 |---|---|---|
@@ -321,8 +324,9 @@ mode avion puis retour. Checklist et preuves attendues : document 12 et document
 
 ## 10. Déploiement de production du SHA validé (priorité 2)
 
-Prérequis : étapes 6 et 8 faites ; SHA validé en recette (au moins `992c397`, ou le commit de
-fusion de #140 une fois déployé et recetté).
+Prérequis : étapes 6 et 8 faites ; SHA validé en recette. Candidat au 12/11 : `bd9cd80`
+(`bd9cd8002ae781ed1900498d6d98d08a03d1265a`), CI verte et déployé en recette (document 10 §8),
+à retenir seulement si la recette de l'étape 8 a été jouée sur cette version.
 
 **[navigateur]** GitHub → Actions → *Deploy VPS* → *Run workflow* depuis `main` :
 `confirm` = `DEPLOYER`, `revision` = SHA complet validé, `cible` = `production`,
