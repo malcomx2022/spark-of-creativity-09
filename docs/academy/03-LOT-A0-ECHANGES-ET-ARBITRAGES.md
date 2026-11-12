@@ -150,11 +150,11 @@ modification dédiée (tests compris), sans attendre la recette.
 | Préproduction Akambi joignable, format signé conforme | **Fait** (26 octobre 2026) | § 1 |
 | Outil de vérification sans Postman | **Fait** (26 octobre 2026) | `npm run akambi:ping`, tests `akambi-ping.spec.ts` |
 | Webhook de la recette en ligne | **Constaté** (26 octobre 2026) | § 1 (503 attendu sans secret) |
-| Authentification avec les vrais identifiants | À faire par DomiCares | sortie du § 2 sans ✖ |
+| Authentification avec les vrais identifiants | **Faite** (12 novembre 2026, 08:22 UTC, VPS) : ✔ `GET /ping` 200, partenaire `DOMICARES-PATNER` (nom « Domicaire ») ; ✔ horloge 0 s (NTP `yes`) ; ✔ signature fausse 401 `INVALID_SIGNATURE` ; ⚠ catalogue vide (`GET /courses` : 0 formation, prérequis P3). La ligne `ERROR [HttpAkambiClient] … 401 INVALID_SIGNATURE` du journal correspond au contrôle volontairement faux | `docker compose exec -e AKAMBI_BASE_URL=… -e AKAMBI_API_KEY="$AKAMBI_API_KEY" -e AKAMBI_API_SECRET="$AKAMBI_API_SECRET" api node dist/academy/akambi-ping.js` dans le conteneur API de la recette (`bd9cd80`), identifiants saisis par `read -s`, puis `unset` ; correction du code et du nom du partenaire demandée à Akambi (§ 7) |
 | Message à Denis envoyé | **Fait** (brouillon Gmail du 26 octobre, envoyé par DomiCares) | réponse reçue |
 | Réponses d'Akambi | **Reçues** (26 octobre 2026), valeurs entre crochets à compléter | § 4 |
 | Effets sur le code | **Faits** (26 octobre 2026) : annulation inconnue jamais rattachée à une demande en attente ; tolérance d'horloge inclusive dans `akambi-ping` | tests e2e `academy-sync` (12) et `akambi-ping.spec.ts` (5) |
-| Réponse à Denis (URL active, compléments, questions) | À envoyer par DomiCares | § 7 |
+| Réponse à Denis (URL active, compléments, questions) | Brouillon Gmail à jour (12 novembre 2026 : résultat d'authentification, nom du partenaire, catalogue vide), sans destinataire ; à compléter et envoyer par DomiCares depuis le fil de Denis | § 7 |
 | Arbitrages D1 à D9 | En attente | § 5 |
 
 ## 7. Réponse à Denis (à envoyer)

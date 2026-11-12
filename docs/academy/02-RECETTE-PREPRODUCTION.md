@@ -145,7 +145,7 @@ de préproduction. `preflight.sh` avertit si l'URL de préproduction reste sur u
 | Date | Étape | Résultat | Preuve |
 |---|---|---|---|
 | 23 octobre 2026 | Harnais de campagne en mode `fake` sur PostgreSQL 16 local | 9/9 scénarios exécutés | rapport `akambi-fake-…` (R0b, R2b, R6 non couverts en `fake` ; R4b, R5, R7 manuels) |
-| — | P1 ping Postman | à faire | |
+| 12 novembre 2026 | P1 identifiants (`akambi-ping` dans le conteneur API de la recette) | ok : 200, partenaire `DOMICARES-PATNER`, horloge 0 s, signature fausse 401 ; ⚠ catalogue vide (P3 en attente) | document 03, § 6 |
 | — | § 2 activation préproduction | à faire | |
 | — | § 3 `webhook.test` | à faire | |
 | — | § 4 campagne `preprod` | à faire | |
