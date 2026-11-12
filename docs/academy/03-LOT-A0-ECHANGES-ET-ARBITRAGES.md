@@ -154,7 +154,7 @@ modification dédiée (tests compris), sans attendre la recette.
 | Message à Denis envoyé | **Fait** (brouillon Gmail du 26 octobre, envoyé par DomiCares) | réponse reçue |
 | Réponses d'Akambi | **Reçues** (26 octobre 2026), valeurs entre crochets à compléter | § 4 |
 | Effets sur le code | **Faits** (26 octobre 2026) : annulation inconnue jamais rattachée à une demande en attente ; tolérance d'horloge inclusive dans `akambi-ping` | tests e2e `academy-sync` (12) et `akambi-ping.spec.ts` (5) |
-| Réponse à Denis (URL active, compléments, questions) | Brouillon Gmail à jour (12 novembre 2026 : résultat d'authentification, nom du partenaire, catalogue vide), sans destinataire ; à compléter et envoyer par DomiCares depuis le fil de Denis | § 7 |
+| Réponse à Denis (URL active, compléments, questions) | **Envoyée** (12 novembre 2026, depuis `support@domicares.life`) : authentification 200, correction du code et du nom du partenaire, publication de la formation de test, compte `EXISTING` sur `support@domicares.life`, lien à usage unique proposé pour le secret de production, séance technique proposée la semaine du 16 novembre ; D7 renvoyée à la convention | § 7 ; réponse d'Akambi attendue (`whsec_…`, formation de test, valeurs manquantes des points 7 et 8) |
 | Arbitrages D1 à D9 | En attente | § 5 |
 
 ## 7. Réponse à Denis (à envoyer)
