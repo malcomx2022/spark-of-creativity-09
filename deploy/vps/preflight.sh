@@ -45,6 +45,10 @@ else
   [[ "$missing" == 0 ]] && ok "toutes les clés de .env.example sont présentes"
   bad=$(grep -E '^[A-Z0-9_]+=' "$HERE/.env" | sed -E 's/[[:space:]]+#.*$//' | grep -E '=(change-me|[a-z_]+_xxx$|<)' | cut -d= -f1 | tr '\n' ' ')
   [[ -z "$bad" ]] && ok "aucune valeur « change-me » / « _xxx » restante" || ko "valeurs à remplacer : $bad"
+  # Docker Compose ne retire pas un commentaire placé après une valeur vide (« CLE=   # texte ») :
+  # la variable vaut alors le texte du commentaire (secret de webhook public, document 04 de l'Academy).
+  commented=$(grep -E '^[A-Z0-9_]+=[[:space:]]+#' "$HERE/.env" | cut -d= -f1 | tr '\n' ' ')
+  [[ -z "$commented" ]] && ok "aucune valeur vide suivie d'un commentaire" || ko "valeur vide suivie d'un commentaire (lue comme valeur par Compose) : $commented— laisser « CLE= » seul sur la ligne"
   DOMAIN="$(env_get DOMAIN)"; [[ -n "$DOMAIN" ]] && ok "DOMAIN=$DOMAIN" || ko "DOMAIN vide"
   for v in POSTGRES_PASSWORD DOMICARES_APP_PASSWORD DOMICARES_MIGRATOR_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY PHONE_ENCRYPTION_KEY; do
     placeholder "$(env_get $v)" && ko "$v non renseigné" ; done

@@ -113,6 +113,12 @@ AKAMBI_WEBHOOK_SECRETS=
 Coller la clé et le secret sans espace ni guillemet, puis enregistrer (`Ctrl+O`, Entrée, `Ctrl+X`).
 `AKAMBI_WEBHOOK_SECRETS` reste vide jusqu'à la phase B.
 
+**Attention** : une variable vide doit rester seule sur sa ligne (`AKAMBI_WEBHOOK_SECRETS=`). Si un
+commentaire la suit (`AKAMBI_WEBHOOK_SECRETS=   # …`), Docker Compose transmet le texte du
+commentaire comme valeur : l'API croit alors disposer d'un secret public et le webhook répond `401`
+au lieu de `503` (constaté le 12/11 avec un `.env` copié d'un ancien `.env.example`). `preflight.sh`
+signale désormais ce cas par un ✖.
+
 Contrôle (une ligne par variable, valeurs secrètes non affichées) :
 
 ```bash
